@@ -334,6 +334,20 @@ PRISM_TEST_RAW=~/Pictures/DSC03866.ARW PRISM_TEST_RAW_SIZE=6374x9566 ctest --tes
 
 They check the size, that every value is in [0, 1], that `--raw-half` halves the dimensions, and that `--raw-camera-matrix` with the identity matrix works.
 
+### Code formatting
+
+The C++ style is described in `.clang-format`. Format the files you changed with `clang-format -i <files>`, or the whole tree (Prism's own code only; `third_party/` stays unmodified) with:
+
+```sh
+git ls-files '*.cpp' '*.hpp' ':!third_party' | xargs clang-format -i
+```
+
+The one-off commit that reformatted everything is listed in `.git-blame-ignore-revs`. To make `git blame` skip it and show the commit that really last changed each line, run once per clone:
+
+```sh
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
 ## Project layout
 
 ```
