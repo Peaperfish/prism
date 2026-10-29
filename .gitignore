@@ -1,0 +1,37 @@
+# Build output
+build/
+cmake-build-*/
+out/
+bin/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+CMakeUserPresets.json
+compile_commands.json
+_deps/
+
+# Compiled objects
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+
+# IDEs / editors
+.vscode/
+.idea/
+.vs/
+*.swp
+.DS_Store
+
+# Clangd cache
+.cache/
+
+# Test images and output (keep samples in samples/ if you want them tracked)
+*.out.png
+*.out.jpg
+output/
