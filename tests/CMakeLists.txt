@@ -21,8 +21,12 @@ add_executable(prism_tests
   parallel_test.cpp
   pipeline_test.cpp
   raw_test.cpp
+  tiff_reader_test.cpp
   version_test.cpp)
 target_link_libraries(prism_tests PRIVATE prism_core prism_warnings GTest::gtest_main)
+# lib/ holds internal headers (e.g. tiff_reader.hpp) that are not part of the public API; only
+# the tests may include them directly.
+target_include_directories(prism_tests PRIVATE ${PROJECT_SOURCE_DIR}/lib)
 
 # cli_test.cpp runs the real prism executable: tell it where the build put it, and make sure
 # building the tests also (re)builds prism so the tests never run a stale binary.

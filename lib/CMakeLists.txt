@@ -6,6 +6,7 @@ add_library(prism_core STATIC
   parallel.cpp
   pipeline.cpp
   raw.cpp
+  tiff_reader.cpp
   version.cpp)
 
 # PUBLIC: anything linking prism_core also gets include/ on its include path, so it can
