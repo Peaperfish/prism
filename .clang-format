@@ -1,6 +1,44 @@
-BasedOnStyle: LLVM
+# Prism's C++ style, written down to match how the code was already laid out.
+# Format with: git ls-files '*.cpp' '*.hpp' ':!third_party' | xargs clang-format -i
+#
+# Google style is the starting point because its line-breaking rules are the closest to the
+# existing code (break after "(" rather than at "=", two spaces before trailing comments).
+# Everything that matters is still set explicitly below, so this file describes the style
+# on its own and does not silently change if the preset does.
+BasedOnStyle: Google
+Language: Cpp
+
+# Layout
 IndentWidth: 4
-ColumnLimit: 100
+ColumnLimit: 100                 # ~5000 of 5185 lines are <= 100; wider limits join wrapped lines
+AccessModifierOffset: -4         # public:/private: flush with the class keyword
+IndentCaseLabels: true           # case labels one level inside switch
+NamespaceIndentation: None       # namespace contents are not indented
+FixNamespaceComments: true       # closing brace gets "}  // namespace prism"
+BreakBeforeBraces: Attach        # opening brace on the same line, everywhere
+
+# Pointers and references bind to the type: float* p, const Image& img
 PointerAlignment: Left
-AllowShortFunctionsOnASingleLine: Inline
+DerivePointerAlignment: false    # Google would guess per file; always use Left instead
+
+# Short constructs: only what the code already puts on one line
+AllowShortFunctionsOnASingleLine: Inline   # one-liners inside classes, not free functions
+AllowShortLambdasOnASingleLine: All        # [&](int t) { f(t); } stays on one line
+AllowShortCaseLabelsOnASingleLine: true    # case 1: return 5500;  // daylight
+AllowShortIfStatementsOnASingleLine: Never # ifs always have braces on their own lines
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+PackConstructorInitializers: NextLine      # : text_(text) stays on the constructor's line if it fits
+
+# Comments: two spaces before //, aligned across consecutive lines; long comments rewrapped at 100
+SpacesBeforeTrailingComments: 2
+AlignTrailingComments: true
+ReflowComments: true
+
+# Braced lists like {1, 2, 3} are laid out like function call arguments
+Cpp11BracedListStyle: true
+
+# Includes: each file's blank-line-separated groups (own header / <std> / <third-party> / "...")
+# are kept as written and only sorted within each group, never merged or regrouped.
 SortIncludes: CaseSensitive
+IncludeBlocks: Preserve

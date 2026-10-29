@@ -1,0 +1,3 @@
+# Vendored code (stb) must stay byte-for-byte unmodified: never format anything in here.
+DisableFormat: true
+SortIncludes: Never
