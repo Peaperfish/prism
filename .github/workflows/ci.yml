@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same branch or PR cancels the run still going for the old one.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false  # one broken platform shouldn't hide the others' results
+      matrix:
+        include:
+          # The one job with RAW support. GCC, because LibRaw's headers ask for OpenMP, which
+          # GCC has built in (Clang on Linux would also need libomp).
+          - name: Linux GCC + LibRaw
+            os: ubuntu-latest
+            cc: gcc
+            cxx: g++
+            build_type: Release
+            libraw: 'ON'
+          - name: Linux Clang
+            os: ubuntu-latest
+            cc: clang
+            cxx: clang++
+            build_type: Release
+            libraw: 'OFF'
+          - name: macOS (Apple Clang)
+            os: macos-latest
+            cc: clang
+            cxx: clang++
+            build_type: Release
+            libraw: 'OFF'
+          # ThreadSanitizer: reports any data race in the multithreaded stages (see README).
+          - name: Linux Clang ThreadSanitizer
+            os: ubuntu-latest
+            cc: clang
+            cxx: clang++
+            build_type: Debug
+            libraw: 'OFF'
+            tsan: 'ON'
+
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install LibRaw
+        if: matrix.libraw == 'ON'
+        run: sudo apt-get update && sudo apt-get install -y libraw-dev pkg-config
+
+      # Recent Ubuntu kernels randomise more address bits than TSan's shadow memory layout
+      # allows ("unexpected memory mapping"); 28 bits is what it supports.
+      - name: Allow ThreadSanitizer's memory layout
+        if: matrix.tsan == 'ON'
+        run: sudo sysctl vm.mmap_rnd_bits=28
+
+      # GoogleTest (FetchContent) is downloaded into .deps, cached per job and keyed on the file
+      # that pins its version, so most runs skip the download.
+      - name: Cache FetchContent downloads
+        uses: actions/cache@v4
+        with:
+          path: .deps
+          key: deps-${{ matrix.os }}-${{ matrix.name }}-${{ hashFiles('tests/CMakeLists.txt') }}
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DPRISM_WITH_LIBRAW=${{ matrix.libraw }}
+          -DPRISM_SANITIZE_THREAD=${{ matrix.tsan || 'OFF' }}
+          -DFETCHCONTENT_BASE_DIR=${{ github.workspace }}/.deps
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      # Serial on purpose: the CLI tests share a temporary output file. RAW integration tests
+      # skip themselves because PRISM_TEST_RAW is not set (there is no RAW file in the repo).
+      - name: Test
+        run: ctest --test-dir build --output-on-failure

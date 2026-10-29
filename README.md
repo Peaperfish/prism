@@ -1,5 +1,7 @@
 # Prism
 
+[![CI](https://github.com/Peaperfish/prism/actions/workflows/ci.yml/badge.svg)](https://github.com/Peaperfish/prism/actions/workflows/ci.yml)
+
 A small, fast command-line photo tool written in modern C++.
 
 Prism loads an image (PNG, JPEG or camera RAW), runs it through a simple colour pipeline (exposure, a 3×3 colour matrix and a tone curve), and writes the result back out. It's a learning project for working directly with pixel buffers, colour maths and performance in C++20.
@@ -256,6 +258,19 @@ CMake then turns it on automatically (`-- RAW support: LibRaw 0.22.3` when confi
 
 **Licence:** LibRaw is dual-licensed under the [LGPL 2.1](https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html) or the [CDDL 1.0](https://opensource.org/license/cddl-1-0), at your choice. Prism links it dynamically (the Homebrew `libraw_r` shared library) and does not modify it, which the LGPL allows. If you distribute Prism binaries built with LibRaw, include LibRaw's copyright notice and licence, and let users swap in their own build of the library (dynamic linking already allows that). LibRaw in turn uses Little CMS (MIT licence).
 
+### Continuous integration
+
+`.github/workflows/ci.yml` builds and runs `ctest` on every push and pull request:
+
+| Job | Compiler | Build | LibRaw |
+|-----|----------|-------|--------|
+| Linux GCC + LibRaw | GCC (ubuntu-latest) | Release | on (`apt install libraw-dev`) |
+| Linux Clang | Clang (ubuntu-latest) | Release | off |
+| macOS (Apple Clang) | Apple Clang (macos-latest) | Release | off |
+| Linux Clang ThreadSanitizer | Clang (ubuntu-latest) | Debug, `PRISM_SANITIZE_THREAD=ON` | off |
+
+There is no RAW file in CI, so the RAW integration tests report as skipped. GoogleTest's download is cached between runs.
+
 ### Testing with a real RAW file
 
 RAW files are too large to keep in the repo, so the RAW integration tests (`RawFile.*` and `Cli.RawWithIdentityCameraMatrixRuns`) are skipped unless `PRISM_TEST_RAW` points to one. Optionally, `PRISM_TEST_RAW_SIZE` also checks the exact output size, after rotation:
@@ -278,6 +293,7 @@ prism/
 ├── tests/        # GoogleTest unit tests
 ├── samples/      # example matrix files
 ├── bench/        # prism_bench: per-stage timings on a 61 MP image
+├── .github/      # CI workflow
 └── third_party/  # stb headers
 ```
 
