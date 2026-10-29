@@ -176,7 +176,7 @@ It is not part of `ctest`. Results on an Apple M2 Pro (8 performance + 4 efficie
 | matrix | 71 | 11 | 6.7× |
 | saturation | 152 | 22 | 6.8× |
 | contrast | 897 | 122 | 7.4× |
-| tone curve (filmic) | 305 | 42 | 7.3× |
+| tone curve (filmic) | 44 | 9 | 5.0× |
 | sRGB encode | 159 | 23 | 7.0× |
 | histogram | 236 | 31 | 7.7× |
 
@@ -194,6 +194,26 @@ With `PRISM_TEST_RAW=<file>` set, `prism_bench` also times loading that RAW file
 `--threads` only splits Prism's 16-bit → float conversion. Most of the time goes to reading and decompressing the file, which LibRaw does single-threaded, so half size is only about 2× faster even though it skips demosaicing.
 
 Exposure barely speeds up because one multiply per value is so little work that it is limited by memory bandwidth, not by the CPU (it already moves ~100 GB/s on one core).
+
+### Tone curves without `std::function`
+
+`ToneCurve` used to hold a `std::function<float(float)>`, called once per value. A `std::function` can hold any callable, so the compiler only sees "call whatever is stored in here": an indirect call it can't inline. Every value paid for the call, and the loop couldn't be vectorised, since the compiler can't run 4 calls to unknown code in one instruction.
+
+Each curve is now a small struct (`GammaCurve`, `ReinhardCurve`, `FilmicCurve` in `pipeline.hpp`) with an inline `operator()`, and `ToneCurve` holds a `std::variant` of them. `tone_curve` calls `std::visit` **once per image**. Its lambda is a template, so the compiler builds one loop per curve type, and in each loop it knows exactly which maths runs. It can then inline it and vectorise it. Reinhard and filmic are just multiplies, adds and divides, and they compile to NEON instructions that handle 4 floats at once (`fdiv.4s`). Gamma calls `powf` from the system maths library. The compiler can't see inside that or vectorise it, so gamma only saves the indirect call. (Templating the loop on the curve type by hand would compile to the same thing: `std::visit` is just a switch on the variant's tag that calls the template.)
+
+Median of 9 runs at 60 MP, in ms (1 thread / 12 threads):
+
+| Curve | `std::function` | `std::variant` | Speedup (1 thread) |
+|-------|----------------:|---------------:|--------:|
+| gamma:2.2 | 831 / 108 | 699 / 88 | 1.2× |
+| reinhard | 210 / 30 | 27 / 8.5 | 7.7× |
+| filmic | 305 / 41 | 44 / 8.8 | 6.9× |
+
+On 12 threads, Reinhard and filmic now run at about 165 GB/s, the speed of just reading and writing the buffer, so they are limited by memory, not maths. A separate test of the three ways to call the curve (single-threaded, 60 M values, filmic) shows where the time went: `std::function` per value 152 ms, `std::visit` per value 109 ms (no `std::function`, but still a branch per value and no vectorisation), `std::visit` once with a typed loop 14 ms.
+
+**The output is bit-identical.** Same formulas, same float operations in the same order. Vector division gives exactly the same result as scalar division, and the compiler doesn't contract `a * b + c` into a fused multiply-add any differently when the code is inlined. This was checked by hashing the old and new `tone_curve` output for all 2³² float bit patterns for gamma 2.2, Reinhard (white 4 and 1.5) and filmic: the hashes match. `ToneCurve.ImageMatchesMapBitForBit` checks that the vectorised loop matches the scalar `map()` over a million inputs covering every exponent, NaN and infinity.
+
+**No lookup table.** A table only pays off when computing the value costs more than looking it up. Reinhard and filmic are now limited by memory, so a table could only add work. Gamma could still get faster with one, but its output would then be approximate rather than bit-identical, so for now gamma keeps `powf`.
 
 ### Fast sRGB encode
 

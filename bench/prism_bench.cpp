@@ -274,6 +274,12 @@ int main(int argc, char* argv[]) {
     bench_stage(s, "contrast", 2 * f32, reset, [&](int t) { prism::contrast(work, 1.15f, t); });
     advance();
 
+    // Gamma and Reinhard are timed on the same input as filmic, which is the one carried forward.
+    for (const char* spec : {"gamma:2.2", "reinhard"}) {
+        const prism::ToneCurve curve = prism::parse_curve(spec);
+        bench_stage(s, "curve (" + curve.name + ")", 2 * f32, reset,
+                    [&](int t) { prism::tone_curve(work, curve, t); });
+    }
     const prism::ToneCurve filmic = prism::parse_curve("filmic");
     bench_stage(s, "curve (filmic)", 2 * f32, reset,
                 [&](int t) { prism::tone_curve(work, filmic, t); });

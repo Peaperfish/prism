@@ -1,10 +1,12 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <filesystem>
-#include <functional>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 #include "prism/image.hpp"
@@ -64,11 +66,62 @@ inline constexpr float contrast_pivot = 0.18f;
 inline constexpr float contrast_range_stops = 2.0f;
 void contrast(Image& img, float c, int threads = 0);
 
-// A tone curve maps one linear value to another and is applied to each channel separately.
-// `map` may be called from several threads at once, so it must not modify shared state.
+// --- Tone curves ---------------------------------------------------------------------------------
+//
+// A tone curve maps one linear value to another and is applied to each channel separately. Each
+// kind of curve is a small struct holding its parameters, with an inline operator() so the
+// compiler can see the maths wherever the struct is used. Negative inputs (possible after a
+// matrix) are clamped to 0 first: pow() of a negative number with a fractional exponent is NaN.
+
+// Brightens midtones for gamma > 1 and darkens them for gamma < 1; gamma 1 changes nothing.
+// 0 and 1 stay fixed.
+struct GammaCurve {
+    float inv_gamma = 1.0f;
+    [[nodiscard]] float operator()(float x) const noexcept {
+        return std::pow(std::max(x, 0.0f), inv_gamma);
+    }
+};
+
+// Extended Reinhard: x * (1 + x / w^2) / (1 + x). Compresses highlights smoothly so that
+// linear value w (the "white point") maps to exactly 1.
+struct ReinhardCurve {
+    float inv_white_sq = 1.0f / 16.0f;
+    [[nodiscard]] float operator()(float x) const noexcept {
+        x = std::max(x, 0.0f);
+        return x * (1.0f + x * inv_white_sq) / (1.0f + x);
+    }
+};
+
+// John Hable's "Uncharted 2" filmic curve: a gentle toe in the shadows and a soft shoulder in the
+// highlights. Constants and the 2x exposure bias are from his original write-up; `scale` maps
+// linear white 11.2 to 1.
+struct FilmicCurve {
+    float scale = 1.0f;
+    [[nodiscard]] static float hable(float x) noexcept {
+        constexpr float a = 0.15f;  // shoulder strength
+        constexpr float b = 0.50f;  // linear strength
+        constexpr float c = 0.10f;  // linear angle
+        constexpr float d = 0.20f;  // toe strength
+        constexpr float e = 0.02f;  // toe numerator
+        constexpr float f = 0.30f;  // toe denominator
+        return (x * (a * x + c * b) + d * e) / (x * (a * x + b) + d * f) - e / f;
+    }
+    [[nodiscard]] float operator()(float x) const noexcept {
+        constexpr float exposure_bias = 2.0f;
+        return hable(exposure_bias * std::max(x, 0.0f)) * scale;
+    }
+};
+
+// One of the curves above. A std::variant stores whichever one it is inline (no heap allocation)
+// together with a tag saying which, so code can switch on the actual type with std::visit.
 struct ToneCurve {
     std::string name;
-    std::function<float(float)> map;
+    std::variant<GammaCurve, ReinhardCurve, FilmicCurve> shape;
+
+    // One value through the curve. Safe to call from several threads: it only reads `shape`.
+    [[nodiscard]] float map(float x) const noexcept {
+        return std::visit([x](const auto& curve) { return curve(x); }, shape);
+    }
 };
 
 // Parses a curve spec such as "gamma:2.2", "reinhard", "reinhard:4" or "filmic".

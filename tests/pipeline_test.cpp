@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <bit>
+#include <cstdint>
 #include <cmath>
 #include <cstddef>
 #include <filesystem>
@@ -417,4 +419,32 @@ TEST(Contrast, ActsOnEachChannel) {
     EXPECT_NEAR(img.pixels[0], contrast_of(0.05f, 1.5f), 1e-7f);
     EXPECT_NEAR(img.pixels[1], 0.18f, 1e-7f);
     EXPECT_NEAR(img.pixels[2], contrast_of(0.6f, 1.5f), 1e-7f);
+}
+
+TEST(ToneCurve, ImageMatchesMapBitForBit) {
+    // tone_curve runs a loop specialised (and vectorised) per curve type; map() handles one value.
+    // Both must give exactly the same bits, for values spread over every float exponent: zero,
+    // denormals, negatives, huge values, infinities and NaN (any NaN counts as equal).
+    prism::Image img;
+    for (std::uint64_t bits = 0; bits < (1ull << 32); bits += 4093) {
+        img.pixels.push_back(std::bit_cast<float>(static_cast<std::uint32_t>(bits)));
+    }
+    img.pixels.resize(img.pixels.size() / 3 * 3);
+    img.width = static_cast<int>(img.pixels.size() / 3);
+    img.height = 1;
+    for (const char* spec : {"gamma:2.2", "gamma:0.5", "reinhard", "reinhard:1.5", "filmic"}) {
+        const prism::ToneCurve curve = prism::parse_curve(spec);
+        prism::Image out = img;
+        prism::tone_curve(out, curve);
+        for (std::size_t i = 0; i < img.pixels.size(); ++i) {
+            const float expected = curve.map(img.pixels[i]);
+            if (std::isnan(expected)) {
+                ASSERT_TRUE(std::isnan(out.pixels[i])) << spec << " input " << img.pixels[i];
+            } else {
+                ASSERT_EQ(std::bit_cast<std::uint32_t>(out.pixels[i]),
+                          std::bit_cast<std::uint32_t>(expected))
+                    << spec << " input " << img.pixels[i];
+            }
+        }
+    }
 }

@@ -34,7 +34,8 @@ std::optional<float> parse_float(std::string_view text) {
 
 // --- Tone curves -----------------------------------------------------------------------------
 //
-// To add a curve: write a make_* function and add one row to `curves` below.
+// To add a curve: add a struct for it to ToneCurve::shape (pipeline.hpp), write a make_* function
+// and add one row to `curves` below.
 // Each factory receives the text after ':' (empty if there was none) and either returns the
 // curve or throws std::runtime_error explaining what was wrong with the parameter.
 
@@ -47,50 +48,25 @@ float require_positive_param(std::string_view curve, std::string_view param) {
     return *value;
 }
 
-// Brightens midtones for gamma > 1 and darkens them for gamma < 1; gamma:1 changes nothing.
-// 0 and 1 stay fixed. Negative inputs (possible after a matrix) are clamped to 0 first,
-// because pow() of a negative number with a fractional exponent is NaN.
 ToneCurve make_gamma(std::string_view param) {
     if (param.empty()) {
         throw std::runtime_error("curve 'gamma' needs a value, e.g. gamma:2.2");
     }
-    const float inv = 1.0f / require_positive_param("gamma", param);
-    return {"gamma", [inv](float x) { return std::pow(std::max(x, 0.0f), inv); }};
+    return {"gamma", GammaCurve{1.0f / require_positive_param("gamma", param)}};
 }
 
-// Extended Reinhard: x * (1 + x / w^2) / (1 + x). Compresses highlights smoothly so that
-// linear value `w` (the "white point") maps to exactly 1. Default w = 4, i.e. 2 stops of
-// highlight headroom above 1.0.
+// Default white 4, i.e. 2 stops of highlight headroom above 1.0.
 ToneCurve make_reinhard(std::string_view param) {
     const float white = param.empty() ? 4.0f : require_positive_param("reinhard", param);
-    const float inv_white_sq = 1.0f / (white * white);
-    return {"reinhard", [inv_white_sq](float x) {
-                x = std::max(x, 0.0f);
-                return x * (1.0f + x * inv_white_sq) / (1.0f + x);
-            }};
-}
-
-// John Hable's "Uncharted 2" filmic curve: a gentle toe in the shadows and a soft shoulder
-// in the highlights. Constants and the 2x exposure bias are from his original write-up.
-float hable(float x) {
-    constexpr float a = 0.15f;  // shoulder strength
-    constexpr float b = 0.50f;  // linear strength
-    constexpr float c = 0.10f;  // linear angle
-    constexpr float d = 0.20f;  // toe strength
-    constexpr float e = 0.02f;  // toe numerator
-    constexpr float f = 0.30f;  // toe denominator
-    return (x * (a * x + c * b) + d * e) / (x * (a * x + b) + d * f) - e / f;
+    return {"reinhard", ReinhardCurve{1.0f / (white * white)}};
 }
 
 ToneCurve make_filmic(std::string_view param) {
     if (!param.empty()) {
         throw std::runtime_error("curve 'filmic' takes no parameter");
     }
-    constexpr float exposure_bias = 2.0f;
     constexpr float linear_white = 11.2f;
-    const float scale = 1.0f / hable(linear_white);
-    return {"filmic",
-            [scale](float x) { return hable(exposure_bias * std::max(x, 0.0f)) * scale; }};
+    return {"filmic", FilmicCurve{1.0f / FilmicCurve::hable(linear_white)}};
 }
 
 struct CurveEntry {
@@ -258,14 +234,25 @@ std::vector<std::string_view> curve_specs() {
 
 void tone_curve(Image& img, const ToneCurve& curve, int threads) {
     detail::require_consistent(img, "tone_curve");
-    // Every thread calls the same curve.map at once. That is fine because calling it only reads
-    // the curve's captured parameters; the curves keep no state that a call would modify.
-    detail::parallel_for_samples(img.width, img.height, threads,
-                                 [&](std::size_t first, std::size_t last) {
-                                     for (std::size_t i = first; i < last; ++i) {
-                                         img.pixels[i] = curve.map(img.pixels[i]);
-                                     }
-                                 });
+    // std::visit runs the lambda below with `shape` as its actual type (GammaCurve, ReinhardCurve
+    // or FilmicCurve): the lambda is a template, compiled once per curve type. So inside the loop
+    // the compiler knows exactly which operator() it calls and can inline it, and then vectorise
+    // the loop (process 4 floats per instruction) where the maths allows. The type is checked
+    // once per image here, instead of once per value as calling through a std::function would.
+    //
+    // Every thread uses the same curve at once. That is fine because calling it only reads the
+    // curve's parameters.
+    std::visit(
+        [&](const auto& shape) {
+            detail::parallel_for_samples(img.width, img.height, threads,
+                                         [&](std::size_t first, std::size_t last) {
+                                             float* p = img.pixels.data();
+                                             for (std::size_t i = first; i < last; ++i) {
+                                                 p[i] = shape(p[i]);
+                                             }
+                                         });
+        },
+        curve.shape);
 }
 
 }  // namespace prism
