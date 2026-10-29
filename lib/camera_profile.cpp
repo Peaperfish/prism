@@ -10,7 +10,6 @@
 #include <iterator>
 #include <stdexcept>
 #include <string>
-#include <utility>
 #include <vector>
 
 namespace prism {
@@ -258,12 +257,15 @@ struct Json {
     double number = 0;
     std::string string;
     std::vector<Json> array;
-    std::vector<std::pair<std::string, Json>> object;
+    // An object's members, as two parallel lists. (Not a vector of pair<string, Json>: a struct
+    // may hold a std::vector of itself, but std::pair needs Json complete, and it isn't yet here.)
+    std::vector<std::string> keys;
+    std::vector<Json> values;
 
     const Json* find(std::string_view key) const {
-        for (const auto& [k, v] : object) {
-            if (k == key) {
-                return &v;
+        for (std::size_t i = 0; i < keys.size(); ++i) {
+            if (keys[i] == key) {
+                return &values[i];
             }
         }
         return nullptr;
@@ -337,9 +339,9 @@ private:
             if (!consume('}')) {
                 do {
                     skip_space();
-                    std::string key = parse_string();
+                    v.keys.push_back(parse_string());
                     expect(':');
-                    v.object.emplace_back(std::move(key), parse_value(depth + 1));
+                    v.values.push_back(parse_value(depth + 1));
                 } while (consume(','));
                 expect('}');
             }
