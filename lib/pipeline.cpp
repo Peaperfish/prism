@@ -102,20 +102,22 @@ void exposure(Image& img, float stops, int threads) {
 
 void apply_matrix(Image& img, const Matrix3& m, int threads) {
     detail::require_consistent(img, "apply_matrix");
-    detail::parallel_for_samples(
-        img.width, img.height, threads, [&](std::size_t first, std::size_t last) {
-            // Chunks start on a row boundary, so `first` is always the start of a pixel.
-            for (std::size_t i = first; i < last; i += Image::channels) {
-                // Copy the input first: writing p[0] before computing p[1] would use the new red.
-                float* p = &img.pixels[i];
-                const float r = p[0];
-                const float g = p[1];
-                const float b = p[2];
-                p[0] = m[0] * r + m[1] * g + m[2] * b;
-                p[1] = m[3] * r + m[4] * g + m[5] * b;
-                p[2] = m[6] * r + m[7] * g + m[8] * b;
-            }
-        });
+    detail::parallel_for_samples(img.width, img.height, threads,
+                                 [&](std::size_t first, std::size_t last) {
+                                     // Chunks start on a row boundary, so `first` is always the
+                                     // start of a pixel.
+                                     for (std::size_t i = first; i < last; i += Image::channels) {
+                                         // Copy the input first: writing p[0] before computing p[1]
+                                         // would use the new red.
+                                         float* p = &img.pixels[i];
+                                         const float r = p[0];
+                                         const float g = p[1];
+                                         const float b = p[2];
+                                         p[0] = m[0] * r + m[1] * g + m[2] * b;
+                                         p[1] = m[3] * r + m[4] * g + m[5] * b;
+                                         p[2] = m[6] * r + m[7] * g + m[8] * b;
+                                     }
+                                 });
 }
 
 void saturation(Image& img, float s, int threads) {
@@ -203,7 +205,8 @@ public:
         for (std::uint32_t k = 0; k < half; ++k) {
             // Points past the largest float are only used by NaN, which stays NaN times any gain.
             const std::uint32_t bits = offset + (k << shift);
-            gain_[k] = contrast_gain(std::bit_cast<float>(std::min(bits, max_float_bits)), strength);
+            gain_[k] =
+                contrast_gain(std::bit_cast<float>(std::min(bits, max_float_bits)), strength);
         }
         std::fill(gain_.begin() + half, gain_.end(), zero_slope);
         // Subtracting `offset` wraps the tiniest positive denormals (bits below `offset`, under
@@ -280,8 +283,8 @@ Matrix3 load_matrix(const std::filesystem::path& path) {
         }
     }
     if (count != m.size()) {
-        throw std::runtime_error("matrix file '" + path.string() + "' must contain 9 numbers, found " +
-                                 std::to_string(count));
+        throw std::runtime_error("matrix file '" + path.string() +
+                                 "' must contain 9 numbers, found " + std::to_string(count));
     }
     return m;
 }

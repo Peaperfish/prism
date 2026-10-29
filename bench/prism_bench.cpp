@@ -15,8 +15,8 @@
 // exits.
 
 #include <algorithm>
-#include <atomic>
 #include <array>
+#include <atomic>
 #include <bit>
 #include <chrono>
 #include <cmath>
@@ -298,11 +298,11 @@ bool check_curve_exhaustively(const std::string& name, int threads,
     std::cout << name << ": " << end << " floats in [0, 256] checked in " << std::fixed
               << std::setprecision(1) << seconds << " s\n";
     for (const int k : {0, 1}) {
-        std::cout << "  " << (k == 0 ? "filmic + sRGB: " : "sRGB only:     ") << std::setprecision(4)
-                  << all.levels[k] << " levels max (at " << std::defaultfloat << all.at[k]
-                  << std::fixed << "), " << all.differing[k] << " 8-bit results differ ("
-                  << std::setprecision(5) << 100.0 * static_cast<double>(all.differing[k]) / end
-                  << "%)\n";
+        std::cout << "  " << (k == 0 ? "filmic + sRGB: " : "sRGB only:     ")
+                  << std::setprecision(4) << all.levels[k] << " levels max (at "
+                  << std::defaultfloat << all.at[k] << std::fixed << "), " << all.differing[k]
+                  << " 8-bit results differ (" << std::setprecision(5)
+                  << 100.0 * static_cast<double>(all.differing[k]) / end << "%)\n";
     }
     return all.levels[0] <= 1.0f && all.levels[1] <= 1.0f;
 }
@@ -344,11 +344,11 @@ int main(int argc, char* argv[]) {
     }
     const std::size_t samples = static_cast<std::size_t>(s.width) * s.height * 3;
     const double f32 = static_cast<double>(samples) * sizeof(float);  // one float image, in bytes
-    const double u8 = static_cast<double>(samples);                    // one 8-bit image, in bytes
+    const double u8 = static_cast<double>(samples);                   // one 8-bit image, in bytes
 
-    std::cout << "prism_bench: " << s.width << "x" << s.height << " ("
-              << std::setprecision(1) << std::fixed << s.width * static_cast<double>(s.height) / 1e6
-              << " MP), median of " << s.runs << " runs\n\n"
+    std::cout << "prism_bench: " << s.width << "x" << s.height << " (" << std::setprecision(1)
+              << std::fixed << s.width * static_cast<double>(s.height) / 1e6 << " MP), median of "
+              << s.runs << " runs\n\n"
               << "  " << std::left << std::setw(14) << "stage" << std::right << std::setw(10)
               << "1 thr ms" << std::setw(10) << (std::to_string(s.threads) + " thr ms")
               << std::setw(10) << "speedup" << std::setw(10) << "1 GB/s" << std::setw(10)

@@ -47,8 +47,7 @@ void parallel_for(int count, const std::function<void(int index)>& fn) {
     // everything a thread did "happens before" join() returns, so no extra locks are needed.
 }
 
-void parallel_for_rows(int height, int threads,
-                       const std::function<void(int begin, int end)>& fn) {
+void parallel_for_rows(int height, int threads, const std::function<void(int begin, int end)>& fn) {
     if (height <= 0) {
         return;
     }

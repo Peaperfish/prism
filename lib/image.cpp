@@ -54,11 +54,10 @@ Image decode_srgb8(std::span<const std::uint8_t> bytes, int width, int height, i
 std::vector<std::uint8_t> encode_srgb8(const Image& img, int threads) {
     detail::require_consistent(img, "encode_srgb8");
     std::vector<std::uint8_t> bytes(img.pixels.size());
-    detail::parallel_for_samples(img.width, img.height, threads,
-                                 [&](std::size_t first, std::size_t last) {
-                                     linear_to_srgb8(img.pixels.data() + first,
-                                                     bytes.data() + first, last - first);
-                                 });
+    detail::parallel_for_samples(
+        img.width, img.height, threads, [&](std::size_t first, std::size_t last) {
+            linear_to_srgb8(img.pixels.data() + first, bytes.data() + first, last - first);
+        });
     return bytes;
 }
 
@@ -75,8 +74,8 @@ Image load_image(const std::filesystem::path& path, const RawOptions& raw, int t
     int height = 0;
     int channels_in_file = 0;
     // Passing Image::channels asks stb to convert whatever is in the file (grey, RGBA, ...) to RGB.
-    StbiPixels data(stbi_load(path.string().c_str(), &width, &height, &channels_in_file,
-                              Image::channels));
+    StbiPixels data(
+        stbi_load(path.string().c_str(), &width, &height, &channels_in_file, Image::channels));
     if (!data) {
         throw std::runtime_error("cannot load image '" + path.string() +
                                  "': " + stbi_failure_reason());
@@ -85,8 +84,8 @@ Image load_image(const std::filesystem::path& path, const RawOptions& raw, int t
     return decode_srgb8({data.get(), sample_count(width, height)}, width, height, threads);
 }
 
-void save_srgb8(const std::filesystem::path& path, std::span<const std::uint8_t> bytes,
-                int width, int height) {
+void save_srgb8(const std::filesystem::path& path, std::span<const std::uint8_t> bytes, int width,
+                int height) {
     if (width <= 0 || height <= 0) {
         throw std::runtime_error("cannot save image '" + path.string() + "': image is empty");
     }
@@ -105,7 +104,8 @@ void save_srgb8(const std::filesystem::path& path, std::span<const std::uint8_t>
 
     const std::string filename = path.string();
     const int stride = width * Image::channels;  // bytes from one row to the next
-    // stb_image_write returns 0 on failure and does not say why (usually a bad path or permissions).
+    // stb_image_write returns 0 on failure and does not say why (usually a bad path or
+    // permissions).
     const int ok = is_png ? stbi_write_png(filename.c_str(), width, height, Image::channels,
                                            bytes.data(), stride)
                           : stbi_write_jpg(filename.c_str(), width, height, Image::channels,

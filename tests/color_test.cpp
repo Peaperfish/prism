@@ -90,27 +90,14 @@ TEST(Color, FastEncodeMatchesReferenceOnDenseSweep) {
 
 TEST(Color, FastEncodeMatchesReferenceOutsideZeroToOne) {
     constexpr float inf = std::numeric_limits<float>::infinity();
-    const float values[] = {-0.0f,
-                            -1e-30f,
-                            -1.0f,
-                            -inf,
-                            std::numeric_limits<float>::denorm_min(),
-                            std::numeric_limits<float>::min(),
-                            std::nextafter(1.0f, 0.0f),
-                            1.0f,
-                            std::nextafter(1.0f, 2.0f),
-                            1.5f,
-                            1e30f,
-                            std::numeric_limits<float>::max(),
-                            inf,
-                            std::nanf(""),
-                            -std::nanf(""),
+    const float values[] = {-0.0f, -1e-30f, -1.0f, -inf, std::numeric_limits<float>::denorm_min(),
+                            std::numeric_limits<float>::min(), std::nextafter(1.0f, 0.0f), 1.0f,
+                            std::nextafter(1.0f, 2.0f), 1.5f, 1e30f,
+                            std::numeric_limits<float>::max(), inf, std::nanf(""), -std::nanf(""),
                             // Signalling NaNs (top mantissa bit clear): float min/max instructions
                             // treat these differently from quiet NaNs, which once made them 255.
-                            std::bit_cast<float>(0x7F800001u),
-                            std::bit_cast<float>(0x7FA00000u),
-                            std::bit_cast<float>(0xFFA00000u),
-                            std::bit_cast<float>(0x7FFFFFFFu)};
+                            std::bit_cast<float>(0x7F800001u), std::bit_cast<float>(0x7FA00000u),
+                            std::bit_cast<float>(0xFFA00000u), std::bit_cast<float>(0x7FFFFFFFu)};
     for (float x : values) {
         EXPECT_EQ(prism::linear_to_srgb8(x), prism::linear_to_srgb8_reference(x)) << x;
     }

@@ -114,9 +114,7 @@ TEST(ColourSpaces, SrgbToXyzMatchesPublishedValues) {
     // IEC 61966-2-1 gives this matrix to 4 decimals, from the same primaries and D65 xy.
     // (Tables such as Lindbloom's use D65 Z = 1.08883 and differ by 2e-4 in the last entry.)
     expect_near(prism::srgb_to_xyz(),
-                {{{0.4124, 0.3576, 0.1805},
-                  {0.2126, 0.7152, 0.0722},
-                  {0.0193, 0.1192, 0.9505}}},
+                {{{0.4124, 0.3576, 0.1805}, {0.2126, 0.7152, 0.0722}, {0.0193, 0.1192, 0.9505}}},
                 1e-4);
     // The Y row is the luminance of R, G and B: Rec. 709 luma weights.
     EXPECT_NEAR(prism::srgb_to_xyz()[1][0], 0.2126, 1e-4);
@@ -142,9 +140,10 @@ TEST(ColourSpaces, Rec2020ToXyzMatchesPublishedValues) {
 
 TEST(ColourSpaces, Rec2020ToSrgbMatchesBt2087) {
     // ITU-R BT.2087 gives this linear Rec. 2020 -> Rec. 709 matrix.
-    expect_near(prism::multiply(prism::xyz_to_srgb(), prism::rec2020_to_xyz()),
-                {{{1.6605, -0.5876, -0.0728}, {-0.1246, 1.1329, -0.0083}, {-0.0182, -0.1006, 1.1187}}},
-                1e-4);
+    expect_near(
+        prism::multiply(prism::xyz_to_srgb(), prism::rec2020_to_xyz()),
+        {{{1.6605, -0.5876, -0.0728}, {-0.1246, 1.1329, -0.0083}, {-0.0182, -0.1006, 1.1187}}},
+        1e-4);
 }
 
 TEST(ColourSpaces, WhiteMapsToWhite) {
@@ -158,7 +157,8 @@ TEST(ColourSpaces, WhiteMapsToWhite) {
 }
 
 TEST(ColourSpaces, SrgbXyzRoundTrip) {
-    expect_near(prism::multiply(prism::xyz_to_srgb(), prism::srgb_to_xyz()), prism::identity3, 1e-12);
+    expect_near(prism::multiply(prism::xyz_to_srgb(), prism::srgb_to_xyz()), prism::identity3,
+                1e-12);
 }
 
 TEST(Bradford, MatchesPublishedD50ToD65) {
@@ -206,9 +206,8 @@ TEST(CameraToSrgb, ForwardAndColorMatrixAgreeForTheSameCamera) {
     for (int i = 0; i < 3; ++i) {
         balance[i][i] = neutral[i];
     }
-    const prism::Mat3 forward =
-        prism::multiply(prism::bradford(prism::white_d65, prism::white_d50),
-                        prism::multiply(prism::invert(color), balance));
+    const prism::Mat3 forward = prism::multiply(prism::bradford(prism::white_d65, prism::white_d50),
+                                                prism::multiply(prism::invert(color), balance));
 
     const prism::Mat3 via_forward = prism::camera_to_srgb_from_forward_matrix(forward);
     const prism::Mat3 via_color = prism::camera_to_srgb_from_color_matrix(color);
@@ -234,15 +233,15 @@ TEST(CameraToSrgb, DngPicksTheCalibrationClosestToD65) {
     std::array<prism::DngCalibration, 2> cal{};
     cal[0] = {17, tungsten, std::nullopt};  // standard light A
     cal[1] = {21, near_d65, std::nullopt};  // D65
-    expect_near(prism::camera_to_srgb_from_dng(cal), prism::camera_to_srgb_from_color_matrix(near_d65),
-                1e-12);
+    expect_near(prism::camera_to_srgb_from_dng(cal),
+                prism::camera_to_srgb_from_color_matrix(near_d65), 1e-12);
     std::swap(cal[0], cal[1]);
-    expect_near(prism::camera_to_srgb_from_dng(cal), prism::camera_to_srgb_from_color_matrix(near_d65),
-                1e-12);
+    expect_near(prism::camera_to_srgb_from_dng(cal),
+                prism::camera_to_srgb_from_color_matrix(near_d65), 1e-12);
 
     // A ForwardMatrix wins over the ColorMatrix of the same calibration.
-    const prism::Mat3 forward = prism::multiply(prism::bradford(prism::white_d65, prism::white_d50),
-                                                prism::srgb_to_xyz());
+    const prism::Mat3 forward =
+        prism::multiply(prism::bradford(prism::white_d65, prism::white_d50), prism::srgb_to_xyz());
     cal[0].forward_matrix = forward;
     expect_near(prism::camera_to_srgb_from_dng(cal), prism::identity3, 1e-12);
 
@@ -259,8 +258,8 @@ TEST(CameraToSrgb, IlluminantTemperatures) {
 // --- LightCraft profiles -------------------------------------------------------------------------
 
 TEST(LightCraftProfile, ParsesFields) {
-    const prism::LightCraftProfile p = prism::parse_lightcraft_profile(profile_json(
-        sample_matrix, R"(, "hue_sat": {"hue_divisions": 4, "sat_divisions": 2,
+    const prism::LightCraftProfile p = prism::parse_lightcraft_profile(
+        profile_json(sample_matrix, R"(, "hue_sat": {"hue_divisions": 4, "sat_divisions": 2,
             "val_divisions": 1, "data": [[5.0, 1.2, 1.0]], "srgb_value": false})"));
     EXPECT_EQ(p.version, 1);
     EXPECT_EQ(p.model, "TEST-CAM");
@@ -299,9 +298,12 @@ TEST(LightCraftProfile, RejectsBadInput) {
     bad(profile_json("[[1, 0, 0], [0, 1, 0], [0, 0]]"));
     bad(profile_json("[[1, 0, 0], [0, 1, 0], [0, 0, \"1\"]]"));
     bad(profile_json("[[1, 0, 0], [0, 1, 0], [0, 0, 1e999]]"));
-    bad(R"({"version": 2, "model": "X", "files": 1, "samples": 1, "matrix": )" + sample_matrix + "}");
-    bad(R"({"version": 1, "model": "", "files": 1, "samples": 1, "matrix": )" + sample_matrix + "}");
-    bad(R"({"version": 1, "model": "X", "files": -1, "samples": 1, "matrix": )" + sample_matrix + "}");
+    bad(R"({"version": 2, "model": "X", "files": 1, "samples": 1, "matrix": )" + sample_matrix +
+        "}");
+    bad(R"({"version": 1, "model": "", "files": 1, "samples": 1, "matrix": )" + sample_matrix +
+        "}");
+    bad(R"({"version": 1, "model": "X", "files": -1, "samples": 1, "matrix": )" + sample_matrix +
+        "}");
     bad(std::string(1000, '['));  // too deeply nested, without overflowing the stack
 }
 
@@ -321,8 +323,8 @@ TEST(PrismProfile, WritesAMatrixThatLoadMatrixReads) {
         "sat_divisions": 5, "val_divisions": 5, "data": []})");
 
     const std::string command = "\"" + std::string(PRISM_PROFILE_EXE) + "\" \"" + json.string() +
-                                "\" -o \"" + out.string() + "\" --note \"from a test\" > \"" + (dir / "prism_profile_log.txt").string() +
-                                "\" 2>&1";
+                                "\" -o \"" + out.string() + "\" --note \"from a test\" > \"" +
+                                (dir / "prism_profile_log.txt").string() + "\" 2>&1";
     const int status = std::system(command.c_str());
 #ifndef _WIN32
     ASSERT_TRUE(WIFEXITED(status) && WEXITSTATUS(status) == 0);
@@ -331,7 +333,8 @@ TEST(PrismProfile, WritesAMatrixThatLoadMatrixReads) {
 #endif
 
     std::ifstream file(out);
-    const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    const std::string text((std::istreambuf_iterator<char>(file)),
+                           std::istreambuf_iterator<char>());
     EXPECT_NE(text.find("TEST-CAM"), std::string::npos);
     EXPECT_NE(text.find(json.string()), std::string::npos) << "should say where it came from";
     EXPECT_NE(text.find("not a colorimetric calibration"), std::string::npos);

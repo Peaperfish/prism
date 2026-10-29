@@ -35,8 +35,8 @@ fs::path temp_file(const std::string& name) {
 #else
     const int pid = static_cast<int>(getpid());
 #endif
-    return fs::path(testing::TempDir()) / ("prism_cli_" + std::string(test->name()) + "_" +
-                                           std::to_string(pid) + "_" + name);
+    return fs::path(testing::TempDir()) /
+           ("prism_cli_" + std::string(test->name()) + "_" + std::to_string(pid) + "_" + name);
 }
 
 struct RunResult {
@@ -147,7 +147,8 @@ TEST(Cli, OutputAndHistogramTogetherMatchRunningThemSeparately) {
     const RunResult both = run_prism(quoted(input) + pipeline + " -o " + quoted(both_out) +
                                      " --histogram " + quoted(both_hist));
     const RunResult out = run_prism(quoted(input) + pipeline + " -o " + quoted(only_out));
-    const RunResult hist = run_prism(quoted(input) + pipeline + " --histogram " + quoted(only_hist));
+    const RunResult hist =
+        run_prism(quoted(input) + pipeline + " --histogram " + quoted(only_hist));
     ASSERT_EQ(both.exit_code, 0) << both.output;
 
     const auto bytes_of = [](const fs::path& p) {
@@ -209,8 +210,8 @@ TEST(Cli, RawFlagsOnNonRawInputAreUsageErrors) {
     const fs::path matrix = temp_file("identity.txt");
     std::ofstream(matrix) << "1 0 0\n0 1 0\n0 0 1\n";
 
-    for (const std::string& flags : {std::string(" --raw-half"),
-                                     " --raw-camera-matrix " + quoted(matrix)}) {
+    for (const std::string& flags :
+         {std::string(" --raw-half"), " --raw-camera-matrix " + quoted(matrix)}) {
         const RunResult r = run_prism(quoted(input) + " --histogram " + quoted(hist) + flags);
         EXPECT_EQ(r.exit_code, 2) << flags << ": " << r.output;
         EXPECT_TRUE(contains(r.output, "only applies to RAW input")) << r.output;
@@ -222,8 +223,8 @@ TEST(Cli, RawFlagsOnNonRawInputAreUsageErrors) {
 
 TEST(Cli, MissingRawFileIsReportedAsRawError) {
     const fs::path hist = temp_file("hist_missing_raw.png");
-    const RunResult r = run_prism(
-        quoted(temp_file("missing.ARW")) + " --histogram " + quoted(hist));
+    const RunResult r =
+        run_prism(quoted(temp_file("missing.ARW")) + " --histogram " + quoted(hist));
     EXPECT_EQ(r.exit_code, 1) << r.output;
     EXPECT_TRUE(contains(r.output, "cannot load RAW file")) << r.output;
 }
@@ -262,8 +263,8 @@ TEST(Cli, BadSaturationAndContrastAreUsageErrors) {
         EXPECT_TRUE(contains(r.output, "Usage:")) << r.output;
     }
     for (const char* bad : {"abc", "0", "-1", "0.05", "1.15.", "20"}) {
-        RunResult r = run_prism(quoted(input) + " --histogram " + quoted(hist) +
-                                " --contrast \"" + bad + "\"");
+        RunResult r = run_prism(quoted(input) + " --histogram " + quoted(hist) + " --contrast \"" +
+                                bad + "\"");
         EXPECT_EQ(r.exit_code, 2) << "--contrast '" << bad << "': " << r.output;
         EXPECT_TRUE(contains(r.output, "--contrast needs a number from 0.1 to 10")) << r.output;
     }
@@ -285,7 +286,8 @@ TEST(Cli, SaturationAndContrastKeepMiddleGrey) {
 
     RunResult r = run_prism(quoted(input) + " -o " + quoted(plain));
     ASSERT_EQ(r.exit_code, 0) << r.output;
-    r = run_prism(quoted(input) + " -o " + quoted(graded) + " --contrast 1.5 --saturation 2 --time");
+    r = run_prism(quoted(input) + " -o " + quoted(graded) +
+                  " --contrast 1.5 --saturation 2 --time");
     ASSERT_EQ(r.exit_code, 0) << r.output;
     EXPECT_TRUE(contains(r.output, "  saturation ")) << r.output;
     EXPECT_TRUE(contains(r.output, "  contrast ")) << r.output;

@@ -19,8 +19,8 @@ namespace fs = std::filesystem;
 // --- Unit tests: no RAW file or LibRaw needed ----------------------------------------------------
 
 TEST(Raw, DetectsRawExtensionsCaseInsensitively) {
-    for (const char* name : {"a.arw", "A.ARW", "dir/shot.Arw", "x.dng", "c.cr2", "c.CR3", "n.nef",
-                             "f.RAF"}) {
+    for (const char* name :
+         {"a.arw", "A.ARW", "dir/shot.Arw", "x.dng", "c.cr2", "c.CR3", "n.nef", "f.RAF"}) {
         EXPECT_TRUE(prism::is_raw_file(name)) << name;
     }
     for (const char* name : {"a.jpg", "a.png", "arw", ".arw.png", "a.arw.jpg", "a.tif", "a.raw",

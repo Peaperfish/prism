@@ -162,7 +162,8 @@ Mat3 camera_to_srgb_from_forward_matrix(const Mat3& forward) {
     // Right to left: camera -> XYZ (under D50, where DNG defines it) -> XYZ adapted to D65 ->
     // linear sRGB. The adaptation step is needed because sRGB's white is D65: without it, camera
     // white would arrive at D50's XYZ and come out of xyz_to_srgb a little yellow.
-    return normalize_rows(multiply(xyz_to_srgb(), multiply(bradford(white_d50, white_d65), forward)));
+    return normalize_rows(
+        multiply(xyz_to_srgb(), multiply(bradford(white_d50, white_d65), forward)));
 }
 
 Mat3 camera_to_srgb_from_color_matrix(const Mat3& color) {
@@ -179,7 +180,8 @@ Mat3 camera_to_srgb_from_color_matrix(const Mat3& color) {
     Mat3 balance{};
     for (int i = 0; i < 3; ++i) {
         if (!(neutral[i] > 0)) {
-            throw std::domain_error("ColorMatrix gives a non-positive camera response to D65 white");
+            throw std::domain_error(
+                "ColorMatrix gives a non-positive camera response to D65 white");
         }
         balance[i][i] = neutral[i];
     }
@@ -549,7 +551,8 @@ LightCraftProfile parse_lightcraft_profile(std::string_view json) {
     }
 
     // Optional; null (or missing) means the profile has no table.
-    if (const Json* table = root.find("hue_sat"); table != nullptr && table->type != Json::Type::null) {
+    if (const Json* table = root.find("hue_sat");
+        table != nullptr && table->type != Json::Type::null) {
         if (table->type != Json::Type::object) {
             profile_error("\"hue_sat\" must be an object or null");
         }
@@ -566,7 +569,8 @@ LightCraftProfile load_lightcraft_profile(const std::string& path) {
     if (!file) {
         throw std::runtime_error("cannot open profile '" + path + "'");
     }
-    const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    const std::string text((std::istreambuf_iterator<char>(file)),
+                           std::istreambuf_iterator<char>());
     if (file.bad()) {
         throw std::runtime_error("cannot read profile '" + path + "'");
     }

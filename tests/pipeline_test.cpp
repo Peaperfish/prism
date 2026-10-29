@@ -2,9 +2,9 @@
 
 #include <algorithm>
 #include <bit>
-#include <cstdint>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -85,8 +85,8 @@ TEST(ApplyMatrix, SwapsRedAndBlue) {
 TEST(ApplyMatrix, MixesChannelsRowMajor) {
     // Output R = average of input R, G, B; G and B unchanged.
     const prism::Matrix3 m = {1.0f / 3, 1.0f / 3, 1.0f / 3,  //
-                              0, 1, 0,                       //
-                              0, 0, 1};
+                              0,        1,        0,         //
+                              0,        0,        1};
     prism::Image img = make_test_image();
     prism::apply_matrix(img, m);
     EXPECT_FLOAT_EQ(img.pixels[0], (0.1f + 0.2f + 0.3f) / 3);
@@ -191,9 +191,8 @@ TEST(ToneCurve, NegativeInputsGiveZeroNotNaN) {
 }
 
 TEST(ToneCurve, BadSpecsThrow) {
-    for (const char* spec :
-         {"", "nope", "gamma", "gamma:", "gamma:0", "gamma:-1", "gamma:abc", "gamma:2.2x",
-          "reinhard:0", "filmic:2"}) {
+    for (const char* spec : {"", "nope", "gamma", "gamma:", "gamma:0", "gamma:-1", "gamma:abc",
+                             "gamma:2.2x", "reinhard:0", "filmic:2"}) {
         EXPECT_THROW((void)prism::parse_curve(spec), std::runtime_error) << "spec '" << spec << "'";
     }
 }
@@ -219,8 +218,8 @@ float luminance(const float* p) {
 // zero, black and values above 1.
 prism::Image make_colour_image() {
     prism::Image img;
-    img.pixels = {0.1f, 0.2f,  0.3f, 0.5f, 0.25f, 1.0f, 0.8f, 0.05f, 0.02f, 0.0f,  0.4f, 0.1f,
-                  2.0f, 1.5f,  0.3f, 0.3f, -0.02f, 0.1f, 0.0f, 0.0f,  0.0f,  0.18f, 0.18f, 0.18f};
+    img.pixels = {0.1f, 0.2f, 0.3f, 0.5f, 0.25f,  1.0f, 0.8f, 0.05f, 0.02f, 0.0f,  0.4f,  0.1f,
+                  2.0f, 1.5f, 0.3f, 0.3f, -0.02f, 0.1f, 0.0f, 0.0f,  0.0f,  0.18f, 0.18f, 0.18f};
     img.width = static_cast<int>(img.pixels.size() / 3);
     img.height = 1;
     return img;
@@ -238,8 +237,8 @@ TEST(Saturation, GreysStayGrey) {
     prism::Image img;
     img.width = 5;
     img.height = 1;
-    img.pixels = {0.0f, 0.0f, 0.0f, 0.01f, 0.01f, 0.01f, 0.18f, 0.18f, 0.18f,
-                  1.0f, 1.0f, 1.0f, 3.0f,  3.0f,  3.0f};
+    img.pixels = {0.0f,  0.0f, 0.0f, 0.01f, 0.01f, 0.01f, 0.18f, 0.18f,
+                  0.18f, 1.0f, 1.0f, 1.0f,  3.0f,  3.0f,  3.0f};
     for (float s : {0.0f, 0.5f, 1.5f, 4.0f}) {
         prism::Image out = img;
         prism::saturation(out, s);

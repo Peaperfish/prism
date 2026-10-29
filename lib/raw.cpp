@@ -34,8 +34,7 @@ bool raw_support_available() noexcept {
 
 Image decode_rgb16(std::span<const std::uint16_t> samples, int width, int height, int threads) {
     if (width < 0 || height < 0 || samples.size() != detail::sample_count(width, height)) {
-        throw std::invalid_argument(
-            "decode_rgb16: sample count does not match width * height * 3");
+        throw std::invalid_argument("decode_rgb16: sample count does not match width * height * 3");
     }
     Image img;
     img.width = width;

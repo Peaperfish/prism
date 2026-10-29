@@ -301,8 +301,9 @@ int main(int argc, char* argv[]) {
             // whether or not -o was given.
             prism::Histogram hist;
             timer.run("histogram", [&] {
-                hist = bytes.empty() ? prism::compute_histogram(img, threads)
-                                     : prism::compute_histogram(bytes, img.width, img.height, threads);
+                hist = bytes.empty()
+                           ? prism::compute_histogram(img, threads)
+                           : prism::compute_histogram(bytes, img.width, img.height, threads);
                 prism::save_image(*opts.histogram_path, prism::render_histogram(hist), threads);
             });
             std::cout << "wrote " << *opts.histogram_path << " (histogram)\n";

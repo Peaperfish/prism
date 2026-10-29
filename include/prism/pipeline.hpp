@@ -56,13 +56,13 @@ void saturation(Image& img, float s, int threads = 0);
 //   e' = e + (c - 1) * w * u / sqrt(1 + u^2)
 //   x' = 0.18 * 2^e'
 // u / sqrt(1 + u^2) is an S-shaped function like tanh (slope 1 at 0, levelling off at -1 and
-// +1) but about twice as fast to compute. Near middle grey the slope (in stops per stop) is c, so c = 1.15 makes every stop around 0.18
-// 15% wider. Further than about w stops away the slope eases back to 1, so deep shadows and bright
-// highlights are only shifted by at most (c - 1) * w stops instead of being stretched without
-// limit. Working in stops means it acts on ratios of light, like the eye, rather than on
-// absolute values. 0.18 is unchanged for any c, c = 1 changes nothing, and the curve is strictly
-// increasing for every c > 0. Values <= 0 are scaled by the curve's limit at 0, 2^(-(c-1)*w),
-// which keeps it continuous and increasing there too.
+// +1) but about twice as fast to compute. Near middle grey the slope (in stops per stop) is c, so c
+// = 1.15 makes every stop around 0.18 15% wider. Further than about w stops away the slope eases
+// back to 1, so deep shadows and bright highlights are only shifted by at most (c - 1) * w stops
+// instead of being stretched without limit. Working in stops means it acts on ratios of light, like
+// the eye, rather than on absolute values. 0.18 is unchanged for any c, c = 1 changes nothing, and
+// the curve is strictly increasing for every c > 0. Values <= 0 are scaled by the curve's limit at
+// 0, 2^(-(c-1)*w), which keeps it continuous and increasing there too.
 inline constexpr float contrast_pivot = 0.18f;
 inline constexpr float contrast_range_stops = 2.0f;
 //
