@@ -21,7 +21,12 @@ Prism loads an image, runs it through a simple colour pipeline (exposure, a 3×3
 
 ```sh
 prism input.jpg -o output.png --exposure +0.5 --matrix samples/grade.txt --curve filmic --histogram hist.png
+
+# Check clipping without writing an output image:
+prism input.jpg --exposure +1 --histogram hist.png
 ```
+
+At least one of `-o` and `--histogram` is required. Without `-o`, the full pipeline still runs and the histogram shows the processed result; only the output image is skipped.
 
 | Option | Effect |
 |--------|--------|

@@ -20,9 +20,10 @@ namespace {
 void print_usage(const char* program) {
     std::cerr << "prism " << prism::version() << " - command-line photo tool\n"
               << "\n"
-              << "Usage: " << program << " <input> -o <output> [options]\n"
+              << "Usage: " << program << " <input> [-o <output>] [--histogram <file>] [options]\n"
               << "\n"
               << "Loads <input> (PNG or JPEG) and writes <output> (.png, .jpg or .jpeg).\n"
+              << "At least one of -o and --histogram is required.\n"
               << "\n"
               << "Options (always applied in this order, whatever order you type them):\n"
               << "  --exposure <stops>  brighten (+) or darken (-) by this many stops\n"
@@ -31,7 +32,7 @@ void print_usage(const char* program) {
     for (std::string_view spec : prism::curve_specs()) {
         std::cerr << ' ' << spec;
     }
-    std::cerr << "\n  --histogram <file>  also save a histogram image of the result and print\n"
+    std::cerr << "\n  --histogram <file>  save a histogram image of the result and print\n"
               << "                      the percentage of clipped pixels per channel\n"
               << "  -h, --help          show this help\n";
 }
@@ -43,7 +44,7 @@ struct UsageError : std::runtime_error {
 
 struct Options {
     std::string input;
-    std::string output;
+    std::optional<std::string> output;
     std::optional<float> exposure_stops;
     std::optional<std::string> matrix_path;
     std::optional<std::string> curve_spec;
@@ -72,7 +73,6 @@ void set_once(std::optional<T>& slot, std::string_view flag, T value) {
 
 Options parse_args(int argc, char* argv[]) {
     Options opts;
-    std::optional<std::string> output;
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg = argv[i];
 
@@ -89,7 +89,7 @@ Options parse_args(int argc, char* argv[]) {
             print_usage(argv[0]);
             std::exit(0);
         } else if (arg == "-o") {
-            set_once(output, arg, next_value());
+            set_once(opts.output, arg, next_value());
         } else if (arg == "--exposure") {
             set_once(opts.exposure_stops, arg, parse_stops(next_value()));
         } else if (arg == "--matrix") {
@@ -107,10 +107,11 @@ Options parse_args(int argc, char* argv[]) {
     if (opts.input.empty()) {
         throw UsageError("no input file given");
     }
-    if (!output) {
-        throw UsageError("no output file given (use -o <output>)");
+    // A histogram on its own is a useful result (e.g. checking clipping before exporting),
+    // but with neither there would be nothing to show for the work.
+    if (!opts.output && !opts.histogram_path) {
+        throw UsageError("no output given (use -o <output>, --histogram <file>, or both)");
     }
-    opts.output = *output;
     return opts;
 }
 
@@ -159,12 +160,15 @@ int main(int argc, char* argv[]) {
         if (curve) {
             prism::tone_curve(img, *curve);
         }
-        prism::save_image(opts.output, img);
-
-        std::cout << "wrote " << opts.output << " (" << img.width << "x" << img.height << ")\n";
+        if (opts.output) {
+            prism::save_image(*opts.output, img);
+            std::cout << "wrote " << *opts.output << " (" << img.width << "x" << img.height
+                      << ")\n";
+        }
 
         if (opts.histogram_path) {
-            // Measured after the whole pipeline, on the same 8-bit values save_image wrote.
+            // Measured after the whole pipeline, on the same 8-bit values save_image writes,
+            // whether or not -o was given.
             const prism::Histogram hist = prism::compute_histogram(img);
             prism::save_image(*opts.histogram_path, prism::render_histogram(hist));
             std::cout << "wrote " << *opts.histogram_path << " (histogram)\n";

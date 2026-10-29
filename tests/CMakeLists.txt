@@ -13,12 +13,18 @@ set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
 add_executable(prism_tests
+  cli_test.cpp
   color_test.cpp
   histogram_test.cpp
   image_test.cpp
   pipeline_test.cpp
   version_test.cpp)
 target_link_libraries(prism_tests PRIVATE prism_core prism_warnings GTest::gtest_main)
+
+# cli_test.cpp runs the real prism executable: tell it where the build put it, and make sure
+# building the tests also (re)builds prism so the tests never run a stale binary.
+target_compile_definitions(prism_tests PRIVATE PRISM_EXE="$<TARGET_FILE:prism>")
+add_dependencies(prism_tests prism)
 
 # Registers each TEST() as its own ctest entry by asking the test binary for its list.
 include(GoogleTest)
