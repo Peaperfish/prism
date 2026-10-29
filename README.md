@@ -8,8 +8,8 @@ Prism loads an image, runs it through a simple colour pipeline (exposure, a 3×3
 
 ## Features
 
-- [ ] Load and save PNG / JPEG (via [stb](https://github.com/nothings/stb))
-- [ ] sRGB ↔ linear conversion
+- [x] Load and save PNG / JPEG (via [stb](https://github.com/nothings/stb))
+- [x] sRGB ↔ linear conversion
 - [ ] Exposure adjustment (in stops)
 - [ ] 3×3 colour matrix (e.g. camera → sRGB, or creative grades)
 - [ ] Tone curves (gamma, filmic)

@@ -1,4 +1,6 @@
 add_library(prism_core STATIC
+  color.cpp
+  image.cpp
   version.cpp)
 
 # PUBLIC: anything linking prism_core also gets include/ on its include path, so it can
