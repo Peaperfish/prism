@@ -35,6 +35,35 @@ void apply_matrix(Image& img, const Matrix3& m, int threads = 0);
 // Text after '#' on a line is a comment. Throws std::runtime_error on any problem.
 [[nodiscard]] Matrix3 load_matrix(const std::filesystem::path& path);
 
+// Scales each pixel's distance from its own luminance: out = Y + s * (in - Y), where
+// Y = 0.2126 R + 0.7152 G + 0.0722 B (Rec. 709 / sRGB luminance weights, in linear light).
+// s = 1 changes nothing, 0 gives greyscale, > 1 is more colourful. Greys (R = G = B) stay grey.
+// Y is kept exactly, so brightness does not change, only colourfulness.
+//
+// Pushing a colour away from grey can drive its weakest channel below 0, which has no meaning as
+// light and would be clipped later, shifting the hue. Instead, where that would happen, the pixel
+// gets the largest s (up to the requested one) that brings its weakest channel exactly to 0: the
+// most saturated colour of that hue and luminance that sRGB can show. A pixel with Y <= 0 (no
+// light) becomes black. With s = 1 the image is left exactly as it is, negative values included.
+void saturation(Image& img, float s, int threads = 0);
+
+// Contrast: an S-curve in log2 space (stops) around middle grey, applied to each channel:
+//   e = log2(x / 0.18)                         stops from middle grey
+//   u = e / w                                  w = contrast_range_stops
+//   e' = e + (c - 1) * w * u / sqrt(1 + u^2)
+//   x' = 0.18 * 2^e'
+// u / sqrt(1 + u^2) is an S-shaped function like tanh (slope 1 at 0, levelling off at -1 and
+// +1) but about twice as fast to compute. Near middle grey the slope (in stops per stop) is c, so c = 1.15 makes every stop around 0.18
+// 15% wider. Further than about w stops away the slope eases back to 1, so deep shadows and bright
+// highlights are only shifted by at most (c - 1) * w stops instead of being stretched without
+// limit. Working in stops means it acts on ratios of light, like the eye, rather than on
+// absolute values. 0.18 is unchanged for any c, c = 1 changes nothing, and the curve is strictly
+// increasing for every c > 0. Values <= 0 are scaled by the curve's limit at 0, 2^(-(c-1)*w),
+// which keeps it continuous and increasing there too.
+inline constexpr float contrast_pivot = 0.18f;
+inline constexpr float contrast_range_stops = 2.0f;
+void contrast(Image& img, float c, int threads = 0);
+
 // A tone curve maps one linear value to another and is applied to each channel separately.
 // `map` may be called from several threads at once, so it must not modify shared state.
 struct ToneCurve {

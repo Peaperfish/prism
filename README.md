@@ -12,6 +12,7 @@ Prism loads an image (PNG, JPEG or camera RAW), runs it through a simple colour 
 - [x] sRGB ↔ linear conversion
 - [x] Exposure adjustment (in stops)
 - [x] 3×3 colour matrix (e.g. camera → sRGB, or creative grades)
+- [x] Saturation and contrast (luminance-preserving, gamut-limited saturation; log-space S-curve contrast)
 - [x] Tone curves (gamma, filmic)
 - [x] Histogram output (R, G, B and luma image, plus clipping summary)
 - [x] RAW support (via [LibRaw](https://www.libraw.org): .arw, .dng, .cr2, .cr3, .nef, .raf; optional)
@@ -30,6 +31,9 @@ prism input.jpg --exposure +1 --histogram hist.png
 # A Sony RAW file, at half size for a quick preview:
 prism DSC03866.ARW --raw-half --exposure +1 --curve filmic -o preview.jpg
 
+# ...with more colour and contrast, closer to the camera's JPEG:
+prism DSC03866.ARW --raw-half --exposure +1 --saturation 1.25 --contrast 1.15 --curve filmic -o punchy.jpg
+
 # Single-threaded, printing how long each stage took:
 prism input.jpg -o output.jpg --curve filmic --threads 1 --time
 ```
@@ -41,6 +45,8 @@ At least one of `-o` and `--histogram` is required. Without `-o`, the full pipel
 | `-o <file>` | Output file; `.png`, `.jpg` or `.jpeg` picks the format |
 | `--exposure <stops>` | Multiply linear values by 2^stops (`+1` doubles, `-1` halves) |
 | `--matrix <file>` | 3×3 colour matrix: 9 numbers, row-major, `#` starts a comment (see `samples/grade.txt`) |
+| `--saturation <s>` | Scale each pixel's distance from its own luminance (`1` = unchanged, `0` = greyscale, up to `10`). Brightness and hue are kept; see [Saturation and contrast](#saturation-and-contrast) |
+| `--contrast <c>` | S-curve around middle grey (0.18) in stops: `1` = unchanged, `1.15` = each stop near middle grey becomes 1.15 stops; `0.1` to `10` |
 | `--curve <spec>` | `gamma:<value>` (>1 brightens midtones), `reinhard[:<white>]` (default white 4), or `filmic` (Hable) |
 | `--histogram <file>` | Save a 512×200 histogram of the result (R, G, B overlaid additively over a grey Rec. 709 luma fill) and print the % of pixels clipped to 0 and 255 per channel |
 | `--raw-half` | RAW input only: decode at half the width and height using LibRaw's half-size mode (no demosaicing). About twice as fast on an α7R V file |
@@ -54,11 +60,30 @@ Options are always applied in pipeline order, whatever order you type them.
 
 ```
 load (8-bit sRGB) → linearise ─┐
-                               ├→ exposure → colour matrix → tone curve → encode sRGB → save
+                               ├→ exposure → colour matrix → saturation → contrast → tone curve → encode sRGB → save
 load RAW (LibRaw, linear) ─────┘
 ```
 
 All processing happens in 32-bit float, linear light. The histogram is measured on the final 8-bit sRGB values (what ends up in the file, before any JPEG compression), so it matches what a camera or Lightroom shows.
+
+## Saturation and contrast
+
+Both work in linear light, after the colour matrix and before the tone curve. A RAW decoded with no picture style looks flatter and less colourful than the camera's JPEG, and these two controls put some of that back.
+
+**Saturation.** Each pixel is split into its luminance `Y = 0.2126 R + 0.7152 G + 0.0722 B` (the Rec. 709 weights: how bright each sRGB primary looks) and its offset from grey, `RGB − Y`. Saturation scales only the offset: `out = Y + s · (RGB − Y)`. Brightness stays exactly the same, greys (offset 0) stay grey, and hue stays the same because all three offsets scale together.
+
+Pushing a strong colour away from grey can send its weakest channel below zero, for example the blue of a saturated yellow. Light can't be negative, and clipping that channel to 0 later would also change the pixel's hue and brightness. So where `s` would do that, the pixel gets the largest factor that brings its weakest channel to exactly 0 instead: `k = Y / (Y − min(R, G, B))`. That's the most saturated colour of the same hue and brightness that sRGB can show. Pixels with `Y ≤ 0` become black, and `--saturation 1` leaves the image exactly as it was.
+
+**Contrast.** Contrast is about *ratios* of light (stops), so it works in log2 space around middle grey, 0.18. A value `x` is `e = log2(x / 0.18)` stops from middle grey, and the curve is
+
+```
+u  = e / w                                 w = 2 stops
+e' = e + (c − 1) · w · u / √(1 + u²)
+```
+
+Near middle grey the slope is `c`, so 1 stop becomes `c` stops. `u / √(1 + u²)` is an S-shaped function like `tanh` (slope 1 at 0, levelling off at ±1), but costs a square root where `tanh` costs about as much as the `log2` and `exp2` together. Further than a few `w` stops away it approaches ±1, so shadows and highlights move by at most `(c − 1) · w` stops instead of being stretched without limit: an S-curve. Because it acts on stops, a pixel one stop over middle grey and one stop under get mirror-image treatment at any brightness. The curve is strictly increasing for every `c > 0`, 0.18 never moves, and values `≤ 0` are scaled by the curve's slope at zero, so it stays continuous. It is applied to each channel separately, like the tone curves, so it also adds a little saturation when `c > 1`.
+
+On the α7R V test file (`--raw-half --exposure +1 --curve filmic`), `--saturation 1.25 --contrast 1.15` puts 2.3% of pixels at blue = 0 (gamut-limited yellows and oranges, against 0.01% without) and nothing at 255.
 
 ## RAW files
 
@@ -149,9 +174,13 @@ It is not part of `ctest`. Results on an Apple M2 Pro (8 performance + 4 efficie
 | sRGB decode | 171 | 31 | 5.6× |
 | exposure | 15 | 8 | 1.8× |
 | matrix | 71 | 11 | 6.7× |
+| saturation | 152 | 22 | 6.8× |
+| contrast | 897 | 122 | 7.4× |
 | tone curve (filmic) | 305 | 42 | 7.3× |
 | sRGB encode | 159 | 23 | 7.0× |
 | histogram | 236 | 31 | 7.7× |
+
+Contrast is the slowest per-pixel stage: each value needs a `log2`, an `exp2` and a square root. (With `std::tanh` as the sigmoid it took 1757 ms / 218 ms.)
 
 Before the lookup-table encoder (below), sRGB encode took 913 ms / 122 ms and the histogram 1069 ms / 134 ms (1 / 12 threads), so single-threaded they are now 5.7× and 4.5× faster.
 

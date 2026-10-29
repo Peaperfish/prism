@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <iostream>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -39,6 +40,10 @@ void print_usage(const char* program) {
               << "Options (always applied in this order, whatever order you type them):\n"
               << "  --exposure <stops>  brighten (+) or darken (-) by this many stops\n"
               << "  --matrix <file>     apply a 3x3 colour matrix (9 numbers, row-major)\n"
+              << "  --saturation <s>    scale colourfulness around each pixel's luminance\n"
+              << "                      (1 = unchanged, 0 = greyscale; 0 to 10)\n"
+              << "  --contrast <c>      S-curve around middle grey, in stops (1 = unchanged;\n"
+              << "                      above 1 more contrast, below 1 less; 0.1 to 10)\n"
               << "  --curve <spec>      apply a tone curve:";
     for (std::string_view spec : prism::curve_specs()) {
         std::cerr << ' ' << spec;
@@ -62,6 +67,8 @@ struct Options {
     std::optional<std::string> output;
     std::optional<float> exposure_stops;
     std::optional<std::string> matrix_path;
+    std::optional<float> saturation;
+    std::optional<float> contrast;
     std::optional<std::string> curve_spec;
     std::optional<std::string> histogram_path;
     bool raw_half = false;
@@ -77,6 +84,21 @@ float parse_stops(const std::string& text) {
     if (text.empty() || end != text.c_str() + text.size() || errno == ERANGE ||
         !std::isfinite(value)) {
         throw UsageError("--exposure needs a number, got '" + text + "'");
+    }
+    return static_cast<float>(value);
+}
+
+// A number for `flag` within [min, max]. The upper limits only catch typos such as 125 for 1.25.
+float parse_ranged(const std::string& text, std::string_view flag, double min, double max) {
+    char* end = nullptr;
+    errno = 0;
+    const double value = std::strtod(text.c_str(), &end);
+    if (text.empty() || end != text.c_str() + text.size() || errno == ERANGE ||
+        !std::isfinite(value) || value < min || value > max) {
+        std::ostringstream message;
+        message << flag << " needs a number from " << min << " to " << max << ", got '" << text
+                << "'";
+        throw UsageError(message.str());
     }
     return static_cast<float>(value);
 }
@@ -124,6 +146,10 @@ Options parse_args(int argc, char* argv[]) {
             set_once(opts.exposure_stops, arg, parse_stops(next_value()));
         } else if (arg == "--matrix") {
             set_once(opts.matrix_path, arg, next_value());
+        } else if (arg == "--saturation") {
+            set_once(opts.saturation, arg, parse_ranged(next_value(), arg, 0.0, 10.0));
+        } else if (arg == "--contrast") {
+            set_once(opts.contrast, arg, parse_ranged(next_value(), arg, 0.1, 10.0));
         } else if (arg == "--curve") {
             set_once(opts.curve_spec, arg, next_value());
         } else if (arg == "--histogram") {
@@ -235,7 +261,8 @@ int main(int argc, char* argv[]) {
         const int threads = opts.threads.value_or(0);
         StageTimer timer;
 
-        // Pipeline order from the README: exposure -> colour matrix -> tone curve.
+        // Pipeline order from the README: exposure -> colour matrix -> saturation -> contrast ->
+        // tone curve.
         prism::Image img;
         timer.run("load", [&] { img = prism::load_image(opts.input, raw, threads); });
         if (opts.exposure_stops) {
@@ -243,6 +270,12 @@ int main(int argc, char* argv[]) {
         }
         if (matrix) {
             timer.run("matrix", [&] { prism::apply_matrix(img, *matrix, threads); });
+        }
+        if (opts.saturation) {
+            timer.run("saturation", [&] { prism::saturation(img, *opts.saturation, threads); });
+        }
+        if (opts.contrast) {
+            timer.run("contrast", [&] { prism::contrast(img, *opts.contrast, threads); });
         }
         if (curve) {
             timer.run("curve", [&] { prism::tone_curve(img, *curve, threads); });

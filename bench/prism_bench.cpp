@@ -268,6 +268,12 @@ int main(int argc, char* argv[]) {
     bench_stage(s, "matrix", 2 * f32, reset, [&](int t) { prism::apply_matrix(work, grade, t); });
     advance();
 
+    bench_stage(s, "saturation", 2 * f32, reset, [&](int t) { prism::saturation(work, 1.25f, t); });
+    advance();
+
+    bench_stage(s, "contrast", 2 * f32, reset, [&](int t) { prism::contrast(work, 1.15f, t); });
+    advance();
+
     const prism::ToneCurve filmic = prism::parse_curve("filmic");
     bench_stage(s, "curve (filmic)", 2 * f32, reset,
                 [&](int t) { prism::tone_curve(work, filmic, t); });

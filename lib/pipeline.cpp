@@ -140,6 +140,62 @@ void apply_matrix(Image& img, const Matrix3& m, int threads) {
         });
 }
 
+void saturation(Image& img, float s, int threads) {
+    detail::require_consistent(img, "saturation");
+    if (s == 1.0f) {
+        return;  // exactly a no-op, as documented (the gamut limit below would otherwise apply)
+    }
+    detail::parallel_for_samples(
+        img.width, img.height, threads, [&](std::size_t first, std::size_t last) {
+            for (std::size_t i = first; i < last; i += Image::channels) {
+                float* p = &img.pixels[i];
+                const float y = 0.2126f * p[0] + 0.7152f * p[1] + 0.0722f * p[2];
+                if (!(y > 0.0f)) {
+                    p[0] = p[1] = p[2] = 0.0f;
+                    continue;
+                }
+                // The weakest channel ends up at y + k * (lo - y). Solving that for 0 gives the
+                // largest k that keeps it non-negative: y / (y - lo). (lo < y here, else the
+                // pixel would be grey and k would not matter.)
+                const float lo = std::min({p[0], p[1], p[2]});
+                float k = s;
+                if (lo < y && y + k * (lo - y) < 0.0f) {
+                    k = y / (y - lo);
+                }
+                for (int c = 0; c < 3; ++c) {
+                    p[c] = std::max(y + k * (p[c] - y), 0.0f);  // max only absorbs rounding
+                }
+            }
+        });
+}
+
+void contrast(Image& img, float c, int threads) {
+    detail::require_consistent(img, "contrast");
+    if (c == 1.0f) {
+        return;
+    }
+    const float strength = (c - 1.0f) * contrast_range_stops;
+    const float inv_range = 1.0f / contrast_range_stops;
+    // The curve's slope at 0, used for x <= 0, where log2 is undefined: as x -> 0, e -> -infinity
+    // and the sigmoid -> -1, so x' -> x * 2^(-strength).
+    const float zero_slope = std::exp2(-strength);
+    detail::parallel_for_samples(
+        img.width, img.height, threads, [&](std::size_t first, std::size_t last) {
+            for (std::size_t i = first; i < last; ++i) {
+                const float x = img.pixels[i];
+                if (!(x > 0.0f)) {
+                    img.pixels[i] = x * zero_slope;
+                    continue;
+                }
+                // x' = 0.18 * 2^(e + strength * sigmoid(u)) = x * 2^(strength * sigmoid(u)).
+                // The sigmoid u / sqrt(1 + u^2) costs a sqrt, where std::tanh costs about as much
+                // as log2 and exp2 together.
+                const float u = std::log2(x / contrast_pivot) * inv_range;
+                img.pixels[i] = x * std::exp2(strength * u / std::sqrt(1.0f + u * u));
+            }
+        });
+}
+
 Matrix3 load_matrix(const std::filesystem::path& path) {
     std::ifstream file(path);
     if (!file) {

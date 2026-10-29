@@ -233,3 +233,53 @@ TEST(Cli, RawWithIdentityCameraMatrixRuns) {
     fs::remove(matrix);
     fs::remove(output);
 }
+
+TEST(Cli, BadSaturationAndContrastAreUsageErrors) {
+    const fs::path input = write_grey_input();
+    const fs::path hist = fs::path(testing::TempDir()) / "prism_cli_hist_sat.png";
+    for (const char* bad : {"abc", "", "-0.5", "1.2x", "nan", "inf", "11", "125"}) {
+        RunResult r = run_prism(quoted(input) + " --histogram " + quoted(hist) +
+                                " --saturation \"" + bad + "\"");
+        EXPECT_EQ(r.exit_code, 2) << "--saturation '" << bad << "': " << r.output;
+        EXPECT_TRUE(contains(r.output, "--saturation needs a number from 0 to 10")) << r.output;
+        EXPECT_TRUE(contains(r.output, "Usage:")) << r.output;
+    }
+    for (const char* bad : {"abc", "0", "-1", "0.05", "1.15.", "20"}) {
+        RunResult r = run_prism(quoted(input) + " --histogram " + quoted(hist) +
+                                " --contrast \"" + bad + "\"");
+        EXPECT_EQ(r.exit_code, 2) << "--contrast '" << bad << "': " << r.output;
+        EXPECT_TRUE(contains(r.output, "--contrast needs a number from 0.1 to 10")) << r.output;
+    }
+    for (const char* twice : {" --saturation 1.2 --saturation 1.3", " --contrast 1 --contrast 2"}) {
+        RunResult r = run_prism(quoted(input) + " --histogram " + quoted(hist) + twice);
+        EXPECT_EQ(r.exit_code, 2) << twice << ": " << r.output;
+        EXPECT_TRUE(contains(r.output, "given more than once")) << r.output;
+    }
+    fs::remove(input);
+    fs::remove(hist);
+}
+
+TEST(Cli, SaturationAndContrastKeepMiddleGrey) {
+    // The input is linear 0.18 grey: saturation leaves greys alone and 0.18 is the contrast pivot,
+    // so the output must be byte-identical to an unprocessed run. --time shows both stages ran.
+    const fs::path input = write_grey_input();
+    const fs::path dir = fs::path(testing::TempDir());
+    const fs::path plain = dir / "prism_cli_plain.png";
+    const fs::path graded = dir / "prism_cli_graded.png";
+
+    RunResult r = run_prism(quoted(input) + " -o " + quoted(plain));
+    ASSERT_EQ(r.exit_code, 0) << r.output;
+    r = run_prism(quoted(input) + " -o " + quoted(graded) + " --contrast 1.5 --saturation 2 --time");
+    ASSERT_EQ(r.exit_code, 0) << r.output;
+    EXPECT_TRUE(contains(r.output, "  saturation ")) << r.output;
+    EXPECT_TRUE(contains(r.output, "  contrast ")) << r.output;
+
+    const auto bytes_of = [](const fs::path& p) {
+        std::ifstream f(p, std::ios::binary);
+        return std::string(std::istreambuf_iterator<char>(f), {});
+    };
+    EXPECT_EQ(bytes_of(plain), bytes_of(graded));
+    for (const fs::path& p : {input, plain, graded}) {
+        fs::remove(p);
+    }
+}
