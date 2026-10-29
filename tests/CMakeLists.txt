@@ -16,6 +16,7 @@ add_executable(prism_tests
   camera_profile_test.cpp
   cli_test.cpp
   color_test.cpp
+  dng_profile_test.cpp
   histogram_test.cpp
   image_test.cpp
   parallel_test.cpp

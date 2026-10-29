@@ -137,7 +137,7 @@ camera → sRGB = normalize_rows( XYZ→sRGB · Rec2020→XYZ · M_lightcraft )
 
 Rec. 2020 and sRGB share the same white (D65), so no chromatic adaptation is needed. Finally each row is divided by its sum, so camera (1, 1, 1), which is white after white balance, gives sRGB (1, 1, 1). LightCraft's rows sum to 0.997, 0.998 and 1.035, so this only removes a slight blue cast.
 
-**DNG profiles** (in the library, not yet read from files by `prism_profile`) use the same machinery:
+**DNG profiles** use the same machinery. The library reads their colour tags from DNG files and DCP camera profiles (`load_dng_profile` in `include/prism/dng_profile.hpp`), but `prism_profile` doesn't use it yet:
 
 - **ForwardMatrix** (white-balanced camera → XYZ under D50): `XYZ→sRGB · Bradford(D50→D65) · ForwardMatrix`. The Bradford step adapts D50 white to sRGB's D65 white. Skip it and white comes out slightly yellow.
 - **ColorMatrix** (XYZ → camera, *before* white balance): `XYZ→sRGB · ColorMatrix⁻¹ · diag(ColorMatrix · D65)`. The diagonal term puts back the white balance, as a per-*input*-channel gain (columns), which is what white balance is. Just normalising the rows of `XYZ→sRGB · ColorMatrix⁻¹` would also make white come out white, but it would tint every other colour.
