@@ -9,6 +9,7 @@
 #include <variant>
 #include <vector>
 
+#include "prism/fast_math.hpp"
 #include "prism/image.hpp"
 
 namespace prism {
@@ -87,7 +88,13 @@ void contrast(Image& img, float c, int threads = 0);
 struct GammaCurve {
     float inv_gamma = 1.0f;
     [[nodiscard]] float operator()(float x) const noexcept {
-        return std::pow(std::max(x, 0.0f), inv_gamma);
+        // x^(1/gamma) = 2^(log2(x) / gamma), with the fast log2 / exp2: unlike std::pow they
+        // let the compiler vectorise tone_curve's loop. The result differs from std::pow's by
+        // under 1e-6 (relative) for gamma >= 0.5; log2's error is multiplied by 1/gamma, so it
+        // reaches ~8e-6 at gamma 0.1. See fast_math.hpp. x <= 0 gives 0 and NaN stays NaN, as
+        // std::pow(std::max(x, 0), 1/gamma) did.
+        const float y = fast_exp2(inv_gamma * fast_log2(x));
+        return x > 0.0f ? y : std::max(x, 0.0f);
     }
 };
 

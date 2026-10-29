@@ -11,7 +11,8 @@
 //
 // --exhaustive instead checks the fast linear_to_srgb8 against linear_to_srgb8_reference for every
 // one of the 2^32 float bit patterns (NaNs, infinities, negatives and all), and the fast contrast
-// against contrast_reference for every float from 0 to 256, then exits.
+// and gamma curve against contrast_reference and std::pow for every float from 0 to 256, then
+// exits.
 
 #include <algorithm>
 #include <atomic>
@@ -318,6 +319,19 @@ bool check_contrast_exhaustively(int threads) {
     return ok;
 }
 
+bool check_gamma_exhaustively(int threads) {
+    bool ok = true;
+    for (const float gamma : {0.1f, 2.2f, 10.0f}) {
+        std::ostringstream name;
+        name << "gamma " << gamma << " vs std::pow";
+        const prism::ToneCurve curve{"gamma", prism::GammaCurve{1.0f / gamma}};
+        ok &= check_curve_exhaustively(
+            name.str(), threads, [&](prism::Image& img) { prism::tone_curve(img, curve, 1); },
+            [gamma](float x) { return std::pow(std::max(x, 0.0f), 1.0f / gamma); });
+    }
+    return ok;
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -325,7 +339,8 @@ int main(int argc, char* argv[]) {
     if (s.exhaustive) {
         const bool encode_ok = check_encode_exhaustively(s.threads);
         const bool contrast_ok = check_contrast_exhaustively(s.threads);
-        return encode_ok && contrast_ok ? 0 : 1;
+        const bool gamma_ok = check_gamma_exhaustively(s.threads);
+        return encode_ok && contrast_ok && gamma_ok ? 0 : 1;
     }
     const std::size_t samples = static_cast<std::size_t>(s.width) * s.height * 3;
     const double f32 = static_cast<double>(samples) * sizeof(float);  // one float image, in bytes

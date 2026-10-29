@@ -510,6 +510,56 @@ TEST(Contrast, HandlesEveryKindOfFloat) {
     EXPECT_NEAR(contrast_of(max, 0.5f) / prism::contrast_reference(max, 0.5f), 1.0f, 1e-4f);
 }
 
+TEST(ToneCurve, GammaStaysWithinOneLevelOfPow) {
+    // The gamma curve uses fast_log2 / fast_exp2 instead of std::pow. The rule for that: after sRGB
+    // encode (and also after the filmic curve and sRGB encode) the result must stay within 1/255
+    // of std::pow's.
+    prism::Image img;
+    img.pixels = accuracy_inputs();
+    img.pixels.resize(img.pixels.size() / 3 * 3);
+    img.width = static_cast<int>(img.pixels.size() / 3);
+    img.height = 1;
+    for (float gamma : {0.1f, 0.5f, 0.8f, 1.0f, 1.8f, 2.2f, 4.0f, 10.0f}) {
+        const float inv_gamma = 1.0f / gamma;
+        prism::Image out = img;
+        prism::tone_curve(out, {"gamma", prism::GammaCurve{inv_gamma}});
+        for (const bool filmic : {false, true}) {
+            float worst = 0.0f;
+            float worst_at = 0.0f;
+            for (std::size_t i = 0; i < img.pixels.size(); ++i) {
+                const float exact = std::pow(std::max(img.pixels[i], 0.0f), inv_gamma);
+                const float levels =
+                    255.0f * std::abs(encoded(out.pixels[i], filmic) - encoded(exact, filmic));
+                if (levels > worst) {
+                    worst = levels;
+                    worst_at = img.pixels[i];
+                }
+            }
+            EXPECT_LE(worst, 1.0f) << "gamma " << gamma << (filmic ? " then filmic" : "") << ": "
+                                   << worst << " levels off at input " << worst_at;
+        }
+    }
+}
+
+TEST(ToneCurve, GammaHandlesEveryKindOfFloat) {
+    constexpr float inf = std::numeric_limits<float>::infinity();
+    for (const char* spec : {"gamma:0.5", "gamma:2.2"}) {
+        const prism::ToneCurve curve = prism::parse_curve(spec);
+        EXPECT_EQ(curve.map(0.0f), 0.0f) << spec;
+        EXPECT_EQ(curve.map(-1.0f), 0.0f) << spec;
+        EXPECT_EQ(curve.map(-inf), 0.0f) << spec;
+        EXPECT_EQ(curve.map(1.0f), 1.0f) << spec;  // exactly: 1 stays white
+        EXPECT_EQ(curve.map(inf), inf) << spec;
+        EXPECT_TRUE(std::isnan(curve.map(std::nanf("")))) << spec;
+    }
+    // gamma > 1 lifts even the smallest denormal well clear of 0 (2^(-149 / 2.2) ~ 4e-21).
+    EXPECT_NEAR(prism::parse_curve("gamma:2.2").map(std::numeric_limits<float>::denorm_min()),
+                std::pow(std::numeric_limits<float>::denorm_min(), 1.0f / 2.2f), 1e-26f);
+    // Results too large or too small for a float become infinity and 0, not garbage.
+    EXPECT_EQ(prism::parse_curve("gamma:0.1").map(1e30f), inf);
+    EXPECT_EQ(prism::parse_curve("gamma:0.1").map(1e-30f), 0.0f);
+}
+
 TEST(ToneCurve, ImageMatchesMapBitForBit) {
     // tone_curve runs a loop specialised (and vectorised) per curve type; map() handles one value.
     // Both must give exactly the same bits, for values spread over every float exponent: zero,

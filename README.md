@@ -178,6 +178,7 @@ It is not part of `ctest`. Results on an Apple M2 Pro (8 performance + 4 efficie
 | matrix | 71 | 11 | 6.7× |
 | saturation | 152 | 22 | 6.8× |
 | contrast | 215 | 33 | 6.5× |
+| tone curve (gamma:2.2) | 201 | 32 | 6.3× |
 | tone curve (filmic) | 44 | 9 | 5.0× |
 | sRGB encode | 159 | 23 | 7.0× |
 | histogram | 236 | 31 | 7.7× |
@@ -201,7 +202,7 @@ Exposure barely speeds up because one multiply per value is so little work that 
 
 `ToneCurve` used to hold a `std::function<float(float)>`, called once per value. A `std::function` can hold any callable, so the compiler only sees "call whatever is stored in here": an indirect call it can't inline. Every value paid for the call, and the loop couldn't be vectorised, since the compiler can't run 4 calls to unknown code in one instruction.
 
-Each curve is now a small struct (`GammaCurve`, `ReinhardCurve`, `FilmicCurve` in `pipeline.hpp`) with an inline `operator()`, and `ToneCurve` holds a `std::variant` of them. `tone_curve` calls `std::visit` **once per image**. Its lambda is a template, so the compiler builds one loop per curve type, and in each loop it knows exactly which maths runs. It can then inline it and vectorise it. Reinhard and filmic are just multiplies, adds and divides, and they compile to NEON instructions that handle 4 floats at once (`fdiv.4s`). Gamma calls `powf` from the system maths library. The compiler can't see inside that or vectorise it, so gamma only saves the indirect call. (Templating the loop on the curve type by hand would compile to the same thing: `std::visit` is just a switch on the variant's tag that calls the template.)
+Each curve is now a small struct (`GammaCurve`, `ReinhardCurve`, `FilmicCurve` in `pipeline.hpp`) with an inline `operator()`, and `ToneCurve` holds a `std::variant` of them. `tone_curve` calls `std::visit` **once per image**. Its lambda is a template, so the compiler builds one loop per curve type, and in each loop it knows exactly which maths runs. It can then inline it and vectorise it. Reinhard and filmic are just multiplies, adds and divides, and they compile to NEON instructions that handle 4 floats at once (`fdiv.4s`). Gamma called `powf` from the system maths library at the time. The compiler can't see inside that or vectorise it, so gamma only saved the indirect call (it has since been vectorised too: see [Fast gamma](#fast-gamma)). (Templating the loop on the curve type by hand would compile to the same thing: `std::visit` is just a switch on the variant's tag that calls the template.)
 
 Median of 9 runs at 60 MP, in ms (1 thread / 12 threads):
 
@@ -215,7 +216,7 @@ On 12 threads, Reinhard and filmic now run at about 165 GB/s, the speed of just 
 
 **The output is bit-identical.** Same formulas, same float operations in the same order. Vector division gives exactly the same result as scalar division, and the compiler doesn't contract `a * b + c` into a fused multiply-add any differently when the code is inlined. This was checked by hashing the old and new `tone_curve` output for all 2³² float bit patterns for gamma 2.2, Reinhard (white 4 and 1.5) and filmic: the hashes match. `ToneCurve.ImageMatchesMapBitForBit` checks that the vectorised loop matches the scalar `map()` over a million inputs covering every exponent, NaN and infinity.
 
-**No lookup table.** A table only pays off when computing the value costs more than looking it up. Reinhard and filmic are now limited by memory, so a table could only add work. Gamma could still get faster with one, but its output would then be approximate rather than bit-identical, so for now gamma keeps `powf`.
+**No lookup table.** A table only pays off when computing the value costs more than looking it up. Reinhard and filmic are now limited by memory, so a table could only add work.
 
 ### Fast sRGB encode
 
@@ -254,6 +255,25 @@ Two things that mattered along the way:
 
 - **Capturing by reference.** The first polynomial version was *slower* than `std::log2` (1311 ms). The loop's lambda captured its constants by reference, so to the compiler they were just memory that writing a pixel might change. It had to reload them every iteration and decided vectorising wasn't worth it (`-Rpass-missed=loop-vectorize` says why). Capturing them by value fixed that.
 - **Clamping the index.** Clamping the table index with `min` / `max` was ~10% slower than making every bit pattern a valid index.
+
+### Fast gamma
+
+`gamma:<g>` used to call `std::pow(x, 1/g)` per value, which can't be vectorised. It now computes `2^(log2(x) / g)` with `fast_log2` and `fast_exp2` (`include/prism/fast_math.hpp`), written so the compiler can inline them and vectorise the loop:
+
+- **`fast_log2`** reads `x = 2^e · m` straight from the float's bits. The exponent `e` is already there, and `log2(m)` comes from a short series: `m` is in [√½, √2), where 4 terms are enough (error < 5e-8).
+- **`fast_exp2`** splits `y` into a whole number `n` and a fraction `f`. It computes `2^f` with a degree-6 polynomial and multiplies by `2^n` by adding `n` to the result's exponent bits.
+- No branches and no library calls: `x ≤ 0`, NaN, overflow and underflow are handled with selects. `x ≤ 0` gives 0, NaN stays NaN, results above the float range become infinity and results below ~2e-38 become 0. The CPU then runs 4 values per instruction.
+
+The result is within 4e-7 of `std::pow` for gamma 2.2 (relative), and 8e-6 at gamma 0.1, since `log2`'s error is multiplied by 1/gamma. The same 1/255 rule as contrast applies, measured against `std::pow(max(x, 0), 1/g)`: `ToneCurve.GammaStaysWithinOneLevelOfPow` checks about a million inputs at 8 gamma values from 0.1 to 10. `prism_bench --exhaustive` checks every float from 0 to 256 at gamma 0.1, 2.2 and 10: the worst difference is **0.0001 of a level**, with or without filmic after it, and 0.0004% or fewer of 8-bit outputs differ (each by 1, values sitting exactly on a rounding boundary). `map()` and the image loop still match bit for bit.
+
+Median of 9 runs at 60 MP, `gamma:2.2`, in ms:
+
+| | 1 thread | 12 threads |
+|---|---:|---:|
+| `std::pow` per value | 699 | 88 |
+| `fast_exp2(fast_log2(x) / g)` (vectorised) | **201** | **32** |
+
+A lookup table like contrast's wasn't used here. Contrast's table loop alone takes ~215 ms, already slower than this: gamma has no square root or sigmoid, so the polynomial has less to do than it did for contrast. A table would also put 512 KB into `GammaCurve`, which is meant to be a small struct.
 
 ### Checking for data races
 
