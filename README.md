@@ -16,6 +16,7 @@ Prism loads an image (PNG, JPEG or camera RAW), runs it through a simple colour 
 - [x] Histogram output (R, G, B and luma image, plus clipping summary)
 - [x] RAW support (via [LibRaw](https://www.libraw.org): .arw, .dng, .cr2, .cr3, .nef, .raf; optional)
 - [x] Multithreaded processing (standard library threads, no dependencies)
+- [x] Camera matrices from camera profiles (`prism_profile`: LightCraft JSON; DNG ForwardMatrix / ColorMatrix maths in the library)
 - [ ] SIMD processing
 
 ## Usage
@@ -82,6 +83,47 @@ RAW files are recognised by their extension (`.arw`, `.dng`, `.cr2`, `.cr3`, `.n
 ```
 
 Passing exactly this matrix reproduces Prism's default RAW output (mean difference 0.006 of an 8-bit level). That makes it a good check before trying your own.
+
+### Camera profiles (`prism_profile`)
+
+`prism_profile` turns a camera profile into a matrix file for `--raw-camera-matrix`. It currently reads [LightCraft](https://github.com/storytold/lightcraft) camera profiles (`assets/camera-profiles/<model>.json` there):
+
+```sh
+./build/src/prism_profile ILCE-7RM5.json -o samples/a7rv_lightcraft.txt --note "LightCraft PR #3022"
+prism DSC03866.ARW --raw-half --exposure +1 --curve filmic --raw-camera-matrix samples/a7rv_lightcraft.txt -o out.jpg
+```
+
+The output file starts with comments saying which profile it came from (plus any `--note` lines), the original matrix, and what was skipped. `samples/a7rv_lightcraft.txt` is the α7R V (ILCE-7RM5) profile from LightCraft PR #3022.
+
+**What a LightCraft profile is.** One 3×3 matrix from white-balanced camera RGB to **linear Rec. 2020**, plus a hue/saturation/value table. Both were fitted (least squares over hundreds of thousands of pixels from many photos) so that the raw data matches **the camera's own JPEGs**. So the matrix reproduces the in-camera look (Sony "Standard": noticeably more saturated), and **it is not a colorimetric calibration** like a DNG profile measured against a colour chart. The hue/saturation/value table bends individual hues, which a 3×3 matrix can't do, so `prism_profile` skips it and says so.
+
+**The matrix chain.** A matrix acts on the vector to its right, so a chain is read right to left, and order matters (matrix multiplication is not commutative):
+
+```
+camera → sRGB = normalize_rows( XYZ→sRGB · Rec2020→XYZ · M_lightcraft )
+                                 ③           ②              ①
+```
+
+1. `M_lightcraft`: white-balanced camera RGB → linear Rec. 2020.
+2. Rec. 2020 → CIE XYZ, the device-independent space every RGB space is defined against. Built from the Rec. 2020 primaries and the D65 white point (`rgb_to_xyz` in `lib/camera_profile.cpp`).
+3. XYZ → linear sRGB: the inverse of sRGB → XYZ.
+
+Rec. 2020 and sRGB share the same white (D65), so no chromatic adaptation is needed. Finally each row is divided by its sum, so camera (1, 1, 1), which is white after white balance, gives sRGB (1, 1, 1). LightCraft's rows sum to 0.997, 0.998 and 1.035, so this only removes a slight blue cast.
+
+**DNG profiles** (in the library, not yet read from files by `prism_profile`) use the same machinery:
+
+- **ForwardMatrix** (white-balanced camera → XYZ under D50): `XYZ→sRGB · Bradford(D50→D65) · ForwardMatrix`. The Bradford step adapts D50 white to sRGB's D65 white. Skip it and white comes out slightly yellow.
+- **ColorMatrix** (XYZ → camera, *before* white balance): `XYZ→sRGB · ColorMatrix⁻¹ · diag(ColorMatrix · D65)`. The diagonal term puts back the white balance, as a per-*input*-channel gain (columns), which is what white balance is. Just normalising the rows of `XYZ→sRGB · ColorMatrix⁻¹` would also make white come out white, but it would tint every other colour.
+- With two calibrations, the one whose illuminant is closest to D65 (in mireds) is used, preferring its ForwardMatrix.
+
+**α7R V results** (DSC03866.ARW, `--raw-half --exposure +1 --curve filmic`):
+
+| | LibRaw built-in | LightCraft |
+|---|---|---|
+| Matrix | `1.522 -0.340 -0.182`<br>`-0.169 1.633 -0.464`<br>`-0.013 -0.418 1.431` | `2.147 -1.200 0.053`<br>`-0.262 1.415 -0.153`<br>`-0.050 -1.046 2.096` |
+| Pixels < 0 after the matrix (R / G / B) | 0.001% / 0.000% / 0.012% | 0.062% / 0.000% / 5.461% |
+
+Between the two outputs: mean CIE76 ΔE 5.7 (median 4.0, 95th percentile 16.7, max 53.9). The LightCraft version has clearly warmer, more saturated autumn foliage. Its blue row (`2.10·B − 1.05·G`) drives saturated yellows and oranges below zero in blue. Those colours lie outside sRGB, and the tone curve clips them to 0.
 
 ## Performance
 
@@ -181,10 +223,11 @@ They check the size, that every value is in [0, 1], that `--raw-half` halves the
 ```
 prism/
 ├── CMakeLists.txt
-├── src/          # CLI entry point
+├── src/          # CLI entry points: prism, prism_profile
 ├── include/prism # public headers
-├── lib/          # core image + colour code (raw.cpp: LibRaw)
+├── lib/          # core image + colour code (raw.cpp: LibRaw; camera_profile.cpp: matrix maths)
 ├── tests/        # GoogleTest unit tests
+├── samples/      # example matrix files
 ├── bench/        # prism_bench: per-stage timings on a 61 MP image
 └── third_party/  # stb headers
 ```

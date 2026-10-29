@@ -1,4 +1,5 @@
 add_library(prism_core STATIC
+  camera_profile.cpp
   color.cpp
   histogram.cpp
   image.cpp
