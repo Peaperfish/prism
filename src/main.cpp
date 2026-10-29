@@ -17,6 +17,7 @@
 #include "prism/image.hpp"
 #include "prism/parallel.hpp"
 #include "prism/pipeline.hpp"
+#include "prism/raw.hpp"
 #include "prism/version.hpp"
 
 namespace {
@@ -26,8 +27,14 @@ void print_usage(const char* program) {
               << "\n"
               << "Usage: " << program << " <input> [-o <output>] [--histogram <file>] [options]\n"
               << "\n"
-              << "Loads <input> (PNG or JPEG) and writes <output> (.png, .jpg or .jpeg).\n"
+              << "Loads <input> (PNG, JPEG or camera RAW: .arw .dng .cr2 .cr3 .nef .raf) and\n"
+              << "writes <output> (.png, .jpg or .jpeg).\n"
               << "At least one of -o and --histogram is required.\n"
+              << "\n"
+              << "RAW input:\n"
+              << "  --raw-half                  decode at half size (much faster; for previews)\n"
+              << "  --raw-camera-matrix <file>  convert camera RGB to linear sRGB with this 3x3\n"
+              << "                              matrix instead of LibRaw's built-in one\n"
               << "\n"
               << "Options (always applied in this order, whatever order you type them):\n"
               << "  --exposure <stops>  brighten (+) or darken (-) by this many stops\n"
@@ -57,6 +64,8 @@ struct Options {
     std::optional<std::string> matrix_path;
     std::optional<std::string> curve_spec;
     std::optional<std::string> histogram_path;
+    bool raw_half = false;
+    std::optional<std::string> raw_camera_matrix_path;
     std::optional<int> threads;  // unset = automatic (one per hardware thread)
     bool time = false;
 };
@@ -123,6 +132,10 @@ Options parse_args(int argc, char* argv[]) {
             set_once(opts.threads, arg, parse_threads(next_value()));
         } else if (arg == "--time") {
             opts.time = true;
+        } else if (arg == "--raw-half") {
+            opts.raw_half = true;
+        } else if (arg == "--raw-camera-matrix") {
+            set_once(opts.raw_camera_matrix_path, arg, next_value());
         } else if (arg.starts_with('-') || !opts.input.empty()) {
             throw UsageError("unexpected argument '" + std::string(arg) + "'");
         } else {
@@ -136,6 +149,11 @@ Options parse_args(int argc, char* argv[]) {
     // but with neither there would be nothing to show for the work.
     if (!opts.output && !opts.histogram_path) {
         throw UsageError("no output given (use -o <output>, --histogram <file>, or both)");
+    }
+    // Silently ignoring these on a PNG or JPEG would hide a mistake such as the wrong input file.
+    if ((opts.raw_half || opts.raw_camera_matrix_path) && !prism::is_raw_file(opts.input)) {
+        throw UsageError(std::string(opts.raw_half ? "--raw-half" : "--raw-camera-matrix") +
+                         " only applies to RAW input (.arw, .dng, .cr2, .cr3, .nef, .raf)");
     }
     return opts;
 }
@@ -203,6 +221,11 @@ int main(int argc, char* argv[]) {
         if (opts.matrix_path) {
             matrix = prism::load_matrix(*opts.matrix_path);
         }
+        prism::RawOptions raw;
+        raw.half_size = opts.raw_half;
+        if (opts.raw_camera_matrix_path) {
+            raw.camera_matrix = prism::load_matrix(*opts.raw_camera_matrix_path);
+        }
         std::optional<prism::ToneCurve> curve;
         if (opts.curve_spec) {
             curve = prism::parse_curve(*opts.curve_spec);
@@ -214,7 +237,7 @@ int main(int argc, char* argv[]) {
 
         // Pipeline order from the README: exposure -> colour matrix -> tone curve.
         prism::Image img;
-        timer.run("load", [&] { img = prism::load_image(opts.input, threads); });
+        timer.run("load", [&] { img = prism::load_image(opts.input, raw, threads); });
         if (opts.exposure_stops) {
             timer.run("exposure", [&] { prism::exposure(img, *opts.exposure_stops, threads); });
         }

@@ -4,6 +4,7 @@ add_library(prism_core STATIC
   image.cpp
   parallel.cpp
   pipeline.cpp
+  raw.cpp
   version.cpp)
 
 # PUBLIC: anything linking prism_core also gets include/ on its include path, so it can
@@ -18,3 +19,10 @@ target_compile_definitions(prism_core PRIVATE PRISM_VERSION="${PROJECT_VERSION}"
 
 # PRIVATE: stb is an implementation detail; callers of prism_core don't see stb headers.
 target_link_libraries(prism_core PRIVATE stb prism_warnings)
+
+# Also PRIVATE, for the same reason: only raw.cpp includes LibRaw's headers. (prism_core is a
+# static library, so CMake still passes LibRaw on to whatever finally links it.)
+if(PRISM_WITH_LIBRAW)
+  target_link_libraries(prism_core PRIVATE PkgConfig::LIBRAW)
+  target_compile_definitions(prism_core PRIVATE PRISM_HAVE_LIBRAW)
+endif()

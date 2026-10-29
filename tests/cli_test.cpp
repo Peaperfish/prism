@@ -184,3 +184,52 @@ TEST(Cli, TimePrintsEachStageThatRan) {
     fs::remove(input);
     fs::remove(output);
 }
+
+TEST(Cli, RawFlagsOnNonRawInputAreUsageErrors) {
+    const fs::path input = write_grey_input();
+    const fs::path hist = fs::path(testing::TempDir()) / "prism_cli_hist_raw_flags.png";
+    const fs::path matrix = fs::path(testing::TempDir()) / "prism_cli_identity.txt";
+    std::ofstream(matrix) << "1 0 0\n0 1 0\n0 0 1\n";
+
+    for (const std::string& flags : {std::string(" --raw-half"),
+                                     " --raw-camera-matrix " + quoted(matrix)}) {
+        const RunResult r = run_prism(quoted(input) + " --histogram " + quoted(hist) + flags);
+        EXPECT_EQ(r.exit_code, 2) << flags << ": " << r.output;
+        EXPECT_TRUE(contains(r.output, "only applies to RAW input")) << r.output;
+    }
+    fs::remove(input);
+    fs::remove(hist);
+    fs::remove(matrix);
+}
+
+TEST(Cli, MissingRawFileIsReportedAsRawError) {
+    const fs::path hist = fs::path(testing::TempDir()) / "prism_cli_hist_missing_raw.png";
+    const RunResult r = run_prism(
+        quoted(fs::path(testing::TempDir()) / "prism_missing.ARW") + " --histogram " + quoted(hist));
+    EXPECT_EQ(r.exit_code, 1) << r.output;
+    EXPECT_TRUE(contains(r.output, "cannot load RAW file")) << r.output;
+}
+
+// Runs only with PRISM_TEST_RAW set; see raw_test.cpp. Half size keeps it quick.
+TEST(Cli, RawWithIdentityCameraMatrixRuns) {
+    const char* raw = std::getenv("PRISM_TEST_RAW");
+    if (raw == nullptr || *raw == '\0') {
+        GTEST_SKIP() << "set PRISM_TEST_RAW to a RAW file to run this test";
+    }
+    const fs::path dir = fs::path(testing::TempDir());
+    const fs::path matrix = dir / "prism_cli_raw_identity.txt";
+    const fs::path output = dir / "prism_cli_raw.jpg";
+    std::ofstream(matrix) << "1 0 0\n0 1 0\n0 0 1\n";
+
+    const RunResult r = run_prism(quoted(raw) + " --raw-half --raw-camera-matrix " +
+                                  quoted(matrix) + " --curve filmic -o " + quoted(output));
+    // Without LibRaw the run must fail cleanly instead.
+    if (contains(r.output, "built without LibRaw")) {
+        EXPECT_EQ(r.exit_code, 1) << r.output;
+    } else {
+        EXPECT_EQ(r.exit_code, 0) << r.output;
+        EXPECT_TRUE(fs::exists(output));
+    }
+    fs::remove(matrix);
+    fs::remove(output);
+}

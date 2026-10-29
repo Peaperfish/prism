@@ -2,7 +2,7 @@
 
 A small, fast command-line photo tool written in modern C++.
 
-Prism loads an image, runs it through a simple colour pipeline (exposure, a 3×3 colour matrix and a tone curve), and writes the result back out. It's a learning project for working directly with pixel buffers, colour maths and performance in C++20.
+Prism loads an image (PNG, JPEG or camera RAW), runs it through a simple colour pipeline (exposure, a 3×3 colour matrix and a tone curve), and writes the result back out. It's a learning project for working directly with pixel buffers, colour maths and performance in C++20.
 
 > 🚧 Work in progress.
 
@@ -14,7 +14,7 @@ Prism loads an image, runs it through a simple colour pipeline (exposure, a 3×3
 - [x] 3×3 colour matrix (e.g. camera → sRGB, or creative grades)
 - [x] Tone curves (gamma, filmic)
 - [x] Histogram output (R, G, B and luma image, plus clipping summary)
-- [ ] RAW support (via LibRaw)
+- [x] RAW support (via [LibRaw](https://www.libraw.org): .arw, .dng, .cr2, .cr3, .nef, .raf; optional)
 - [x] Multithreaded processing (standard library threads, no dependencies)
 - [ ] SIMD processing
 
@@ -25,6 +25,9 @@ prism input.jpg -o output.png --exposure +0.5 --matrix samples/grade.txt --curve
 
 # Check clipping without writing an output image:
 prism input.jpg --exposure +1 --histogram hist.png
+
+# A Sony RAW file, at half size for a quick preview:
+prism DSC03866.ARW --raw-half --exposure +1 --curve filmic -o preview.jpg
 
 # Single-threaded, printing how long each stage took:
 prism input.jpg -o output.jpg --curve filmic --threads 1 --time
@@ -39,6 +42,8 @@ At least one of `-o` and `--histogram` is required. Without `-o`, the full pipel
 | `--matrix <file>` | 3×3 colour matrix: 9 numbers, row-major, `#` starts a comment (see `samples/grade.txt`) |
 | `--curve <spec>` | `gamma:<value>` (>1 brightens midtones), `reinhard[:<white>]` (default white 4), or `filmic` (Hable) |
 | `--histogram <file>` | Save a 512×200 histogram of the result (R, G, B overlaid additively over a grey Rec. 709 luma fill) and print the % of pixels clipped to 0 and 255 per channel |
+| `--raw-half` | RAW input only: decode at half the width and height using LibRaw's half-size mode (no demosaicing). About twice as fast on an α7R V file |
+| `--raw-camera-matrix <file>` | RAW input only: use your own 3×3 camera RGB → linear sRGB matrix (same file format as `--matrix`) instead of LibRaw's built-in one. See [RAW files](#raw-files) |
 | `--threads <n>` | Use up to `n` threads (default: one per hardware thread; `1` = single-threaded). Images under ~1 MP always run on one thread, where starting threads would cost more than it saves. The output is bit-identical for any thread count |
 | `--time` | Print how long each stage took (load, exposure, matrix, curve, save, histogram) and the total |
 
@@ -47,10 +52,36 @@ Options are always applied in pipeline order, whatever order you type them.
 ## Pipeline
 
 ```
-load (8-bit sRGB) → linearise → exposure → colour matrix → tone curve → encode sRGB → save
+load (8-bit sRGB) → linearise ─┐
+                               ├→ exposure → colour matrix → tone curve → encode sRGB → save
+load RAW (LibRaw, linear) ─────┘
 ```
 
 All processing happens in 32-bit float, linear light. The histogram is measured on the final 8-bit sRGB values (what ends up in the file, before any JPEG compression), so it matches what a camera or Lightroom shows.
+
+## RAW files
+
+RAW files are recognised by their extension (`.arw`, `.dng`, `.cr2`, `.cr3`, `.nef`, `.raf`, any case) and decoded with LibRaw into the same linear-light float image a PNG or JPEG becomes, so every other option works unchanged. See `lib/raw.cpp` for each LibRaw setting and why it is needed. In short:
+
+- **Linear output.** No gamma curve (gamma 1/1) and no auto-brightening, in 16 bits per channel, converted to float in [0, 1]. The sensor's white level maps to exactly 1.0, so `--exposure` means the same thing for every shot.
+- **As-shot white balance.** The camera's own white balance multipliers are used; LibRaw never guesses.
+- **Linear sRGB primaries.** LibRaw converts camera RGB to sRGB with its matrix for the camera model. A DNG carries this matrix in the file. For ARW (and CR3, NEF, ...) LibRaw uses its built-in table, derived from Adobe's colour data.
+- **Orientation.** The camera's orientation flag is applied, so portrait shots come out upright (and the width and height swap).
+- **Highlights are clipped** at the sensor's white level, so blown areas stay neutral white.
+
+**Expect a linear RAW to look darker, flatter and less saturated than the camera's JPEG.** The camera applies a contrasty tone curve and boosts saturation; Prism only applies what you ask for. Try `--exposure +1 --curve filmic` as a starting point. LibRaw also keeps a few dozen pixels of border that the camera crops off (an α7R V file is 9566×6374 here, against 9504×6336 for the camera JPEG).
+
+### Your own camera matrix
+
+`--raw-camera-matrix <file>` asks LibRaw for the camera's **native RGB** instead: white-balanced and demosaiced, but with no colour conversion. Prism then applies your matrix in float, without the clipping LibRaw's own conversion step does. The matrix must map **white-balanced camera RGB → linear sRGB (D65)**, row-major, like LibRaw's `rgb_cam`. Each row should sum to 1, so white stays white. It is *not* a DNG `ColorMatrix` (that one maps XYZ → camera). For reference, LibRaw 0.22's matrix for the α7R V (ILCE-7RM5) is:
+
+```
+ 1.522197 -0.339775 -0.182423
+-0.168875  1.632612 -0.463737
+-0.012806 -0.417928  1.430735
+```
+
+Passing exactly this matrix reproduces Prism's default RAW output (mean difference 0.006 of an 8-bit level). That makes it a good check before trying your own.
 
 ## Performance
 
@@ -82,6 +113,15 @@ It is not part of `ctest`. Results on an Apple M2 Pro (8 performance + 4 efficie
 
 Before the lookup-table encoder (below), sRGB encode took 913 ms / 122 ms and the histogram 1069 ms / 134 ms (1 / 12 threads), so single-threaded they are now 5.7× and 4.5× faster.
 
+With `PRISM_TEST_RAW=<file>` set, `prism_bench` also times loading that RAW file at full and half size. For a 61 MP α7R V ARW (lossless compressed, 88 MB), in ms:
+
+| RAW load | 1 thread | 12 threads | Output |
+|----------|---------:|-----------:|-------:|
+| full size | 2186 | 1767 | 6374×9566 |
+| half size (`--raw-half`) | 893 | 859 | 3187×4783 |
+
+`--threads` only splits Prism's 16-bit → float conversion. Most of the time goes to reading and decompressing the file, which LibRaw does single-threaded, so half size is only about 2× faster even though it skips demosaicing.
+
 Exposure barely speeds up because one multiply per value is so little work that it is limited by memory bandwidth, not by the CPU (it already moves ~100 GB/s on one core).
 
 ### Fast sRGB encode
@@ -112,6 +152,30 @@ cmake --build build
 ctest --test-dir build
 ```
 
+### RAW support (LibRaw)
+
+RAW support is optional. Install LibRaw and pkg-config (which CMake uses to find it) first:
+
+```sh
+brew install libraw pkg-config        # macOS
+sudo apt install libraw-dev pkg-config  # Debian / Ubuntu
+```
+
+CMake then turns it on automatically (`-- RAW support: LibRaw 0.22.3` when configuring). To build without it, pass `-DPRISM_WITH_LIBRAW=OFF`. Prism still builds and passes all its tests, and RAW files fail with a clear error. If you install LibRaw after configuring a build directory without it, re-run cmake with `-DPRISM_WITH_LIBRAW=ON`. LibRaw is a private dependency of `prism_core`, like stb: only `lib/raw.cpp` includes its headers.
+
+**Licence:** LibRaw is dual-licensed under the [LGPL 2.1](https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html) or the [CDDL 1.0](https://opensource.org/license/cddl-1-0), at your choice. Prism links it dynamically (the Homebrew `libraw_r` shared library) and does not modify it, which the LGPL allows. If you distribute Prism binaries built with LibRaw, include LibRaw's copyright notice and licence, and let users swap in their own build of the library (dynamic linking already allows that). LibRaw in turn uses Little CMS (MIT licence).
+
+### Testing with a real RAW file
+
+RAW files are too large to keep in the repo, so the RAW integration tests (`RawFile.*` and `Cli.RawWithIdentityCameraMatrixRuns`) are skipped unless `PRISM_TEST_RAW` points to one. Optionally, `PRISM_TEST_RAW_SIZE` also checks the exact output size, after rotation:
+
+```sh
+PRISM_TEST_RAW=~/Pictures/DSC03866.ARW ctest --test-dir build -R Raw
+PRISM_TEST_RAW=~/Pictures/DSC03866.ARW PRISM_TEST_RAW_SIZE=6374x9566 ctest --test-dir build -R Raw
+```
+
+They check the size, that every value is in [0, 1], that `--raw-half` halves the dimensions, and that `--raw-camera-matrix` with the identity matrix works.
+
 ## Project layout
 
 ```
@@ -119,7 +183,7 @@ prism/
 ├── CMakeLists.txt
 ├── src/          # CLI entry point
 ├── include/prism # public headers
-├── lib/          # core image + colour code
+├── lib/          # core image + colour code (raw.cpp: LibRaw)
 ├── tests/        # GoogleTest unit tests
 ├── bench/        # prism_bench: per-stage timings on a 61 MP image
 └── third_party/  # stb headers

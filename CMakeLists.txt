@@ -11,6 +11,37 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(PRISM_BUILD_TESTS "Build the Prism unit tests" ON)
 option(PRISM_SANITIZE_THREAD "Build everything with ThreadSanitizer to detect data races" OFF)
 
+# LibRaw (camera RAW decoding) is optional. pkg-config finds a system install, e.g. from
+# `brew install libraw`; we use libraw_r, the thread-safe build. The option defaults to ON
+# when LibRaw is found, so a plain configure picks it up. Without it Prism still builds and
+# RAW files fail with a clear error.
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+  pkg_check_modules(LIBRAW QUIET IMPORTED_TARGET libraw_r)
+endif()
+# LibRaw's .pc file asks for -lstdc++, which on macOS is an alias for libc++, already linked by
+# the compiler: drop it to avoid ld's "ignoring duplicate libraries" warning.
+if(APPLE AND TARGET PkgConfig::LIBRAW)
+  get_target_property(prism_libraw_libs PkgConfig::LIBRAW INTERFACE_LINK_LIBRARIES)
+  list(REMOVE_ITEM prism_libraw_libs stdc++ -lstdc++)
+  set_target_properties(PkgConfig::LIBRAW PROPERTIES INTERFACE_LINK_LIBRARIES "${prism_libraw_libs}")
+endif()
+if(LIBRAW_FOUND)
+  set(prism_libraw_default ON)
+else()
+  set(prism_libraw_default OFF)
+endif()
+option(PRISM_WITH_LIBRAW "Read camera RAW files (.arw, .dng, ...) with LibRaw" ${prism_libraw_default})
+if(PRISM_WITH_LIBRAW AND NOT LIBRAW_FOUND)
+  message(FATAL_ERROR "PRISM_WITH_LIBRAW is ON but LibRaw was not found via pkg-config "
+                      "(install it, e.g. `brew install libraw pkg-config`, or pass -DPRISM_WITH_LIBRAW=OFF)")
+endif()
+if(PRISM_WITH_LIBRAW)
+  message(STATUS "RAW support: LibRaw ${LIBRAW_VERSION}")
+else()
+  message(STATUS "RAW support: off (LibRaw not found or PRISM_WITH_LIBRAW=OFF)")
+endif()
+
 # ThreadSanitizer instruments every memory access and reports two threads touching the same
 # location without synchronisation. It must be applied to all code, GoogleTest included, so it
 # is set globally here (before any add_subdirectory) rather than on one target. Use a separate

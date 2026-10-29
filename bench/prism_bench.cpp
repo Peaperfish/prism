@@ -6,6 +6,9 @@
 // Defaults: 9504x6336 (a 61 MP Sony a7R V frame), 5 runs per stage, one thread per hardware
 // thread. Every stage is timed single-threaded and with --threads threads; medians are reported.
 //
+// If the environment variable PRISM_TEST_RAW names a camera RAW file, decoding it with LibRaw is
+// also timed, at full and half size. That includes reading the file, so it is not purely CPU time.
+//
 // --exhaustive instead checks the fast linear_to_srgb8 against linear_to_srgb8_reference for every
 // one of the 2^32 float bit patterns (NaNs, infinities, negatives and all), then exits.
 
@@ -17,6 +20,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <exception>
 #include <functional>
 #include <iomanip>
 #include <iostream>
@@ -29,6 +33,7 @@
 #include "prism/image.hpp"
 #include "prism/parallel.hpp"
 #include "prism/pipeline.hpp"
+#include "prism/raw.hpp"
 
 namespace {
 
@@ -138,6 +143,40 @@ void bench_stage(const Settings& s, std::string_view name, double bytes_touched,
               << std::setw(10) << gb_per_s(many) << '\n';
 }
 
+// Times loading the RAW file named by PRISM_TEST_RAW, at full and half size, if it is set.
+// Only the 16-bit -> float conversion uses `threads`; LibRaw's decoding does not.
+void bench_raw(const Settings& s) {
+    const char* path = std::getenv("PRISM_TEST_RAW");
+    if (path == nullptr || *path == '\0') {
+        return;
+    }
+    if (!prism::raw_support_available()) {
+        std::cout << "\nPRISM_TEST_RAW is set, but this build has no LibRaw: RAW load skipped\n";
+        return;
+    }
+    std::cout << "\nRAW load: " << path << " (LibRaw decode + 16-bit -> float)\n\n"
+              << "  " << std::left << std::setw(14) << "stage" << std::right << std::setw(10)
+              << "1 thr ms" << std::setw(10) << (std::to_string(s.threads) + " thr ms")
+              << std::setw(12) << "size" << '\n';
+    for (const bool half : {false, true}) {
+        prism::RawOptions options;
+        options.half_size = half;
+        prism::Image img;
+        const auto stage = [&](int t) { img = prism::load_raw(path, options, t); };
+        try {
+            const double one = median_ms(s.runs, 1, [] {}, stage);
+            const double many = median_ms(s.runs, s.threads, [] {}, stage);
+            std::cout << "  " << std::left << std::setw(14) << (half ? "RAW half" : "RAW full")
+                      << std::right << std::fixed << std::setprecision(1) << std::setw(10) << one
+                      << std::setw(10) << many << std::setw(12)
+                      << (std::to_string(img.width) + "x" + std::to_string(img.height)) << '\n';
+        } catch (const std::exception& e) {
+            std::cerr << "error: " << e.what() << '\n';
+            return;
+        }
+    }
+}
+
 // Compares linear_to_srgb8 (single value and batch forms) with the pow-based reference for every
 // float bit pattern. Returns true if there is no difference at all.
 bool check_encode_exhaustively(int threads) {
@@ -241,6 +280,8 @@ int main(int argc, char* argv[]) {
     prism::Histogram hist;
     bench_stage(s, "histogram", f32, none,
                 [&](int t) { hist = prism::compute_histogram(input, t); });
+
+    bench_raw(s);
 
     // Use the results so the optimiser cannot decide the work is pointless and delete it.
     if (encoded.empty() || hist.pixel_count != samples / 3) {

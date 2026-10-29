@@ -1,7 +1,5 @@
 #include "prism/image.hpp"
 
-#include <algorithm>
-#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -11,7 +9,9 @@
 #include <stb_image.h>
 #include <stb_image_write.h>
 
+#include "file_ext.hpp"
 #include "prism/color.hpp"
+#include "prism/raw.hpp"
 #include "sample_ranges.hpp"
 
 namespace prism {
@@ -28,13 +28,7 @@ struct StbiDeleter {
 };
 using StbiPixels = std::unique_ptr<unsigned char, StbiDeleter>;
 
-std::string lowercase_extension(const std::filesystem::path& path) {
-    std::string ext = path.extension().string();
-    std::transform(ext.begin(), ext.end(), ext.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return ext;
-}
-
+using detail::lowercase_extension;
 using detail::sample_count;
 
 }  // namespace
@@ -69,6 +63,14 @@ std::vector<std::uint8_t> encode_srgb8(const Image& img, int threads) {
 }
 
 Image load_image(const std::filesystem::path& path, int threads) {
+    return load_image(path, RawOptions{}, threads);
+}
+
+Image load_image(const std::filesystem::path& path, const RawOptions& raw, int threads) {
+    if (is_raw_file(path)) {
+        return load_raw(path, raw, threads);
+    }
+
     int width = 0;
     int height = 0;
     int channels_in_file = 0;

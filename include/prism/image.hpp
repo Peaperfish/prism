@@ -33,7 +33,14 @@ struct Image {
 // Loads an 8-bit PNG or JPEG (anything stb_image reads) and converts sRGB to linear float.
 // Grey or alpha images are expanded/flattened to RGB. Throws std::runtime_error on failure.
 // Decoding the file itself (stb_image) is single-threaded; only the sRGB conversion uses `threads`.
+// Camera RAW files (see is_raw_file in prism/raw.hpp) go to load_raw with default RawOptions.
 [[nodiscard]] Image load_image(const std::filesystem::path& path, int threads = 0);
+
+// As above, passing `raw` on to load_raw for RAW files; ignored for PNG and JPEG.
+// (Declared here, defined in prism/raw.hpp: include that to create a RawOptions.)
+struct RawOptions;
+[[nodiscard]] Image load_image(const std::filesystem::path& path, const RawOptions& raw,
+                               int threads = 0);
 
 // Writes already-encoded 8-bit sRGB bytes (e.g. from encode_srgb8) as PNG or JPEG, chosen by the
 // file extension. Lets a caller that also needs the bytes for something else (like a histogram)
