@@ -1,8 +1,16 @@
+#include <cerrno>
+#include <cmath>
+#include <cstdlib>
 #include <exception>
 #include <iostream>
+#include <optional>
+#include <stdexcept>
+#include <string>
 #include <string_view>
+#include <utility>
 
 #include "prism/image.hpp"
+#include "prism/pipeline.hpp"
 #include "prism/version.hpp"
 
 namespace {
@@ -10,9 +18,93 @@ namespace {
 void print_usage(const char* program) {
     std::cerr << "prism " << prism::version() << " - command-line photo tool\n"
               << "\n"
-              << "Usage: " << program << " <input> -o <output>\n"
+              << "Usage: " << program << " <input> -o <output> [options]\n"
               << "\n"
-              << "Loads <input> (PNG or JPEG) and writes it to <output> (.png, .jpg or .jpeg).\n";
+              << "Loads <input> (PNG or JPEG) and writes <output> (.png, .jpg or .jpeg).\n"
+              << "\n"
+              << "Options (always applied in this order, whatever order you type them):\n"
+              << "  --exposure <stops>  brighten (+) or darken (-) by this many stops\n"
+              << "  --matrix <file>     apply a 3x3 colour matrix (9 numbers, row-major)\n"
+              << "  --curve <spec>      apply a tone curve:";
+    for (std::string_view spec : prism::curve_specs()) {
+        std::cerr << ' ' << spec;
+    }
+    std::cerr << "\n  -h, --help          show this help\n";
+}
+
+// Raised for bad command-line input, so main() can also print the usage text.
+struct UsageError : std::runtime_error {
+    using std::runtime_error::runtime_error;
+};
+
+struct Options {
+    std::string input;
+    std::string output;
+    std::optional<float> exposure_stops;
+    std::optional<std::string> matrix_path;
+    std::optional<std::string> curve_spec;
+};
+
+float parse_stops(const std::string& text) {
+    char* end = nullptr;
+    errno = 0;
+    const double value = std::strtod(text.c_str(), &end);
+    if (text.empty() || end != text.c_str() + text.size() || errno == ERANGE ||
+        !std::isfinite(value)) {
+        throw UsageError("--exposure needs a number, got '" + text + "'");
+    }
+    return static_cast<float>(value);
+}
+
+// Stores `value` into `slot`, rejecting a flag given twice (which is almost always a mistake).
+template <typename T>
+void set_once(std::optional<T>& slot, std::string_view flag, T value) {
+    if (slot) {
+        throw UsageError(std::string(flag) + " given more than once");
+    }
+    slot = std::move(value);
+}
+
+Options parse_args(int argc, char* argv[]) {
+    Options opts;
+    std::optional<std::string> output;
+    for (int i = 1; i < argc; ++i) {
+        const std::string_view arg = argv[i];
+
+        // Every flag except --help takes the next argument as its value. We take it as-is,
+        // even if it starts with '-', so "--exposure -1" works.
+        auto next_value = [&]() -> std::string {
+            if (i + 1 >= argc) {
+                throw UsageError(std::string(arg) + " needs a value");
+            }
+            return argv[++i];
+        };
+
+        if (arg == "-h" || arg == "--help") {
+            print_usage(argv[0]);
+            std::exit(0);
+        } else if (arg == "-o") {
+            set_once(output, arg, next_value());
+        } else if (arg == "--exposure") {
+            set_once(opts.exposure_stops, arg, parse_stops(next_value()));
+        } else if (arg == "--matrix") {
+            set_once(opts.matrix_path, arg, next_value());
+        } else if (arg == "--curve") {
+            set_once(opts.curve_spec, arg, next_value());
+        } else if (arg.starts_with('-') || !opts.input.empty()) {
+            throw UsageError("unexpected argument '" + std::string(arg) + "'");
+        } else {
+            opts.input = arg;
+        }
+    }
+    if (opts.input.empty()) {
+        throw UsageError("no input file given");
+    }
+    if (!output) {
+        throw UsageError("no output file given (use -o <output>)");
+    }
+    opts.output = *output;
+    return opts;
 }
 
 }  // namespace
@@ -20,33 +112,38 @@ void print_usage(const char* program) {
 int main(int argc, char* argv[]) {
     const char* program = (argc > 0 && argv[0] != nullptr) ? argv[0] : "prism";
 
-    // Accept "<input> -o <output>" with the input before or after "-o <output>".
-    const char* input = nullptr;
-    const char* output = nullptr;
-    for (int i = 1; i < argc; ++i) {
-        const std::string_view arg = argv[i];
-        if (arg == "-o" && i + 1 < argc) {
-            output = argv[++i];
-        } else if (arg == "-h" || arg == "--help") {
-            print_usage(program);
-            return 0;
-        } else if (input == nullptr && !arg.starts_with('-')) {
-            input = argv[i];
-        } else {
-            std::cerr << "error: unexpected argument '" << arg << "'\n\n";
-            print_usage(program);
-            return 2;
+    try {
+        const Options opts = parse_args(argc, argv);
+
+        // Read the matrix and curve before the image: they are quick to check, so a typo
+        // fails immediately instead of after decoding a large photo.
+        std::optional<prism::Matrix3> matrix;
+        if (opts.matrix_path) {
+            matrix = prism::load_matrix(*opts.matrix_path);
         }
-    }
-    if (input == nullptr || output == nullptr) {
+        std::optional<prism::ToneCurve> curve;
+        if (opts.curve_spec) {
+            curve = prism::parse_curve(*opts.curve_spec);
+        }
+
+        // Pipeline order from the README: exposure -> colour matrix -> tone curve.
+        prism::Image img = prism::load_image(opts.input);
+        if (opts.exposure_stops) {
+            prism::exposure(img, *opts.exposure_stops);
+        }
+        if (matrix) {
+            prism::apply_matrix(img, *matrix);
+        }
+        if (curve) {
+            prism::tone_curve(img, *curve);
+        }
+        prism::save_image(opts.output, img);
+
+        std::cout << "wrote " << opts.output << " (" << img.width << "x" << img.height << ")\n";
+    } catch (const UsageError& e) {
+        std::cerr << "error: " << e.what() << "\n\n";
         print_usage(program);
         return 2;
-    }
-
-    try {
-        const prism::Image img = prism::load_image(input);
-        prism::save_image(output, img);
-        std::cout << "wrote " << output << " (" << img.width << "x" << img.height << ")\n";
     } catch (const std::exception& e) {
         std::cerr << "error: " << e.what() << '\n';
         return 1;

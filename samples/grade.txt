@@ -1,0 +1,11 @@
+# Mild warm grade for: prism in.jpg -o out.png --matrix samples/grade.txt
+#
+# Row-major 3x3 matrix in linear light. Each row is one output channel:
+#   out_R = 1.05*R + 0.03*G - 0.01*B
+# Red is lifted a little, blue pulled down, and a touch of green feeds into red,
+# so whites and greys lean slightly warm. Use the identity matrix
+# (1 0 0 / 0 1 0 / 0 0 1) as a starting point for your own grades.
+
+ 1.05   0.03  -0.01
+ 0.01   1.00   0.00
+-0.02  -0.02   0.94

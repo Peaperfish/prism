@@ -10,9 +10,9 @@ Prism loads an image, runs it through a simple colour pipeline (exposure, a 3×3
 
 - [x] Load and save PNG / JPEG (via [stb](https://github.com/nothings/stb))
 - [x] sRGB ↔ linear conversion
-- [ ] Exposure adjustment (in stops)
-- [ ] 3×3 colour matrix (e.g. camera → sRGB, or creative grades)
-- [ ] Tone curves (gamma, filmic)
+- [x] Exposure adjustment (in stops)
+- [x] 3×3 colour matrix (e.g. camera → sRGB, or creative grades)
+- [x] Tone curves (gamma, filmic)
 - [ ] Histogram output
 - [ ] RAW support (via LibRaw)
 - [ ] Multithreaded / SIMD processing
@@ -20,8 +20,17 @@ Prism loads an image, runs it through a simple colour pipeline (exposure, a 3×3
 ## Usage
 
 ```sh
-prism input.jpg -o output.png --exposure +0.5 --matrix grade.txt --curve gamma:2.2
+prism input.jpg -o output.png --exposure +0.5 --matrix samples/grade.txt --curve filmic
 ```
+
+| Option | Effect |
+|--------|--------|
+| `-o <file>` | Output file; `.png`, `.jpg` or `.jpeg` picks the format |
+| `--exposure <stops>` | Multiply linear values by 2^stops (`+1` doubles, `-1` halves) |
+| `--matrix <file>` | 3×3 colour matrix: 9 numbers, row-major, `#` starts a comment (see `samples/grade.txt`) |
+| `--curve <spec>` | `gamma:<value>` (>1 brightens midtones), `reinhard[:<white>]` (default white 4), or `filmic` (Hable) |
+
+Options are always applied in pipeline order, whatever order you type them.
 
 ## Pipeline
 
