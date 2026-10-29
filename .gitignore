@@ -35,3 +35,6 @@ _deps/
 *.out.png
 *.out.jpg
 output/
+
+# Extra build directories (build-release/, build-asan/, ...)
+/build*/
