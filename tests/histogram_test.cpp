@@ -6,6 +6,7 @@
 #include <initializer_list>
 #include <numeric>
 #include <stdexcept>
+#include <vector>
 
 #include "prism/color.hpp"
 #include "prism/histogram.hpp"
@@ -102,6 +103,34 @@ TEST(Histogram, EmptyImageGivesZeroPercent) {
     const prism::Histogram h = prism::compute_histogram(prism::Image{});
     EXPECT_EQ(h.pixel_count, 0u);
     EXPECT_DOUBLE_EQ(prism::bin_percent(h, h.red, 0), 0.0);
+}
+
+TEST(Histogram, FromEncodedBytesMatchesFromImage) {
+    // A 1200x1000 image is over the multithreading threshold; the values cover the full range
+    // and beyond, so every bin and the clamping paths are exercised.
+    prism::Image img;
+    img.width = 1200;
+    img.height = 1000;
+    std::uint32_t state = 7;
+    for (std::size_t i = 0; i < std::size_t{1200} * 1000 * 3; ++i) {
+        state = state * 1664525u + 1013904223u;
+        img.pixels.push_back(static_cast<float>(state >> 8) / 16777216.0f * 1.4f - 0.2f);
+    }
+    const std::vector<std::uint8_t> bytes = prism::encode_srgb8(img);
+    for (int threads : {1, 4}) {
+        const prism::Histogram a = prism::compute_histogram(img, threads);
+        const prism::Histogram b = prism::compute_histogram(bytes, img.width, img.height, threads);
+        EXPECT_EQ(a.red, b.red) << threads;
+        EXPECT_EQ(a.green, b.green) << threads;
+        EXPECT_EQ(a.blue, b.blue) << threads;
+        EXPECT_EQ(a.luma, b.luma) << threads;
+        EXPECT_EQ(a.pixel_count, b.pixel_count) << threads;
+    }
+}
+
+TEST(Histogram, FromBytesRejectsWrongSize) {
+    const std::vector<std::uint8_t> bytes(10);
+    EXPECT_THROW((void)prism::compute_histogram(bytes, 2, 2), std::invalid_argument);
 }
 
 TEST(RenderHistogram, HasRequestedSize) {

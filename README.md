@@ -77,10 +77,18 @@ It is not part of `ctest`. Results on an Apple M2 Pro (8 performance + 4 efficie
 | exposure | 15 | 8 | 1.8× |
 | matrix | 71 | 11 | 6.7× |
 | tone curve (filmic) | 305 | 42 | 7.3× |
-| sRGB encode | 925 | 119 | 7.8× |
-| histogram | 1075 | 137 | 7.9× |
+| sRGB encode | 159 | 23 | 7.0× |
+| histogram | 236 | 31 | 7.7× |
+
+Before the lookup-table encoder (below), sRGB encode took 913 ms / 122 ms and the histogram 1069 ms / 134 ms (1 / 12 threads), so single-threaded they are now 5.7× and 4.5× faster.
 
 Exposure barely speeds up because one multiply per value is so little work that it is limited by memory bandwidth, not by the CPU (it already moves ~100 GB/s on one core).
+
+### Fast sRGB encode
+
+`linear_to_srgb8` used to call `pow()` for every channel of every pixel. The 8-bit output only changes at 255 points, so it now looks the answer up instead: a table of the 255 linear values where the output steps up, plus a small table indexed by the top bits of the float that lands within one comparison of the right answer. The thresholds are found by bisecting the original `pow` version (`linear_to_srgb8_reference`), so the result is bit-identical to it, not just close. A plain 8-step binary search over the thresholds is also exact but only ~1.4× faster than `pow`, because its loads depend on each other.
+
+`prism_bench --exhaustive` compares the fast version with the reference for all 2³² float bit patterns (including NaNs and infinities) and takes about 2 s on 12 threads. With both `-o` and `--histogram`, the image is encoded once and the same bytes are saved and counted.
 
 ### Checking for data races
 

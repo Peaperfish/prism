@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <sstream>
 #include <string>
 
@@ -112,6 +113,40 @@ TEST(Cli, HistogramWithoutOutputReflectsProcessing) {
     fs::remove(input);
     fs::remove(hist);
     fs::remove(zero_matrix);
+}
+
+TEST(Cli, OutputAndHistogramTogetherMatchRunningThemSeparately) {
+    // With both options the image is encoded once and the bytes serve both; that must not change
+    // either result.
+    const fs::path input = write_grey_input();
+    const fs::path dir = fs::path(testing::TempDir());
+    const fs::path both_out = dir / "prism_cli_both.png";
+    const fs::path both_hist = dir / "prism_cli_both_hist.png";
+    const fs::path only_out = dir / "prism_cli_only.png";
+    const fs::path only_hist = dir / "prism_cli_only_hist.png";
+    const std::string pipeline = " --exposure +2.5 --curve filmic";
+
+    const RunResult both = run_prism(quoted(input) + pipeline + " -o " + quoted(both_out) +
+                                     " --histogram " + quoted(both_hist));
+    const RunResult out = run_prism(quoted(input) + pipeline + " -o " + quoted(only_out));
+    const RunResult hist = run_prism(quoted(input) + pipeline + " --histogram " + quoted(only_hist));
+    ASSERT_EQ(both.exit_code, 0) << both.output;
+
+    const auto bytes_of = [](const fs::path& p) {
+        std::ifstream f(p, std::ios::binary);
+        return std::string(std::istreambuf_iterator<char>(f), {});
+    };
+    EXPECT_EQ(bytes_of(both_out), bytes_of(only_out));
+    EXPECT_EQ(bytes_of(both_hist), bytes_of(only_hist));
+    const auto clipping_line = [](const std::string& text) {
+        const std::size_t at = text.find("clipped");
+        return text.substr(at, text.find('\n', at) - at);
+    };
+    EXPECT_EQ(clipping_line(both.output), clipping_line(hist.output));
+
+    for (const fs::path& p : {input, both_out, both_hist, only_out, only_hist}) {
+        fs::remove(p);
+    }
 }
 
 TEST(Cli, BadThreadCountIsUsageError) {

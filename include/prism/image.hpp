@@ -35,6 +35,12 @@ struct Image {
 // Decoding the file itself (stb_image) is single-threaded; only the sRGB conversion uses `threads`.
 [[nodiscard]] Image load_image(const std::filesystem::path& path, int threads = 0);
 
+// Writes already-encoded 8-bit sRGB bytes (e.g. from encode_srgb8) as PNG or JPEG, chosen by the
+// file extension. Lets a caller that also needs the bytes for something else (like a histogram)
+// encode only once. Throws std::runtime_error on failure, as save_image does.
+void save_srgb8(const std::filesystem::path& path, std::span<const std::uint8_t> bytes, int width,
+                int height);
+
 // Converts linear to 8-bit sRGB (clamped, rounded) and writes PNG or JPEG, chosen by the
 // file extension (.png, .jpg, .jpeg; case-insensitive). Throws std::runtime_error on failure.
 // As with loading, only the sRGB conversion uses `threads`; PNG/JPEG compression stays

@@ -2,10 +2,17 @@
 // measure our own code, not PNG/JPEG compression or the disk).
 //
 // Usage: prism_bench [--size <width>x<height>] [--runs <n>] [--threads <n>]
+//        prism_bench --exhaustive [--threads <n>]
 // Defaults: 9504x6336 (a 61 MP Sony a7R V frame), 5 runs per stage, one thread per hardware
 // thread. Every stage is timed single-threaded and with --threads threads; medians are reported.
+//
+// --exhaustive instead checks the fast linear_to_srgb8 against linear_to_srgb8_reference for every
+// one of the 2^32 float bit patterns (NaNs, infinities, negatives and all), then exits.
 
 #include <algorithm>
+#include <atomic>
+#include <array>
+#include <bit>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -17,6 +24,7 @@
 #include <string_view>
 #include <vector>
 
+#include "prism/color.hpp"
 #include "prism/histogram.hpp"
 #include "prism/image.hpp"
 #include "prism/parallel.hpp"
@@ -31,11 +39,13 @@ struct Settings {
     int height = 6336;
     int runs = 5;
     int threads = prism::hardware_threads();
+    bool exhaustive = false;
 };
 
 [[noreturn]] void usage_error(const std::string& message) {
     std::cerr << "error: " << message << "\n"
-              << "usage: prism_bench [--size <width>x<height>] [--runs <n>] [--threads <n>]\n";
+              << "usage: prism_bench [--size <width>x<height>] [--runs <n>] [--threads <n>]\n"
+              << "       prism_bench --exhaustive [--threads <n>]\n";
     std::exit(2);
 }
 
@@ -52,6 +62,10 @@ Settings parse_args(int argc, char* argv[]) {
     Settings s;
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg = argv[i];
+        if (arg == "--exhaustive") {
+            s.exhaustive = true;
+            continue;
+        }
         if (i + 1 >= argc) {
             usage_error(std::string(arg) + " needs a value");
         }
@@ -124,10 +138,59 @@ void bench_stage(const Settings& s, std::string_view name, double bytes_touched,
               << std::setw(10) << gb_per_s(many) << '\n';
 }
 
+// Compares linear_to_srgb8 (single value and batch forms) with the pow-based reference for every
+// float bit pattern. Returns true if there is no difference at all.
+bool check_encode_exhaustively(int threads) {
+    constexpr std::uint64_t total = std::uint64_t{1} << 32;
+    constexpr int chunks = 1024;
+    constexpr std::uint64_t per_chunk = total / chunks;
+    constexpr std::size_t block = 4096;
+    std::vector<std::uint64_t> mismatches(chunks, 0);
+    std::vector<std::uint32_t> first_bad(chunks, 0);
+
+    const auto start = Clock::now();
+    std::atomic<int> next{0};
+    prism::parallel_for(threads, [&](int) {
+        std::array<float, block> in;
+        std::array<std::uint8_t, block> out;
+        for (int c = next++; c < chunks; c = next++) {
+            for (std::uint64_t base = c * per_chunk; base < (c + 1) * per_chunk; base += block) {
+                for (std::size_t i = 0; i < block; ++i) {
+                    in[i] = std::bit_cast<float>(static_cast<std::uint32_t>(base + i));
+                }
+                prism::linear_to_srgb8(in.data(), out.data(), block);
+                for (std::size_t i = 0; i < block; ++i) {
+                    const std::uint8_t expected = prism::linear_to_srgb8_reference(in[i]);
+                    if (out[i] != expected || prism::linear_to_srgb8(in[i]) != expected) {
+                        if (mismatches[c]++ == 0) {
+                            first_bad[c] = static_cast<std::uint32_t>(base + i);
+                        }
+                    }
+                }
+            }
+        }
+    });
+    const double seconds = std::chrono::duration<double>(Clock::now() - start).count();
+
+    std::uint64_t bad = 0;
+    for (int c = 0; c < chunks; ++c) {
+        bad += mismatches[c];
+        if (mismatches[c] != 0) {
+            std::cout << "  mismatch at bits 0x" << std::hex << first_bad[c] << std::dec << '\n';
+        }
+    }
+    std::cout << "linear_to_srgb8 vs reference: " << total << " floats checked in " << std::fixed
+              << std::setprecision(1) << seconds << " s, " << bad << " mismatches\n";
+    return bad == 0;
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
     const Settings s = parse_args(argc, argv);
+    if (s.exhaustive) {
+        return check_encode_exhaustively(s.threads) ? 0 : 1;
+    }
     const std::size_t samples = static_cast<std::size_t>(s.width) * s.height * 3;
     const double f32 = static_cast<double>(samples) * sizeof(float);  // one float image, in bytes
     const double u8 = static_cast<double>(samples);                    // one 8-bit image, in bytes

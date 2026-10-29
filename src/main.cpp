@@ -1,6 +1,7 @@
 #include <cerrno>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <exception>
 #include <iomanip>
@@ -223,8 +224,18 @@ int main(int argc, char* argv[]) {
         if (curve) {
             timer.run("curve", [&] { prism::tone_curve(img, *curve, threads); });
         }
+        // With both -o and --histogram the image is converted to 8-bit sRGB once: the saved bytes
+        // are also what the histogram counts. (Without -o the histogram encodes block by block.)
+        std::vector<std::uint8_t> bytes;
         if (opts.output) {
-            timer.run("save", [&] { prism::save_image(*opts.output, img, threads); });
+            timer.run("save", [&] {
+                if (opts.histogram_path) {
+                    bytes = prism::encode_srgb8(img, threads);
+                    prism::save_srgb8(*opts.output, bytes, img.width, img.height);
+                } else {
+                    prism::save_image(*opts.output, img, threads);
+                }
+            });
             std::cout << "wrote " << *opts.output << " (" << img.width << "x" << img.height
                       << ")\n";
         }
@@ -234,7 +245,8 @@ int main(int argc, char* argv[]) {
             // whether or not -o was given.
             prism::Histogram hist;
             timer.run("histogram", [&] {
-                hist = prism::compute_histogram(img, threads);
+                hist = bytes.empty() ? prism::compute_histogram(img, threads)
+                                     : prism::compute_histogram(bytes, img.width, img.height, threads);
                 prism::save_image(*opts.histogram_path, prism::render_histogram(hist), threads);
             });
             std::cout << "wrote " << *opts.histogram_path << " (histogram)\n";

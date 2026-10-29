@@ -1,6 +1,7 @@
 #include "prism/histogram.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <stdexcept>
 #include <vector>
@@ -28,18 +29,30 @@ int bar_height(std::uint64_t count, std::uint64_t max_count, int height) {
     return static_cast<int>(std::min(scaled + 0.5, static_cast<double>(height)));
 }
 
-// Adds the pixels in sample range [first, last) to h.
-void count_pixels(const Image& img, std::size_t first, std::size_t last, Histogram& h) {
+// Adds the pixels in byte range [first, last) of `bytes` (interleaved R, G, B) to h.
+void count_bytes(const std::uint8_t* bytes, std::size_t first, std::size_t last, Histogram& h) {
     for (std::size_t i = first; i < last; i += Image::channels) {
-        // The same conversion save_image uses, so we count exactly the bytes in the output file.
-        const int r = linear_to_srgb8(img.pixels[i]);
-        const int g = linear_to_srgb8(img.pixels[i + 1]);
-        const int b = linear_to_srgb8(img.pixels[i + 2]);
+        const int r = bytes[i];
+        const int g = bytes[i + 1];
+        const int b = bytes[i + 2];
         ++h.red[r];
         ++h.green[g];
         ++h.blue[b];
         ++h.luma[luma709(r, g, b)];
         ++h.pixel_count;
+    }
+}
+
+// Adds the pixels in sample range [first, last) of img to h. Encodes a small block at a time into
+// a stack buffer and counts that, so the histogram sees the same bytes save_image writes without
+// ever allocating a whole encoded copy of the image.
+void count_pixels(const Image& img, std::size_t first, std::size_t last, Histogram& h) {
+    constexpr std::size_t block = 3 * 1024;  // samples; a multiple of 3 so blocks start on pixels
+    std::array<std::uint8_t, block> bytes;
+    for (std::size_t i = first; i < last; i += block) {
+        const std::size_t n = std::min(block, last - i);
+        linear_to_srgb8(img.pixels.data() + i, bytes.data(), n);
+        count_bytes(bytes.data(), 0, n, h);
     }
 }
 
@@ -51,10 +64,14 @@ void add_counts(Histogram::Counts& into, const Histogram::Counts& from) {
 
 }  // namespace
 
-Histogram compute_histogram(const Image& img, int threads) {
-    detail::require_consistent(img, "compute_histogram");
-    const int n = threads_for_pixels(static_cast<std::size_t>(img.width) * img.height, threads);
-    const int chunks = std::clamp(n, 1, std::max(img.height, 1));
+namespace {
+
+// Splits the image into row chunks, lets `count(first, last, local)` fill a private Histogram for
+// each chunk's sample range, and adds them up.
+template <typename CountFn>
+Histogram compute(int width, int height, int threads, CountFn count) {
+    const int n = threads_for_pixels(static_cast<std::size_t>(width) * height, threads);
+    const int chunks = std::clamp(n, 1, std::max(height, 1));
 
     // Unlike the other stages, every thread here would want to write the *same* 1024 counters.
     // Sharing one Histogram would be a data race: ++h.red[r] is read, add, write, so two threads
@@ -62,13 +79,13 @@ Histogram compute_histogram(const Image& img, int threads) {
     // that but is slow, since every increment then fights over the same cache lines.
     // Instead each thread fills its own private Histogram and we add them up at the end.
     std::vector<Histogram> partial(static_cast<std::size_t>(chunks));
-    const std::size_t row_samples = detail::sample_count(img.width, 1);
+    const std::size_t row_samples = detail::sample_count(width, 1);
     parallel_for(chunks, [&](int chunk) {
-        const RowRange rows = chunk_rows(img.height, chunks, chunk);
+        const RowRange rows = chunk_rows(height, chunks, chunk);
         // Count into a local first, kept on this thread's own stack (and so in its own core's
         // cache), and copy it out once at the end.
         Histogram local;
-        count_pixels(img, rows.begin * row_samples, rows.end * row_samples, local);
+        count(rows.begin * row_samples, rows.end * row_samples, local);
         partial[static_cast<std::size_t>(chunk)] = local;
     });
 
@@ -83,6 +100,28 @@ Histogram compute_histogram(const Image& img, int threads) {
         h.pixel_count += p.pixel_count;
     }
     return h;
+}
+
+}  // namespace
+
+Histogram compute_histogram(const Image& img, int threads) {
+    detail::require_consistent(img, "compute_histogram");
+    return compute(img.width, img.height, threads,
+                   [&](std::size_t first, std::size_t last, Histogram& local) {
+                       count_pixels(img, first, last, local);
+                   });
+}
+
+Histogram compute_histogram(std::span<const std::uint8_t> srgb8, int width, int height,
+                            int threads) {
+    if (width < 0 || height < 0 || srgb8.size() != detail::sample_count(width, height)) {
+        throw std::invalid_argument(
+            "compute_histogram: byte count does not match width * height * 3");
+    }
+    return compute(width, height, threads,
+                   [&](std::size_t first, std::size_t last, Histogram& local) {
+                       count_bytes(srgb8.data(), first, last, local);
+                   });
 }
 
 double bin_percent(const Histogram& h, const Histogram::Counts& counts, int bin) {

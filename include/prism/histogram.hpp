@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <span>
 
 #include "prism/image.hpp"
 
@@ -24,6 +25,12 @@ struct Histogram {
 // `threads`: 0 (the default) = one per hardware thread, 1 = single-threaded; see parallel.hpp.
 // Throws std::invalid_argument if img.pixels.size() does not match width * height * 3.
 [[nodiscard]] Histogram compute_histogram(const Image& img, int threads = 0);
+
+// The same histogram from bytes you already have, e.g. from encode_srgb8, so an image that is
+// also being saved is encoded once. Gives exactly the result of compute_histogram on the Image
+// the bytes came from. Throws std::invalid_argument if bytes.size() != width * height * 3.
+[[nodiscard]] Histogram compute_histogram(std::span<const std::uint8_t> srgb8, int width,
+                                          int height, int threads = 0);
 
 // Percentage (0-100) of pixels that fall in `bin` of `counts`, which should be one of h's
 // members. For example bin_percent(h, h.red, 255) is the share of pixels with red clipped.
