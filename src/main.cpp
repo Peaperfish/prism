@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <exception>
+#include <iomanip>
 #include <iostream>
 #include <optional>
 #include <stdexcept>
@@ -9,6 +10,7 @@
 #include <string_view>
 #include <utility>
 
+#include "prism/histogram.hpp"
 #include "prism/image.hpp"
 #include "prism/pipeline.hpp"
 #include "prism/version.hpp"
@@ -29,7 +31,9 @@ void print_usage(const char* program) {
     for (std::string_view spec : prism::curve_specs()) {
         std::cerr << ' ' << spec;
     }
-    std::cerr << "\n  -h, --help          show this help\n";
+    std::cerr << "\n  --histogram <file>  also save a histogram image of the result and print\n"
+              << "                      the percentage of clipped pixels per channel\n"
+              << "  -h, --help          show this help\n";
 }
 
 // Raised for bad command-line input, so main() can also print the usage text.
@@ -43,6 +47,7 @@ struct Options {
     std::optional<float> exposure_stops;
     std::optional<std::string> matrix_path;
     std::optional<std::string> curve_spec;
+    std::optional<std::string> histogram_path;
 };
 
 float parse_stops(const std::string& text) {
@@ -91,6 +96,8 @@ Options parse_args(int argc, char* argv[]) {
             set_once(opts.matrix_path, arg, next_value());
         } else if (arg == "--curve") {
             set_once(opts.curve_spec, arg, next_value());
+        } else if (arg == "--histogram") {
+            set_once(opts.histogram_path, arg, next_value());
         } else if (arg.starts_with('-') || !opts.input.empty()) {
             throw UsageError("unexpected argument '" + std::string(arg) + "'");
         } else {
@@ -105,6 +112,21 @@ Options parse_args(int argc, char* argv[]) {
     }
     opts.output = *output;
     return opts;
+}
+
+// Prints e.g. "clipped (0 / 255):  R 0.00% / 1.25%  G 0.00% / 0.80%  B 0.10% / 0.00%".
+void print_clipping(const prism::Histogram& h) {
+    const struct {
+        char name;
+        const prism::Histogram::Counts& counts;
+    } channels[] = {{'R', h.red}, {'G', h.green}, {'B', h.blue}};
+
+    std::cout << "clipped (0 / 255):" << std::fixed << std::setprecision(2);
+    for (const auto& c : channels) {
+        std::cout << "  " << c.name << ' ' << prism::bin_percent(h, c.counts, 0) << "% / "
+                  << prism::bin_percent(h, c.counts, 255) << '%';
+    }
+    std::cout << '\n';
 }
 
 }  // namespace
@@ -140,6 +162,14 @@ int main(int argc, char* argv[]) {
         prism::save_image(opts.output, img);
 
         std::cout << "wrote " << opts.output << " (" << img.width << "x" << img.height << ")\n";
+
+        if (opts.histogram_path) {
+            // Measured after the whole pipeline, on the same 8-bit values save_image wrote.
+            const prism::Histogram hist = prism::compute_histogram(img);
+            prism::save_image(*opts.histogram_path, prism::render_histogram(hist));
+            std::cout << "wrote " << *opts.histogram_path << " (histogram)\n";
+            print_clipping(hist);
+        }
     } catch (const UsageError& e) {
         std::cerr << "error: " << e.what() << "\n\n";
         print_usage(program);
