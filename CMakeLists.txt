@@ -10,6 +10,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(PRISM_BUILD_TESTS "Build the Prism unit tests" ON)
 option(PRISM_SANITIZE_THREAD "Build everything with ThreadSanitizer to detect data races" OFF)
+option(PRISM_SANITIZE_ADDRESS
+       "Build everything with AddressSanitizer and UndefinedBehaviorSanitizer to detect memory errors and undefined behaviour"
+       OFF)
 
 # LibRaw (camera RAW decoding) is optional. pkg-config finds a system install, e.g. from
 # `brew install libraw`; we use libraw_r, the thread-safe build. The option defaults to ON
@@ -53,6 +56,22 @@ if(PRISM_SANITIZE_THREAD)
   # -O1 keeps it reasonably fast; -g and frame pointers give readable stack traces in reports.
   add_compile_options(-fsanitize=thread -g -O1 -fno-omit-frame-pointer)
   add_link_options(-fsanitize=thread)
+endif()
+
+# AddressSanitizer reports out-of-bounds reads and writes, use-after-free and leaks;
+# UndefinedBehaviorSanitizer reports signed overflow, bad shifts, misaligned loads and the like.
+# Like TSan, they are set globally so GoogleTest is instrumented too. TSan and ASan both reserve
+# the same shadow memory, so they can't be combined: use one build directory per sanitizer.
+# UBSan only prints a report by default; run with UBSAN_OPTIONS=halt_on_error=1 to fail the test.
+if(PRISM_SANITIZE_ADDRESS)
+  if(MSVC)
+    message(FATAL_ERROR "PRISM_SANITIZE_ADDRESS needs GCC or Clang")
+  endif()
+  if(PRISM_SANITIZE_THREAD)
+    message(FATAL_ERROR "PRISM_SANITIZE_ADDRESS and PRISM_SANITIZE_THREAD can't be combined")
+  endif()
+  add_compile_options(-fsanitize=address,undefined -g -O1 -fno-omit-frame-pointer)
+  add_link_options(-fsanitize=address,undefined)
 endif()
 
 # Warnings live on an INTERFACE target instead of global CMAKE_CXX_FLAGS so they apply

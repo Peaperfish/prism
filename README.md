@@ -287,6 +287,18 @@ ctest --test-dir build-tsan
 
 A race makes the test fail with a `WARNING: ThreadSanitizer: data race` report showing both threads' stack traces.
 
+### Checking for memory errors and undefined behaviour
+
+AddressSanitizer (ASan) reports reads and writes outside a buffer, use after free and memory leaks. UndefinedBehaviorSanitizer (UBSan) reports undefined behaviour such as signed integer overflow, out-of-range shifts and misaligned loads. They are built together, in their own build directory (they can't be combined with ThreadSanitizer):
+
+```sh
+cmake -S . -B build-asan -DPRISM_SANITIZE_ADDRESS=ON -DCMAKE_BUILD_TYPE=Debug
+cmake --build build-asan
+UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 ctest --test-dir build-asan
+```
+
+ASan stops at the first error it finds. UBSan only prints a `runtime error:` line and carries on, unless `UBSAN_OPTIONS=halt_on_error=1` makes it fail the test.
+
 ## Building
 
 Requires CMake 3.20+ and a C++20 compiler (GCC 11+, Clang 14+ or MSVC 2022).
@@ -320,6 +332,7 @@ CMake then turns it on automatically (`-- RAW support: LibRaw 0.22.3` when confi
 | Linux Clang | Clang (ubuntu-latest) | Release | off |
 | macOS (Apple Clang) | Apple Clang (macos-latest) | Release | off |
 | Linux Clang ThreadSanitizer | Clang (ubuntu-latest) | Debug, `PRISM_SANITIZE_THREAD=ON` | off |
+| Linux Clang ASan + UBSan | Clang (ubuntu-latest) | Debug, `PRISM_SANITIZE_ADDRESS=ON` | off |
 
 There is no RAW file in CI, so the RAW integration tests report as skipped. GoogleTest's download is cached between runs.
 

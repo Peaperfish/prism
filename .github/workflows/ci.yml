@@ -50,10 +50,21 @@ jobs:
             build_type: Debug
             libraw: 'OFF'
             tsan: 'ON'
+          # AddressSanitizer + UndefinedBehaviorSanitizer: out-of-bounds access, use-after-free,
+          # leaks and undefined behaviour (see README).
+          - name: Linux Clang ASan + UBSan
+            os: ubuntu-latest
+            cc: clang
+            cxx: clang++
+            build_type: Debug
+            libraw: 'OFF'
+            asan: 'ON'
 
     env:
       CC: ${{ matrix.cc }}
       CXX: ${{ matrix.cxx }}
+      # UBSan only prints a report by default; make it fail the test, with a stack trace.
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
 
     steps:
       - uses: actions/checkout@v4
@@ -82,6 +93,7 @@ jobs:
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
           -DPRISM_WITH_LIBRAW=${{ matrix.libraw }}
           -DPRISM_SANITIZE_THREAD=${{ matrix.tsan || 'OFF' }}
+          -DPRISM_SANITIZE_ADDRESS=${{ matrix.asan || 'OFF' }}
           -DFETCHCONTENT_BASE_DIR=${{ github.workspace }}/.deps
 
       - name: Build
