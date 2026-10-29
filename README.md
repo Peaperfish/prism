@@ -351,4 +351,17 @@ prism/
 
 ## Licence
 
-Source-available for **non-commercial use only**. See [LICENSE](LICENSE).
+Prism is licensed under the PolyForm Noncommercial License 1.0.0 (SPDX identifier `PolyForm-Noncommercial-1.0.0`); the full text is in [LICENSE](LICENSE).
+
+In short: you may use, copy, change and share Prism for any noncommercial purpose, as long as anyone you give it to also gets the licence terms and the `Required Notice:` line, but commercial use is not allowed.
+
+This is a source-available licence, not an open-source one: because it restricts commercial use, it is not approved by the Open Source Initiative (OSI).
+
+### Third-party software
+
+| Name | Licence | How Prism uses it |
+|------|---------|-------------------|
+| [stb](https://github.com/nothings/stb) (`stb_image.h` v2.30, `stb_image_write.h` v1.16) | MIT or public domain (Unlicense), at your choice | Vendored, unmodified, in `third_party/stb/` and compiled into `prism_core` to read and write PNG and JPEG |
+| [GoogleTest](https://github.com/google/googletest) v1.17.0 | BSD 3-Clause | Tests only: downloaded at configure time by CMake `FetchContent` and linked into `prism_tests`. Not in the repo and not linked into `prism` or `prism_profile` |
+| [LibRaw](https://www.libraw.org) | LGPL 2.1 or CDDL 1.0, at your choice | Optional (`PRISM_WITH_LIBRAW`): found on the system with pkg-config (`libraw_r`) and linked into `prism_core`. Not bundled |
+| [Little CMS 2](https://www.littlecms.com) | MIT | Not used by Prism's code: LibRaw's pkg-config file requires it, so builds with LibRaw also link it. Not bundled |
