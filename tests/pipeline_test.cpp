@@ -7,11 +7,13 @@
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "prism/color.hpp"
 #include "prism/image.hpp"
 #include "prism/pipeline.hpp"
 
@@ -419,6 +421,93 @@ TEST(Contrast, ActsOnEachChannel) {
     EXPECT_NEAR(img.pixels[0], contrast_of(0.05f, 1.5f), 1e-7f);
     EXPECT_NEAR(img.pixels[1], 0.18f, 1e-7f);
     EXPECT_NEAR(img.pixels[2], contrast_of(0.6f, 1.5f), 1e-7f);
+}
+
+namespace {
+
+// A linear value as the sRGB value it ends up as in the file (0 to 1, before rounding to 8 bits),
+// with or without the filmic curve first.
+float encoded(float linear, bool filmic) {
+    static const prism::ToneCurve filmic_curve = prism::parse_curve("filmic");
+    const float v = filmic ? filmic_curve.map(linear) : linear;
+    return prism::linear_to_srgb(std::clamp(v, 0.0f, 1.0f));
+}
+
+// Every 997th float bit pattern from 0 to 256 (prime, so the mantissas sampled vary from one
+// power of two to the next): about 1.1 million values over every exponent, denormals included.
+// Above 256 every curve tested here gives 255. Plus a few negatives.
+std::vector<float> accuracy_inputs() {
+    std::vector<float> values = {-1.0f, -1e-3f, -0.0f, 0.0f, 0.18f};
+    for (std::uint32_t bits = 0; bits <= std::bit_cast<std::uint32_t>(256.0f); bits += 997) {
+        values.push_back(std::bit_cast<float>(bits));
+    }
+    return values;
+}
+
+}  // namespace
+
+TEST(Contrast, StaysWithinOneLevelOfTheExactCurve) {
+    // contrast() interpolates in a table instead of calling log2 and exp2. The rule for that:
+    // after the filmic curve and sRGB encode (and, for --contrast without --curve, after sRGB
+    // encode alone) the result must stay within 1/255 of contrast_reference's.
+    prism::Image img;
+    img.pixels = accuracy_inputs();
+    img.pixels.resize(img.pixels.size() / 3 * 3);
+    img.width = static_cast<int>(img.pixels.size() / 3);
+    img.height = 1;
+    for (float c : {0.1f, 0.5f, 0.9f, 1.15f, 1.5f, 3.0f, 10.0f}) {
+        prism::Image out = img;
+        prism::contrast(out, c);
+        for (const bool filmic : {true, false}) {
+            float worst = 0.0f;
+            float worst_at = 0.0f;
+            for (std::size_t i = 0; i < img.pixels.size(); ++i) {
+                const float exact = prism::contrast_reference(img.pixels[i], c);
+                const float levels =
+                    255.0f * std::abs(encoded(out.pixels[i], filmic) - encoded(exact, filmic));
+                if (levels > worst) {
+                    worst = levels;
+                    worst_at = img.pixels[i];
+                }
+            }
+            EXPECT_LE(worst, 1.0f) << "c " << c << (filmic ? " with filmic" : " without a curve")
+                                   << ": " << worst << " levels off at input " << worst_at;
+        }
+    }
+}
+
+TEST(Contrast, PivotStaysExactly) {
+    // The table is laid out so that 0.18 sits exactly on one of its points, where the gain is 1.
+    for (float c : {0.1f, 0.8f, 1.15f, 2.0f, 5.0f, 10.0f}) {
+        EXPECT_EQ(contrast_of(prism::contrast_pivot, c), prism::contrast_pivot) << "c " << c;
+    }
+}
+
+TEST(Contrast, HandlesEveryKindOfFloat) {
+    constexpr float inf = std::numeric_limits<float>::infinity();
+    const float zero_slope = std::exp2(-(1.5f - 1.0f) * prism::contrast_range_stops);
+    EXPECT_EQ(contrast_of(inf, 1.5f), inf);
+    EXPECT_EQ(contrast_of(-inf, 1.5f), -inf);
+    EXPECT_TRUE(std::isnan(contrast_of(std::nanf(""), 1.5f)));
+    EXPECT_TRUE(std::isnan(contrast_of(-std::nanf(""), 1.5f)));
+    EXPECT_EQ(contrast_of(-2.0f, 1.5f), -2.0f * zero_slope);  // exactly the slope at 0
+    EXPECT_EQ(contrast_of(-std::numeric_limits<float>::denorm_min(), 1.5f),
+              -std::numeric_limits<float>::denorm_min() * zero_slope);
+    // The tiniest denormals, which wrap around to the end of the table, stay tiny and in order.
+    prism::Image tiny;
+    for (std::uint32_t bits = 0; bits < 0x10000 * 3; ++bits) {
+        tiny.pixels.push_back(std::bit_cast<float>(bits));
+    }
+    tiny.width = 0x10000;
+    tiny.height = 1;
+    prism::contrast(tiny, 1.5f);
+    for (std::uint32_t bits = 1; bits < tiny.pixels.size(); ++bits) {
+        ASSERT_GE(tiny.pixels[bits], tiny.pixels[bits - 1]) << "bits " << bits;
+        ASSERT_LE(tiny.pixels[bits], std::bit_cast<float>(bits)) << "bits " << bits;
+    }
+    // The largest finite float is still interpolated, not overflowed.
+    constexpr float max = std::numeric_limits<float>::max();
+    EXPECT_NEAR(contrast_of(max, 0.5f) / prism::contrast_reference(max, 0.5f), 1.0f, 1e-4f);
 }
 
 TEST(ToneCurve, ImageMatchesMapBitForBit) {

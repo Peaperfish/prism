@@ -1,9 +1,11 @@
 #include "prism/pipeline.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cerrno>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <fstream>
 #include <optional>
@@ -145,31 +147,110 @@ void saturation(Image& img, float s, int threads) {
         });
 }
 
+namespace {
+
+// The factor contrast multiplies x > 0 by: x' = 0.18 * 2^(e + strength * sigmoid(u)) =
+// x * 2^(strength * sigmoid(u)). A separate function so the table can store it directly:
+// computing it as x' / x would overflow to infinity / infinity for the largest floats.
+float contrast_gain(float x, float strength) noexcept {
+    // log2(x) - log2(0.18) rather than log2(x / 0.18), which overflows for x above ~6e37.
+    const float u = (std::log2(x) - std::log2(contrast_pivot)) / contrast_range_stops;
+    // The sigmoid u / sqrt(1 + u^2) costs a sqrt, where std::tanh costs about as much as log2
+    // and exp2 together.
+    return std::exp2(strength * u / std::sqrt(1.0f + u * u));
+}
+
+}  // namespace
+
+float contrast_reference(float x, float c) noexcept {
+    const float strength = (c - 1.0f) * contrast_range_stops;
+    // The curve's slope at 0, used for x <= 0, where log2 is undefined: as x -> 0, e -> -infinity
+    // and the sigmoid -> -1, so x' -> x * 2^(-strength).
+    if (!(x > 0.0f)) {
+        return x * std::exp2(-strength);
+    }
+    return x * contrast_gain(x, strength);
+}
+
+namespace {
+
+// contrast() as a lookup table: the gain g(x) = x' / x at evenly spaced float bit patterns, with
+// linear interpolation in between. Calling std::log2 and std::exp2 for every value costs ~5 ns,
+// a table lookup ~1.2 ns. (Inline polynomial log2 / exp2, which the compiler can vectorise, were
+// tried too: ~1.4 ns, since they still need a division and a square root per value.)
+//
+// The index is the float's bit pattern shifted right by 15: its 8 exponent bits and top 8
+// mantissa bits. Positive floats sort the same as their bits, and within one power of two the
+// bits grow linearly with the value, so a point every 2^15 bit patterns is 256 points per stop,
+// spaced at most 0.4% apart, over the whole float range. The low 15 bits say how far x is
+// between two points. Between those points the gain is smooth (it changes with x in stops), so
+// straight-line interpolation is very close. pipeline_test.cpp checks the result, after the
+// filmic curve and sRGB encode, against contrast_reference: the worst case is ~0.1 of an 8-bit
+// level, at c = 10.
+//
+// The points are shifted by the low 15 bits of 0.18f, so that 0.18 lands exactly on a point,
+// where the gain is exactly 1: middle grey stays exactly where it is, as documented.
+//
+// The index keeps the sign bit, so the table covers all 2^32 bit patterns: every input gives a
+// valid index, and one formula, x * gain, is right for all of them. The negative half holds the
+// curve's slope at 0, which is what contrast_reference does for x <= 0. Only the parts of the
+// table that real pixel values touch are ever loaded into the cache.
+class ContrastTable {
+public:
+    explicit ContrastTable(float c) {
+        const float strength = (c - 1.0f) * contrast_range_stops;
+        const float zero_slope = std::exp2(-strength);
+        for (std::uint32_t k = 0; k < half; ++k) {
+            // Points past the largest float are only used by NaN, which stays NaN times any gain.
+            const std::uint32_t bits = offset + (k << shift);
+            gain_[k] = contrast_gain(std::bit_cast<float>(std::min(bits, max_float_bits)), strength);
+        }
+        std::fill(gain_.begin() + half, gain_.end(), zero_slope);
+        // Subtracting `offset` wraps the tiniest positive denormals (bits below `offset`, under
+        // 3e-41) and +0 around to the last interval, which therefore runs from the slope at 0 to
+        // the gain at the first point. -0 and the tiniest negative denormals land in interval
+        // half - 1, which must give exactly the slope at 0, like every other negative number.
+        gain_[half - 1] = zero_slope;
+        gain_[half] = zero_slope;
+        gain_[2 * half] = gain_[0];
+    }
+
+    // Any input. x <= 0 gets the curve's slope at 0, as in contrast_reference, and NaN stays NaN.
+    // +infinity stays +infinity (contrast_reference gives NaN there: infinity / infinity).
+    [[nodiscard]] float operator()(float x) const noexcept {
+        const std::uint32_t bits = std::bit_cast<std::uint32_t>(x) - offset;
+        const std::uint32_t k = bits >> shift;  // 0 .. 2 * half - 1
+        const float t = static_cast<float>(bits & ((1u << shift) - 1)) * (1.0f / (1u << shift));
+        return x * (gain_[k] + (gain_[k + 1] - gain_[k]) * t);
+    }
+
+private:
+    static constexpr std::uint32_t shift = 15;
+    static constexpr std::uint32_t half = 1u << (32 - 1 - shift);  // 2^16 points per sign
+    static constexpr std::uint32_t offset =
+        std::bit_cast<std::uint32_t>(contrast_pivot) & ((1u << shift) - 1);
+    static constexpr std::uint32_t max_float_bits = 0x7F7FFFFFu;
+
+    // One extra entry: gain[k + 1] for the last k. 512 KB, so on the heap rather than the stack.
+    std::vector<float> gain_ = std::vector<float>(2 * half + 1);
+};
+
+}  // namespace
+
 void contrast(Image& img, float c, int threads) {
     detail::require_consistent(img, "contrast");
     if (c == 1.0f) {
         return;
     }
-    const float strength = (c - 1.0f) * contrast_range_stops;
-    const float inv_range = 1.0f / contrast_range_stops;
-    // The curve's slope at 0, used for x <= 0, where log2 is undefined: as x -> 0, e -> -infinity
-    // and the sigmoid -> -1, so x' -> x * 2^(-strength).
-    const float zero_slope = std::exp2(-strength);
-    detail::parallel_for_samples(
-        img.width, img.height, threads, [&](std::size_t first, std::size_t last) {
-            for (std::size_t i = first; i < last; ++i) {
-                const float x = img.pixels[i];
-                if (!(x > 0.0f)) {
-                    img.pixels[i] = x * zero_slope;
-                    continue;
-                }
-                // x' = 0.18 * 2^(e + strength * sigmoid(u)) = x * 2^(strength * sigmoid(u)).
-                // The sigmoid u / sqrt(1 + u^2) costs a sqrt, where std::tanh costs about as much
-                // as log2 and exp2 together.
-                const float u = std::log2(x / contrast_pivot) * inv_range;
-                img.pixels[i] = x * std::exp2(strength * u / std::sqrt(1.0f + u * u));
-            }
-        });
+    // ~65,000 calls to contrast_gain: about 0.4 ms, once per image.
+    const ContrastTable table(c);
+    detail::parallel_for_samples(img.width, img.height, threads,
+                                 [&](std::size_t first, std::size_t last) {
+                                     float* p = img.pixels.data();
+                                     for (std::size_t i = first; i < last; ++i) {
+                                         p[i] = table(p[i]);
+                                     }
+                                 });
 }
 
 Matrix3 load_matrix(const std::filesystem::path& path) {

@@ -177,12 +177,12 @@ It is not part of `ctest`. Results on an Apple M2 Pro (8 performance + 4 efficie
 | exposure | 15 | 8 | 1.8× |
 | matrix | 71 | 11 | 6.7× |
 | saturation | 152 | 22 | 6.8× |
-| contrast | 897 | 122 | 7.4× |
+| contrast | 215 | 33 | 6.5× |
 | tone curve (filmic) | 44 | 9 | 5.0× |
 | sRGB encode | 159 | 23 | 7.0× |
 | histogram | 236 | 31 | 7.7× |
 
-Contrast is the slowest per-pixel stage: each value needs a `log2`, an `exp2` and a square root. (With `std::tanh` as the sigmoid it took 1757 ms / 218 ms.)
+Contrast used to be the slowest per-pixel stage at 897 ms / 122 ms, because each value needed a `log2`, an `exp2` and a square root (and 1757 ms / 218 ms with `std::tanh` as the sigmoid). It now looks the curve up in a table: see [Fast contrast](#fast-contrast).
 
 Before the lookup-table encoder (below), sRGB encode took 913 ms / 122 ms and the histogram 1069 ms / 134 ms (1 / 12 threads), so single-threaded they are now 5.7× and 4.5× faster.
 
@@ -222,6 +222,38 @@ On 12 threads, Reinhard and filmic now run at about 165 GB/s, the speed of just 
 `linear_to_srgb8` used to call `pow()` for every channel of every pixel. The 8-bit output only changes at 255 points, so it now looks the answer up instead: a table of the 255 linear values where the output steps up, plus a small table indexed by the top bits of the float that lands within one comparison of the right answer. The thresholds are found by bisecting the original `pow` version (`linear_to_srgb8_reference`), so the result is bit-identical to it, not just close. A plain 8-step binary search over the thresholds is also exact but only ~1.4× faster than `pow`, because its loads depend on each other.
 
 `prism_bench --exhaustive` compares the fast version with the reference for all 2³² float bit patterns (including NaNs and infinities) and takes about 2 s on 12 threads. With both `-o` and `--histogram`, the image is encoded once and the same bytes are saved and counted.
+
+### Fast contrast
+
+`contrast` used to call `std::log2` and `std::exp2` for every value. Now it builds a table of the curve's gain (`x' / x`) once per image and looks every value up in it:
+
+- **Indexed by the float's bits.** The index is the top 17 bits of the float: sign, exponent and the first 8 mantissa bits. Positive floats sort the same as their bit patterns, and within one power of two the bits grow linearly with the value. That gives 256 table points per stop, at most 0.4% apart, across the whole float range.
+- **Linear interpolation** between the two nearest points, using the remaining 15 mantissa bits. The gain changes smoothly with the stops, so a straight line between points 0.4% apart is very close.
+- **Middle grey stays exact.** The points are shifted so that 0.18 sits exactly on one, where the gain is exactly 1.
+- **No branches.** Keeping the sign bit in the index makes the table cover every bit pattern. The negative half holds the curve's slope at 0, so `x * gain` is right for negatives, zero and NaN too. The table is 512 KB, built in ~0.4 ms; only the parts real pixel values hit end up in the cache.
+
+The result is no longer bit-identical to the formula, so the rule is: **after the filmic curve and sRGB encode, every value stays within 1/255 of the exact curve** (`contrast_reference`: the formula, with `std::log2` and `std::exp2`). `Contrast.StaysWithinOneLevelOfTheExactCurve` checks about a million inputs at 7 contrast values from 0.1 to 10, with and without filmic. `prism_bench --exhaustive` checks every float from 0 to 256 (above that every output is 255) at `c` = 0.1, 1.15 and 10, in about 20 s:
+
+| `c` | Worst difference, filmic + sRGB | Worst, sRGB only | 8-bit outputs that differ (by 1) |
+|----:|------:|------:|------:|
+| 0.1 | 0.016 levels | 0.021 levels | 0.0002% |
+| 1.15 | 0.003 levels | 0.004 levels | 0.00004% |
+| 10 | 0.11 levels | 0.047 levels | 0.001% |
+
+Median of 9 runs at 60 MP, `--contrast 1.15`, in ms:
+
+| | 1 thread | 12 threads |
+|---|---:|---:|
+| `std::log2` + `std::exp2` per value | 897 | 122 |
+| inline polynomial `log2` / `exp2` (vectorised) | 257 | 39 |
+| lookup table | **215** | **33** |
+
+The polynomial version computes `log2` from the float's exponent bits plus a short series for the mantissa, and `exp2` the other way round. It is vectorised: 4 values per instruction. But it still needs a division and a square root per value, and the table needs neither. The table can't be vectorised, because NEON has no instruction to load 4 values from 4 different table positions. It still wins, at about 4 cycles per value.
+
+Two things that mattered along the way:
+
+- **Capturing by reference.** The first polynomial version was *slower* than `std::log2` (1311 ms). The loop's lambda captured its constants by reference, so to the compiler they were just memory that writing a pixel might change. It had to reload them every iteration and decided vectorising wasn't worth it (`-Rpass-missed=loop-vectorize` says why). Capturing them by value fixed that.
+- **Clamping the index.** Clamping the table index with `min` / `max` was ~10% slower than making every bit pattern a valid index.
 
 ### Checking for data races
 

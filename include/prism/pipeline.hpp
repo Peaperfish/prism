@@ -64,7 +64,16 @@ void saturation(Image& img, float s, int threads = 0);
 // which keeps it continuous and increasing there too.
 inline constexpr float contrast_pivot = 0.18f;
 inline constexpr float contrast_range_stops = 2.0f;
+//
+// contrast() looks the curve up in a table built once per call (interpolating between 256 points
+// per stop) instead of calling log2 and exp2 per value, so its results are very slightly
+// different from the formula above: after the filmic curve and sRGB encode, at most ~0.1 of an
+// 8-bit level (at c = 10). 0.18 stays exactly 0.18, and +infinity stays +infinity.
 void contrast(Image& img, float c, int threads = 0);
+
+// One value through contrast(), computed directly from the formula with std::log2 and std::exp2.
+// Kept as the reference that the fast version is tested against.
+[[nodiscard]] float contrast_reference(float x, float c) noexcept;
 
 // --- Tone curves ---------------------------------------------------------------------------------
 //
