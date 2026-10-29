@@ -10,6 +10,8 @@
 #include <sstream>
 #include <stdexcept>
 
+#include "sample_ranges.hpp"
+
 namespace prism {
 
 namespace {
@@ -105,24 +107,37 @@ constexpr CurveEntry curves[] = {
 
 }  // namespace
 
-void exposure(Image& img, float stops) {
+// All three stages below edit pixels in place from several threads at once. That is safe without
+// locks because a data race needs two threads touching the *same* memory location with at least
+// one writing, and here each thread only reads and writes the samples of its own rows.
+
+void exposure(Image& img, float stops, int threads) {
+    detail::require_consistent(img, "exposure");
     const float gain = std::exp2(stops);
-    for (float& v : img.pixels) {
-        v *= gain;
-    }
+    detail::parallel_for_samples(img.width, img.height, threads,
+                                 [&](std::size_t first, std::size_t last) {
+                                     for (std::size_t i = first; i < last; ++i) {
+                                         img.pixels[i] *= gain;
+                                     }
+                                 });
 }
 
-void apply_matrix(Image& img, const Matrix3& m) {
-    for (std::size_t i = 0; i + 2 < img.pixels.size(); i += Image::channels) {
-        // Copy the input first: writing p[0] before computing p[1] would use the new red value.
-        float* p = &img.pixels[i];
-        const float r = p[0];
-        const float g = p[1];
-        const float b = p[2];
-        p[0] = m[0] * r + m[1] * g + m[2] * b;
-        p[1] = m[3] * r + m[4] * g + m[5] * b;
-        p[2] = m[6] * r + m[7] * g + m[8] * b;
-    }
+void apply_matrix(Image& img, const Matrix3& m, int threads) {
+    detail::require_consistent(img, "apply_matrix");
+    detail::parallel_for_samples(
+        img.width, img.height, threads, [&](std::size_t first, std::size_t last) {
+            // Chunks start on a row boundary, so `first` is always the start of a pixel.
+            for (std::size_t i = first; i < last; i += Image::channels) {
+                // Copy the input first: writing p[0] before computing p[1] would use the new red.
+                float* p = &img.pixels[i];
+                const float r = p[0];
+                const float g = p[1];
+                const float b = p[2];
+                p[0] = m[0] * r + m[1] * g + m[2] * b;
+                p[1] = m[3] * r + m[4] * g + m[5] * b;
+                p[2] = m[6] * r + m[7] * g + m[8] * b;
+            }
+        });
 }
 
 Matrix3 load_matrix(const std::filesystem::path& path) {
@@ -185,10 +200,16 @@ std::vector<std::string_view> curve_specs() {
     return specs;
 }
 
-void tone_curve(Image& img, const ToneCurve& curve) {
-    for (float& v : img.pixels) {
-        v = curve.map(v);
-    }
+void tone_curve(Image& img, const ToneCurve& curve, int threads) {
+    detail::require_consistent(img, "tone_curve");
+    // Every thread calls the same curve.map at once. That is fine because calling it only reads
+    // the curve's captured parameters; the curves keep no state that a call would modify.
+    detail::parallel_for_samples(img.width, img.height, threads,
+                                 [&](std::size_t first, std::size_t last) {
+                                     for (std::size_t i = first; i < last; ++i) {
+                                         img.pixels[i] = curve.map(img.pixels[i]);
+                                     }
+                                 });
 }
 
 }  // namespace prism

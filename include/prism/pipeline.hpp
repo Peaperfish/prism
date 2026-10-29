@@ -13,9 +13,13 @@ namespace prism {
 
 // Each step edits the image in place: photos are tens of megabytes as float, so returning
 // a modified copy from every step would allocate and copy the whole buffer each time.
+//
+// `threads`: 0 (the default) = one per hardware thread, 1 = single-threaded, n = at most n.
+// The result is bit-identical for any value; see prism/parallel.hpp. Each step throws
+// std::invalid_argument if img.pixels.size() does not match width * height * 3.
 
 // Multiplies every channel by 2^stops (+1 stop doubles the light, -1 halves it).
-void exposure(Image& img, float stops);
+void exposure(Image& img, float stops, int threads = 0);
 
 // A 3x3 colour matrix in row-major order: row i gives output channel i (R, G, B) as a
 // weighted sum of the input R, G and B. For example, output R = m[0]*R + m[1]*G + m[2]*B.
@@ -25,13 +29,14 @@ inline constexpr Matrix3 identity_matrix = {1, 0, 0,  //
                                             0, 1, 0,  //
                                             0, 0, 1};
 
-void apply_matrix(Image& img, const Matrix3& m);
+void apply_matrix(Image& img, const Matrix3& m, int threads = 0);
 
 // Reads exactly 9 whitespace-separated numbers (row-major) from a text file.
 // Text after '#' on a line is a comment. Throws std::runtime_error on any problem.
 [[nodiscard]] Matrix3 load_matrix(const std::filesystem::path& path);
 
 // A tone curve maps one linear value to another and is applied to each channel separately.
+// `map` may be called from several threads at once, so it must not modify shared state.
 struct ToneCurve {
     std::string name;
     std::function<float(float)> map;
@@ -44,6 +49,6 @@ struct ToneCurve {
 // Spec formats for every supported curve (e.g. "gamma:<value>"), for help messages.
 [[nodiscard]] std::vector<std::string_view> curve_specs();
 
-void tone_curve(Image& img, const ToneCurve& curve);
+void tone_curve(Image& img, const ToneCurve& curve, int threads = 0);
 
 }  // namespace prism

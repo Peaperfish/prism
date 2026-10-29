@@ -113,3 +113,39 @@ TEST(Cli, HistogramWithoutOutputReflectsProcessing) {
     fs::remove(hist);
     fs::remove(zero_matrix);
 }
+
+TEST(Cli, BadThreadCountIsUsageError) {
+    const fs::path input = write_grey_input();
+    const fs::path hist = fs::path(testing::TempDir()) / "prism_cli_hist_threads.png";
+    for (const char* bad : {"0", "-2", "abc", "4x", "", "99999"}) {
+        const RunResult r = run_prism(quoted(input) + " --histogram " + quoted(hist) +
+                                      " --threads \"" + bad + "\"");
+        EXPECT_EQ(r.exit_code, 2) << "--threads '" << bad << "': " << r.output;
+        EXPECT_TRUE(contains(r.output, "--threads needs a whole number")) << r.output;
+    }
+    fs::remove(input);
+    fs::remove(hist);
+}
+
+TEST(Cli, TimePrintsEachStageThatRan) {
+    const fs::path input = write_grey_input();
+    const fs::path output = fs::path(testing::TempDir()) / "prism_cli_timed.png";
+
+    RunResult r = run_prism(quoted(input) + " -o " + quoted(output) +
+                            " --exposure 1 --curve filmic --threads 4 --time");
+    EXPECT_EQ(r.exit_code, 0) << r.output;
+    // A 4x4 image is far below the ~1 MP threshold, so it runs on one thread whatever was asked.
+    EXPECT_TRUE(contains(r.output, "time (1 thread):")) << r.output;
+    for (const char* stage : {"load", "exposure", "curve", "save", "total"}) {
+        EXPECT_TRUE(contains(r.output, std::string("  ") + stage + " ")) << stage << r.output;
+    }
+    EXPECT_FALSE(contains(r.output, "matrix")) << "no --matrix was given: " << r.output;
+
+    // Without --time, no timings.
+    r = run_prism(quoted(input) + " -o " + quoted(output) + " --threads 1");
+    EXPECT_EQ(r.exit_code, 0) << r.output;
+    EXPECT_FALSE(contains(r.output, "time (")) << r.output;
+
+    fs::remove(input);
+    fs::remove(output);
+}

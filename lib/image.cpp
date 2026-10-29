@@ -12,6 +12,7 @@
 #include <stb_image_write.h>
 
 #include "prism/color.hpp"
+#include "sample_ranges.hpp"
 
 namespace prism {
 
@@ -34,13 +35,41 @@ std::string lowercase_extension(const std::filesystem::path& path) {
     return ext;
 }
 
-std::size_t sample_count(int width, int height) {
-    return static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * Image::channels;
-}
+using detail::sample_count;
 
 }  // namespace
 
-Image load_image(const std::filesystem::path& path) {
+Image decode_srgb8(std::span<const std::uint8_t> bytes, int width, int height, int threads) {
+    if (width < 0 || height < 0 || bytes.size() != sample_count(width, height)) {
+        throw std::invalid_argument("decode_srgb8: byte count does not match width * height * 3");
+    }
+    Image img;
+    img.width = width;
+    img.height = height;
+    img.pixels.resize(bytes.size());
+    // Each thread reads and writes only its own slice [first, last), so threads never touch the
+    // same element and no locking is needed.
+    detail::parallel_for_samples(width, height, threads, [&](std::size_t first, std::size_t last) {
+        for (std::size_t i = first; i < last; ++i) {
+            img.pixels[i] = srgb8_to_linear(bytes[i]);
+        }
+    });
+    return img;
+}
+
+std::vector<std::uint8_t> encode_srgb8(const Image& img, int threads) {
+    detail::require_consistent(img, "encode_srgb8");
+    std::vector<std::uint8_t> bytes(img.pixels.size());
+    detail::parallel_for_samples(img.width, img.height, threads,
+                                 [&](std::size_t first, std::size_t last) {
+                                     std::transform(img.pixels.begin() + first,
+                                                    img.pixels.begin() + last,
+                                                    bytes.begin() + first, linear_to_srgb8);
+                                 });
+    return bytes;
+}
+
+Image load_image(const std::filesystem::path& path, int threads) {
     int width = 0;
     int height = 0;
     int channels_in_file = 0;
@@ -52,17 +81,10 @@ Image load_image(const std::filesystem::path& path) {
                                  "': " + stbi_failure_reason());
     }
 
-    Image img;
-    img.width = width;
-    img.height = height;
-    img.pixels.resize(sample_count(width, height));
-    for (std::size_t i = 0; i < img.pixels.size(); ++i) {
-        img.pixels[i] = srgb8_to_linear(data.get()[i]);
-    }
-    return img;
+    return decode_srgb8({data.get(), sample_count(width, height)}, width, height, threads);
 }
 
-void save_image(const std::filesystem::path& path, const Image& img) {
+void save_image(const std::filesystem::path& path, const Image& img, int threads) {
     if (img.width <= 0 || img.height <= 0) {
         throw std::runtime_error("cannot save image '" + path.string() + "': image is empty");
     }
@@ -80,8 +102,7 @@ void save_image(const std::filesystem::path& path, const Image& img) {
                                  "': unsupported extension (use .png, .jpg or .jpeg)");
     }
 
-    std::vector<std::uint8_t> bytes(img.pixels.size());
-    std::transform(img.pixels.begin(), img.pixels.end(), bytes.begin(), linear_to_srgb8);
+    const std::vector<std::uint8_t> bytes = encode_srgb8(img, threads);
 
     const std::string filename = path.string();
     const int stride = img.width * Image::channels;  // bytes from one row to the next

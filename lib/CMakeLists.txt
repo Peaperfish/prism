@@ -2,6 +2,7 @@ add_library(prism_core STATIC
   color.cpp
   histogram.cpp
   image.cpp
+  parallel.cpp
   pipeline.cpp
   version.cpp)
 

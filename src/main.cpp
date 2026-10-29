@@ -1,4 +1,5 @@
 #include <cerrno>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <exception>
@@ -9,9 +10,11 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "prism/histogram.hpp"
 #include "prism/image.hpp"
+#include "prism/parallel.hpp"
 #include "prism/pipeline.hpp"
 #include "prism/version.hpp"
 
@@ -34,6 +37,10 @@ void print_usage(const char* program) {
     }
     std::cerr << "\n  --histogram <file>  save a histogram image of the result and print\n"
               << "                      the percentage of clipped pixels per channel\n"
+              << "  --threads <n>       use up to n threads (default: " << prism::hardware_threads()
+              << ", one per hardware thread;\n"
+              << "                      1 = single-threaded; images under ~1 MP always use 1)\n"
+              << "  --time              print how long each stage took\n"
               << "  -h, --help          show this help\n";
 }
 
@@ -49,6 +56,8 @@ struct Options {
     std::optional<std::string> matrix_path;
     std::optional<std::string> curve_spec;
     std::optional<std::string> histogram_path;
+    std::optional<int> threads;  // unset = automatic (one per hardware thread)
+    bool time = false;
 };
 
 float parse_stops(const std::string& text) {
@@ -60,6 +69,17 @@ float parse_stops(const std::string& text) {
         throw UsageError("--exposure needs a number, got '" + text + "'");
     }
     return static_cast<float>(value);
+}
+
+int parse_threads(const std::string& text) {
+    char* end = nullptr;
+    errno = 0;
+    const long value = std::strtol(text.c_str(), &end, 10);
+    // The upper limit only catches typos; far more threads than cores would just be slower.
+    if (text.empty() || *end != '\0' || errno == ERANGE || value < 1 || value > 1024) {
+        throw UsageError("--threads needs a whole number from 1 to 1024, got '" + text + "'");
+    }
+    return static_cast<int>(value);
 }
 
 // Stores `value` into `slot`, rejecting a flag given twice (which is almost always a mistake).
@@ -76,8 +96,8 @@ Options parse_args(int argc, char* argv[]) {
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg = argv[i];
 
-        // Every flag except --help takes the next argument as its value. We take it as-is,
-        // even if it starts with '-', so "--exposure -1" works.
+        // Every flag except --help and --time takes the next argument as its value. We take it
+        // as-is, even if it starts with '-', so "--exposure -1" works.
         auto next_value = [&]() -> std::string {
             if (i + 1 >= argc) {
                 throw UsageError(std::string(arg) + " needs a value");
@@ -98,6 +118,10 @@ Options parse_args(int argc, char* argv[]) {
             set_once(opts.curve_spec, arg, next_value());
         } else if (arg == "--histogram") {
             set_once(opts.histogram_path, arg, next_value());
+        } else if (arg == "--threads") {
+            set_once(opts.threads, arg, parse_threads(next_value()));
+        } else if (arg == "--time") {
+            opts.time = true;
         } else if (arg.starts_with('-') || !opts.input.empty()) {
             throw UsageError("unexpected argument '" + std::string(arg) + "'");
         } else {
@@ -130,6 +154,40 @@ void print_clipping(const prism::Histogram& h) {
     std::cout << '\n';
 }
 
+// Records how long each stage of a run took, for --time.
+class StageTimer {
+public:
+    // Times fn() and records it under `name`.
+    template <typename Fn>
+    void run(std::string name, Fn&& fn) {
+        const auto start = Clock::now();
+        std::forward<Fn>(fn)();
+        const std::chrono::duration<double, std::milli> elapsed = Clock::now() - start;
+        stages_.push_back({std::move(name), elapsed.count()});
+    }
+
+    void print(int threads) const {
+        double total = 0;
+        std::cout << "time (" << threads << (threads == 1 ? " thread" : " threads") << "):\n"
+                  << std::fixed << std::setprecision(1);
+        for (const Stage& s : stages_) {
+            std::cout << "  " << std::left << std::setw(10) << s.name << std::right << std::setw(9)
+                      << s.ms << " ms\n";
+            total += s.ms;
+        }
+        std::cout << "  " << std::left << std::setw(10) << "total" << std::right << std::setw(9)
+                  << total << " ms\n";
+    }
+
+private:
+    using Clock = std::chrono::steady_clock;
+    struct Stage {
+        std::string name;
+        double ms;
+    };
+    std::vector<Stage> stages_;
+};
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -149,19 +207,24 @@ int main(int argc, char* argv[]) {
             curve = prism::parse_curve(*opts.curve_spec);
         }
 
+        // 0 asks the library for one thread per hardware thread.
+        const int threads = opts.threads.value_or(0);
+        StageTimer timer;
+
         // Pipeline order from the README: exposure -> colour matrix -> tone curve.
-        prism::Image img = prism::load_image(opts.input);
+        prism::Image img;
+        timer.run("load", [&] { img = prism::load_image(opts.input, threads); });
         if (opts.exposure_stops) {
-            prism::exposure(img, *opts.exposure_stops);
+            timer.run("exposure", [&] { prism::exposure(img, *opts.exposure_stops, threads); });
         }
         if (matrix) {
-            prism::apply_matrix(img, *matrix);
+            timer.run("matrix", [&] { prism::apply_matrix(img, *matrix, threads); });
         }
         if (curve) {
-            prism::tone_curve(img, *curve);
+            timer.run("curve", [&] { prism::tone_curve(img, *curve, threads); });
         }
         if (opts.output) {
-            prism::save_image(*opts.output, img);
+            timer.run("save", [&] { prism::save_image(*opts.output, img, threads); });
             std::cout << "wrote " << *opts.output << " (" << img.width << "x" << img.height
                       << ")\n";
         }
@@ -169,10 +232,20 @@ int main(int argc, char* argv[]) {
         if (opts.histogram_path) {
             // Measured after the whole pipeline, on the same 8-bit values save_image writes,
             // whether or not -o was given.
-            const prism::Histogram hist = prism::compute_histogram(img);
-            prism::save_image(*opts.histogram_path, prism::render_histogram(hist));
+            prism::Histogram hist;
+            timer.run("histogram", [&] {
+                hist = prism::compute_histogram(img, threads);
+                prism::save_image(*opts.histogram_path, prism::render_histogram(hist), threads);
+            });
             std::cout << "wrote " << *opts.histogram_path << " (histogram)\n";
             print_clipping(hist);
+        }
+
+        if (opts.time) {
+            // Report what was actually used: small images run single-threaded whatever was asked.
+            timer.print(prism::threads_for_pixels(
+                static_cast<std::size_t>(img.width) * static_cast<std::size_t>(img.height),
+                threads));
         }
     } catch (const UsageError& e) {
         std::cerr << "error: " << e.what() << "\n\n";

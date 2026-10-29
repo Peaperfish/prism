@@ -21,7 +21,9 @@ struct Histogram {
     std::uint64_t pixel_count = 0;
 };
 
-[[nodiscard]] Histogram compute_histogram(const Image& img);
+// `threads`: 0 (the default) = one per hardware thread, 1 = single-threaded; see parallel.hpp.
+// Throws std::invalid_argument if img.pixels.size() does not match width * height * 3.
+[[nodiscard]] Histogram compute_histogram(const Image& img, int threads = 0);
 
 // Percentage (0-100) of pixels that fall in `bin` of `counts`, which should be one of h's
 // members. For example bin_percent(h, h.red, 255) is the share of pixels with red clipped.

@@ -17,6 +17,7 @@ add_executable(prism_tests
   color_test.cpp
   histogram_test.cpp
   image_test.cpp
+  parallel_test.cpp
   pipeline_test.cpp
   version_test.cpp)
 target_link_libraries(prism_tests PRIVATE prism_core prism_warnings GTest::gtest_main)

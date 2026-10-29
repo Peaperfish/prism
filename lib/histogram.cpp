@@ -3,8 +3,11 @@
 #include <algorithm>
 #include <cstddef>
 #include <stdexcept>
+#include <vector>
 
 #include "prism/color.hpp"
+#include "prism/parallel.hpp"
+#include "sample_ranges.hpp"
 
 namespace prism {
 
@@ -25,11 +28,9 @@ int bar_height(std::uint64_t count, std::uint64_t max_count, int height) {
     return static_cast<int>(std::min(scaled + 0.5, static_cast<double>(height)));
 }
 
-}  // namespace
-
-Histogram compute_histogram(const Image& img) {
-    Histogram h;
-    for (std::size_t i = 0; i + 2 < img.pixels.size(); i += Image::channels) {
+// Adds the pixels in sample range [first, last) to h.
+void count_pixels(const Image& img, std::size_t first, std::size_t last, Histogram& h) {
+    for (std::size_t i = first; i < last; i += Image::channels) {
         // The same conversion save_image uses, so we count exactly the bytes in the output file.
         const int r = linear_to_srgb8(img.pixels[i]);
         const int g = linear_to_srgb8(img.pixels[i + 1]);
@@ -39,6 +40,47 @@ Histogram compute_histogram(const Image& img) {
         ++h.blue[b];
         ++h.luma[luma709(r, g, b)];
         ++h.pixel_count;
+    }
+}
+
+void add_counts(Histogram::Counts& into, const Histogram::Counts& from) {
+    for (int i = 0; i < Histogram::bins; ++i) {
+        into[i] += from[i];
+    }
+}
+
+}  // namespace
+
+Histogram compute_histogram(const Image& img, int threads) {
+    detail::require_consistent(img, "compute_histogram");
+    const int n = threads_for_pixels(static_cast<std::size_t>(img.width) * img.height, threads);
+    const int chunks = std::clamp(n, 1, std::max(img.height, 1));
+
+    // Unlike the other stages, every thread here would want to write the *same* 1024 counters.
+    // Sharing one Histogram would be a data race: ++h.red[r] is read, add, write, so two threads
+    // can both read 41 and both write 42, losing a count. Making the counters std::atomic fixes
+    // that but is slow, since every increment then fights over the same cache lines.
+    // Instead each thread fills its own private Histogram and we add them up at the end.
+    std::vector<Histogram> partial(static_cast<std::size_t>(chunks));
+    const std::size_t row_samples = detail::sample_count(img.width, 1);
+    parallel_for(chunks, [&](int chunk) {
+        const RowRange rows = chunk_rows(img.height, chunks, chunk);
+        // Count into a local first, kept on this thread's own stack (and so in its own core's
+        // cache), and copy it out once at the end.
+        Histogram local;
+        count_pixels(img, rows.begin * row_samples, rows.end * row_samples, local);
+        partial[static_cast<std::size_t>(chunk)] = local;
+    });
+
+    // parallel_for has joined every thread, so reading `partial` here is safe.
+    // Integer addition gives the same total in any order, so the result never depends on threads.
+    Histogram h;
+    for (const Histogram& p : partial) {
+        add_counts(h.red, p.red);
+        add_counts(h.green, p.green);
+        add_counts(h.blue, p.blue);
+        add_counts(h.luma, p.luma);
+        h.pixel_count += p.pixel_count;
     }
     return h;
 }
