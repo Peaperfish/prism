@@ -7,8 +7,11 @@
 #include <sstream>
 #include <string>
 
-#ifndef _WIN32
+#ifdef _WIN32
+#include <process.h>  // _getpid
+#else
 #include <sys/wait.h>
+#include <unistd.h>  // getpid
 #endif
 
 #include "prism/image.hpp"
@@ -20,13 +23,29 @@ namespace fs = std::filesystem;
 
 namespace {
 
+// A temporary file path that no other test can be using at the same time. gtest_discover_tests
+// makes each TEST its own ctest entry (its own process), and `ctest -j` runs them side by side in
+// one shared temp directory, so a fixed name like "prism_cli_output.txt" would be overwritten and
+// deleted by other tests mid-run. The test's name keeps tests apart; the process id keeps apart
+// two runs of the same test, e.g. from two build directories at once.
+fs::path temp_file(const std::string& name) {
+    const testing::TestInfo* test = testing::UnitTest::GetInstance()->current_test_info();
+#ifdef _WIN32
+    const int pid = _getpid();
+#else
+    const int pid = static_cast<int>(getpid());
+#endif
+    return fs::path(testing::TempDir()) / ("prism_cli_" + std::string(test->name()) + "_" +
+                                           std::to_string(pid) + "_" + name);
+}
+
 struct RunResult {
     int exit_code;
     std::string output;  // stdout and stderr together
 };
 
 RunResult run_prism(const std::string& args) {
-    const fs::path log = fs::path(testing::TempDir()) / "prism_cli_output.txt";
+    const fs::path log = temp_file("output.txt");
     const std::string command =
         "\"" + std::string(PRISM_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
     const int status = std::system(command.c_str());
@@ -56,7 +75,7 @@ fs::path write_grey_input() {
     img.width = 4;
     img.height = 4;
     img.pixels.assign(4 * 4 * 3, 0.18f);
-    const fs::path path = fs::path(testing::TempDir()) / "prism_cli_grey.png";
+    const fs::path path = temp_file("grey.png");
     prism::save_image(path, img);
     return path;
 }
@@ -79,8 +98,8 @@ TEST(Cli, NoOutputAndNoHistogramIsUsageError) {
 
 TEST(Cli, HistogramWithoutOutputReflectsProcessing) {
     const fs::path input = write_grey_input();
-    const fs::path hist = fs::path(testing::TempDir()) / "prism_cli_hist.png";
-    const fs::path zero_matrix = fs::path(testing::TempDir()) / "prism_cli_zero_matrix.txt";
+    const fs::path hist = temp_file("hist.png");
+    const fs::path zero_matrix = temp_file("zero_matrix.txt");
     std::ofstream(zero_matrix) << "0 0 0\n0 0 0\n0 0 0\n";
     const std::string base = quoted(input) + " --histogram " + quoted(hist);
 
@@ -119,11 +138,10 @@ TEST(Cli, OutputAndHistogramTogetherMatchRunningThemSeparately) {
     // With both options the image is encoded once and the bytes serve both; that must not change
     // either result.
     const fs::path input = write_grey_input();
-    const fs::path dir = fs::path(testing::TempDir());
-    const fs::path both_out = dir / "prism_cli_both.png";
-    const fs::path both_hist = dir / "prism_cli_both_hist.png";
-    const fs::path only_out = dir / "prism_cli_only.png";
-    const fs::path only_hist = dir / "prism_cli_only_hist.png";
+    const fs::path both_out = temp_file("both.png");
+    const fs::path both_hist = temp_file("both_hist.png");
+    const fs::path only_out = temp_file("only.png");
+    const fs::path only_hist = temp_file("only_hist.png");
     const std::string pipeline = " --exposure +2.5 --curve filmic";
 
     const RunResult both = run_prism(quoted(input) + pipeline + " -o " + quoted(both_out) +
@@ -151,7 +169,7 @@ TEST(Cli, OutputAndHistogramTogetherMatchRunningThemSeparately) {
 
 TEST(Cli, BadThreadCountIsUsageError) {
     const fs::path input = write_grey_input();
-    const fs::path hist = fs::path(testing::TempDir()) / "prism_cli_hist_threads.png";
+    const fs::path hist = temp_file("hist_threads.png");
     for (const char* bad : {"0", "-2", "abc", "4x", "", "99999"}) {
         const RunResult r = run_prism(quoted(input) + " --histogram " + quoted(hist) +
                                       " --threads \"" + bad + "\"");
@@ -164,7 +182,7 @@ TEST(Cli, BadThreadCountIsUsageError) {
 
 TEST(Cli, TimePrintsEachStageThatRan) {
     const fs::path input = write_grey_input();
-    const fs::path output = fs::path(testing::TempDir()) / "prism_cli_timed.png";
+    const fs::path output = temp_file("timed.png");
 
     RunResult r = run_prism(quoted(input) + " -o " + quoted(output) +
                             " --exposure 1 --curve filmic --threads 4 --time");
@@ -187,8 +205,8 @@ TEST(Cli, TimePrintsEachStageThatRan) {
 
 TEST(Cli, RawFlagsOnNonRawInputAreUsageErrors) {
     const fs::path input = write_grey_input();
-    const fs::path hist = fs::path(testing::TempDir()) / "prism_cli_hist_raw_flags.png";
-    const fs::path matrix = fs::path(testing::TempDir()) / "prism_cli_identity.txt";
+    const fs::path hist = temp_file("hist_raw_flags.png");
+    const fs::path matrix = temp_file("identity.txt");
     std::ofstream(matrix) << "1 0 0\n0 1 0\n0 0 1\n";
 
     for (const std::string& flags : {std::string(" --raw-half"),
@@ -203,9 +221,9 @@ TEST(Cli, RawFlagsOnNonRawInputAreUsageErrors) {
 }
 
 TEST(Cli, MissingRawFileIsReportedAsRawError) {
-    const fs::path hist = fs::path(testing::TempDir()) / "prism_cli_hist_missing_raw.png";
+    const fs::path hist = temp_file("hist_missing_raw.png");
     const RunResult r = run_prism(
-        quoted(fs::path(testing::TempDir()) / "prism_missing.ARW") + " --histogram " + quoted(hist));
+        quoted(temp_file("missing.ARW")) + " --histogram " + quoted(hist));
     EXPECT_EQ(r.exit_code, 1) << r.output;
     EXPECT_TRUE(contains(r.output, "cannot load RAW file")) << r.output;
 }
@@ -216,9 +234,8 @@ TEST(Cli, RawWithIdentityCameraMatrixRuns) {
     if (raw == nullptr || *raw == '\0') {
         GTEST_SKIP() << "set PRISM_TEST_RAW to a RAW file to run this test";
     }
-    const fs::path dir = fs::path(testing::TempDir());
-    const fs::path matrix = dir / "prism_cli_raw_identity.txt";
-    const fs::path output = dir / "prism_cli_raw.jpg";
+    const fs::path matrix = temp_file("raw_identity.txt");
+    const fs::path output = temp_file("raw.jpg");
     std::ofstream(matrix) << "1 0 0\n0 1 0\n0 0 1\n";
 
     const RunResult r = run_prism(quoted(raw) + " --raw-half --raw-camera-matrix " +
@@ -236,7 +253,7 @@ TEST(Cli, RawWithIdentityCameraMatrixRuns) {
 
 TEST(Cli, BadSaturationAndContrastAreUsageErrors) {
     const fs::path input = write_grey_input();
-    const fs::path hist = fs::path(testing::TempDir()) / "prism_cli_hist_sat.png";
+    const fs::path hist = temp_file("hist_sat.png");
     for (const char* bad : {"abc", "", "-0.5", "1.2x", "nan", "inf", "11", "125"}) {
         RunResult r = run_prism(quoted(input) + " --histogram " + quoted(hist) +
                                 " --saturation \"" + bad + "\"");
@@ -263,9 +280,8 @@ TEST(Cli, SaturationAndContrastKeepMiddleGrey) {
     // The input is linear 0.18 grey: saturation leaves greys alone and 0.18 is the contrast pivot,
     // so the output must be byte-identical to an unprocessed run. --time shows both stages ran.
     const fs::path input = write_grey_input();
-    const fs::path dir = fs::path(testing::TempDir());
-    const fs::path plain = dir / "prism_cli_plain.png";
-    const fs::path graded = dir / "prism_cli_graded.png";
+    const fs::path plain = temp_file("plain.png");
+    const fs::path graded = temp_file("graded.png");
 
     RunResult r = run_prism(quoted(input) + " -o " + quoted(plain));
     ASSERT_EQ(r.exit_code, 0) << r.output;

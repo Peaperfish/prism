@@ -242,7 +242,7 @@ Requires CMake 3.20+ and a C++20 compiler (GCC 11+, Clang 14+ or MSVC 2022).
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-ctest --test-dir build
+ctest --test-dir build -j    # tests can run in parallel
 ```
 
 ### RAW support (LibRaw)
