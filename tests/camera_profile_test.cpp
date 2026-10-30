@@ -559,6 +559,7 @@ TEST(PrismProfile, WritesAMatrixThatLoadMatrixReads) {
     std::ifstream file(out);
     const std::string text((std::istreambuf_iterator<char>(file)),
                            std::istreambuf_iterator<char>());
+    file.close();  // Windows can't delete a file that is still open, as the end of the test does
     EXPECT_NE(text.find("TEST-CAM"), std::string::npos);
     EXPECT_NE(text.find("#   " + json.filename().string() + "\n"), std::string::npos)
         << "should say where it came from";
