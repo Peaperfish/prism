@@ -166,6 +166,7 @@ Not applied, and listed in the header when present: a DNG's `CameraCalibration1/
 | 2, in a DCP | stored profiles "can be used to process images but cannot be embedded in files" | a note: *"The DNG specification says this profile may not be embedded in files."* |
 | 2, in a DNG | "If a camera profile is already embedded in a DNG file, then this value has the same restrictions as 'embed if used'" | the same warning as 0 and 1 |
 | 3 | "no restrictions" | nothing |
+| 4 and up | not defined | a warning: *"ProfileEmbedPolicy 4 is not defined by the DNG specification, so the profile's terms are unknown."* (with the actual value) |
 
 | no tag | "Default: 0" (p. 51) | the same warning as 0, and the header says the tag is missing and the default applies |
 

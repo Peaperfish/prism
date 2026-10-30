@@ -504,6 +504,14 @@ TEST(PrismProfile, ReportsTheEmbedPolicyAsTheSpecificationWordsIt) {
          raw_use_sentence, "warning: "},
         {3, false, "3 (no restrictions)", "", ""},
         {3, true, "3 (no restrictions)", "", ""},
+        {4, false, "4 (not a value the DNG specification defines)",
+         "ProfileEmbedPolicy 4 is not defined by the DNG specification, so the profile's terms are "
+         "unknown.",
+         "warning: "},
+        {4294967295, true, "4294967295 (not a value the DNG specification defines)",
+         "ProfileEmbedPolicy 4294967295 is not defined by the DNG specification, so the profile's "
+         "terms are unknown.",
+         "warning: "},
         // The tag's default is 0.
         {std::nullopt, false, "not in the file, so the specification's default applies: 0 (allow",
          raw_use_sentence, "warning: "},

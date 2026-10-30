@@ -271,18 +271,18 @@ std::vector<std::string> describe_method(const prism::DngProfile& p, double kelv
 //       has the same restrictions as 'embed if used'."
 //   3 = "no restrictions".
 // Prism only reports what the specification says: whether a use is permitted is for the user.
-constexpr std::string_view raw_use_sentence =
+const std::string raw_use_sentence =
     "The DNG specification says profiles with ProfileEmbedPolicy 0 or 1, or 2 when embedded in a "
     "DNG, may not be used to process non-DNG files; using this matrix for non-DNG (RAW) files may "
     "not be permitted, and that is your responsibility.";
-constexpr std::string_view no_embedding_sentence =
+const std::string no_embedding_sentence =
     "The DNG specification says this profile may not be embedded in files.";
 
 // What ProfileEmbedPolicy means for this file, for the header and stderr alike.
 struct PolicyReport {
-    std::string value;        // after "ProfileEmbedPolicy: " in the header
-    std::string_view notice;  // a sentence for stderr and the header, or empty
-    bool warning = false;     // stderr says "warning:" rather than "note:"
+    std::string value;     // after "ProfileEmbedPolicy: " in the header
+    std::string notice;    // a sentence for stderr and the header, or empty
+    bool warning = false;  // stderr says "warning:" rather than "note:"
 };
 
 PolicyReport report_for(std::uint32_t policy, bool embedded) {
@@ -305,8 +305,12 @@ PolicyReport report_for(std::uint32_t policy, bool embedded) {
                 no_embedding_sentence, false};
         case 3: return {"3 (no restrictions)", {}, false};
         default:
-            return {
-                std::to_string(policy) + " (not a value the DNG specification defines)", {}, false};
+            // Values from 4 up have no meaning in the specification, so neither have the rules.
+            return {std::to_string(policy) + " (not a value the DNG specification defines)",
+                    "ProfileEmbedPolicy " + std::to_string(policy) +
+                        " is not defined by the DNG specification, so the profile's terms are "
+                        "unknown.",
+                    true};
     }
 }
 
