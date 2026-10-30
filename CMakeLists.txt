@@ -74,6 +74,16 @@ if(PRISM_SANITIZE_ADDRESS)
   add_link_options(-fsanitize=address,undefined)
 endif()
 
+# MSVC reads a source file without a byte-order mark in the system code page, not as UTF-8.
+# Our sources are UTF-8 (a few comments hold non-ASCII text): on a Chinese or Japanese system
+# that gives warning C4819, a UTF-8 sequence can swallow the newline ending a // comment, and a
+# u8"..." literal with non-ASCII characters would hold the wrong bytes. /utf-8 makes MSVC read
+# the sources as UTF-8 and store narrow string literals as UTF-8, as GCC and Clang do. Global,
+# so GoogleTest and stb are read the same way.
+if(MSVC)
+  add_compile_options(/utf-8)
+endif()
+
 # Warnings live on an INTERFACE target instead of global CMAKE_CXX_FLAGS so they apply
 # only to our code and not to third-party code (stb, GoogleTest).
 add_library(prism_warnings INTERFACE)

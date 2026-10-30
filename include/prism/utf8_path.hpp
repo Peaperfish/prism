@@ -10,9 +10,9 @@ namespace prism {
 //
 // On macOS and Linux a path is a string of bytes (UTF-8 by convention) and path::string()
 // returns them unchanged. On Windows a path is UTF-16, and path::string() converts it to the
-// "ANSI" code page (e.g. Windows-1252), which holds only a small part of Unicode: for a name
-// like "写真.png" it throws. These functions use UTF-8 on Windows and keep the bytes exactly as
-// they were on other systems, so nothing changes there.
+// "ANSI" code page (e.g. Windows-1252), which holds only a small part of Unicode: for a name in
+// Chinese or Japanese, or with an emoji, it throws. These functions use UTF-8 on Windows and keep
+// the bytes exactly as they were on other systems, so nothing changes there.
 
 // The path as UTF-8 text, for messages and anything else printed or stored as a std::string.
 inline std::string utf8(const std::filesystem::path& path) {
