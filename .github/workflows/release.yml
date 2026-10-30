@@ -22,7 +22,9 @@ permissions:
 jobs:
   macos:
     name: macOS (universal)
-    runs-on: macos-15
+    # The same runner as ci.yml's macOS jobs, with its default Xcode: the Xcode on macos-15 (16.4)
+    # has a C++ library without std::jthread and std::stop_token (CMakeLists.txt checks for them).
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4.2.2
 
