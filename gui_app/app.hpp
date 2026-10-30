@@ -75,6 +75,8 @@ private:
     void draw_status_bar();
     void draw_saving_popup();
     void draw_preferences();
+    void draw_about();
+    void draw_notices();
     void save_preferences();
     void set_preferences(gui::Preferences prefs);
 
@@ -102,6 +104,10 @@ private:
     // SDL event that the macOS app menu's Preferences item sends; 0 if it isn't connected, and
     // then Preferences is in our own Edit menu.
     Uint32 native_prefs_event_ = 0;
+    bool about_open_ = false;
+    bool notices_open_ = false;  // the full third-party notices, opened from About
+    // Likewise for the macOS app menu's "About Prism" item; 0: About is in our Help menu.
+    Uint32 native_about_event_ = 0;
     float display_scale_ = 1.0f;  // the display's content scale (1.5 at 150% on Windows)
     bool style_dirty_ = true;     // rebuild the style before the next frame
 

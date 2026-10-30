@@ -11,4 +11,9 @@ namespace prism::gui_app {
 // then offers Preferences in its own menu bar instead). Call after SDL_Init(SDL_INIT_VIDEO).
 bool connect_macos_preferences_item(Uint32 event_type);
 
+// The same for the app menu's "About Prism" item, which otherwise opens the standard macOS About
+// panel: it then pushes `event_type`, so the app shows its own About window (version, licence and
+// third-party notices). False if the item wasn't found.
+bool connect_macos_about_item(Uint32 event_type);
+
 }  // namespace prism::gui_app

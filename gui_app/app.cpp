@@ -7,6 +7,7 @@
 #include <exception>
 #include <utility>
 
+#include "about_info.hpp"
 #include "imgui.h"
 #include "macos_menu.hpp"
 #include "theme.hpp"
@@ -16,6 +17,7 @@
 #include "prism/gui/slider_gesture.hpp"
 #include "prism/raw.hpp"
 #include "prism/utf8_path.hpp"
+#include "prism/version.hpp"
 
 namespace prism::gui_app {
 
@@ -93,6 +95,10 @@ App::App(SDL_Window* window, SDL_Renderer* renderer, DialogQueue& dialogs,
     const Uint32 event = SDL_RegisterEvents(1);
     if (event != 0 && connect_macos_preferences_item(event)) {
         native_prefs_event_ = event;
+    }
+    const Uint32 about_event = SDL_RegisterEvents(1);
+    if (about_event != 0 && connect_macos_about_item(about_event)) {
+        native_about_event_ = about_event;
     }
 #endif
 }
@@ -284,6 +290,11 @@ void App::handle_event(const SDL_Event& event) {
         ImGui::SetWindowFocus("Preferences");
         return;
     }
+    if (native_about_event_ != 0 && event.type == native_about_event_) {
+        about_open_ = true;
+        ImGui::SetWindowFocus("About Prism");
+        return;
+    }
     switch (event.type) {
         case SDL_EVENT_SYSTEM_THEME_CHANGED:
             style_dirty_ = true;  // "System" follows the OS live
@@ -381,6 +392,8 @@ void App::frame() {
     draw_saving_popup();
     ImGui::End();
     draw_preferences();
+    draw_about();
+    draw_notices();
 
     if (pending_open_) {
         pending_open_shown_ = true;
@@ -452,6 +465,14 @@ void App::draw_menu() {
             }
         }
         ImGui::EndMenu();
+    }
+    if (native_about_event_ == 0) {  // otherwise it's in the macOS app menu
+        if (ImGui::BeginMenu("Help")) {
+            if (ImGui::MenuItem("About Prism")) {
+                about_open_ = true;
+            }
+            ImGui::EndMenu();
+        }
     }
     ImGui::EndMenuBar();
 }
@@ -806,6 +827,69 @@ void App::draw_preferences() {
         save_preferences();
     }
     set_preferences(std::move(p));
+    ImGui::End();
+}
+
+void App::draw_about() {
+    if (!about_open_) {
+        return;
+    }
+    const ImVec2 centre = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(centre, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    if (!ImGui::Begin("About Prism", &about_open_,
+                      ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse |
+                          ImGuiWindowFlags_NoSavedSettings)) {
+        ImGui::End();
+        return;
+    }
+    // Wrap long lines at a readable width rather than the window's (it sizes itself to them).
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 440 * ui_scale());
+    ImGui::Text("Prism %.*s", static_cast<int>(version().size()), version().data());
+
+    ImGui::SeparatorText("Licence");
+    ImGui::TextWrapped("PolyForm Noncommercial License 1.0.0");
+    const std::string_view notice = required_notice();
+    ImGui::TextWrapped("%.*s", static_cast<int>(notice.size()), notice.data());
+    ImGui::TextWrapped(
+        "The full terms are in the LICENSE file that comes with Prism, and at "
+        "https://polyformproject.org/licenses/noncommercial/1.0.0");
+
+    ImGui::SeparatorText("Third-party components");
+    if (ImGui::BeginTable("components", 2, ImGuiTableFlags_SizingFixedFit)) {
+        for (const ThirdPartyComponent& c : third_party_components()) {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(c.name.data(), c.name.data() + c.name.size());
+            ImGui::TableNextColumn();
+            ImGui::TextDisabled("%.*s", static_cast<int>(c.licence.size()), c.licence.data());
+        }
+        ImGui::EndTable();
+    }
+    if (ImGui::Button("Third-party notices...")) {
+        notices_open_ = true;
+        ImGui::SetWindowFocus("Third-party notices");
+    }
+    ImGui::PopTextWrapPos();
+    ImGui::End();
+}
+
+void App::draw_notices() {
+    if (!notices_open_) {
+        return;
+    }
+    const ImVec2 centre = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(centre, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(720 * ui_scale(), 520 * ui_scale()), ImGuiCond_Appearing);
+    if (!ImGui::Begin("Third-party notices", &notices_open_,
+                      ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings)) {
+        ImGui::End();
+        return;
+    }
+    const std::string_view text = third_party_notices();
+    ImGui::BeginChild("text", ImVec2(0, 0), ImGuiChildFlags_None,
+                      ImGuiWindowFlags_HorizontalScrollbar);
+    ImGui::TextUnformatted(text.data(), text.data() + text.size());
+    ImGui::EndChild();
     ImGui::End();
 }
 

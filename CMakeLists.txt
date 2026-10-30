@@ -163,6 +163,12 @@ add_subdirectory(src)
 add_subdirectory(bench)
 if(PRISM_BUILD_GUI)
   include(cmake/GuiDependencies.cmake)
+endif()
+# THIRD_PARTY_NOTICES.txt, for the About window and the release downloads.
+if(PRISM_BUILD_GUI OR PRISM_RELEASE)
+  include(cmake/ThirdPartyNotices.cmake)
+endif()
+if(PRISM_BUILD_GUI)
   add_subdirectory(gui_app)
 endif()
 
