@@ -54,6 +54,7 @@ add_executable(prism_gui_core_tests
   gui/history_test.cpp
   gui/live_preview_test.cpp
   gui/main_thread_queue_test.cpp
+  gui/preferences_test.cpp
   gui/presets_test.cpp
   gui/preview_renderer_test.cpp
   gui/session_test.cpp
