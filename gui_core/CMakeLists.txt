@@ -5,6 +5,7 @@
 add_library(prism_gui_core STATIC
   src/history.cpp
   src/presets.cpp
+  src/session.cpp
   src/settings.cpp)
 
 target_include_directories(prism_gui_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
