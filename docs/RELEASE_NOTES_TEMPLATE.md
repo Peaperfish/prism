@@ -47,12 +47,16 @@ says "Windows protected your PC", click **More info → Run anyway**. If Smart A
 
 ## Coming next
 
-Planned for [0.2.0](https://github.com/Peaperfish/prism/milestone/1):
+Planned for [0.2.0 – See the light](https://github.com/Peaperfish/prism/milestone/1):
 
-- A live histogram (RGB and luminance)
-- Advanced mode with every pipeline control
-- A before/after view
-- Highlight and shadow clipping warnings
+- A histogram for any pipeline stage (RGB and luminance)
+- Colour scopes: RGB parade/waveform and vectorscope, for any stage
+- A gamut warning showing colours outside sRGB and which stage pushed them out
+- A pipeline view: every stage visible and toggleable, with a preview at any stage
+- Comparing any two stages, including the original, side by side or split
+- Clipping warnings that say which stage clipped
+- A test strip: one image in bands from −1 to +1 stop, to choose exposure by eye
+- A plain-language explanation of what every control does to the light
 - A smoother preview while dragging sliders
 
 [Later](https://github.com/Peaperfish/prism/milestone/2), not scheduled yet:

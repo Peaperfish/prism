@@ -1,5 +1,7 @@
 # Prism
 
+*Edit with light, not filters.*
+
 [![CI](https://github.com/Peaperfish/prism/actions/workflows/ci.yml/badge.svg)](https://github.com/Peaperfish/prism/actions/workflows/ci.yml)
 
 A small, fast command-line photo tool written in modern C++.
@@ -7,6 +9,15 @@ A small, fast command-line photo tool written in modern C++.
 Prism loads an image (PNG, JPEG or camera RAW), runs it through a simple colour pipeline (exposure, a 3×3 colour matrix and a tone curve), and writes the result back out. It's a learning project for working directly with pixel buffers, colour maths and performance in C++20.
 
 > 🚧 Work in progress.
+
+## Why Prism
+
+Mainstream photo editors often come with a subscription and a cloud catalog, hide what their sliders do, and sell looks as presets you can't read. Prism is built on four principles instead:
+
+1. **Free for personal use.** No subscription, no cloud, no catalog: open a file, edit it, export it. (See [Licences](#licences).)
+2. **It teaches as you go.** Every control should say in plain words what it does to the light, and you should be able to see each step happen. Planned for [0.2.0](https://github.com/Peaperfish/prism/milestone/1): a pipeline view, colour scopes and a test strip.
+3. **No black-box presets.** A look should be a readable recipe you can see and adjust. Planned for [0.3.0](https://github.com/Peaperfish/prism/milestone/3): a plain-text recipe format, with the built-in presets rewritten as recipes.
+4. **Physical controls.** You adjust light rather than apply effects. Exposure is already in stops; white balance in Kelvin, contrast as paper grades, and dodge and burn are planned for [0.4.0](https://github.com/Peaperfish/prism/milestone/4).
 
 ## Downloading and running Prism
 
@@ -217,7 +228,7 @@ Between the two outputs: mean CIE76 ΔE 5.7 (median 4.0, 95th percentile 16.7, m
 
 ## GUI
 
-A desktop app for macOS and Windows, in progress. `prism_gui` (`gui_app/`) is a window built with SDL3 and Dear ImGui; it is off by default and built with `-DPRISM_BUILD_GUI=ON` (see [Building the GUI](#building-the-gui)). So far it opens a photo (File → Open, Ctrl/Cmd+O, drag and drop, or a path on the command line), shows a live preview fitted to the window, edits it in Simple mode (a preset plus Brightness, Contrast and Colour, with undo and redo: Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z or Ctrl+Y) and exports it at full resolution as PNG or JPEG (File → Export, Ctrl/Cmd+E). Errors appear as a banner in the window. Help → About Prism (on macOS: Prism → About Prism) shows the version, Prism's licence and the third-party components with their full notices. Packaging is done: see [Downloading and running Prism](#downloading-and-running-prism). Advanced mode, the histogram, before/after and the rest are planned: see the [Roadmap](#roadmap).
+A desktop app for macOS and Windows, in progress. `prism_gui` (`gui_app/`) is a window built with SDL3 and Dear ImGui; it is off by default and built with `-DPRISM_BUILD_GUI=ON` (see [Building the GUI](#building-the-gui)). So far it opens a photo (File → Open, Ctrl/Cmd+O, drag and drop, or a path on the command line), shows a live preview fitted to the window, edits it in Simple mode (a preset plus Brightness, Contrast and Colour, with undo and redo: Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z or Ctrl+Y) and exports it at full resolution as PNG or JPEG (File → Export, Ctrl/Cmd+E). Errors appear as a banner in the window. Help → About Prism (on macOS: Prism → About Prism) shows the version, Prism's licence and the third-party components with their full notices. Packaging is done: see [Downloading and running Prism](#downloading-and-running-prism). The pipeline view, the histogram and scopes, comparing stages and the rest are planned: see the [Roadmap](#roadmap).
 
 ### Themes and Preferences
 
@@ -260,15 +271,32 @@ A full preview re-render (every stage plus the sRGB encode, 2560×1707 from a 61
 
 ## Roadmap
 
-v0.1.0 is the first pre-release of the desktop app. What's planned next is tracked as GitHub issues in two milestones.
+v0.1.0 is the first pre-release of the desktop app. What's planned next is tracked as GitHub issues in four milestones.
 
-[**0.2.0**](https://github.com/Peaperfish/prism/milestone/1), the histogram and analysis release:
+[**0.2.0 – See the light**](https://github.com/Peaperfish/prism/milestone/1): understand what each step does to the light.
 
-- [Live histogram](https://github.com/Peaperfish/prism/issues/1) in the panel (RGB and luminance, from the preview frame)
-- [Advanced mode](https://github.com/Peaperfish/prism/issues/2): all pipeline controls, with an "Advanced adjustments active" chip
-- [Before/after view](https://github.com/Peaperfish/prism/issues/3)
-- [Highlight and shadow clipping warnings](https://github.com/Peaperfish/prism/issues/4) on the preview
+- [A histogram for any pipeline stage](https://github.com/Peaperfish/prism/issues/1), RGB and luminance
+- [Colour scopes](https://github.com/Peaperfish/prism/issues/13): RGB parade/waveform and vectorscope, for any stage
+- [A gamut warning](https://github.com/Peaperfish/prism/issues/14): colours outside sRGB, and which stage pushed them out
+- [A pipeline view](https://github.com/Peaperfish/prism/issues/2): every stage visible and toggleable; click a stage to preview the photo at that point
+- [Compare any two stages](https://github.com/Peaperfish/prism/issues/3), including the original, side by side or split
+- [Clipping warnings](https://github.com/Peaperfish/prism/issues/4) that say which stage clipped
+- [A test strip](https://github.com/Peaperfish/prism/issues/15): one image in bands at −1, −½, 0, +½ and +1 stop, to choose exposure by eye
+- [A plain-language explanation](https://github.com/Peaperfish/prism/issues/16) for every control: what it does to the light
 - [Smoother preview while dragging](https://github.com/Peaperfish/prism/issues/5): let a running render finish and replace only the waiting request
+
+[**0.3.0 – Recipes**](https://github.com/Peaperfish/prism/milestone/3): readable, shareable recipes instead of black-box presets.
+
+- [The .prism recipe format](https://github.com/Peaperfish/prism/issues/17): plain text, versioned, documented, diffable
+- [Save and load recipes](https://github.com/Peaperfish/prism/issues/18) in the GUI
+- [Batch editing from the CLI](https://github.com/Peaperfish/prism/issues/19): `prism <files> --recipe <file>`
+- [The built-in presets as readable recipes](https://github.com/Peaperfish/prism/issues/20) that show their values
+
+[**0.4.0 – Darkroom**](https://github.com/Peaperfish/prism/milestone/4): physical controls.
+
+- [White balance in Kelvin and tint](https://github.com/Peaperfish/prism/issues/21), with a click-on-neutral picker
+- [Contrast as paper grades](https://github.com/Peaperfish/prism/issues/23)
+- [Dodge and burn](https://github.com/Peaperfish/prism/issues/22) with brushes (masks)
 
 [**Later**](https://github.com/Peaperfish/prism/milestone/2), not scheduled yet:
 
