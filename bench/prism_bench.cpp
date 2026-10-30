@@ -27,12 +27,15 @@
 #include <functional>
 #include <iomanip>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "prism/color.hpp"
+#include "prism/gui/preview_renderer.hpp"
+#include "prism/gui/settings.hpp"
 #include "prism/histogram.hpp"
 #include "prism/image.hpp"
 #include "prism/parallel.hpp"
@@ -430,10 +433,24 @@ int main(int argc, char* argv[]) {
     bench_stage(s, "downscale 2560", f32, none,
                 [&](int t) { preview = prism::downscale(input, 2560, t); });
 
+    // What the GUI does each time a setting changes: every stage plus the sRGB encode, on that
+    // 2560 px preview base (render_preview, as PreviewRenderer's worker thread calls it).
+    prism::gui::EditSettings look;
+    look.exposure_stops = 0.5f;
+    look.matrix = prism::gui::MatrixFile{"grade.txt", grade};
+    look.saturation = 1.25f;
+    look.contrast = 1.15f;
+    look.curve = prism::gui::CurveKind::filmic;
+    std::optional<prism::gui::PreviewFrame> frame;
+    const double preview_f32 = static_cast<double>(preview.pixels.size()) * sizeof(float);
+    bench_stage(s, "preview render", 2 * preview_f32, none,
+                [&](int t) { frame = prism::gui::render_preview(preview, look, t, {}); });
+
     bench_raw(s);
 
     // Use the results so the optimiser cannot decide the work is pointless and delete it.
-    if (encoded.empty() || hist.pixel_count != samples / 3 || preview.pixels.empty()) {
+    if (encoded.empty() || hist.pixel_count != samples / 3 || preview.pixels.empty() || !frame ||
+        frame->rgb8.empty()) {
         std::cerr << "unexpected result\n";
         return 1;
     }
