@@ -3,6 +3,7 @@
 # always built and every CI job (the sanitizer ones included) tests it. The window itself
 # (SDL + ImGui) will be a separate target on top of this one.
 add_library(prism_gui_core STATIC
+  src/history.cpp
   src/presets.cpp
   src/settings.cpp)
 
