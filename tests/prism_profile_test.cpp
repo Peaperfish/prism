@@ -485,7 +485,8 @@ TEST(PrismProfile, LongTextIsCutAt120Characters) {
 
 TEST(PrismProfile, ReportsTheEmbedPolicyAsTheSpecificationWordsIt) {
     // DNG 1.7.1.0, p. 52: 0 and 1 may not process non-DNG files; 2 is a stored profile that may
-    // not be embedded in files, but once embedded in a DNG it has the restrictions of 1.
+    // not be embedded in files, but once embedded in a DNG it has the restrictions of 1. Without
+    // the tag, its default (0) applies.
     struct Case {
         std::optional<std::uint32_t> policy;
         bool dng;
@@ -503,7 +504,11 @@ TEST(PrismProfile, ReportsTheEmbedPolicyAsTheSpecificationWordsIt) {
          raw_use_sentence, "warning: "},
         {3, false, "3 (no restrictions)", "", ""},
         {3, true, "3 (no restrictions)", "", ""},
-        {std::nullopt, false, "not in the file", "", ""},
+        // The tag's default is 0.
+        {std::nullopt, false, "not in the file, so the specification's default applies: 0 (allow",
+         raw_use_sentence, "warning: "},
+        {std::nullopt, true, "not in the file, so the specification's default applies: 0 (allow",
+         raw_use_sentence, "warning: "},
     };
     for (const Case& c : cases) {
         SCOPED_TRACE("ProfileEmbedPolicy " + (c.policy ? std::to_string(*c.policy) : "absent") +

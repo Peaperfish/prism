@@ -167,7 +167,7 @@ Not applied, and listed in the header when present: a DNG's `CameraCalibration1/
 | 2, in a DNG | "If a camera profile is already embedded in a DNG file, then this value has the same restrictions as 'embed if used'" | the same warning as 0 and 1 |
 | 3 | "no restrictions" | nothing |
 
-With no tag there is nothing either.
+| no tag | "Default: 0" (p. 51) | the same warning as 0, and the header says the tag is missing and the default applies |
 
 No camera profile or DNG is in this repository, and none of their values are: the tests build small files with made-up matrices.
 

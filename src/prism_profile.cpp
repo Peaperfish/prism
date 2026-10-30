@@ -285,12 +285,8 @@ struct PolicyReport {
     bool warning = false;     // stderr says "warning:" rather than "note:"
 };
 
-PolicyReport embed_policy_report(const prism::DngProfile& p) {
-    if (!p.embed_policy) {
-        return {"not in the file", {}, false};
-    }
-    const bool embedded = p.source == prism::DngProfile::Source::dng;
-    switch (*p.embed_policy) {
+PolicyReport report_for(std::uint32_t policy, bool embedded) {
+    switch (policy) {
         case 0:
             return {"0 (allow copying: may be copied between DNG files)", raw_use_sentence, true};
         case 1:
@@ -310,10 +306,19 @@ PolicyReport embed_policy_report(const prism::DngProfile& p) {
         case 3: return {"3 (no restrictions)", {}, false};
         default:
             return {
-                std::to_string(*p.embed_policy) + " (not a value the DNG specification defines)",
-                {},
-                false};
+                std::to_string(policy) + " (not a value the DNG specification defines)", {}, false};
     }
+}
+
+PolicyReport embed_policy_report(const prism::DngProfile& p) {
+    const bool embedded = p.source == prism::DngProfile::Source::dng;
+    if (p.embed_policy) {
+        return report_for(*p.embed_policy, embedded);
+    }
+    // The tag's "Default" is 0 (DNG 1.7.1.0, p. 51), so a profile without it is "allow copying".
+    PolicyReport report = report_for(0, embedded);
+    report.value = "not in the file, so the specification's default applies: " + report.value;
+    return report;
 }
 
 // The profile's tables, with their sizes: none of them can be expressed as a 3x3 matrix.
