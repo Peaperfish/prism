@@ -351,7 +351,20 @@ sudo apt install libraw-dev pkg-config  # Debian / Ubuntu
 
 CMake then turns it on automatically (`-- RAW support: LibRaw 0.22.3` when configuring). To build without it, pass `-DPRISM_WITH_LIBRAW=OFF`. Prism still builds and passes all its tests, and RAW files fail with a clear error. If you install LibRaw after configuring a build directory without it, re-run cmake with `-DPRISM_WITH_LIBRAW=ON`. LibRaw is a private dependency of `prism_core`, like stb: only `lib/raw.cpp` includes its headers.
 
-**Licence:** LibRaw is dual-licensed under the [LGPL 2.1](https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html) or the [CDDL 1.0](https://opensource.org/license/cddl-1-0), at your choice. Prism links it dynamically (the Homebrew `libraw_r` shared library) and does not modify it, which the LGPL allows. If you distribute Prism binaries built with LibRaw, include LibRaw's copyright notice and licence, and let users swap in their own build of the library (dynamic linking already allows that). LibRaw in turn uses Little CMS (MIT licence).
+#### Building LibRaw from source (Windows)
+
+Windows has no system LibRaw, so there CMake can build it instead:
+
+```sh
+cmake -S . -B build -DPRISM_LIBRAW_FROM_SOURCE=ON
+cmake --build build --config Release
+```
+
+`-DPRISM_LIBRAW_FROM_SOURCE=ON` (default `OFF`) skips pkg-config, downloads the LibRaw 0.22.3 release tarball from libraw.org at configure time (pinned, with its SHA-256 checked) and builds it, unmodified, as a shared library: `libraw_r.dll` on Windows, `libraw_r.dylib` on macOS, `libraw_r.so` on Linux. `cmake/LibRaw.cmake` lists its 79 source files (those of LibRaw's own `Makefile.dist`). It is built without OpenMP, Little CMS, zlib or libjpeg, so DNGs compressed with deflate or lossy JPEG don't open; other RAW formats are unaffected. It works on every OS; the Windows CI job uses it, and Linux and macOS keep using pkg-config unless you turn it on.
+
+Windows has no rpath, so after each build CMake copies `libraw_r.dll` next to `prism.exe`, `prism_profile.exe`, `prism_bench.exe` and `prism_tests.exe`; copy it along if you move them. On macOS and Linux the executables find the library in the build directory through their rpath.
+
+**Licence:** LibRaw is dual-licensed under the [LGPL 2.1](https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html) or the [CDDL 1.0](https://opensource.org/license/cddl-1-0), at your choice. Prism links it dynamically (the system's `libraw_r` shared library, or the `libraw_r` DLL/dylib built from source) and does not modify it, which the LGPL allows. If you distribute Prism binaries built with LibRaw, include LibRaw's copyright notice and licence, and let users swap in their own build of the library (dynamic linking already allows that). LibRaw in turn uses Little CMS (MIT licence).
 
 ### Continuous integration
 
@@ -364,9 +377,9 @@ CMake then turns it on automatically (`-- RAW support: LibRaw 0.22.3` when confi
 | macOS (Apple Clang) | Apple Clang (macos-latest) | Release | off |
 | Linux Clang ThreadSanitizer | Clang (ubuntu-latest) | Debug, `PRISM_SANITIZE_THREAD=ON` | off |
 | Linux Clang ASan + UBSan | Clang (ubuntu-latest) | Debug, `PRISM_SANITIZE_ADDRESS=ON` | off |
-| Windows (MSVC) | MSVC (windows-latest, Visual Studio generator) | Release | off |
+| Windows MSVC + LibRaw (source) | MSVC (windows-latest, Visual Studio generator) | Release | on (`PRISM_LIBRAW_FROM_SOURCE=ON`: `libraw_r.dll`) |
 
-There is no RAW file in CI, so the RAW integration tests report as skipped. GoogleTest's download is cached between runs.
+There is no camera RAW file in CI, so the `RawFile.*` integration tests report as skipped. Instead the `RawSyntheticDng.*` tests write a tiny DNG (32×32 uniform grey Bayer pixels, from `tests/synthetic_dng.hpp`) and decode it, including from a non-ASCII path; in the jobs without LibRaw they check the "built without LibRaw" error instead. The two LibRaw jobs set `PRISM_REQUIRE_RAW=1`, so a build that lost RAW support fails. The Windows job also checks with `dumpbin` that the executables import `libraw_r.dll` and that it sits next to them. The GoogleTest and LibRaw downloads are cached between runs.
 
 ### Testing with a real RAW file
 
@@ -404,6 +417,7 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 ```
 prism/
 ├── CMakeLists.txt
+├── cmake/        # LibRaw.cmake: LibRaw source build (PRISM_LIBRAW_FROM_SOURCE)
 ├── src/          # CLI entry points: prism, prism_profile
 ├── include/prism # public headers
 ├── lib/          # core image + colour code (raw.cpp: LibRaw; camera_profile.cpp: matrix maths)
@@ -428,5 +442,5 @@ This is a source-available licence, not an open-source one: because it restricts
 |------|---------|-------------------|
 | [stb](https://github.com/nothings/stb) (`stb_image.h` v2.30, `stb_image_write.h` v1.16) | MIT or public domain (Unlicense), at your choice | Vendored, unmodified, in `third_party/stb/` and compiled into `prism_core` to read and write PNG and JPEG |
 | [GoogleTest](https://github.com/google/googletest) v1.17.0 | BSD 3-Clause | Tests only: downloaded at configure time by CMake `FetchContent` and linked into `prism_tests`. Not in the repo and not linked into `prism` or `prism_profile` |
-| [LibRaw](https://www.libraw.org) | LGPL 2.1 or CDDL 1.0, at your choice | Optional (`PRISM_WITH_LIBRAW`): found on the system with pkg-config (`libraw_r`) and linked into `prism_core`. Not bundled |
-| [Little CMS 2](https://www.littlecms.com) | MIT | Not used by Prism's code: LibRaw's pkg-config file requires it, so builds with LibRaw also link it. Not bundled |
+| [LibRaw](https://www.libraw.org) 0.22.3 | LGPL 2.1 or CDDL 1.0, at your choice | Optional (`PRISM_WITH_LIBRAW`), always a separate shared library that `prism_core` links dynamically. On Linux and macOS: found on the system with pkg-config (`libraw_r`), not bundled. On Windows (and with `PRISM_LIBRAW_FROM_SOURCE=ON` anywhere): the unmodified release tarball is downloaded at configure time and built as the bundled shared `libraw_r.dll` (`.dylib`, `.so`), which is copied next to the executables. Not in the repo. Its licence files, `LICENSE.LGPL`, `LICENSE.CDDL` and `COPYRIGHT` (which also lists the code LibRaw contains from others, e.g. dcraw), are in the unpacked source: `build/_deps/libraw-src/`, or `<FETCHCONTENT_BASE_DIR>/libraw-src/` when that is set (CI: `.deps/libraw-src/`) |
+| [Little CMS 2](https://www.littlecms.com) | MIT | Not used by Prism's code: the system LibRaw's pkg-config file requires it, so builds with a system LibRaw also link it. Not bundled, and not used by the LibRaw source build |

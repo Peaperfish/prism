@@ -61,12 +61,15 @@ jobs:
             asan: 'ON'
           # MSVC with the default Visual Studio generator, which is multi-config: it ignores
           # CMAKE_BUILD_TYPE, so Build and Test pass the configuration explicitly (see below).
-          - name: Windows (MSVC)
+          # Windows has no system LibRaw, so this job builds the pinned release from source as
+          # libraw_r.dll (cmake/LibRaw.cmake).
+          - name: Windows MSVC + LibRaw (source)
             os: windows-latest
             cc: cl
             cxx: cl
             build_type: Release
-            libraw: 'OFF'
+            libraw: 'ON'
+            libraw_source: 'ON'
 
     env:
       CC: ${{ matrix.cc }}
@@ -78,7 +81,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install LibRaw
-        if: matrix.libraw == 'ON'
+        if: matrix.libraw == 'ON' && matrix.libraw_source != 'ON'
         run: sudo apt-get update && sudo apt-get install -y libraw-dev pkg-config
 
       # Recent Ubuntu kernels randomise more address bits than TSan's shadow memory layout
@@ -87,19 +90,20 @@ jobs:
         if: matrix.tsan == 'ON'
         run: sudo sysctl vm.mmap_rnd_bits=28
 
-      # GoogleTest (FetchContent) is downloaded into .deps, cached per job and keyed on the file
-      # that pins its version, so most runs skip the download.
+      # GoogleTest and the LibRaw source (FetchContent) are downloaded into .deps, cached per job
+      # and keyed on the files that pin their versions, so most runs skip the download.
       - name: Cache FetchContent downloads
         uses: actions/cache@v4
         with:
           path: .deps
-          key: deps-${{ matrix.os }}-${{ matrix.name }}-${{ hashFiles('tests/CMakeLists.txt') }}
+          key: deps-${{ matrix.os }}-${{ matrix.name }}-${{ hashFiles('tests/CMakeLists.txt', 'cmake/LibRaw.cmake') }}
 
       - name: Configure
         run: >
           cmake -S . -B build
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
           -DPRISM_WITH_LIBRAW=${{ matrix.libraw }}
+          -DPRISM_LIBRAW_FROM_SOURCE=${{ matrix.libraw_source || 'OFF' }}
           -DPRISM_SANITIZE_THREAD=${{ matrix.tsan || 'OFF' }}
           -DPRISM_SANITIZE_ADDRESS=${{ matrix.asan || 'OFF' }}
           -DFETCHCONTENT_BASE_DIR=${{ github.workspace }}/.deps
@@ -109,7 +113,26 @@ jobs:
       - name: Build
         run: cmake --build build --config ${{ matrix.build_type }} --parallel
 
-      # In parallel: every CLI test uses its own temporary file names. RAW integration tests
-      # skip themselves because PRISM_TEST_RAW is not set (there is no RAW file in the repo).
+      # LibRaw must stay a separate DLL (its LGPL/CDDL terms): check that prism.exe imports
+      # libraw_r.dll rather than containing LibRaw, and that the build copied the DLL next to it.
+      - name: Check that LibRaw is a separate DLL
+        if: runner.os == 'Windows' && matrix.libraw_source == 'ON'
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $dumpbin = Get-ChildItem "$vs\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe" | Select-Object -First 1
+          foreach ($exe in 'src\Release\prism.exe', 'src\Release\prism_profile.exe', 'tests\Release\prism_tests.exe') {
+            $deps = & $dumpbin.FullName /dependents "build\$exe" | Out-String
+            Write-Output "$exe imports:" $deps
+            if ($deps -notmatch 'libraw_r\.dll') { throw "$exe does not import libraw_r.dll" }
+            $dir = Split-Path "build\$exe"
+            if (-not (Test-Path "$dir\libraw_r.dll")) { throw "libraw_r.dll is missing from $dir" }
+          }
+
+      # In parallel: every CLI test uses its own temporary file names. The synthetic DNG tests run
+      # everywhere; the integration tests with a real camera file skip themselves because
+      # PRISM_TEST_RAW is not set (there is no RAW file in the repo).
+      # PRISM_REQUIRE_RAW=1 makes the jobs with LibRaw fail if the build lost RAW support.
       - name: Test
+        env:
+          PRISM_REQUIRE_RAW: ${{ matrix.libraw == 'ON' && '1' || '0' }}
         run: ctest --test-dir build -C ${{ matrix.build_type }} --output-on-failure --parallel 4
