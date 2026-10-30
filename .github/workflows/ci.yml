@@ -137,3 +137,53 @@ jobs:
         env:
           PRISM_REQUIRE_RAW: ${{ matrix.libraw == 'ON' && '1' || '0' }}
         run: ctest --test-dir build -C ${{ matrix.build_type }} --output-on-failure --parallel 4
+
+  # The desktop app (PRISM_BUILD_GUI=ON: SDL3 + Dear ImGui), build only: a runner has no display
+  # to open the window on, and the GUI's logic is tested without one in every job above
+  # (prism_gui_core_tests). Separate from the matrix above so those jobs don't download SDL.
+  gui:
+    name: GUI build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-latest
+          - name: macOS
+            os: macos-latest
+          - name: Windows
+            os: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # SDL finds the windowing systems it can talk to at configure time: X11 and Wayland, plus
+      # D-Bus for the file dialogs (xdg-desktop-portal). Audio, joystick and the other
+      # subsystems are turned off in cmake/GuiDependencies.cmake, so their packages aren't needed.
+      - name: Install SDL's Linux dependencies
+        if: runner.os == 'Linux'
+        run: >
+          sudo apt-get update && sudo apt-get install -y
+          libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev
+          libxss-dev libxtst-dev libxkbcommon-dev libdrm-dev libgbm-dev libgl1-mesa-dev
+          libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev
+          libwayland-dev libdecor-0-dev wayland-protocols
+
+      - name: Cache FetchContent downloads
+        uses: actions/cache@v4
+        with:
+          path: .deps
+          key: deps-gui-${{ matrix.os }}-${{ hashFiles('cmake/GuiDependencies.cmake') }}
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DPRISM_BUILD_GUI=ON
+          -DPRISM_BUILD_TESTS=OFF
+          -DPRISM_WITH_LIBRAW=OFF
+          -DFETCHCONTENT_BASE_DIR=${{ github.workspace }}/.deps
+
+      - name: Build prism_gui
+        run: cmake --build build --config Release --target prism_gui --parallel
