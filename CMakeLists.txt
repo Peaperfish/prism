@@ -126,6 +126,7 @@ add_subdirectory(src)
 add_subdirectory(bench)
 if(PRISM_BUILD_GUI)
   include(cmake/GuiDependencies.cmake)
+  add_subdirectory(gui_app)
 endif()
 
 if(PRISM_BUILD_TESTS)
