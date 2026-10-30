@@ -46,7 +46,7 @@ endmacro()
 set(prism_notices "Third-party software in Prism ${PROJECT_VERSION}
 ====================================
 
-Prism itself is under the PolyForm Noncommercial License 1.0.0 (see LICENSE).
+Prism itself is under the PolyForm Noncommercial License 1.0.0 (see LICENSE.md).
 It includes the components below, each under its own licence.")
 
 # --- LibRaw -------------------------------------------------------------------------------------

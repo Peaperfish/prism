@@ -10,7 +10,7 @@ What's in here
 --------------
 
 @PRISM_README_FILES@
-  LICENSE                   Prism's licence (PolyForm Noncommercial 1.0.0)
+  LICENSE.md                Prism's licence (PolyForm Noncommercial 1.0.0)
   THIRD_PARTY_NOTICES.txt   the third-party components in Prism and their licences
   licenses/LibRaw/          LibRaw's LICENSE.CDDL and COPYRIGHT, unchanged
 
@@ -31,7 +31,7 @@ prints how to use it, for example:
 Licences
 --------
 
-Prism is under the PolyForm Noncommercial License 1.0.0 (see LICENSE).
+Prism is under the PolyForm Noncommercial License 1.0.0 (see LICENSE.md).
 
 It includes LibRaw @PRISM_LIBRAW_VERSION@, used under the Common Development and Distribution
 License (CDDL) 1.0. LibRaw's licence files are in licenses/LibRaw/. Its source code is attached

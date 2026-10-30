@@ -5,11 +5,11 @@ project(prism
   DESCRIPTION "Command-line photo tool"
   LANGUAGES CXX)
 
-# Prism's copyright line, from the "Required Notice:" in LICENSE (PolyForm asks that it go with
+# Prism's copyright line, from the "Required Notice:" in LICENSE.md (PolyForm asks that it go with
 # every copy): for the About window, the macOS Info.plist and the Windows version resource.
-file(STRINGS ${PROJECT_SOURCE_DIR}/LICENSE PRISM_REQUIRED_NOTICE REGEX "^Required Notice:" LIMIT_COUNT 1)
+file(STRINGS ${PROJECT_SOURCE_DIR}/LICENSE.md PRISM_REQUIRED_NOTICE REGEX "^Required Notice:" LIMIT_COUNT 1)
 if(NOT PRISM_REQUIRED_NOTICE)
-  message(FATAL_ERROR "LICENSE has no 'Required Notice:' line")
+  message(FATAL_ERROR "LICENSE.md has no 'Required Notice:' line")
 endif()
 string(REGEX REPLACE "^Required Notice: *" "" PRISM_COPYRIGHT "${PRISM_REQUIRED_NOTICE}")
 if(WIN32)

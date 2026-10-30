@@ -1,6 +1,6 @@
 # Windows only: gives an executable a version resource (Explorer's Properties > Details shows the
 # version, description and copyright) and, optionally, an icon. The version comes from
-# project(VERSION), the copyright from the Required Notice in LICENSE.
+# project(VERSION), the copyright from the Required Notice in LICENSE.md.
 
 # prism_add_version_resource(<target> <description> [ICON <file.ico>])
 function(prism_add_version_resource target description)

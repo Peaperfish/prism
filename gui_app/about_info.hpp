@@ -13,7 +13,7 @@ struct ThirdPartyComponent {
     std::string_view licence;  // e.g. "zlib"
 };
 
-// The "Required Notice:" line of Prism's LICENSE.
+// The "Required Notice:" line of Prism's LICENSE.md.
 [[nodiscard]] std::string_view required_notice();
 
 [[nodiscard]] std::span<const ThirdPartyComponent> third_party_components();

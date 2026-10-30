@@ -5,7 +5,7 @@
 #
 # e.g. packaging/macos/package.sh build dist "arm64 x86_64". Writes
 # <out-dir>/prism-<version>-macos-<universal|arm64>.zip (a folder holding Prism.app, prism,
-# LICENSE, THIRD_PARTY_NOTICES.txt, README.txt and licenses/LibRaw/) and
+# LICENSE.md, THIRD_PARTY_NOTICES.txt, README.txt and licenses/LibRaw/) and
 # <out-dir>/LibRaw-<version>-source.tar.gz, the exact tarball the build compiled.
 set -euo pipefail
 
@@ -56,6 +56,22 @@ done
 codesign --verify --deep --strict --verbose=2 "$stage/Prism.app"
 codesign --verify --strict --verbose=2 "$stage/prism"
 "$stage/prism" --version
+
+# Prism's licence, with its Required Notice, and the README that points to it.
+for f in LICENSE.md THIRD_PARTY_NOTICES.txt README.txt; do
+  if [[ ! -f "$stage/$f" ]]; then
+    echo "error: the download has no $f" >&2
+    exit 1
+  fi
+done
+if ! grep -q '^Required Notice: ' "$stage/LICENSE.md"; then
+  echo "error: LICENSE.md has no 'Required Notice:' line" >&2
+  exit 1
+fi
+if ! grep -q 'LICENSE\.md' "$stage/README.txt"; then
+  echo "error: README.txt doesn't refer to LICENSE.md" >&2
+  exit 1
+fi
 
 # LibRaw's source: the tarball the build unpacked, with the pinned hash, and its licence files
 # in the download exactly as they are in it.

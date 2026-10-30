@@ -17,7 +17,7 @@ Ready-made builds of the desktop app and the command-line tool are on the [Relea
 | `prism-<version>-macos-universal.zip` | macOS 13.3 or later, Apple Silicon and Intel |
 | `prism-<version>-windows-x64.zip` | Windows 10 and 11, 64-bit |
 
-Each zip holds the app (`Prism.app` on macOS, `prism_gui.exe` on Windows), the command-line tool (`prism`, `prism.exe`), Prism's `LICENSE`, `THIRD_PARTY_NOTICES.txt`, LibRaw's licence files in `licenses/LibRaw/` and a short `README.txt`. Both include RAW support. Nothing needs installing beside them.
+Each zip holds the app (`Prism.app` on macOS, `prism_gui.exe` on Windows), the command-line tool (`prism`, `prism.exe`), Prism's `LICENSE.md`, `THIRD_PARTY_NOTICES.txt`, LibRaw's licence files in `licenses/LibRaw/` and a short `README.txt`. Both include RAW support. Nothing needs installing beside them.
 
 The apps aren't signed by Apple or Microsoft yet, so both systems warn the first time:
 
@@ -571,7 +571,7 @@ prism/
 
 ## Licences
 
-Prism is licensed under the PolyForm Noncommercial License 1.0.0 (SPDX identifier `PolyForm-Noncommercial-1.0.0`); the full text is in [LICENSE](LICENSE).
+Prism is licensed under the PolyForm Noncommercial License 1.0.0 (SPDX identifier `PolyForm-Noncommercial-1.0.0`); the full text is in [LICENSE.md](LICENSE.md).
 
 In short: you may use, copy, change and share Prism for any noncommercial purpose, as long as anyone you give it to also gets the licence terms and the `Required Notice:` line, but commercial use is not allowed.
 

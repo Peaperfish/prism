@@ -3,7 +3,7 @@
 #   packaging/windows/package.ps1 <build-dir> <out-dir>
 #
 # Writes <out-dir>/prism-<version>-windows-x64.zip (a folder holding prism_gui.exe, prism.exe,
-# LICENSE, THIRD_PARTY_NOTICES.txt, README.txt and licenses\LibRaw\) and
+# LICENSE.md, THIRD_PARTY_NOTICES.txt, README.txt and licenses\LibRaw\) and
 # <out-dir>/LibRaw-<version>-source.tar.gz, the exact tarball the build compiled.
 param(
     [Parameter(Mandatory)] [string] $Build,
@@ -44,6 +44,17 @@ foreach ($exe in 'prism_gui.exe', 'prism.exe') {
 }
 & (Join-Path $stage 'prism.exe') --version
 if ($LASTEXITCODE -ne 0) { throw 'prism.exe --version failed' }
+
+# Prism's licence, with its Required Notice, and the README that points to it.
+foreach ($f in 'LICENSE.md', 'THIRD_PARTY_NOTICES.txt', 'README.txt') {
+    if (-not (Test-Path (Join-Path $stage $f) -PathType Leaf)) { throw "the download has no $f" }
+}
+if (-not (Select-String -Quiet -Pattern '^Required Notice: ' -Path (Join-Path $stage 'LICENSE.md'))) {
+    throw "LICENSE.md has no 'Required Notice:' line"
+}
+if (-not (Select-String -Quiet -SimpleMatch 'LICENSE.md' -Path (Join-Path $stage 'README.txt'))) {
+    throw "README.txt doesn't refer to LICENSE.md"
+}
 
 # LibRaw's source: the tarball the build unpacked, with the pinned hash, and its licence files
 # in the download exactly as they are in it.

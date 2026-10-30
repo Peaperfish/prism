@@ -851,7 +851,7 @@ void App::draw_about() {
     const std::string_view notice = required_notice();
     ImGui::TextWrapped("%.*s", static_cast<int>(notice.size()), notice.data());
     ImGui::TextWrapped(
-        "The full terms are in the LICENSE file that comes with Prism, and at "
+        "The full terms are in the LICENSE.md file that comes with Prism, and at "
         "https://polyformproject.org/licenses/noncommercial/1.0.0");
 
     ImGui::SeparatorText("Third-party components");

@@ -3,7 +3,7 @@
 #
 #   macOS:   Prism.app, prism
 #   Windows: prism_gui.exe, prism.exe
-#   both:    LICENSE, THIRD_PARTY_NOTICES.txt, README.txt,
+#   both:    LICENSE.md, THIRD_PARTY_NOTICES.txt, README.txt,
 #            licenses/LibRaw/LICENSE.CDDL and COPYRIGHT
 #
 # LibRaw's two files are installed from the source tree the build compiled, byte for byte.
@@ -12,7 +12,7 @@ install(TARGETS prism RUNTIME DESTINATION .)
 if(PRISM_BUILD_GUI)
   install(TARGETS prism_gui RUNTIME DESTINATION . BUNDLE DESTINATION .)
 endif()
-install(FILES ${PROJECT_SOURCE_DIR}/LICENSE ${PRISM_THIRD_PARTY_NOTICES} DESTINATION .)
+install(FILES ${PROJECT_SOURCE_DIR}/LICENSE.md ${PRISM_THIRD_PARTY_NOTICES} DESTINATION .)
 install(FILES ${libraw_SOURCE_DIR}/LICENSE.CDDL ${libraw_SOURCE_DIR}/COPYRIGHT
         DESTINATION licenses/LibRaw)
 
