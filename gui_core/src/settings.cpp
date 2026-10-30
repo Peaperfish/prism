@@ -132,10 +132,26 @@ SimpleOutOfRange outside_simple_range(const EditSettings& s) {
 }
 
 void apply_simple(EditSettings& s, const SimpleControls& c) {
-    s.exposure_stops = clamp_simple(c.brightness) / 50.0f;
-    s.contrast = std::pow(simple_contrast_base, clamp_simple(c.contrast) / 100.0f);
-    s.saturation = 1.0f + clamp_simple(c.colour) / 100.0f;
-    s.exposure_on = s.contrast_on = s.saturation_on = true;
+    apply_simple_control(s, SimpleControl::brightness, c.brightness);
+    apply_simple_control(s, SimpleControl::contrast, c.contrast);
+    apply_simple_control(s, SimpleControl::colour, c.colour);
+}
+
+void apply_simple_control(EditSettings& s, SimpleControl control, float position) {
+    switch (control) {
+        case SimpleControl::brightness:
+            s.exposure_stops = clamp_simple(position) / 50.0f;
+            s.exposure_on = true;
+            break;
+        case SimpleControl::contrast:
+            s.contrast = std::pow(simple_contrast_base, clamp_simple(position) / 100.0f);
+            s.contrast_on = true;
+            break;
+        case SimpleControl::colour:
+            s.saturation = 1.0f + clamp_simple(position) / 100.0f;
+            s.saturation_on = true;
+            break;
+    }
 }
 
 }  // namespace prism::gui

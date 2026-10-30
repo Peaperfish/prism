@@ -9,7 +9,8 @@ add_library(prism_gui_core STATIC
   src/presets.cpp
   src/preview_renderer.cpp
   src/session.cpp
-  src/settings.cpp)
+  src/settings.cpp
+  src/slider_gesture.cpp)
 
 target_include_directories(prism_gui_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 

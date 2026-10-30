@@ -316,3 +316,35 @@ TEST(SimpleControls, AdvancedOnlyFieldsAreLeftAlone) {
     expected.saturation = s.saturation;
     EXPECT_EQ(s, expected);
 }
+
+TEST(SimpleControls, OneSliderSetsOnlyItsOwnField) {
+    EditSettings s;
+    s.exposure_stops = -3.0f;  // beyond Brightness's end
+    s.saturation = 3.0f;       // beyond Colour's end
+    s.saturation_on = false;
+    s.contrast = 0.5f;
+    EditSettings expected = s;
+
+    prism::gui::apply_simple_control(s, prism::gui::SimpleControl::brightness, 50);
+    expected.exposure_stops = 1.0f;
+    EXPECT_EQ(s, expected) << "contrast and saturation untouched, saturation still off";
+
+    prism::gui::apply_simple_control(s, prism::gui::SimpleControl::colour, -100);
+    expected.saturation = 0.0f;
+    expected.saturation_on = true;
+    EXPECT_EQ(s, expected);
+
+    prism::gui::apply_simple_control(s, prism::gui::SimpleControl::contrast, 500);  // clamped
+    expected.contrast = 1.5f;
+    EXPECT_EQ(s, expected);
+}
+
+TEST(SimpleControls, ApplySimpleEqualsTheThreeSlidersOneByOne) {
+    EditSettings a;
+    EditSettings b;
+    prism::gui::apply_simple(a, {30, -40, 70});
+    prism::gui::apply_simple_control(b, prism::gui::SimpleControl::brightness, 30);
+    prism::gui::apply_simple_control(b, prism::gui::SimpleControl::contrast, -40);
+    prism::gui::apply_simple_control(b, prism::gui::SimpleControl::colour, 70);
+    EXPECT_EQ(a, b);
+}
