@@ -6,11 +6,14 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <stdexcept>
 #include <string>
 #include <vector>
+
+#include "prism/utf8_path.hpp"
 
 namespace prism {
 
@@ -686,20 +689,20 @@ LightCraftProfile parse_lightcraft_profile(std::string_view json) {
     return p;
 }
 
-LightCraftProfile load_lightcraft_profile(const std::string& path) {
+LightCraftProfile load_lightcraft_profile(const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary);
     if (!file) {
-        throw std::runtime_error("cannot open profile '" + path + "'");
+        throw std::runtime_error("cannot open profile '" + utf8(path) + "'");
     }
     const std::string text((std::istreambuf_iterator<char>(file)),
                            std::istreambuf_iterator<char>());
     if (file.bad()) {
-        throw std::runtime_error("cannot read profile '" + path + "'");
+        throw std::runtime_error("cannot read profile '" + utf8(path) + "'");
     }
     try {
         return parse_lightcraft_profile(text);
     } catch (const std::runtime_error& e) {
-        throw std::runtime_error(path + ": " + e.what());
+        throw std::runtime_error(utf8(path) + ": " + e.what());
     }
 }
 

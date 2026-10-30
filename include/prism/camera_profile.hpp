@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -153,6 +154,6 @@ struct LightCraftProfile {
 [[nodiscard]] LightCraftProfile parse_lightcraft_profile(std::string_view json);
 
 // Reads and parses a profile file. Throws std::runtime_error on any problem.
-[[nodiscard]] LightCraftProfile load_lightcraft_profile(const std::string& path);
+[[nodiscard]] LightCraftProfile load_lightcraft_profile(const std::filesystem::path& path);
 
 }  // namespace prism

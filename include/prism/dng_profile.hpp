@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <span>
 #include <string>
@@ -72,6 +73,6 @@ inline constexpr std::size_t max_dng_profile_bytes = std::size_t{512} * 1024 * 1
 
 // Reads a file (at most max_dng_profile_bytes) and parses it. Throws std::runtime_error on any
 // problem, with the path in the message.
-[[nodiscard]] DngProfile load_dng_profile(const std::string& path);
+[[nodiscard]] DngProfile load_dng_profile(const std::filesystem::path& path);
 
 }  // namespace prism

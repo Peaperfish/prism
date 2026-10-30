@@ -205,16 +205,16 @@ TEST(UnicodePath, LoadMatrix) {
 TEST(UnicodePath, LoadLightCraftProfile) {
     const fs::path path = temp_file(".json");
     write_text(path, lightcraft_json);
-    const prism::LightCraftProfile p = prism::load_lightcraft_profile(path.string());
+    const prism::LightCraftProfile p = prism::load_lightcraft_profile(path);
     EXPECT_EQ(p.model, "TEST-CAM");
 
     write_text(path, "{");
     std::string message =
-        runtime_error_message([&] { (void)prism::load_lightcraft_profile(path.string()); });
+        runtime_error_message([&] { (void)prism::load_lightcraft_profile(path); });
     EXPECT_TRUE(contains(message, utf8(path.filename()))) << message;
     fs::remove(path);
 
-    message = runtime_error_message([&] { (void)prism::load_lightcraft_profile(path.string()); });
+    message = runtime_error_message([&] { (void)prism::load_lightcraft_profile(path); });
     EXPECT_TRUE(contains(message, "cannot open profile")) << message;
     EXPECT_TRUE(contains(message, utf8(path.filename()))) << message;
 }
@@ -222,17 +222,16 @@ TEST(UnicodePath, LoadLightCraftProfile) {
 TEST(UnicodePath, LoadDngProfile) {
     const fs::path path = temp_file(".dcp");
     write_bytes(path, minimal_dcp());
-    const prism::DngProfile p = prism::load_dng_profile(path.string());
+    const prism::DngProfile p = prism::load_dng_profile(path);
     EXPECT_EQ(p.source, prism::DngProfile::Source::dcp);
     EXPECT_EQ(p.unique_camera_model, "TEST-CAM");
 
     write_text(path, "not a TIFF file");
-    std::string message =
-        runtime_error_message([&] { (void)prism::load_dng_profile(path.string()); });
+    std::string message = runtime_error_message([&] { (void)prism::load_dng_profile(path); });
     EXPECT_TRUE(contains(message, utf8(path.filename()))) << message;
     fs::remove(path);
 
-    message = runtime_error_message([&] { (void)prism::load_dng_profile(path.string()); });
+    message = runtime_error_message([&] { (void)prism::load_dng_profile(path); });
     EXPECT_TRUE(contains(message, "cannot open DNG profile")) << message;
     EXPECT_TRUE(contains(message, utf8(path.filename()))) << message;
 }

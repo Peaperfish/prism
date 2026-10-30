@@ -8,6 +8,7 @@
 #include <system_error>
 #include <vector>
 
+#include "prism/utf8_path.hpp"
 #include "tiff_reader.hpp"
 
 namespace prism {
@@ -231,33 +232,33 @@ DngProfile parse_dng_profile(std::span<const std::byte> file) {
     return p;
 }
 
-DngProfile load_dng_profile(const std::string& path) {
+DngProfile load_dng_profile(const std::filesystem::path& path) {
     // Check the size before reading, so a huge file (or a mistaken path to a disk image) is
     // refused without allocating memory for it.
     std::error_code ec;
     const std::uintmax_t size = std::filesystem::file_size(path, ec);
     if (ec) {
-        throw std::runtime_error("cannot open DNG profile '" + path + "': " + ec.message());
+        throw std::runtime_error("cannot open DNG profile '" + utf8(path) + "': " + ec.message());
     }
     if (size > max_dng_profile_bytes) {
-        throw std::runtime_error(path + ": file is " + std::to_string(size) +
+        throw std::runtime_error(utf8(path) + ": file is " + std::to_string(size) +
                                  " bytes, more than the " + std::to_string(max_dng_profile_bytes) +
                                  "-byte limit for a DNG or DCP file");
     }
     std::ifstream file(path, std::ios::binary);
     if (!file) {
-        throw std::runtime_error("cannot open DNG profile '" + path + "'");
+        throw std::runtime_error("cannot open DNG profile '" + utf8(path) + "'");
     }
     std::vector<std::byte> data(static_cast<std::size_t>(size));
     // Reading through char* is allowed for any object: char may alias anything.
     file.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(data.size()));
     if (file.gcount() != static_cast<std::streamsize>(data.size())) {
-        throw std::runtime_error("cannot read DNG profile '" + path + "'");
+        throw std::runtime_error("cannot read DNG profile '" + utf8(path) + "'");
     }
     try {
         return parse_dng_profile(data);
     } catch (const std::runtime_error& e) {
-        throw std::runtime_error(path + ": " + e.what());
+        throw std::runtime_error(utf8(path) + ": " + e.what());
     }
 }
 
