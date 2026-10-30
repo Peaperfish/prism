@@ -51,3 +51,12 @@ else()
 endif()
 configure_file(${PROJECT_SOURCE_DIR}/packaging/README.txt.in ${PROJECT_BINARY_DIR}/README.txt @ONLY)
 install(FILES ${PROJECT_BINARY_DIR}/README.txt DESTINATION .)
+
+# For the release workflow and the packaging scripts: the versions and the LibRaw tarball, as
+# KEY=value lines (they go straight into $GITHUB_ENV).
+file(WRITE ${PROJECT_BINARY_DIR}/release.env
+"PRISM_VERSION=${PROJECT_VERSION}
+LIBRAW_VERSION=${PRISM_LIBRAW_VERSION}
+LIBRAW_SHA256=${PRISM_LIBRAW_SHA256}
+LIBRAW_TARBALL=${PRISM_LIBRAW_TARBALL}
+")

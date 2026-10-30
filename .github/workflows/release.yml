@@ -1,0 +1,163 @@
+name: Release
+
+# Builds the downloadable apps for macOS and Windows with PRISM_RELEASE (LibRaw from its pinned
+# source, statically linked), runs every test, and packages them.
+#
+# - Run it by hand (Actions > Release > Run workflow) for a dry run: the zips and the LibRaw
+#   source tarball are uploaded as workflow artifacts only.
+# - Push a tag v<version> (the version in CMakeLists.txt's project()) for a release: the same
+#   files go into a draft pre-release, which is published by hand.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    name: macOS (universal)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      # Universal (Apple Silicon and Intel); 13.3 is the oldest macOS whose C++ library has
+      # everything Prism uses (std::to_chars for floats).
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DPRISM_RELEASE=ON
+          -DPRISM_BUILD_GUI=ON
+          -DCMAKE_OSX_DEPLOYMENT_TARGET=13.3
+          "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"
+
+      - name: Check the tag against the version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          source build/release.env
+          if [[ "$GITHUB_REF_NAME" != "v$PRISM_VERSION" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match project(prism VERSION $PRISM_VERSION)"
+            exit 1
+          fi
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      # All tests, with RAW support required. The runner is Apple Silicon, so this runs the arm64
+      # code; the Intel code is tested as well when Rosetta is there to run it.
+      - name: Test
+        env:
+          PRISM_REQUIRE_RAW: '1'
+        run: ctest --test-dir build --output-on-failure --parallel 4
+
+      - name: Test the Intel code (Rosetta)
+        env:
+          PRISM_REQUIRE_RAW: '1'
+        run: |
+          if ! arch -x86_64 /usr/bin/true 2>/dev/null; then
+            echo "::warning::Rosetta isn't installed on this runner: the x86_64 code wasn't tested"
+            exit 0
+          fi
+          arch -x86_64 build/tests/prism_tests
+          arch -x86_64 build/tests/prism_gui_core_tests
+
+      - name: Package
+        run: packaging/macos/package.sh build dist "arm64 x86_64"
+
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: prism-macos
+          path: dist/prism-*.zip
+          if-no-files-found: error
+
+      # The same tarball is used on Windows; it is published once, from here.
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: libraw-source
+          path: dist/LibRaw-*-source.tar.gz
+          if-no-files-found: error
+
+  windows:
+    name: Windows (x64)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      # The Visual Studio generator; PRISM_RELEASE links the C runtime statically (/MT).
+      - name: Configure
+        run: cmake -S . -B build -A x64 -DPRISM_RELEASE=ON -DPRISM_BUILD_GUI=ON
+
+      - name: Check the tag against the version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          source build/release.env
+          if [[ "$GITHUB_REF_NAME" != "v$PRISM_VERSION" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match project(prism VERSION $PRISM_VERSION)"
+            exit 1
+          fi
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Test
+        env:
+          PRISM_REQUIRE_RAW: '1'
+        run: ctest --test-dir build -C Release --output-on-failure --parallel 4
+
+      - name: Package
+        run: packaging/windows/package.ps1 -Build build -Out dist
+
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: prism-windows
+          path: dist/prism-*.zip
+          if-no-files-found: error
+
+  # Tags only: a draft pre-release with both zips, LibRaw's source and SHA256SUMS.txt. Nothing
+  # is published until someone presses Publish on GitHub.
+  release:
+    name: Draft release
+    needs: [macos, windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Write the release notes
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          tarball=$(ls dist/LibRaw-*-source.tar.gz)
+          libraw=$(basename "$tarball" -source.tar.gz)
+          libraw=${libraw#LibRaw-}
+          sed -e "s/{{VERSION}}/$version/g" -e "s/{{LIBRAW_VERSION}}/$libraw/g" \
+            docs/RELEASE_NOTES_TEMPLATE.md > notes.md
+          if grep -q '{{' notes.md; then
+            echo "::error::notes.md still has a placeholder"
+            exit 1
+          fi
+          (cd dist && sha256sum prism-*.zip LibRaw-*-source.tar.gz > SHA256SUMS.txt)
+          cat dist/SHA256SUMS.txt
+
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME"
+          --draft --prerelease --verify-tag
+          --title "Prism ${GITHUB_REF_NAME#v}"
+          --notes-file notes.md
+          dist/prism-*.zip dist/LibRaw-*-source.tar.gz dist/SHA256SUMS.txt
