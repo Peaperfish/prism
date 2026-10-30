@@ -1,0 +1,40 @@
+Prism @PROJECT_VERSION@
+@PRISM_README_UNDERLINE@
+
+A photo editor for PNG, JPEG and camera RAW files, with a command-line tool for the same
+processing. @PRISM_README_PLATFORM@.
+
+https://github.com/Peaperfish/prism
+
+What's in here
+--------------
+
+@PRISM_README_FILES@
+  LICENSE                   Prism's licence (PolyForm Noncommercial 1.0.0)
+  THIRD_PARTY_NOTICES.txt   the third-party components in Prism and their licences
+  licenses/LibRaw/          LibRaw's LICENSE.CDDL and COPYRIGHT, unchanged
+
+Opening Prism the first time
+----------------------------
+
+@PRISM_README_FIRST_RUN@
+
+The command-line tool
+---------------------
+
+  @PRISM_README_CLI@ --help
+
+prints how to use it, for example:
+
+  @PRISM_README_CLI@ photo.arw -o photo.jpg --exposure 0.5
+
+Licences
+--------
+
+Prism is under the PolyForm Noncommercial License 1.0.0 (see LICENSE).
+
+It includes LibRaw @PRISM_LIBRAW_VERSION@, used under the Common Development and Distribution
+License (CDDL) 1.0. LibRaw's licence files are in licenses/LibRaw/. Its source code is attached
+to this release on GitHub as LibRaw-@PRISM_LIBRAW_VERSION@-source.tar.gz, and is available from
+https://www.libraw.org/. The other components and their licences are listed in
+THIRD_PARTY_NOTICES.txt.

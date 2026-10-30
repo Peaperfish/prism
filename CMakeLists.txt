@@ -187,3 +187,7 @@ if(PRISM_BUILD_TESTS)
   enable_testing()
   add_subdirectory(tests)
 endif()
+
+if(PRISM_RELEASE)
+  include(cmake/Package.cmake)
+endif()

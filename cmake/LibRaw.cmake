@@ -15,10 +15,35 @@ include(FetchContent)
 
 set(PRISM_LIBRAW_VERSION 0.22.3)
 # The pinned release tarball; the SHA-256 is the one Homebrew's libraw formula also pins.
+set(PRISM_LIBRAW_URL https://www.libraw.org/data/LibRaw-${PRISM_LIBRAW_VERSION}.tar.gz)
+set(PRISM_LIBRAW_SHA256 789f3c33466210a1a0907f747a97c715d21bbf4af712f257fcbbd90111b227e4)
+set(prism_libraw_url ${PRISM_LIBRAW_URL})
+
+# A release publishes the exact tarball it was built from (LibRaw's source, under CDDL 1.0). So
+# download it once to a known place, check it, and have FetchContent unpack that very file.
+if(PRISM_RELEASE)
+  set(PRISM_LIBRAW_TARBALL ${PROJECT_BINARY_DIR}/LibRaw-${PRISM_LIBRAW_VERSION}-source.tar.gz)
+  if(NOT EXISTS ${PRISM_LIBRAW_TARBALL})
+    file(DOWNLOAD ${PRISM_LIBRAW_URL} ${PRISM_LIBRAW_TARBALL}
+         EXPECTED_HASH SHA256=${PRISM_LIBRAW_SHA256} STATUS prism_status)
+    list(GET prism_status 0 prism_code)
+    if(NOT prism_code EQUAL 0)
+      file(REMOVE ${PRISM_LIBRAW_TARBALL})
+      message(FATAL_ERROR "Couldn't download ${PRISM_LIBRAW_URL}: ${prism_status}")
+    endif()
+  endif()
+  file(SHA256 ${PRISM_LIBRAW_TARBALL} prism_hash)
+  if(NOT prism_hash STREQUAL PRISM_LIBRAW_SHA256)
+    message(FATAL_ERROR "${PRISM_LIBRAW_TARBALL} has SHA-256 ${prism_hash}, "
+                        "not the pinned ${PRISM_LIBRAW_SHA256}: delete it and configure again")
+  endif()
+  set(prism_libraw_url ${PRISM_LIBRAW_TARBALL})
+endif()
+
 FetchContent_Declare(
   libraw
-  URL https://www.libraw.org/data/LibRaw-${PRISM_LIBRAW_VERSION}.tar.gz
-  URL_HASH SHA256=789f3c33466210a1a0907f747a97c715d21bbf4af712f257fcbbd90111b227e4
+  URL ${prism_libraw_url}
+  URL_HASH SHA256=${PRISM_LIBRAW_SHA256}
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 # The tarball has no CMakeLists.txt, so this only downloads and unpacks it.
 FetchContent_MakeAvailable(libraw)
