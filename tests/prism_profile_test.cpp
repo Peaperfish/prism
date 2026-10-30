@@ -22,6 +22,7 @@
 #include <unistd.h>  // getpid
 #endif
 
+#include "env_var.hpp"
 #include "prism/camera_profile.hpp"
 #include "prism/dng_profile.hpp"
 #include "prism/pipeline.hpp"
@@ -688,8 +689,8 @@ TEST(PrismProfile, LightCraftTextCannotAddMatrixRows) {
 namespace {
 
 void check_real_file(const char* variable) {
-    const char* path = std::getenv(variable);
-    if (path == nullptr || *path == '\0') {
+    const fs::path path = prism_test::env_var(variable);
+    if (path.empty()) {
         GTEST_SKIP() << "set " << variable << " to a file to run this test";
     }
     const fs::path output = temp_file("real.txt");

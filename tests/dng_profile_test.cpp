@@ -16,6 +16,7 @@
 #include <utility>
 #include <vector>
 
+#include "env_var.hpp"
 #include "prism/camera_profile.hpp"
 #include "prism/dng_profile.hpp"
 #include "tiff_builder.hpp"
@@ -491,8 +492,8 @@ void expect_usable_matrix(const std::optional<prism::Mat3>& m, const std::string
 }
 
 void check_real_file(const char* variable, DngProfile::Source source) {
-    const char* path = std::getenv(variable);
-    if (path == nullptr || *path == '\0') {
+    const std::string path = prism_test::env_var(variable);
+    if (path.empty()) {
         GTEST_SKIP() << "set " << variable << " to a file to run this test";
     }
     DngProfile p;

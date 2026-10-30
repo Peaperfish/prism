@@ -13,6 +13,7 @@
 #include <unistd.h>  // getpid
 #endif
 
+#include "env_var.hpp"
 #include "prism/image.hpp"
 #include "run_command.hpp"
 
@@ -225,8 +226,8 @@ TEST(Cli, MissingRawFileIsReportedAsRawError) {
 
 // Runs only with PRISM_TEST_RAW set; see raw_test.cpp. Half size keeps it quick.
 TEST(Cli, RawWithIdentityCameraMatrixRuns) {
-    const char* raw = std::getenv("PRISM_TEST_RAW");
-    if (raw == nullptr || *raw == '\0') {
+    const fs::path raw = prism_test::env_var("PRISM_TEST_RAW");
+    if (raw.empty()) {
         GTEST_SKIP() << "set PRISM_TEST_RAW to a RAW file to run this test";
     }
     const fs::path matrix = temp_file("raw_identity.txt");

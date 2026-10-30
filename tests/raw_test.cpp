@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "env_var.hpp"
 #include "prism/image.hpp"
 #include "prism/pipeline.hpp"
 #include "prism/raw.hpp"
@@ -87,8 +88,8 @@ TEST(Raw, MissingRawFileGivesClearError) {
 namespace {
 
 std::optional<fs::path> test_raw_path() {
-    const char* path = std::getenv("PRISM_TEST_RAW");
-    if (path == nullptr || *path == '\0') {
+    const std::string path = prism_test::env_var("PRISM_TEST_RAW");
+    if (path.empty()) {
         return std::nullopt;
     }
     return fs::path(path);
@@ -134,7 +135,7 @@ TEST_F(RawFile, FullSizeLoadsLinearValuesInRange) {
     const prism::Image img = prism::load_image(path_);
     expect_valid_linear_image(img);
 
-    if (const char* size = std::getenv("PRISM_TEST_RAW_SIZE")) {
+    if (const std::string size = prism_test::env_var("PRISM_TEST_RAW_SIZE"); !size.empty()) {
         EXPECT_EQ(std::to_string(img.width) + "x" + std::to_string(img.height), size);
     }
 }

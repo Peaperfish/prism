@@ -147,11 +147,29 @@ void bench_stage(const Settings& s, std::string_view name, double bytes_touched,
               << std::setw(10) << gb_per_s(many) << '\n';
 }
 
+// The value of environment variable `name`, or "" if it is not set. As in tests/env_var.hpp:
+// MSVC deprecates std::getenv (C4996), and _dupenv_s returns a copy that we free.
+std::string env_var(const char* name) {
+#ifdef _WIN32
+    char* value = nullptr;
+    std::size_t size = 0;
+    if (_dupenv_s(&value, &size, name) != 0 || value == nullptr) {
+        return {};
+    }
+    std::string result(value);
+    std::free(value);
+    return result;
+#else
+    const char* value = std::getenv(name);
+    return value != nullptr ? value : "";
+#endif
+}
+
 // Times loading the RAW file named by PRISM_TEST_RAW, at full and half size, if it is set.
 // Only the 16-bit -> float conversion uses `threads`; LibRaw's decoding does not.
 void bench_raw(const Settings& s) {
-    const char* path = std::getenv("PRISM_TEST_RAW");
-    if (path == nullptr || *path == '\0') {
+    const std::string path = env_var("PRISM_TEST_RAW");
+    if (path.empty()) {
         return;
     }
     if (!prism::raw_support_available()) {
