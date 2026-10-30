@@ -40,7 +40,7 @@ TEST(Histogram, SolidColourFillsOneBinPerChannel) {
     img.width = 4;
     img.height = 3;
     for (int i = 0; i < 12; ++i) {
-        for (std::uint8_t v : {200, 100, 30}) {
+        for (const std::uint8_t v : std::initializer_list<std::uint8_t>{200, 100, 30}) {
             img.pixels.push_back(prism::srgb8_to_linear(v));
         }
     }

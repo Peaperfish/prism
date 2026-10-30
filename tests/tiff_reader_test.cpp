@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <initializer_list>
 #include <limits>
 #include <optional>
 #include <span>
@@ -362,7 +363,8 @@ TEST(TiffReader, SurvivesEveryTruncationAndEveryFlippedByte) {
                                                   name + " truncated to " + std::to_string(len));
                 }
                 for (std::size_t i = 0; i < file.size(); ++i) {
-                    for (const std::uint8_t mask : {0xFF, 0x80, 0x01}) {
+                    for (const std::uint8_t mask :
+                         std::initializer_list<std::uint8_t>{0xFF, 0x80, 0x01}) {
                         std::vector<std::byte> damaged = file;
                         damaged[i] ^= static_cast<std::byte>(mask);
                         expect_parse_or_runtime_error(damaged, name + " byte " + std::to_string(i) +

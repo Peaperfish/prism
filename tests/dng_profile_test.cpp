@@ -8,6 +8,7 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <optional>
 #include <span>
 #include <stdexcept>
@@ -450,7 +451,8 @@ TEST(DngProfile, SurvivesEveryTruncationAndEveryFlippedByte) {
                 check(prefix, name + " truncated to " + std::to_string(len));
             }
             for (std::size_t i = 0; i < file.size(); ++i) {
-                for (const std::uint8_t mask : {0xFF, 0x80, 0x01}) {
+                for (const std::uint8_t mask :
+                     std::initializer_list<std::uint8_t>{0xFF, 0x80, 0x01}) {
                     std::vector<std::byte> damaged = file;
                     damaged[i] ^= static_cast<std::byte>(mask);
                     check(damaged,
