@@ -217,7 +217,7 @@ Between the two outputs: mean CIE76 ΔE 5.7 (median 4.0, 95th percentile 16.7, m
 
 ## GUI
 
-A desktop app for macOS and Windows, in progress. `prism_gui` (`gui_app/`) is a window built with SDL3 and Dear ImGui; it is off by default and built with `-DPRISM_BUILD_GUI=ON` (see [Building the GUI](#building-the-gui)). So far it opens a photo (File → Open, Ctrl/Cmd+O, drag and drop, or a path on the command line), shows a live preview fitted to the window, edits it in Simple mode (a preset plus Brightness, Contrast and Colour, with undo and redo: Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z or Ctrl+Y) and exports it at full resolution as PNG or JPEG (File → Export, Ctrl/Cmd+E). Errors appear as a banner in the window. Help → About Prism (on macOS: Prism → About Prism) shows the version, Prism's licence and the third-party components with their full notices. Advanced mode, the histogram and before/after come later.
+A desktop app for macOS and Windows, in progress. `prism_gui` (`gui_app/`) is a window built with SDL3 and Dear ImGui; it is off by default and built with `-DPRISM_BUILD_GUI=ON` (see [Building the GUI](#building-the-gui)). So far it opens a photo (File → Open, Ctrl/Cmd+O, drag and drop, or a path on the command line), shows a live preview fitted to the window, edits it in Simple mode (a preset plus Brightness, Contrast and Colour, with undo and redo: Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z or Ctrl+Y) and exports it at full resolution as PNG or JPEG (File → Export, Ctrl/Cmd+E). Errors appear as a banner in the window. Help → About Prism (on macOS: Prism → About Prism) shows the version, Prism's licence and the third-party components with their full notices. Packaging is done: see [Downloading and running Prism](#downloading-and-running-prism). Advanced mode, the histogram, before/after and the rest are planned: see the [Roadmap](#roadmap).
 
 ### Themes and Preferences
 
@@ -257,6 +257,28 @@ prism_core (lib/)                            the pipeline, shared with the CLI
 | `file_types.hpp` | The file dialogs' filters (RAW only in a build with LibRaw), and the export file name: the suggested name next to the source, and the extension added if the user left it out |
 
 A full preview re-render (every stage plus the sRGB encode, 2560×1707 from a 61 MP image) takes 10 ms on 12 threads and 53 ms on one (`prism_bench`'s "preview render" row).
+
+## Roadmap
+
+v0.1.0 is the first pre-release of the desktop app. What's planned next is tracked as GitHub issues in two milestones.
+
+[**0.2.0**](https://github.com/Peaperfish/prism/milestone/1), the histogram and analysis release:
+
+- [Live histogram](https://github.com/Peaperfish/prism/issues/1) in the panel (RGB and luminance, from the preview frame)
+- [Advanced mode](https://github.com/Peaperfish/prism/issues/2): all pipeline controls, with an "Advanced adjustments active" chip
+- [Before/after view](https://github.com/Peaperfish/prism/issues/3)
+- [Highlight and shadow clipping warnings](https://github.com/Peaperfish/prism/issues/4) on the preview
+- [Smoother preview while dragging](https://github.com/Peaperfish/prism/issues/5): let a running render finish and replace only the waiting request
+
+[**Later**](https://github.com/Peaperfish/prism/milestone/2), not scheduled yet:
+
+- [Open files in the background](https://github.com/Peaperfish/prism/issues/6) with a Cancel button, instead of freezing on large RAW files
+- [Show CJK and other non-Latin file names](https://github.com/Peaperfish/prism/issues/7) correctly
+- [A "Discard edits?" prompt](https://github.com/Peaperfish/prism/issues/8) when opening another photo or quitting
+- [zlib support](https://github.com/Peaperfish/prism/issues/9) for compressed DNGs
+- [A Linux download](https://github.com/Peaperfish/prism/issues/10), starting with a tarball of the command-line tool
+- [Signed apps](https://github.com/Peaperfish/prism/issues/11): a signed and notarized macOS app, a signed Windows app
+- [Export progress per stage](https://github.com/Peaperfish/prism/issues/12)
 
 ## Performance
 

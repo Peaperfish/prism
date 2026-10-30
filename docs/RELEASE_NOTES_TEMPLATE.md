@@ -45,6 +45,26 @@ says "Windows protected your PC", click **More info → Run anyway**. If Smart A
   and exports correctly).
 - Opening a large RAW file freezes the window for a moment while it is decoded.
 
+## Coming next
+
+Planned for [0.2.0](https://github.com/Peaperfish/prism/milestone/1):
+
+- A live histogram (RGB and luminance)
+- Advanced mode with every pipeline control
+- A before/after view
+- Highlight and shadow clipping warnings
+- A smoother preview while dragging sliders
+
+[Later](https://github.com/Peaperfish/prism/milestone/2), not scheduled yet:
+
+- Opening files in the background, with Cancel, instead of freezing on large RAW files
+- Showing CJK and other non-Latin file names correctly
+- A "Discard edits?" prompt when opening another photo or quitting
+- zlib support for compressed DNGs
+- A Linux download, starting with the command-line tool
+- Signed apps on macOS and Windows
+- Export progress per stage
+
 ## Licences
 
 Prism is under the PolyForm Noncommercial License 1.0.0. The third-party components and their
