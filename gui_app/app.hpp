@@ -9,6 +9,7 @@
 
 #include "file_dialogs.hpp"
 #include "preview_texture.hpp"
+#include "prism/gui/background_export.hpp"
 #include "prism/gui/live_preview.hpp"
 #include "prism/gui/session.hpp"
 #include "prism/gui/settings.hpp"
@@ -43,6 +44,8 @@ private:
     void request_open(std::filesystem::path path);
     void open_now(const std::filesystem::path& path);
     void show_open_dialog();
+    void show_save_dialog();
+    void take_export_result();
     void take_dialog_results();
     void update_preview();
     void show_error(gui::Error error);
@@ -58,12 +61,14 @@ private:
     void draw_presets();
     void draw_simple_slider(const char* label, gui::SimpleControl control);
     void draw_status_bar();
+    void draw_saving_popup();
 
     SDL_Window* window_;
     DialogQueue& dialogs_;
     gui::Session session_;
     gui::LivePreview preview_;
     PreviewTexture texture_;
+    gui::BackgroundExport exporter_;
     double last_render_ms_ = 0;
 
     std::optional<std::filesystem::path> pending_open_;
@@ -74,7 +79,7 @@ private:
     std::vector<std::filesystem::path> dropped_;  // the files of the current drop
 
     std::optional<gui::Error> error_;  // shown as a banner until dismissed
-    std::string notice_;               // a short note that isn't an error
+    std::string notice_;               // a short note that isn't an error, e.g. "Saved ..."
 
     int quiet_frames_ = 0;  // frames drawn since the last event
 };

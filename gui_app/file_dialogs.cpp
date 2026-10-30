@@ -4,7 +4,6 @@
 #include <utility>
 #include <vector>
 
-#include "prism/gui/file_types.hpp"
 #include "prism/utf8_path.hpp"
 
 namespace prism::gui_app {
@@ -19,6 +18,7 @@ struct Request {
     std::vector<std::string> patterns;
     std::vector<SDL_DialogFileFilter> filters;
     std::string default_location;
+    gui::ExportFormat format = gui::ExportFormat::jpeg;  // save: the format offered first
 };
 
 void SDLCALL on_dialog_done(void* userdata, const char* const* filelist, int filter) {
@@ -31,7 +31,13 @@ void SDLCALL on_dialog_done(void* userdata, const char* const* filelist, int fil
         // SDL hands over UTF-8; copy it now, since filelist is freed when this returns.
         result.path = path_from_utf8(filelist[0]);
     }
-    (void)filter;
+    if (request->kind == DialogResult::Kind::save) {
+        // The filter the user picked (0 = PNG, 1 = JPEG, see show_save_dialog), where the
+        // platform says; otherwise the format the dialog was opened with.
+        result.format = filter == 0   ? gui::ExportFormat::png
+                        : filter == 1 ? gui::ExportFormat::jpeg
+                                      : request->format;
+    }
     request->queue->push(std::move(result));
 
     // Wake the main loop, which may be asleep in SDL_WaitEventTimeout. Thread-safe.
@@ -63,6 +69,21 @@ void show_open_dialog(SDL_Window* window, DialogQueue& queue,
                            static_cast<int>(r->filters.size()),
                            r->default_location.empty() ? nullptr : r->default_location.c_str(),
                            false);
+}
+
+void show_save_dialog(SDL_Window* window, DialogQueue& queue,
+                      const std::filesystem::path& suggested, gui::ExportFormat format) {
+    auto request = std::make_unique<Request>();
+    request->queue = &queue;
+    request->kind = DialogResult::Kind::save;
+    request->format = format;
+    request->patterns = {"png", "jpg;jpeg"};
+    finish_filters(*request, {"PNG image", "JPEG image"});
+    request->default_location = utf8(suggested);
+
+    Request* r = request.release();  // the callback owns it now
+    SDL_ShowSaveFileDialog(on_dialog_done, r, window, r->filters.data(),
+                           static_cast<int>(r->filters.size()), r->default_location.c_str());
 }
 
 }  // namespace prism::gui_app

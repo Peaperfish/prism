@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "imgui.h"
+#include "prism/gui/file_types.hpp"
 #include "prism/gui/presets.hpp"
 #include "prism/gui/slider_gesture.hpp"
 #include "prism/raw.hpp"
@@ -113,15 +114,47 @@ void App::show_open_dialog() {
     gui_app::show_open_dialog(window_, dialogs_, folder);
 }
 
+void App::show_save_dialog() {
+    if (dialog_open_ || !session_.has_file() || exporter_.busy()) {
+        return;
+    }
+    dialog_open_ = true;
+    const gui::ExportFormat format = gui::default_export_format(session_.path());
+    gui_app::show_save_dialog(window_, dialogs_,
+                              gui::suggested_export_path(session_.path(), format), format);
+}
+
 void App::take_dialog_results() {
     for (DialogResult& result : dialogs_.take_all()) {
         dialog_open_ = false;
         if (!result.error.empty()) {
             show_error({gui::ErrorKind::unreadable, "Couldn't show the file dialog.",
                         result.error});
-        } else if (result.path && result.kind == DialogResult::Kind::open) {
+        } else if (!result.path) {
+            // Cancelled.
+        } else if (result.kind == DialogResult::Kind::open) {
             request_open(std::move(*result.path));
+        } else if (session_.has_file()) {
+            // The export works on a copy of the settings: what the preview shows right now.
+            const fs::path output = gui::with_export_extension(*result.path, result.format);
+            error_.reset();
+            notice_.clear();
+            exporter_.start(session_.export_job(), output);
         }
+    }
+}
+
+void App::take_export_result() {
+    std::optional<gui::ExportResult> result = exporter_.poll();
+    if (!result) {
+        return;
+    }
+    if (result->error && result->error->kind == gui::ErrorKind::cancelled) {
+        notice_ = "Export cancelled. Nothing was written.";
+    } else if (result->error) {
+        show_error(std::move(*result->error));
+    } else {
+        notice_ = "Saved " + file_name(result->output) + ".";
     }
 }
 
@@ -198,7 +231,8 @@ void App::handle_event(const SDL_Event& event) {
 }
 
 bool App::animating() const {
-    return quiet_frames_ < settle_frames || preview_.rendering() || pending_open_.has_value();
+    return quiet_frames_ < settle_frames || preview_.rendering() || pending_open_.has_value() ||
+           exporter_.busy();
 }
 
 void App::frame() {
@@ -210,6 +244,7 @@ void App::frame() {
         pending_open_.reset();
         open_now(path);
     }
+    take_export_result();
     handle_shortcuts();
     update_preview();
 
@@ -243,6 +278,7 @@ void App::frame() {
     ImGui::EndChild();
 
     draw_status_bar();
+    draw_saving_popup();
     ImGui::End();
 
     if (pending_open_) {
@@ -255,6 +291,10 @@ void App::handle_shortcuts() {
     // claims the same keys.
     if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_O, ImGuiInputFlags_RouteGlobal)) {
         show_open_dialog();
+    }
+    if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_E, ImGuiInputFlags_RouteGlobal) ||
+        ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S, ImGuiInputFlags_RouteGlobal)) {
+        show_save_dialog();
     }
     // Not in the middle of a drag: History would end the drag's step, but the slider would keep
     // sending values that each became a step of their own.
@@ -277,6 +317,10 @@ void App::draw_menu() {
     if (ImGui::BeginMenu("File")) {
         if (ImGui::MenuItem("Open...", shortcut_label("O").c_str(), false, !dialog_open_)) {
             show_open_dialog();
+        }
+        if (ImGui::MenuItem("Export...", shortcut_label("E").c_str(), false,
+                            session_.has_file() && !dialog_open_ && !exporter_.busy())) {
+            show_save_dialog();
         }
         ImGui::Separator();
         if (ImGui::MenuItem("Quit")) {
@@ -400,6 +444,13 @@ void App::draw_panel() {
     }
     ImGui::EndDisabled();
 
+    ImGui::SameLine();
+    ImGui::BeginDisabled(dialog_open_ || exporter_.busy());
+    if (ImGui::Button("Export...")) {
+        show_save_dialog();
+    }
+    ImGui::EndDisabled();
+
     ImGui::SeparatorText("Look");
     draw_presets();
 
@@ -500,6 +551,28 @@ void App::draw_status_bar() {
                   std::to_string(static_cast<int>(std::lround(last_render_ms_))) + " ms";
     }
     ImGui::TextDisabled("%s", status.c_str());
+}
+
+void App::draw_saving_popup() {
+    // Modal while the export runs: it decodes the file again at full size, which takes seconds.
+    if (exporter_.busy() && !ImGui::IsPopupOpen("Saving")) {
+        ImGui::OpenPopup("Saving");
+    }
+    const ImVec2 centre = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(centre, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    if (ImGui::BeginPopupModal("Saving", nullptr,
+                               ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) {
+        if (!exporter_.busy()) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::TextUnformatted("Saving...");
+        ImGui::ProgressBar(-1.0f * static_cast<float>(ImGui::GetTime()), ImVec2(240 * ui_scale(), 0),
+                           "");
+        if (ImGui::Button("Cancel")) {
+            exporter_.cancel();
+        }
+        ImGui::EndPopup();
+    }
 }
 
 }  // namespace prism::gui_app
