@@ -6,6 +6,7 @@ add_library(prism_gui_core STATIC
   src/background_export.cpp
   src/file_types.cpp
   src/history.cpp
+  src/layout.cpp
   src/live_preview.cpp
   src/preferences.cpp
   src/presets.cpp

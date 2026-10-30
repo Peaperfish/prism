@@ -125,6 +125,7 @@ void apply_style(gui::Theme theme, float scale) {
     style.FramePadding = ImVec2(8.0f, 5.0f);
     style.ItemSpacing = ImVec2(8.0f, 6.0f);
     style.FrameBorderSize = theme == gui::Theme::light ? 1.0f : 0.0f;
+    style.FontSizeBase = 15.0f;  // ImGui's vector font reads best from 15 px
     style.ScaleAllSizes(scale);
     style.FontScaleDpi = scale;
 }

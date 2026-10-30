@@ -52,6 +52,7 @@ add_executable(prism_gui_core_tests
   gui/background_export_test.cpp
   gui/file_types_test.cpp
   gui/history_test.cpp
+  gui/layout_test.cpp
   gui/live_preview_test.cpp
   gui/main_thread_queue_test.cpp
   gui/preferences_test.cpp

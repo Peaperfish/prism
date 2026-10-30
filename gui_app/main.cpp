@@ -4,6 +4,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>  // on Windows: provides WinMain and hands main() UTF-8 arguments
 
+#include <algorithm>
 #include <cstdio>
 #include <string>
 
@@ -21,8 +22,15 @@ int main(int argc, char** argv) {
     const float scale = SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay());
     const SDL_WindowFlags flags =
         SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN | SDL_WINDOW_HIGH_PIXEL_DENSITY;
-    SDL_Window* window = SDL_CreateWindow("Prism", static_cast<int>(1280 * scale),
-                                          static_cast<int>(800 * scale), flags);
+    // 1280 x 800 at the display's scale, but never bigger than 90% of the space it has.
+    int width = static_cast<int>(1280 * scale);
+    int height = static_cast<int>(800 * scale);
+    SDL_Rect usable;
+    if (SDL_GetDisplayUsableBounds(SDL_GetPrimaryDisplay(), &usable)) {
+        width = std::min(width, usable.w * 9 / 10);
+        height = std::min(height, usable.h * 9 / 10);
+    }
+    SDL_Window* window = SDL_CreateWindow("Prism", width, height, flags);
     if (window == nullptr) {
         std::fprintf(stderr, "Prism: couldn't create the window: %s\n", SDL_GetError());
         SDL_Quit();
@@ -53,6 +61,12 @@ int main(int argc, char** argv) {
     } else {
         io.IniFilename = nullptr;
     }
+
+    // ImGui's scalable font (ProggyForever) rather than its 13 px bitmap font, which would be
+    // blurry when scaled up (interface size above 100%, or a display at 150% on Windows). ImGui
+    // rasterises it at the size and pixel density in use, so text is crisp on a Retina screen
+    // too, and stays so when the window moves between displays.
+    io.Fonts->AddFontDefaultVector();
 
     ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);
     ImGui_ImplSDLRenderer3_Init(renderer);

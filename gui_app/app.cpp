@@ -3,12 +3,14 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <exception>
 #include <utility>
 
 #include "imgui.h"
 #include "theme.hpp"
 #include "prism/gui/file_types.hpp"
+#include "prism/gui/layout.hpp"
 #include "prism/gui/presets.hpp"
 #include "prism/gui/slider_gesture.hpp"
 #include "prism/raw.hpp"
@@ -20,7 +22,6 @@ namespace fs = std::filesystem;
 
 namespace {
 
-constexpr float panel_width = 320.0f;  // the control panel, in unscaled pixels
 // ImGui sometimes needs a frame or two after an event to settle (hover, popups opening).
 constexpr int settle_frames = 3;
 
@@ -77,8 +78,29 @@ std::string file_name(const fs::path& path) {
 }  // namespace
 
 App::App(SDL_Window* window, SDL_Renderer* renderer, DialogQueue& dialogs)
-    : window_(window), dialogs_(dialogs), texture_(renderer),
-      display_scale_(SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay())) {}
+    : window_(window), dialogs_(dialogs), texture_(renderer), display_scale_(content_scale(window)) {
+    apply_minimum_size();
+}
+
+float App::content_scale(SDL_Window* window) {
+    // The display's content scale: how much bigger the UI should be drawn (1.5 at 150% on
+    // Windows). Not SDL_GetWindowDisplayScale, which also includes the pixel density (2 on a
+    // Retina Mac): ImGui already gets that through its framebuffer scale and renders crisp text
+    // with it, so including it again would draw everything twice as large.
+    const float scale = SDL_GetDisplayContentScale(SDL_GetDisplayForWindow(window));
+    return scale > 0 ? scale : 1.0f;
+}
+
+void App::apply_minimum_size() {
+    // Small enough for a laptop at 200%, big enough that the panel and canvas both fit. Window
+    // coordinates are points on macOS but pixels on Windows, hence the content scale.
+    SDL_SetWindowMinimumSize(window_, static_cast<int>(640 * display_scale_),
+                             static_cast<int>(440 * display_scale_));
+}
+
+float App::scale() const {
+    return gui::interface_scale(prefs_, display_scale_);
+}
 
 void App::open_utf8(const char* path_utf8) {
     request_open(path_from_utf8(path_utf8));
@@ -217,7 +239,7 @@ gui::Theme App::theme() const {
 
 void App::before_frame() {
     if (style_dirty_) {
-        apply_style(theme(), display_scale_);
+        apply_style(theme(), scale());
         style_dirty_ = false;
     }
 }
@@ -229,7 +251,10 @@ void App::handle_event(const SDL_Event& event) {
             style_dirty_ = true;  // "System" follows the OS live
             break;
         case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
-            display_scale_ = SDL_GetWindowDisplayScale(window_);
+            // Moved to another monitor, or its scale changed. The pixel density is handled by
+            // ImGui's framebuffer scale on its own (fonts are rasterised for it each frame).
+            display_scale_ = content_scale(window_);
+            apply_minimum_size();
             style_dirty_ = true;
             break;
         case SDL_EVENT_DROP_BEGIN:
@@ -294,16 +319,22 @@ void App::frame() {
     draw_menu();
 
     const float status_height = ImGui::GetFrameHeightWithSpacing();
-    const float panel = panel_width * ui_scale();
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     const float body_height = std::max(1.0f, avail.y - status_height);
+    // The splitter between canvas and panel: as wide as the usual gap between items.
+    const float splitter = ImGui::GetStyle().ItemSpacing.x;
+    const float panel =
+        gui::panel_width_pixels(static_cast<float>(prefs_.panel_width), ui_scale(), avail.x);
+    const float canvas = std::max(1.0f, avail.x - panel - splitter);
 
-    ImGui::BeginChild("canvas", ImVec2(std::max(1.0f, avail.x - panel), body_height),
-                      ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar);
+    ImGui::BeginChild("canvas", ImVec2(canvas, body_height), ImGuiChildFlags_None,
+                      ImGuiWindowFlags_NoScrollbar);
     draw_canvas();
     draw_banner();
     ImGui::EndChild();
-    ImGui::SameLine();
+    ImGui::SameLine(0.0f, 0.0f);
+    draw_splitter(canvas, splitter, body_height, avail.x);
+    ImGui::SameLine(0.0f, 0.0f);
     ImGui::BeginChild("panel", ImVec2(0, body_height), ImGuiChildFlags_Borders);
     draw_panel();
     ImGui::EndChild();
@@ -441,7 +472,10 @@ void App::draw_banner() {
                           is_error ? colours.error_background : colours.notice_background);
     ImGui::PushStyleColor(ImGuiCol_Text, is_error ? colours.error_text : colours.notice_text);
     ImGui::PushStyleColor(ImGuiCol_Border, is_error ? colours.error_border : colours.notice_border);
-    ImGui::BeginChild("banner", ImVec2(ImGui::GetContentRegionAvail().x - margin, 0),
+    // Across the canvas, but not wider than a comfortable line length on a big window.
+    const float banner_width =
+        std::min(ImGui::GetContentRegionAvail().x - margin, 720.0f * ui_scale());
+    ImGui::BeginChild("banner", ImVec2(std::max(1.0f, banner_width), 0),
                       ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
     ImGui::PushTextWrapPos(0.0f);
     ImGui::TextUnformatted(is_error ? error_->message.c_str() : notice_.c_str());
@@ -465,26 +499,58 @@ void App::draw_banner() {
     ImGui::PopStyleColor(3);
 }
 
+void App::draw_splitter(float canvas_width, float width, float height, float available) {
+    ImGui::InvisibleButton("splitter", ImVec2(width, height));
+    if (ImGui::IsItemHovered() || ImGui::IsItemActive()) {
+        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+    }
+    if (ImGui::IsItemActive()) {
+        // The panel is what lies right of the mouse; panel_width_pixels clamps it next frame.
+        const float panel = available - (canvas_width + ImGui::GetIO().MouseDelta.x) - width;
+        prefs_.panel_width = gui::panel_points_from_pixels(panel, ui_scale());
+    }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal) && !ImGui::IsItemActive()) {
+        ImGui::SetTooltip("Drag to resize the panel");
+    }
+}
+
 void App::draw_panel() {
     if (!session_.has_file()) {
         ImGui::TextDisabled("Open a photo to edit it.");
         return;
     }
+    // Three buttons filling the panel's width, in equal thirds when the labels fit. Otherwise
+    // Export gets the width its label needs and Undo and Redo share the rest, and on a very
+    // narrow panel Export moves to a row of its own.
+    const float spacing = ImGui::GetStyle().ItemSpacing.x;
+    const float padding = 2 * ImGui::GetStyle().FramePadding.x;
+    const float avail = ImGui::GetContentRegionAvail().x;
+    const float export_needed = ImGui::CalcTextSize("Export...").x + padding;
+    const float undo_needed =
+        std::max(ImGui::CalcTextSize("Undo").x, ImGui::CalcTextSize("Redo").x) + padding;
+    float export_width = std::max((avail - 2 * spacing) / 3, export_needed);
+    float undo_width = (avail - 2 * spacing - export_width) / 2;
+    const bool one_row = undo_width >= undo_needed;
+    if (!one_row) {
+        undo_width = (avail - spacing) / 2;
+        export_width = avail;
+    }
     ImGui::BeginDisabled(!session_.history().can_undo());
-    if (ImGui::Button("Undo")) {
+    if (ImGui::Button("Undo", ImVec2(undo_width, 0))) {
         undo();
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
     ImGui::BeginDisabled(!session_.history().can_redo());
-    if (ImGui::Button("Redo")) {
+    if (ImGui::Button("Redo", ImVec2(undo_width, 0))) {
         redo();
     }
     ImGui::EndDisabled();
-
-    ImGui::SameLine();
+    if (one_row) {
+        ImGui::SameLine();
+    }
     ImGui::BeginDisabled(dialog_open_ || exporter_.busy());
-    if (ImGui::Button("Export...")) {
+    if (ImGui::Button("Export...", ImVec2(export_width, 0))) {
         show_save_dialog();
     }
     ImGui::EndDisabled();
@@ -496,7 +562,9 @@ void App::draw_panel() {
     draw_simple_slider("Brightness", gui::SimpleControl::brightness);
     draw_simple_slider("Contrast", gui::SimpleControl::contrast);
     draw_simple_slider("Colour", gui::SimpleControl::colour);
-    ImGui::TextDisabled("Right-click a slider to reset it.");
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    ImGui::TextWrapped("Right-click a slider to reset it.");
+    ImGui::PopStyleColor();
 }
 
 void App::draw_presets() {
@@ -553,9 +621,18 @@ void App::draw_simple_slider(const char* label, gui::SimpleControl control) {
         ImGui::SameLine();
         ImGui::TextDisabled("(custom)");
     }
+    // The value at the right end of the label's line rather than on the slider, where it would
+    // sit on top of the grab at 0.
+    char shown[16];
+    std::snprintf(shown, sizeof shown, "%+.0f", static_cast<double>(value));
+    ImGui::SameLine(std::max(ImGui::GetCursorPosX(),
+                             ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x -
+                                 ImGui::CalcTextSize(shown).x));
+    ImGui::TextUnformatted(shown);
     ImGui::SetNextItemWidth(-FLT_MIN);
+    // An empty format draws no text on the slider; Ctrl/Cmd-click still types a value.
     const bool changed =
-        ImGui::SliderFloat("##slider", &value, gui::simple_min, gui::simple_max, "%+.0f");
+        ImGui::SliderFloat("##slider", &value, gui::simple_min, gui::simple_max, "");
     const gui::SliderFrame frame{ImGui::IsItemActivated(), changed, ImGui::IsItemDeactivated()};
     gui::EditSettings edited = session_.settings();
     gui::apply_simple_control(edited, control, value);
@@ -579,16 +656,30 @@ void App::draw_status_bar() {
         return;
     }
     const bool raw = session_.kind() == gui::InputKind::raw;
-    std::string status = file_name(session_.path()) + "  |  " +
-                         std::to_string(session_.decoded_width()) + " x " +
-                         std::to_string(session_.decoded_height()) +
-                         (raw ? "  |  RAW, half-size preview" : "");
+    std::string details = "  |  " + std::to_string(session_.decoded_width()) + " x " +
+                          std::to_string(session_.decoded_height()) +
+                          (raw ? "  |  RAW, half-size preview" : "");
     if (texture_.texture() != nullptr) {
-        status += "  |  preview " + std::to_string(texture_.width()) + " x " +
-                  std::to_string(texture_.height()) + ", " +
-                  std::to_string(static_cast<int>(std::lround(last_render_ms_))) + " ms";
+        details += "  |  preview " + std::to_string(texture_.width()) + " x " +
+                   std::to_string(texture_.height()) + ", " +
+                   std::to_string(static_cast<int>(std::lround(last_render_ms_))) + " ms";
     }
+    // The file name gives way first (shortened in the middle, keeping its extension), then the
+    // details, so the line never runs off the window's edge.
+    const auto measure = [](std::string_view s) {
+        return ImGui::CalcTextSize(s.data(), s.data() + s.size()).x;
+    };
+    const float width = ImGui::GetContentRegionAvail().x;
+    const float name_width = std::max(width - measure(details), width * 0.3f);
+    const std::string status =
+        gui::ellipsize_middle(gui::ellipsize_middle(file_name(session_.path()), name_width,
+                                                    measure) +
+                                  details,
+                              width, measure);
     ImGui::TextDisabled("%s", status.c_str());
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
+        ImGui::SetTooltip("%s", utf8(session_.path()).c_str());
+    }
 }
 
 void App::draw_saving_popup() {

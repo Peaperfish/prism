@@ -55,6 +55,10 @@ private:
     void show_error(gui::Error error);
     void report(gui::MaybeError error);
     [[nodiscard]] gui::Theme theme() const;
+    // The UI's scale: the display's content scale, or the Interface size preference.
+    [[nodiscard]] float scale() const;
+    static float content_scale(SDL_Window* window);
+    void apply_minimum_size();
     void undo();
     void redo();
 
@@ -62,6 +66,7 @@ private:
     void draw_menu();
     void draw_canvas();
     void draw_banner();
+    void draw_splitter(float canvas_width, float width, float height, float available);
     void draw_panel();
     void draw_presets();
     void draw_simple_slider(const char* label, gui::SimpleControl control);
