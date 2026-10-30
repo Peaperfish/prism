@@ -75,8 +75,9 @@ Image load_image(const std::filesystem::path& path, const RawOptions& raw, int t
     int height = 0;
     int channels_in_file = 0;
     // Passing Image::channels asks stb to convert whatever is in the file (grey, RGBA, ...) to RGB.
+    // stb takes the file name as UTF-8 (see STBI_WINDOWS_UTF8 in stb_impl.cpp).
     StbiPixels data(
-        stbi_load(path.string().c_str(), &width, &height, &channels_in_file, Image::channels));
+        stbi_load(utf8(path).c_str(), &width, &height, &channels_in_file, Image::channels));
     if (!data) {
         throw std::runtime_error("cannot load image '" + utf8(path) +
                                  "': " + stbi_failure_reason());
@@ -103,7 +104,7 @@ void save_srgb8(const std::filesystem::path& path, std::span<const std::uint8_t>
                                  "': unsupported extension (use .png, .jpg or .jpeg)");
     }
 
-    const std::string filename = path.string();
+    const std::string filename = utf8(path);     // stb takes UTF-8, as in load_image
     const int stride = width * Image::channels;  // bytes from one row to the next
     // stb_image_write returns 0 on failure and does not say why (usually a bad path or
     // permissions).
