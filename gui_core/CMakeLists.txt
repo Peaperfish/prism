@@ -5,6 +5,7 @@
 add_library(prism_gui_core STATIC
   src/history.cpp
   src/presets.cpp
+  src/preview_renderer.cpp
   src/session.cpp
   src/settings.cpp)
 
