@@ -19,6 +19,7 @@
 #include "prism/parallel.hpp"
 #include "prism/pipeline.hpp"
 #include "prism/raw.hpp"
+#include "prism/utf8_path.hpp"
 #include "prism/version.hpp"
 
 namespace {
@@ -62,6 +63,8 @@ struct UsageError : std::runtime_error {
     using std::runtime_error::runtime_error;
 };
 
+// File names stay as the text from argv (UTF-8: on Windows the manifest asks for it, see
+// src/CMakeLists.txt) and become paths with prism::path_from_utf8 where they are opened.
 struct Options {
     std::string input;
     std::optional<std::string> output;
@@ -177,7 +180,8 @@ Options parse_args(int argc, char* argv[]) {
         throw UsageError("no output given (use -o <output>, --histogram <file>, or both)");
     }
     // Silently ignoring these on a PNG or JPEG would hide a mistake such as the wrong input file.
-    if ((opts.raw_half || opts.raw_camera_matrix_path) && !prism::is_raw_file(opts.input)) {
+    if ((opts.raw_half || opts.raw_camera_matrix_path) &&
+        !prism::is_raw_file(prism::path_from_utf8(opts.input))) {
         throw UsageError(std::string(opts.raw_half ? "--raw-half" : "--raw-camera-matrix") +
                          " only applies to RAW input (.arw, .dng, .cr2, .cr3, .nef, .raf)");
     }
@@ -245,12 +249,13 @@ int main(int argc, char* argv[]) {
         // fails immediately instead of after decoding a large photo.
         std::optional<prism::Matrix3> matrix;
         if (opts.matrix_path) {
-            matrix = prism::load_matrix(*opts.matrix_path);
+            matrix = prism::load_matrix(prism::path_from_utf8(*opts.matrix_path));
         }
         prism::RawOptions raw;
         raw.half_size = opts.raw_half;
         if (opts.raw_camera_matrix_path) {
-            raw.camera_matrix = prism::load_matrix(*opts.raw_camera_matrix_path);
+            raw.camera_matrix =
+                prism::load_matrix(prism::path_from_utf8(*opts.raw_camera_matrix_path));
         }
         std::optional<prism::ToneCurve> curve;
         if (opts.curve_spec) {
@@ -264,7 +269,9 @@ int main(int argc, char* argv[]) {
         // Pipeline order from the README: exposure -> colour matrix -> saturation -> contrast ->
         // tone curve.
         prism::Image img;
-        timer.run("load", [&] { img = prism::load_image(opts.input, raw, threads); });
+        timer.run("load", [&] {
+            img = prism::load_image(prism::path_from_utf8(opts.input), raw, threads);
+        });
         if (opts.exposure_stops) {
             timer.run("exposure", [&] { prism::exposure(img, *opts.exposure_stops, threads); });
         }
@@ -287,9 +294,10 @@ int main(int argc, char* argv[]) {
             timer.run("save", [&] {
                 if (opts.histogram_path) {
                     bytes = prism::encode_srgb8(img, threads);
-                    prism::save_srgb8(*opts.output, bytes, img.width, img.height);
+                    prism::save_srgb8(prism::path_from_utf8(*opts.output), bytes, img.width,
+                                      img.height);
                 } else {
-                    prism::save_image(*opts.output, img, threads);
+                    prism::save_image(prism::path_from_utf8(*opts.output), img, threads);
                 }
             });
             std::cout << "wrote " << *opts.output << " (" << img.width << "x" << img.height
@@ -304,7 +312,8 @@ int main(int argc, char* argv[]) {
                 hist = bytes.empty()
                            ? prism::compute_histogram(img, threads)
                            : prism::compute_histogram(bytes, img.width, img.height, threads);
-                prism::save_image(*opts.histogram_path, prism::render_histogram(hist), threads);
+                prism::save_image(prism::path_from_utf8(*opts.histogram_path),
+                                  prism::render_histogram(hist), threads);
             });
             std::cout << "wrote " << *opts.histogram_path << " (histogram)\n";
             print_clipping(hist);
