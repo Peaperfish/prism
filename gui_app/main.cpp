@@ -28,7 +28,7 @@ void apply_scale(float scale) {
 
 }  // namespace
 
-int main(int, char**) {
+int main(int argc, char** argv) {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         std::fprintf(stderr, "Prism: couldn't start SDL: %s\n", SDL_GetError());
         return 1;
@@ -74,8 +74,15 @@ int main(int, char**) {
     ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);
     ImGui_ImplSDLRenderer3_Init(renderer);
 
+    // Declared before the App and outliving it: a file dialog still open when the window closes
+    // may answer into it late.
+    prism::gui_app::DialogQueue dialogs;
     {
-        prism::gui_app::App app;
+        prism::gui_app::App app(window, renderer, dialogs);
+        // "Open with" on Windows, or prism_gui photo.jpg: SDL's argv is UTF-8 on every OS.
+        if (argc > 1) {
+            app.open_utf8(argv[1]);
+        }
 
         bool done = false;
         while (!done) {

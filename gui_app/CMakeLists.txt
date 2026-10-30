@@ -3,7 +3,9 @@
 # stage itself.
 add_executable(prism_gui
   app.cpp
-  main.cpp)
+  file_dialogs.cpp
+  main.cpp
+  preview_texture.cpp)
 
 target_link_libraries(prism_gui PRIVATE prism_gui_core imgui SDL3::SDL3 prism_warnings)
 
