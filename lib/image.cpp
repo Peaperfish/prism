@@ -12,6 +12,7 @@
 #include "file_ext.hpp"
 #include "prism/color.hpp"
 #include "prism/raw.hpp"
+#include "prism/utf8_path.hpp"
 #include "sample_ranges.hpp"
 
 namespace prism {
@@ -77,7 +78,7 @@ Image load_image(const std::filesystem::path& path, const RawOptions& raw, int t
     StbiPixels data(
         stbi_load(path.string().c_str(), &width, &height, &channels_in_file, Image::channels));
     if (!data) {
-        throw std::runtime_error("cannot load image '" + path.string() +
+        throw std::runtime_error("cannot load image '" + utf8(path) +
                                  "': " + stbi_failure_reason());
     }
 
@@ -87,10 +88,10 @@ Image load_image(const std::filesystem::path& path, const RawOptions& raw, int t
 void save_srgb8(const std::filesystem::path& path, std::span<const std::uint8_t> bytes, int width,
                 int height) {
     if (width <= 0 || height <= 0) {
-        throw std::runtime_error("cannot save image '" + path.string() + "': image is empty");
+        throw std::runtime_error("cannot save image '" + utf8(path) + "': image is empty");
     }
     if (bytes.size() != sample_count(width, height)) {
-        throw std::runtime_error("cannot save image '" + path.string() +
+        throw std::runtime_error("cannot save image '" + utf8(path) +
                                  "': byte count does not match width * height * 3");
     }
 
@@ -98,7 +99,7 @@ void save_srgb8(const std::filesystem::path& path, std::span<const std::uint8_t>
     const bool is_png = ext == ".png";
     const bool is_jpeg = ext == ".jpg" || ext == ".jpeg";
     if (!is_png && !is_jpeg) {
-        throw std::runtime_error("cannot save image '" + path.string() +
+        throw std::runtime_error("cannot save image '" + utf8(path) +
                                  "': unsupported extension (use .png, .jpg or .jpeg)");
     }
 
@@ -119,15 +120,15 @@ void save_srgb8(const std::filesystem::path& path, std::span<const std::uint8_t>
 void save_image(const std::filesystem::path& path, const Image& img, int threads) {
     // Check the file name and image shape before the (slow) encode, so mistakes fail fast.
     if (img.width <= 0 || img.height <= 0) {
-        throw std::runtime_error("cannot save image '" + path.string() + "': image is empty");
+        throw std::runtime_error("cannot save image '" + utf8(path) + "': image is empty");
     }
     if (img.pixels.size() != sample_count(img.width, img.height)) {
-        throw std::runtime_error("cannot save image '" + path.string() +
+        throw std::runtime_error("cannot save image '" + utf8(path) +
                                  "': pixel buffer size does not match width * height * 3");
     }
     const std::string ext = lowercase_extension(path);
     if (ext != ".png" && ext != ".jpg" && ext != ".jpeg") {
-        throw std::runtime_error("cannot save image '" + path.string() +
+        throw std::runtime_error("cannot save image '" + utf8(path) +
                                  "': unsupported extension (use .png, .jpg or .jpeg)");
     }
     save_srgb8(path, encode_srgb8(img, threads), img.width, img.height);

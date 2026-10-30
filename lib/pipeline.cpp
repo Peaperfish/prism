@@ -12,6 +12,7 @@
 #include <sstream>
 #include <stdexcept>
 
+#include "prism/utf8_path.hpp"
 #include "sample_ranges.hpp"
 
 namespace prism {
@@ -259,7 +260,7 @@ void contrast(Image& img, float c, int threads) {
 Matrix3 load_matrix(const std::filesystem::path& path) {
     std::ifstream file(path);
     if (!file) {
-        throw std::runtime_error("cannot open matrix file '" + path.string() + "'");
+        throw std::runtime_error("cannot open matrix file '" + utf8(path) + "'");
     }
 
     Matrix3 m{};
@@ -272,7 +273,7 @@ Matrix3 load_matrix(const std::filesystem::path& path) {
         while (words >> word) {
             const std::optional<float> value = parse_float(word);
             if (!value) {
-                throw std::runtime_error("matrix file '" + path.string() + "' line " +
+                throw std::runtime_error("matrix file '" + utf8(path) + "' line " +
                                          std::to_string(line_number) + ": '" + word +
                                          "' is not a number");
             }
@@ -283,8 +284,8 @@ Matrix3 load_matrix(const std::filesystem::path& path) {
         }
     }
     if (count != m.size()) {
-        throw std::runtime_error("matrix file '" + path.string() +
-                                 "' must contain 9 numbers, found " + std::to_string(count));
+        throw std::runtime_error("matrix file '" + utf8(path) + "' must contain 9 numbers, found " +
+                                 std::to_string(count));
     }
     return m;
 }

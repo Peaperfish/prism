@@ -13,6 +13,7 @@
 #endif
 
 #include "file_ext.hpp"
+#include "prism/utf8_path.hpp"
 #include "sample_ranges.hpp"
 
 namespace prism {
@@ -53,7 +54,7 @@ Image decode_rgb16(std::span<const std::uint16_t> samples, int width, int height
 namespace {
 
 [[noreturn]] void raw_error(const std::filesystem::path& path, const std::string& why) {
-    throw std::runtime_error("cannot load RAW file '" + path.string() + "': " + why);
+    throw std::runtime_error("cannot load RAW file '" + utf8(path) + "': " + why);
 }
 
 // LibRaw calls return 0 (LIBRAW_SUCCESS) or an error code that libraw_strerror describes.
@@ -169,7 +170,7 @@ Image load_raw(const std::filesystem::path& path, const RawOptions& options, int
 #else  // !PRISM_HAVE_LIBRAW
 
 Image load_raw(const std::filesystem::path& path, const RawOptions&, int) {
-    throw std::runtime_error("cannot load RAW file '" + path.string() +
+    throw std::runtime_error("cannot load RAW file '" + utf8(path) +
                              "': Prism was built without LibRaw (install it, e.g. `brew install "
                              "libraw`, then reconfigure with -DPRISM_WITH_LIBRAW=ON)");
 }
