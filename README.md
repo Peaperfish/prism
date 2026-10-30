@@ -201,6 +201,16 @@ Between the two outputs: mean CIE76 ΔE 5.7 (median 4.0, 95th percentile 16.7, m
 
 A desktop app for macOS and Windows, in progress. `prism_gui` (`gui_app/`) is a window built with SDL3 and Dear ImGui; it is off by default and built with `-DPRISM_BUILD_GUI=ON` (see [Building the GUI](#building-the-gui)). So far it opens a photo (File → Open, Ctrl/Cmd+O, drag and drop, or a path on the command line), shows a live preview fitted to the window, edits it in Simple mode (a preset plus Brightness, Contrast and Colour, with undo and redo: Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z or Ctrl+Y) and exports it at full resolution as PNG or JPEG (File → Export, Ctrl/Cmd+E). Errors appear as a banner in the window. Advanced mode, the histogram, before/after and packaging come later.
 
+### Themes and Preferences
+
+Preferences (on macOS: Prism → Preferences…, Cmd+,; on Windows and Linux: Edit → Preferences…, Ctrl+,) is an ordinary window whose changes apply at once:
+
+- **Appearance:** System (the default: follows the operating system's light or dark mode, also when it switches while Prism is open), Light or Dark. Whatever the theme, the canvas behind the photo stays a neutral grey (slightly lighter in Light), never white, black or tinted, so it doesn't sway how bright or colourful the photo looks.
+- **Interface size:** Auto (the display's scale, e.g. 150% on a Windows laptop set to 150%) or 75–200% in steps of 25.
+- **Panel width:** the control panel's width; it can also be dragged at its left edge. It never takes more than 40% of the window (or less than 240 points where there is room). "Reset layout" goes back to 320 points, "Restore defaults" resets everything.
+
+They are kept in `preferences.txt`, key=value lines next to ImGui's `imgui.ini` in the folder SDL picks for the app: `~/Library/Application Support/Prism/Prism/` on macOS, `%APPDATA%\Prism\Prism\` on Windows, `~/.local/share/Prism/Prism/` on Linux. The file is written atomically (a temporary file renamed over it). A missing or damaged file, or a bad value, falls back to the default for that setting alone, and settings Prism doesn't know (from a newer version) are kept.
+
 ### GUI core
 
 The app's logic lives without any window in the static library `prism_gui_core` (`gui_core/`, namespace `prism::gui`). It needs nothing beyond `prism_core` and the standard library, so it is always built and every CI job tests it, the ThreadSanitizer and AddressSanitizer jobs included (`prism_gui_core_tests`). The layers:
@@ -224,6 +234,8 @@ prism_core (lib/)                            the pipeline, shared with the CLI
 | `slider_gesture.hpp` | Turns a slider's per-frame state (pressed, moved, released) into History gestures, so a whole drag is one undo step, made on release |
 | `background_export.hpp` | Runs `export_image()` on its own thread with a stop token, so the window keeps drawing while a full-resolution export runs; the UI polls for the result |
 | `main_thread_queue.hpp` | A small locked queue that hands values from any thread to the UI thread, e.g. the answer of a file dialog whose callback runs on another thread |
+| `preferences.hpp` | The app's own settings (theme, interface size, panel width): defaults, reading and writing the key=value file, clamping, and resolving "System" to light or dark |
+| `layout.hpp` | Window layout as pure functions: the panel's width for a given window and scale, and shortening a file name in the middle to fit the status bar |
 | `file_types.hpp` | The file dialogs' filters (RAW only in a build with LibRaw), and the export file name: the suggested name next to the source, and the extension added if the user left it out |
 
 A full preview re-render (every stage plus the sRGB encode, 2560×1707 from a 61 MP image) takes 10 ms on 12 threads and 53 ms on one (`prism_bench`'s "preview render" row).
