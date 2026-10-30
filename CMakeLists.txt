@@ -9,6 +9,10 @@ project(prism
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(PRISM_BUILD_TESTS "Build the Prism unit tests" ON)
+# The desktop app (SDL3 + Dear ImGui, downloaded at configure time). Off by default: with it off
+# nothing is downloaded and no GUI target exists. prism_gui_core, its logic without a window, is
+# built either way.
+option(PRISM_BUILD_GUI "Build the Prism desktop app (prism_gui, with SDL3 and Dear ImGui)" OFF)
 option(PRISM_SANITIZE_THREAD "Build everything with ThreadSanitizer to detect data races" OFF)
 option(PRISM_SANITIZE_ADDRESS
        "Build everything with AddressSanitizer and UndefinedBehaviorSanitizer to detect memory errors and undefined behaviour"
@@ -120,6 +124,9 @@ add_subdirectory(lib)
 add_subdirectory(gui_core)
 add_subdirectory(src)
 add_subdirectory(bench)
+if(PRISM_BUILD_GUI)
+  include(cmake/GuiDependencies.cmake)
+endif()
 
 if(PRISM_BUILD_TESTS)
   enable_testing()
