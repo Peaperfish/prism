@@ -26,7 +26,7 @@ jobs:
     # has a C++ library without std::jthread and std::stop_token (CMakeLists.txt checks for them).
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v7.0.1
 
       # Universal (Apple Silicon and Intel); 13.3 is the oldest macOS whose C++ library has
       # everything Prism uses (std::to_chars for floats).
@@ -72,14 +72,14 @@ jobs:
       - name: Package
         run: packaging/macos/package.sh build dist "arm64 x86_64"
 
-      - uses: actions/upload-artifact@v4.6.2
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: prism-macos
           path: dist/prism-*.zip
           if-no-files-found: error
 
       # The same tarball is used on Windows; it is published once, from here.
-      - uses: actions/upload-artifact@v4.6.2
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: libraw-source
           path: dist/LibRaw-*-source.tar.gz
@@ -89,7 +89,7 @@ jobs:
     name: Windows (x64)
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v7.0.1
 
       # The Visual Studio generator; PRISM_RELEASE links the C runtime statically (/MT).
       - name: Configure
@@ -116,7 +116,7 @@ jobs:
       - name: Package
         run: packaging/windows/package.ps1 -Build build -Out dist
 
-      - uses: actions/upload-artifact@v4.6.2
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: prism-windows
           path: dist/prism-*.zip
@@ -132,7 +132,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v7.0.1
 
       - uses: actions/download-artifact@v4.3.0
         with:

@@ -78,7 +78,7 @@ jobs:
       UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install LibRaw
         if: matrix.libraw == 'ON' && matrix.libraw_source != 'ON'
@@ -156,7 +156,7 @@ jobs:
             os: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # SDL finds the windowing systems it can talk to at configure time: X11 and Wayland, plus
       # D-Bus for the file dialogs (xdg-desktop-portal). Audio, joystick and the other
