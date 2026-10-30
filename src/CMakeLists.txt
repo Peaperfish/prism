@@ -19,3 +19,8 @@ if(MSVC)
   target_sources(prism PRIVATE utf8.manifest)
   target_sources(prism_profile PRIVATE utf8.manifest)
 endif()
+
+if(WIN32)
+  prism_add_version_resource(prism "Prism command-line photo tool")
+  prism_add_version_resource(prism_profile "Prism camera profile converter")
+endif()

@@ -17,7 +17,9 @@ string(REPLACE "\"" "\\\"" prism_notice "${prism_notice}")
 set(PRISM_ABOUT_REQUIRED_NOTICE "\"${prism_notice}\"")
 configure_file(about_info.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/about_info.cpp @ONLY)
 
-add_executable(prism_gui
+# WIN32: a Windows GUI program, started without a console window. SDL_main.h still gives main()
+# UTF-8 arguments (main.cpp).
+add_executable(prism_gui WIN32
   app.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/about_info.cpp
   file_dialogs.cpp
@@ -27,6 +29,21 @@ add_executable(prism_gui
 target_include_directories(prism_gui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_link_libraries(prism_gui PRIVATE prism_gui_core imgui SDL3::SDL3 prism_warnings)
+
+# The placeholder icon, drawn by the build (packaging/make_icon.cpp): no image file in the repo.
+add_executable(prism_make_icon ${PROJECT_SOURCE_DIR}/packaging/make_icon.cpp)
+target_link_libraries(prism_make_icon PRIVATE stb prism_warnings)
+
+if(WIN32)
+  set(prism_ico ${CMAKE_CURRENT_BINARY_DIR}/prism.ico)
+  add_custom_command(OUTPUT ${prism_ico}
+    COMMAND prism_make_icon --ico ${prism_ico}
+    DEPENDS prism_make_icon
+    COMMENT "Drawing the app icon"
+    VERBATIM)
+  target_sources(prism_gui PRIVATE ${prism_ico})
+  prism_add_version_resource(prism_gui "Prism" ICON ${prism_ico})
+endif()
 
 # windows.h (pulled in by SDL on Windows) defines min and max as macros, which break std::min and
 # std::max; and most of it isn't needed.

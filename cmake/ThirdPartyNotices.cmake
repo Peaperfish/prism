@@ -5,18 +5,12 @@
 # unchanged in licenses/LibRaw/ and this file points there.
 #
 # Included from the top-level CMakeLists.txt after every dependency is available. Sets
-# PRISM_THIRD_PARTY_NOTICES to the generated file's path, PRISM_THIRD_PARTY_COMPONENTS to a list of
-# "name version|licence" entries (for the About window) and PRISM_REQUIRED_NOTICE to the Required
-# Notice line of Prism's own LICENSE.
+# PRISM_THIRD_PARTY_NOTICES to the generated file's path and PRISM_THIRD_PARTY_COMPONENTS to a list
+# of "name version|licence" entries (for the About window).
 
 set(PRISM_THIRD_PARTY_NOTICES ${PROJECT_BINARY_DIR}/THIRD_PARTY_NOTICES.txt)
 set(prism_repo_url https://github.com/Peaperfish/prism)
 set(PRISM_THIRD_PARTY_COMPONENTS "")
-
-file(STRINGS ${PROJECT_SOURCE_DIR}/LICENSE PRISM_REQUIRED_NOTICE REGEX "^Required Notice:" LIMIT_COUNT 1)
-if(NOT PRISM_REQUIRED_NOTICE)
-  message(FATAL_ERROR "LICENSE has no 'Required Notice:' line")
-endif()
 
 # The first /* ... */ comment in `file` whose text contains `marker`, without the comment markers
 # and the leading "*" of each line.

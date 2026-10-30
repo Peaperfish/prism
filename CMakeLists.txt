@@ -5,6 +5,17 @@ project(prism
   DESCRIPTION "Command-line photo tool"
   LANGUAGES CXX)
 
+# Prism's copyright line, from the "Required Notice:" in LICENSE (PolyForm asks that it go with
+# every copy): for the About window, the macOS Info.plist and the Windows version resource.
+file(STRINGS ${PROJECT_SOURCE_DIR}/LICENSE PRISM_REQUIRED_NOTICE REGEX "^Required Notice:" LIMIT_COUNT 1)
+if(NOT PRISM_REQUIRED_NOTICE)
+  message(FATAL_ERROR "LICENSE has no 'Required Notice:' line")
+endif()
+string(REGEX REPLACE "^Required Notice: *" "" PRISM_COPYRIGHT "${PRISM_REQUIRED_NOTICE}")
+if(WIN32)
+  include(cmake/WindowsResources.cmake)
+endif()
+
 # Write build/compile_commands.json so clangd / clang-tidy / IDEs see the exact flags.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
