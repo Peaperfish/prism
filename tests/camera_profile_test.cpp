@@ -568,7 +568,9 @@ TEST(PrismProfile, WritesAMatrixThatLoadMatrixReads) {
     const std::string text((std::istreambuf_iterator<char>(file)),
                            std::istreambuf_iterator<char>());
     EXPECT_NE(text.find("TEST-CAM"), std::string::npos);
-    EXPECT_NE(text.find(json.string()), std::string::npos) << "should say where it came from";
+    EXPECT_NE(text.find("#   " + json.filename().string() + "\n"), std::string::npos)
+        << "should say where it came from";
+    EXPECT_EQ(text.find(json.parent_path().string()), std::string::npos) << "but not its directory";
     EXPECT_NE(text.find("not a colorimetric calibration"), std::string::npos);
     EXPECT_NE(text.find("#   from a test\n"), std::string::npos);
     EXPECT_NE(text.find("Skipped: the profile's hue/saturation/value table (72x5x5)"),
