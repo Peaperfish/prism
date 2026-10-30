@@ -3,6 +3,7 @@
 # always built and every CI job (the sanitizer ones included) tests it. The window itself
 # (SDL + ImGui) will be a separate target on top of this one.
 add_library(prism_gui_core STATIC
+  src/presets.cpp
   src/settings.cpp)
 
 target_include_directories(prism_gui_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)

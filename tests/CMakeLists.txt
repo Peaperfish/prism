@@ -49,6 +49,7 @@ gtest_discover_tests(prism_tests)
 
 # The GUI core's tests, in their own executable so that they show up under their own name.
 add_executable(prism_gui_core_tests
+  gui/presets_test.cpp
   gui/settings_test.cpp)
 target_link_libraries(prism_gui_core_tests PRIVATE prism_gui_core prism_warnings GTest::gtest_main)
 # The RAW tests use the synthetic DNG writer (synthetic_dng.hpp, which needs lib/tiff_reader.hpp).
