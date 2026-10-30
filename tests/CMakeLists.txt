@@ -24,6 +24,7 @@ add_executable(prism_tests
   prism_profile_test.cpp
   raw_test.cpp
   tiff_reader_test.cpp
+  unicode_path_test.cpp
   version_test.cpp)
 target_link_libraries(prism_tests PRIVATE prism_core prism_warnings GTest::gtest_main)
 # lib/ holds internal headers (e.g. tiff_reader.hpp) that are not part of the public API; only
