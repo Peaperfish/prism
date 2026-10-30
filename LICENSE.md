@@ -1,4 +1,5 @@
-Required Notice: Copyright Yule Wang (https://github.com/Peaperfish/prism)
+Required Notice: Copyright (c) 2024-2026 Yule Wang (https://github.com/Peaperfish/prism)
+
 
 # PolyForm Noncommercial License 1.0.0
 
