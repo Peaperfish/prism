@@ -55,6 +55,26 @@ if(PRISM_RELEASE)
   if(APPLE AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)
     message(FATAL_ERROR "PRISM_RELEASE needs -DCMAKE_OSX_DEPLOYMENT_TARGET=13.3")
   endif()
+  # Older Xcodes (16.4 and before) ship a libc++ without std::jthread and std::stop_token
+  # (lib/parallel.cpp, include/prism/process.hpp), and the build would fail halfway. Check before
+  # building, for the architectures and minimum macOS this release is configured for.
+  if(APPLE)
+    include(CheckCXXSourceCompiles)
+    set(CMAKE_REQUIRED_FLAGS -std=c++20)
+    check_cxx_source_compiles([[
+      #include <stop_token>
+      #include <thread>
+      int main() {
+        std::jthread worker([](std::stop_token stop) { (void)stop.stop_requested(); });
+        worker.request_stop();
+      }]] PRISM_HAVE_JTHREAD)
+    unset(CMAKE_REQUIRED_FLAGS)
+    if(NOT PRISM_HAVE_JTHREAD)
+      message(FATAL_ERROR "This compiler's C++ library has no std::jthread or std::stop_token, "
+                          "which Prism uses. Build with a newer Xcode (the one CI uses on "
+                          "macos-latest) in a fresh build directory.")
+    endif()
+  endif()
   set(PRISM_LIBRAW_FROM_SOURCE ON CACHE BOOL "" FORCE)
   set(PRISM_WITH_LIBRAW ON CACHE BOOL "" FORCE)
   # For every target, SDL and GoogleTest included (they follow CMAKE_MSVC_RUNTIME_LIBRARY too).
