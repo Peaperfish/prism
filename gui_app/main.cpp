@@ -12,22 +12,6 @@
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_sdlrenderer3.h"
 
-namespace {
-
-// ImGui's sizes are in pixels: scale the style to the display (e.g. 2 on a Retina screen, 1.5 at
-// 150% on Windows). The style can't be rescaled in place, so it is rebuilt from scratch each time.
-void apply_scale(float scale) {
-    ImGuiStyle& style = ImGui::GetStyle();
-    style = ImGuiStyle();
-    ImGui::StyleColorsDark(&style);
-    style.FrameRounding = 3.0f;
-    style.GrabRounding = 3.0f;
-    style.ScaleAllSizes(scale);
-    style.FontScaleDpi = scale;
-}
-
-}  // namespace
-
 int main(int argc, char** argv) {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         std::fprintf(stderr, "Prism: couldn't start SDL: %s\n", SDL_GetError());
@@ -69,7 +53,6 @@ int main(int argc, char** argv) {
     } else {
         io.IniFilename = nullptr;
     }
-    apply_scale(scale);
 
     ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);
     ImGui_ImplSDLRenderer3_Init(renderer);
@@ -98,8 +81,6 @@ int main(int argc, char** argv) {
                     (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED &&
                      event.window.windowID == SDL_GetWindowID(window))) {
                     done = true;
-                } else if (event.type == SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED) {
-                    apply_scale(SDL_GetWindowDisplayScale(window));
                 }
                 app.handle_event(event);
             }
@@ -108,6 +89,7 @@ int main(int argc, char** argv) {
                 continue;
             }
 
+            app.before_frame();
             ImGui_ImplSDLRenderer3_NewFrame();
             ImGui_ImplSDL3_NewFrame();
             ImGui::NewFrame();

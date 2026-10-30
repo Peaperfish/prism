@@ -5,7 +5,8 @@ add_executable(prism_gui
   app.cpp
   file_dialogs.cpp
   main.cpp
-  preview_texture.cpp)
+  preview_texture.cpp
+  theme.cpp)
 
 target_link_libraries(prism_gui PRIVATE prism_gui_core imgui SDL3::SDL3 prism_warnings)
 

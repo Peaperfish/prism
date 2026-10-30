@@ -11,6 +11,7 @@
 #include "preview_texture.hpp"
 #include "prism/gui/background_export.hpp"
 #include "prism/gui/live_preview.hpp"
+#include "prism/gui/preferences.hpp"
 #include "prism/gui/session.hpp"
 #include "prism/gui/settings.hpp"
 
@@ -27,6 +28,9 @@ public:
 
     // Opens `path_utf8` (e.g. from the command line) on the next frames.
     void open_utf8(const char* path_utf8);
+
+    // Call before ImGui::NewFrame(): rebuilds the style when the theme or the scale changed.
+    void before_frame();
 
     // Every SDL event, after ImGui has seen it.
     void handle_event(const SDL_Event& event);
@@ -50,6 +54,7 @@ private:
     void update_preview();
     void show_error(gui::Error error);
     void report(gui::MaybeError error);
+    [[nodiscard]] gui::Theme theme() const;
     void undo();
     void redo();
 
@@ -80,6 +85,10 @@ private:
 
     std::optional<gui::Error> error_;  // shown as a banner until dismissed
     std::string notice_;               // a short note that isn't an error, e.g. "Saved ..."
+
+    gui::Preferences prefs_;
+    float display_scale_ = 1.0f;  // the display's content scale (1.5 at 150% on Windows)
+    bool style_dirty_ = true;     // rebuild the style before the next frame
 
     int quiet_frames_ = 0;  // frames drawn since the last event
 };

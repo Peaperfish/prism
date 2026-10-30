@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "imgui.h"
+#include "theme.hpp"
 #include "prism/gui/file_types.hpp"
 #include "prism/gui/presets.hpp"
 #include "prism/gui/slider_gesture.hpp"
@@ -61,12 +62,12 @@ void centred_text(const std::string& text) {
 }
 
 // Text on a dark rounded box at `pos`, for messages drawn over the image.
-void overlay_text(ImDrawList* draw, ImVec2 pos, const std::string& text) {
+void overlay_text(ImDrawList* draw, const Palette& colours, ImVec2 pos, const std::string& text) {
     const ImVec2 size = ImGui::CalcTextSize(text.c_str());
     const float pad = 6.0f * ui_scale();
     draw->AddRectFilled(pos, ImVec2(pos.x + size.x + 2 * pad, pos.y + size.y + 2 * pad),
-                        IM_COL32(0, 0, 0, 170), 4.0f * ui_scale());
-    draw->AddText(ImVec2(pos.x + pad, pos.y + pad), IM_COL32(255, 255, 255, 255), text.c_str());
+                        colours.overlay_background, 4.0f * ui_scale());
+    draw->AddText(ImVec2(pos.x + pad, pos.y + pad), colours.overlay_text, text.c_str());
 }
 
 std::string file_name(const fs::path& path) {
@@ -76,7 +77,8 @@ std::string file_name(const fs::path& path) {
 }  // namespace
 
 App::App(SDL_Window* window, SDL_Renderer* renderer, DialogQueue& dialogs)
-    : window_(window), dialogs_(dialogs), texture_(renderer) {}
+    : window_(window), dialogs_(dialogs), texture_(renderer),
+      display_scale_(SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay())) {}
 
 void App::open_utf8(const char* path_utf8) {
     request_open(path_from_utf8(path_utf8));
@@ -198,9 +200,38 @@ void App::redo() {
     }
 }
 
+gui::Theme App::theme() const {
+    gui::SystemTheme system = gui::SystemTheme::unknown;
+    switch (SDL_GetSystemTheme()) {
+        case SDL_SYSTEM_THEME_LIGHT:
+            system = gui::SystemTheme::light;
+            break;
+        case SDL_SYSTEM_THEME_DARK:
+            system = gui::SystemTheme::dark;
+            break;
+        default:
+            break;
+    }
+    return gui::resolve_theme(prefs_.theme, system);
+}
+
+void App::before_frame() {
+    if (style_dirty_) {
+        apply_style(theme(), display_scale_);
+        style_dirty_ = false;
+    }
+}
+
 void App::handle_event(const SDL_Event& event) {
     quiet_frames_ = 0;
     switch (event.type) {
+        case SDL_EVENT_SYSTEM_THEME_CHANGED:
+            style_dirty_ = true;  // "System" follows the OS live
+            break;
+        case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
+            display_scale_ = SDL_GetWindowDisplayScale(window_);
+            style_dirty_ = true;
+            break;
         case SDL_EVENT_DROP_BEGIN:
             drag_over_ = true;
             dropped_.clear();
@@ -349,7 +380,8 @@ void App::draw_canvas() {
     const ImVec2 min = ImGui::GetWindowPos();
     const ImVec2 size = ImGui::GetWindowSize();
     const ImVec2 max(min.x + size.x, min.y + size.y);
-    draw->AddRectFilled(min, max, IM_COL32(60, 60, 60, 255));  // neutral grey
+    const Palette& colours = palette(theme());
+    draw->AddRectFilled(min, max, colours.canvas);  // neutral grey in both themes
     const float margin = 12.0f * ui_scale();
 
     if (texture_.texture() != nullptr) {
@@ -367,10 +399,12 @@ void App::draw_canvas() {
         const float inset = 24.0f * ui_scale();
         dashed_rect(draw, ImVec2(min.x + inset, min.y + inset),
                     ImVec2(max.x - inset, max.y - inset),
-                    drag_over_ ? IM_COL32(120, 180, 255, 255) : IM_COL32(150, 150, 150, 255),
+                    drag_over_ ? colours.drop_highlight : colours.drop_outline,
                     8.0f * ui_scale(), 2.0f * ui_scale());
         ImGui::SetCursorPosY(size.y / 2 - ImGui::GetFrameHeightWithSpacing() * 1.5f);
+        ImGui::PushStyleColor(ImGuiCol_Text, colours.canvas_text);
         centred_text("Drop a photo here");
+        ImGui::PopStyleColor();
         const float button = ImGui::CalcTextSize("Open photo...").x +
                              ImGui::GetStyle().FramePadding.x * 2;
         ImGui::SetCursorPosX((size.x - button) / 2);
@@ -378,18 +412,20 @@ void App::draw_canvas() {
             show_open_dialog();
         }
         ImGui::TextUnformatted("");
+        ImGui::PushStyleColor(ImGuiCol_Text, colours.canvas_text);
         centred_text(raw_support_available() ? "PNG, JPEG or RAW" : "PNG or JPEG");
+        ImGui::PopStyleColor();
     }
 
     if (pending_open_) {
-        overlay_text(draw, ImVec2(min.x + margin, max.y - margin - 2 * ImGui::GetFontSize()),
+        overlay_text(draw, colours, ImVec2(min.x + margin, max.y - margin - 2 * ImGui::GetFontSize()),
                      "Opening " + file_name(*pending_open_) + "...");
     } else if (preview_.rendering()) {
-        overlay_text(draw, ImVec2(min.x + margin, max.y - margin - 2 * ImGui::GetFontSize()),
+        overlay_text(draw, colours, ImVec2(min.x + margin, max.y - margin - 2 * ImGui::GetFontSize()),
                      "Rendering...");
     }
     if (drag_over_ && session_.has_file()) {
-        draw->AddRect(min, max, IM_COL32(120, 180, 255, 255), 0.0f, 0, 3.0f * ui_scale());
+        draw->AddRect(min, max, colours.drop_highlight, 0.0f, 0, 3.0f * ui_scale());
     }
 }
 
@@ -400,9 +436,11 @@ void App::draw_banner() {
     const float margin = 12.0f * ui_scale();
     ImGui::SetCursorPos(ImVec2(margin, margin));
     const bool is_error = error_.has_value();
+    const Palette& colours = palette(theme());
     ImGui::PushStyleColor(ImGuiCol_ChildBg,
-                          is_error ? ImVec4(0.45f, 0.12f, 0.12f, 0.95f)
-                                   : ImVec4(0.15f, 0.15f, 0.15f, 0.95f));
+                          is_error ? colours.error_background : colours.notice_background);
+    ImGui::PushStyleColor(ImGuiCol_Text, is_error ? colours.error_text : colours.notice_text);
+    ImGui::PushStyleColor(ImGuiCol_Border, is_error ? colours.error_border : colours.notice_border);
     ImGui::BeginChild("banner", ImVec2(ImGui::GetContentRegionAvail().x - margin, 0),
                       ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
     ImGui::PushTextWrapPos(0.0f);
@@ -424,7 +462,7 @@ void App::draw_banner() {
         notice_.clear();
     }
     ImGui::EndChild();
-    ImGui::PopStyleColor();
+    ImGui::PopStyleColor(3);
 }
 
 void App::draw_panel() {
