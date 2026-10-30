@@ -80,9 +80,8 @@ if(WIN32)
 endif()
 
 # On macOS, a few lines of Objective-C++ connect the app menu's Preferences item (see
-# macos_menu.hpp).
+# macos_menu.hpp). OBJCXX is enabled in the top-level CMakeLists.txt.
 if(APPLE)
-  enable_language(OBJCXX)
   target_sources(prism_gui PRIVATE macos_menu.mm)
   target_link_libraries(prism_gui PRIVATE "-framework Cocoa")
 endif()

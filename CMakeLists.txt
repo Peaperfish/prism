@@ -173,6 +173,15 @@ add_subdirectory(gui_core)
 add_subdirectory(src)
 add_subdirectory(bench)
 if(PRISM_BUILD_GUI)
+  # On macOS, gui_app has a little Objective-C++ (macos_menu.mm) and SDL has Objective-C (.m).
+  # Both languages are enabled here, in the top-level directory and before SDL is added: CMake
+  # maps file extensions to languages globally but keeps a language's setup per directory, so
+  # OBJCXX enabled only in gui_app, or without OBJC next to it, makes SDL's .m files OBJCXX
+  # sources in a directory with no rules to compile them ("Missing variable is:
+  # CMAKE_OBJCXX_COMPILE_OBJECT"). OBJC goes first so that .m stays Objective-C.
+  if(APPLE)
+    enable_language(OBJC OBJCXX)
+  endif()
   include(cmake/GuiDependencies.cmake)
 endif()
 # THIRD_PARTY_NOTICES.txt, for the About window and the release downloads.
