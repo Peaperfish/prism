@@ -6,6 +6,7 @@ add_library(prism_core STATIC
   image.cpp
   parallel.cpp
   pipeline.cpp
+  process.cpp
   raw.cpp
   tiff_reader.cpp
   version.cpp)
