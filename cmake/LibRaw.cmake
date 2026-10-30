@@ -1,7 +1,12 @@
-# Builds LibRaw from its release tarball as a shared library, libraw_r (.dylib/.so/.dll), for
-# PRISM_LIBRAW_FROM_SOURCE=ON. Used where no system LibRaw is available (Windows) or where we want
-# the same LibRaw on every OS. LibRaw is LGPL 2.1 or CDDL 1.0: keeping it a separate shared library,
-# unmodified, lets users replace it with their own build.
+# Builds LibRaw from its release tarball as libraw_r, for PRISM_LIBRAW_FROM_SOURCE=ON. Used where no
+# system LibRaw is available (Windows) or where we want the same LibRaw on every OS. It is a shared
+# library (.dylib/.so/.dll) for development and CI, and a static one with PRISM_RELEASE: the
+# downloadable apps use LibRaw under CDDL 1.0, statically linked and unmodified, with its licence
+# files and its source tarball shipped alongside (see README, "Licences").
+#
+# Only LibRaw's own code is built: none of its optional extras (RawSpeed, the Adobe DNG SDK, zlib,
+# libjpeg, Little CMS, OpenMP) are enabled. rawspeed_glue.cpp and dngsdk_glue.cpp are compiled
+# because Makefile.dist lists them, but without USE_RAWSPEED / USE_DNGSDK they contain no code.
 #
 # LibRaw no longer ships CMake support, so this lists its sources itself: the 79 objects of
 # LIB_MT_OBJECTS in LibRaw's Makefile.dist. On a LibRaw update, compare that list with the one below.
@@ -100,7 +105,11 @@ set(prism_libraw_sources
   src/x3f/x3f_utils_patched.cpp)
 list(TRANSFORM prism_libraw_sources PREPEND ${libraw_SOURCE_DIR}/)
 
-add_library(libraw_r SHARED ${prism_libraw_sources})
+if(PRISM_RELEASE)
+  add_library(libraw_r STATIC ${prism_libraw_sources})
+else()
+  add_library(libraw_r SHARED ${prism_libraw_sources})
+endif()
 # The name already starts with "lib": without PREFIX "" it would be liblibraw_r.dylib on macOS.
 # On every OS the file is then libraw_r.dylib/.so/.dll, as LibRaw's own builds name it.
 set_target_properties(libraw_r PROPERTIES PREFIX "")
@@ -110,9 +119,14 @@ target_include_directories(libraw_r PUBLIC ${libraw_SOURCE_DIR})
 # prism_warnings either).
 if(MSVC)
   # LIBRAW_BUILDLIB makes LibRaw's headers mark its API __declspec(dllexport) while building the DLL;
-  # code using the DLL doesn't define it and gets dllimport (libraw_types.h). No OpenMP: Prism
-  # decodes on its own threads, and the headers only ask for OpenMP when _OPENMP is defined.
-  target_compile_definitions(libraw_r PRIVATE LIBRAW_BUILDLIB _CRT_SECURE_NO_WARNINGS)
+  # code using the DLL doesn't define it and gets dllimport (libraw_types.h). A static library
+  # needs neither: LIBRAW_NODLL, for LibRaw and for its users alike. No OpenMP: Prism decodes on
+  # its own threads, and the headers only ask for OpenMP when _OPENMP is defined.
+  if(PRISM_RELEASE)
+    target_compile_definitions(libraw_r PUBLIC LIBRAW_NODLL PRIVATE _CRT_SECURE_NO_WARNINGS)
+  else()
+    target_compile_definitions(libraw_r PRIVATE LIBRAW_BUILDLIB _CRT_SECURE_NO_WARNINGS)
+  endif()
   target_compile_options(libraw_r PRIVATE /w)
 else()
   target_compile_options(libraw_r PRIVATE -w)
@@ -123,12 +137,26 @@ if(WIN32)
 endif()
 
 # Windows has no rpath: an .exe finds a DLL in its own directory (or on PATH). Copy libraw_r.dll
-# next to every executable that links it, after each build. Call this before
+# next to every executable that links it, after each build (not for the static release build). Call this before
 # gtest_discover_tests(), whose post-build step already runs the test executable.
 function(prism_copy_libraw_dll target)
-  if(WIN32)
+  if(WIN32 AND NOT PRISM_RELEASE)
     add_custom_command(TARGET ${target} POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:libraw_r> $<TARGET_FILE_DIR:${target}>
       VERBATIM)
   endif()
 endfunction()
+
+# A release must use exactly this LibRaw. The library is ours (a static libraw_r, linked by its full
+# path), and raw.cpp checks at compile time that the libraw.h it includes is this version too, so a
+# system or Homebrew copy found on an include path fails the build instead of slipping in.
+if(PRISM_RELEASE)
+  get_target_property(prism_libraw_type libraw_r TYPE)
+  if(NOT prism_libraw_type STREQUAL "STATIC_LIBRARY")
+    message(FATAL_ERROR "PRISM_RELEASE: libraw_r must be the static library built from source")
+  endif()
+  string(REPLACE "." ";" prism_libraw_version_parts ${PRISM_LIBRAW_VERSION})
+  list(GET prism_libraw_version_parts 0 PRISM_LIBRAW_VERSION_MAJOR)
+  list(GET prism_libraw_version_parts 1 PRISM_LIBRAW_VERSION_MINOR)
+  list(GET prism_libraw_version_parts 2 PRISM_LIBRAW_VERSION_PATCH)
+endif()

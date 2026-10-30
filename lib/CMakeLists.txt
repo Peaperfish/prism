@@ -32,3 +32,10 @@ if(PRISM_WITH_LIBRAW)
   target_link_libraries(prism_core PRIVATE ${prism_libraw_target})
   target_compile_definitions(prism_core PRIVATE PRISM_HAVE_LIBRAW)
 endif()
+# A release checks that it compiles against the pinned LibRaw's own header (cmake/LibRaw.cmake).
+if(PRISM_RELEASE)
+  target_compile_definitions(prism_core PRIVATE
+    PRISM_EXPECT_LIBRAW_MAJOR=${PRISM_LIBRAW_VERSION_MAJOR}
+    PRISM_EXPECT_LIBRAW_MINOR=${PRISM_LIBRAW_VERSION_MINOR}
+    PRISM_EXPECT_LIBRAW_PATCH=${PRISM_LIBRAW_VERSION_PATCH})
+endif()

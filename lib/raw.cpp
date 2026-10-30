@@ -12,6 +12,13 @@
 #include <libraw/libraw.h>
 #endif
 
+#ifdef PRISM_EXPECT_LIBRAW_MAJOR
+static_assert(LIBRAW_VERSION == LIBRAW_MAKE_VERSION(PRISM_EXPECT_LIBRAW_MAJOR,
+                                                    PRISM_EXPECT_LIBRAW_MINOR,
+                                                    PRISM_EXPECT_LIBRAW_PATCH),
+              "a release must compile against the pinned LibRaw, not a system copy");
+#endif
+
 #include "file_ext.hpp"
 #include "prism/utf8_path.hpp"
 #include "sample_ranges.hpp"

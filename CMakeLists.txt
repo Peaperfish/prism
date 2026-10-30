@@ -18,14 +18,46 @@ option(PRISM_SANITIZE_ADDRESS
        "Build everything with AddressSanitizer and UndefinedBehaviorSanitizer to detect memory errors and undefined behaviour"
        OFF)
 
+# PRISM_RELEASE=ON is the configuration the downloadable apps are built with
+# (.github/workflows/release.yml). It builds LibRaw from its pinned source tarball and links it
+# statically and unmodified (Prism uses LibRaw under CDDL 1.0), refuses anything that would use a
+# system or Homebrew LibRaw instead, and on Windows links the C runtime statically (/MT), so no
+# Visual C++ redistributable is needed. Off by default: normal builds don't change.
+option(PRISM_RELEASE "Configure the build for a downloadable release (static LibRaw from source)" OFF)
+if(PRISM_RELEASE)
+  # The cache of a build directory configured without PRISM_RELEASE may hold these as OFF.
+  if(DEFINED PRISM_LIBRAW_FROM_SOURCE AND NOT PRISM_LIBRAW_FROM_SOURCE)
+    message(FATAL_ERROR "PRISM_RELEASE needs PRISM_LIBRAW_FROM_SOURCE=ON: a release never uses a "
+                        "system LibRaw (use a fresh build directory)")
+  endif()
+  if(DEFINED PRISM_WITH_LIBRAW AND NOT PRISM_WITH_LIBRAW)
+    message(FATAL_ERROR "PRISM_RELEASE needs PRISM_WITH_LIBRAW=ON: releases have RAW support "
+                        "(use a fresh build directory)")
+  endif()
+  # FetchContent would use this local tree as-is, skipping the download and its SHA-256 check.
+  if(FETCHCONTENT_SOURCE_DIR_LIBRAW)
+    message(FATAL_ERROR "PRISM_RELEASE builds LibRaw from the pinned tarball: unset "
+                        "FETCHCONTENT_SOURCE_DIR_LIBRAW")
+  endif()
+  # Without it, the binaries only run on the macOS version they were built on. 13.3 is the oldest
+  # whose libc++ has std::to_chars for floats (gui_core/src/settings.cpp).
+  if(APPLE AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)
+    message(FATAL_ERROR "PRISM_RELEASE needs -DCMAKE_OSX_DEPLOYMENT_TARGET=13.3")
+  endif()
+  set(PRISM_LIBRAW_FROM_SOURCE ON CACHE BOOL "" FORCE)
+  set(PRISM_WITH_LIBRAW ON CACHE BOOL "" FORCE)
+  # For every target, SDL and GoogleTest included (they follow CMAKE_MSVC_RUNTIME_LIBRARY too).
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
 # LibRaw (camera RAW decoding) is optional. pkg-config finds a system install, e.g. from
 # `brew install libraw`; we use libraw_r, the thread-safe build. The option defaults to ON
 # when LibRaw is found, so a plain configure picks it up. Without it Prism still builds and
 # RAW files fail with a clear error.
 #
 # PRISM_LIBRAW_FROM_SOURCE=ON skips pkg-config and builds the pinned LibRaw release from source
-# instead, as a shared library next to Prism (cmake/LibRaw.cmake). Windows has no system LibRaw, so
-# that is the way to get RAW support there.
+# instead, as a shared library next to Prism (cmake/LibRaw.cmake; static with PRISM_RELEASE).
+# Windows has no system LibRaw, so that is the way to get RAW support there.
 option(PRISM_LIBRAW_FROM_SOURCE
        "Build LibRaw from its pinned release tarball as a shared library instead of using a system install"
        OFF)
@@ -53,7 +85,12 @@ option(PRISM_WITH_LIBRAW "Read camera RAW files (.arw, .dng, ...) with LibRaw" $
 if(PRISM_WITH_LIBRAW AND PRISM_LIBRAW_FROM_SOURCE)
   include(cmake/LibRaw.cmake)
   set(prism_libraw_target libraw_r)
-  message(STATUS "RAW support: LibRaw ${PRISM_LIBRAW_VERSION} (built from source, shared)")
+  get_target_property(prism_libraw_type libraw_r TYPE)
+  if(prism_libraw_type STREQUAL "STATIC_LIBRARY")
+    message(STATUS "RAW support: LibRaw ${PRISM_LIBRAW_VERSION} (built from source, static)")
+  else()
+    message(STATUS "RAW support: LibRaw ${PRISM_LIBRAW_VERSION} (built from source, shared)")
+  endif()
 elseif(PRISM_WITH_LIBRAW)
   if(NOT LIBRAW_FOUND)
     message(FATAL_ERROR "PRISM_WITH_LIBRAW is ON but LibRaw was not found via pkg-config "
