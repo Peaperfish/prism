@@ -132,8 +132,11 @@ Image load_raw(const std::filesystem::path& path, const RawOptions& options, int
     // instead of the magenta casts unclipped highlights can produce after white balance.
     p.highlight = 0;
 
-    // LibRaw has a wchar_t overload for Windows paths; char works on macOS and Linux.
-    check(raw->open_file(path.string().c_str()), path, "open");
+    // path.c_str() is the path in the OS's own form: const char* (bytes) on macOS and Linux,
+    // const wchar_t* (UTF-16) on Windows, where LibRaw has an open_file overload for it, so names
+    // outside the ANSI code page open too. Not yet tested on Windows: the Windows CI job builds
+    // without LibRaw.
+    check(raw->open_file(path.c_str()), path, "open");
     check(raw->unpack(), path, "unpack");
     check(raw->dcraw_process(), path, "processing");
 
