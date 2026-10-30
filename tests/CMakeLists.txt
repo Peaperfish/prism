@@ -49,7 +49,10 @@ gtest_discover_tests(prism_tests)
 
 # The GUI core's tests, in their own executable so that they show up under their own name.
 add_executable(prism_gui_core_tests
+  gui/file_types_test.cpp
   gui/history_test.cpp
+  gui/live_preview_test.cpp
+  gui/main_thread_queue_test.cpp
   gui/presets_test.cpp
   gui/preview_renderer_test.cpp
   gui/session_test.cpp
