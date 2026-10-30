@@ -1,13 +1,21 @@
-// prism_profile: turns a LightCraft camera profile (JSON) into a matrix file for
-// `prism --raw-camera-matrix`. See README, "Camera profiles".
+// prism_profile: turns a camera profile into a matrix file for `prism --raw-camera-matrix`. It
+// reads LightCraft camera profiles (JSON) and DNG files or DCP camera profiles (TIFF), telling them
+// apart by their first bytes. See README, "Camera profiles".
 //
 //   prism_profile ILCE-7RM5.json -o samples/a7rv_lightcraft.txt --note "LightCraft PR #3022"
+//   prism_profile camera.dcp -o camera_dcp.txt --temperature 5000
 //
 // Without -o the matrix file is written to stdout.
 
+#include <algorithm>
 #include <array>
+#include <cerrno>
+#include <cmath>
+#include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <exception>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -18,6 +26,7 @@
 #include <vector>
 
 #include "prism/camera_profile.hpp"
+#include "prism/dng_profile.hpp"
 #include "prism/version.hpp"
 
 namespace {
@@ -25,12 +34,17 @@ namespace {
 void print_usage(const char* program) {
     std::cerr
         << "prism_profile " << prism::version()
-        << " - convert a LightCraft camera profile to a Prism camera matrix\n"
+        << " - convert a camera profile to a Prism camera matrix\n"
         << "\n"
-        << "Usage: " << program << " <profile.json> [-o <matrix.txt>] [--note <text>]\n"
+        << "Usage: " << program
+        << " <profile> [-o <matrix.txt>] [--temperature <K>] [--note <text>]\n"
         << "\n"
+        << "<profile> is a LightCraft camera profile (JSON), a DNG file or a DCP camera profile.\n"
         << "Writes a white-balanced camera RGB -> linear sRGB (D65) matrix, rows summing to 1,\n"
         << "for prism --raw-camera-matrix. Without -o it goes to stdout.\n"
+        << "--temperature sets the white balance in kelvin (default " << prism::dng_default_kelvin
+        << ", D65) at which a DNG or DCP\n"
+        << "profile's two ForwardMatrices are interpolated. Other profiles don't support it.\n"
         << "--note adds a comment line to the file, e.g. which repository or commit the\n"
         << "profile came from (may be given several times).\n";
 }
@@ -46,6 +60,8 @@ void write_rows(std::ostream& out, const prism::Mat3& m, std::string_view prefix
         out << '\n';
     }
 }
+
+// --- LightCraft JSON -----------------------------------------------------------------------------
 
 std::string matrix_file(const prism::LightCraftProfile& p, const std::string& source,
                         const std::vector<std::string>& notes, const prism::Mat3& srgb) {
@@ -84,60 +100,452 @@ std::string matrix_file(const prism::LightCraftProfile& p, const std::string& so
     return out.str();
 }
 
-}  // namespace
+// --- DNG and DCP ---------------------------------------------------------------------------------
 
-int main(int argc, char* argv[]) {
-    const char* program = (argc > 0 && argv[0] != nullptr) ? argv[0] : "prism_profile";
-    std::optional<std::string> input;
-    std::optional<std::string> output;
-    std::vector<std::string> notes;
-    for (int i = 1; i < argc; ++i) {
-        const std::string_view arg = argv[i];
-        if (arg == "-h" || arg == "--help") {
-            print_usage(program);
-            return 0;
-        }
-        if (arg == "-o" && i + 1 < argc && !output) {
-            output = argv[++i];
-        } else if (arg == "--note" && i + 1 < argc) {
-            notes.emplace_back(argv[++i]);
-        } else if (!arg.starts_with('-') && !input) {
-            input = std::string(arg);
+// Text from the file (or a note or file name), made safe for one `#` comment line and a terminal:
+// control characters (newline, CR and tab included) become a space, so the text can't end the
+// comment and start a matrix row, and can't send escape sequences to a terminal. Every byte from
+// 0x80 up becomes '?', so the output is plain ASCII: Unicode has its own line breaks (U+2028) and
+// direction overrides (U+202E) that would need a full UTF-8 decoder to catch, and real profile
+// names and camera models are ASCII. Anything over 120 characters is cut, ending in "...".
+std::string sanitize(std::string_view text) {
+    constexpr std::size_t max_length = 120;
+    std::string out;
+    for (const char ch : text) {
+        const auto c = static_cast<unsigned char>(ch);
+        if (c < 0x20 || c == 0x7f) {
+            out += ' ';
+        } else if (c >= 0x80) {
+            out += '?';
         } else {
-            std::cerr << "error: unexpected argument '" << arg << "'\n\n";
-            print_usage(program);
-            return 2;
+            out += ch;
         }
     }
-    if (!input) {
-        std::cerr << "error: no profile given\n\n";
-        print_usage(program);
-        return 2;
+    if (out.size() > max_length) {
+        out.resize(max_length - 3);
+        out += "...";
+    }
+    return out;
+}
+
+std::string describe_text(const std::optional<std::string>& text) {
+    if (!text) {
+        return "(not in the file)";
+    }
+    return text->empty() ? "(empty)" : sanitize(*text);
+}
+
+// A number without trailing zeros, independent of the state of the stream it ends up in.
+std::string number(double v, int precision = 6) {
+    std::ostringstream s;
+    s << std::setprecision(precision) << v;
+    return s.str();
+}
+
+// "illuminant 21: D65, 6504 K"
+std::string describe_illuminant(int code) {
+    const char* name = nullptr;
+    switch (code) {
+        case 0: name = "unknown"; break;
+        case 1: name = "daylight"; break;
+        case 2: name = "fluorescent"; break;
+        case 3: name = "tungsten"; break;
+        case 4: name = "flash"; break;
+        case 9: name = "fine weather"; break;
+        case 10: name = "cloudy"; break;
+        case 11: name = "shade"; break;
+        case 12: name = "daylight fluorescent"; break;
+        case 13: name = "day white fluorescent"; break;
+        case 14: name = "cool white fluorescent"; break;
+        case 15: name = "white fluorescent"; break;
+        case 16: name = "warm white fluorescent"; break;
+        case 17: name = "standard light A"; break;
+        case 18: name = "standard light B"; break;
+        case 19: name = "standard light C"; break;
+        case 20: name = "D55"; break;
+        case 21: name = "D65"; break;
+        case 22: name = "D75"; break;
+        case 23: name = "D50"; break;
+        case 24: name = "ISO studio tungsten"; break;
+        case 255: name = "other"; break;
+        default: break;
+    }
+    std::string out = "illuminant " + std::to_string(code) + ": ";
+    out += name != nullptr ? name : "not defined by EXIF";
+    if (const std::optional<double> k = prism::illuminant_kelvin(code)) {
+        out += ", " + number(*k) + " K";
+    }
+    return out;
+}
+
+bool has_matrix(const prism::DngCalibration& c) {
+    return c.color_matrix || c.forward_matrix;
+}
+
+// Whether the white balance temperature changes the result: only when both calibrations have a
+// ForwardMatrix. A single calibration is used at every temperature, and the ColorMatrix
+// conversion always white-balances for D65 (camera_to_srgb_from_color_matrix), so a ColorMatrix
+// interpolated for another temperature would be white-balanced for the wrong light. That needs
+// the white at the chosen temperature, which is a later step.
+bool interpolates_forward_matrices(const prism::DngProfile& p) {
+    return p.calibrations[0].forward_matrix && p.calibrations[1].forward_matrix;
+}
+
+// Why --temperature (other than the default) can't be used with this profile.
+std::string temperature_refusal(const prism::DngProfile& p) {
+    std::string why =
+        "--temperature only applies to DNG and DCP profiles with two ForwardMatrices "
+        "(interpolated at that temperature); this profile ";
+    if (!has_matrix(p.calibrations[0]) || !has_matrix(p.calibrations[1])) {
+        why += "has only one calibration, which is used at every temperature";
+    } else {
+        why +=
+            "has only ColorMatrices, and prism_profile white-balances those for D65 only, so a "
+            "matrix for another temperature would be white-balanced for the wrong light";
+    }
+    return why + " (--temperature " + number(prism::dng_default_kelvin) +
+           ", the default, is accepted)";
+}
+
+// The method camera_to_srgb_from_dng(calibrations, kelvin) used, as comment lines. Call it only
+// after that succeeded: it relies on the checks camera_to_srgb_from_dng makes (two calibrations
+// with known, different temperatures and ForwardMatrices on both or neither).
+std::vector<std::string> describe_method(const prism::DngProfile& p, double kelvin,
+                                         bool temperature_given) {
+    const prism::DngCalibration& c1 = p.calibrations[0];
+    const prism::DngCalibration& c2 = p.calibrations[1];
+    const std::string forward_formula =
+        "converted as normalize_rows(XYZ->sRGB * Bradford(D50->D65) * ForwardMatrix).";
+    const std::string color_formula =
+        "converted as normalize_rows(XYZ->sRGB * ColorMatrix^-1 * diag(ColorMatrix * D65 white)), "
+        "white-balanced for D65.";
+    std::vector<std::string> lines;
+
+    if (!has_matrix(c1) || !has_matrix(c2)) {
+        const std::size_t k = has_matrix(c1) ? 0 : 1;
+        const prism::DngCalibration& c = p.calibrations[k];
+        const std::string n = std::to_string(k + 1);
+        lines.push_back(
+            "Method: " + std::string(c.forward_matrix ? "ForwardMatrix" : "ColorMatrix") + n +
+            " of the profile's single calibration (" + describe_illuminant(c.illuminant) +
+            "), used at any temperature,");
+        lines.push_back("  " + (c.forward_matrix ? forward_formula : color_formula));
+        return lines;
     }
 
-    try {
-        const prism::LightCraftProfile profile = prism::load_lightcraft_profile(*input);
-        const prism::Mat3 srgb = prism::camera_to_srgb_from_rec2020(profile.matrix);
-        const std::string text = matrix_file(profile, *input, notes, srgb);
-        if (!output) {
-            std::cout << text;
-            return 0;
+    const bool forward = c1.forward_matrix.has_value();
+    const std::string tag = forward ? "ForwardMatrix" : "ColorMatrix";
+    const double k1 = *prism::illuminant_kelvin(c1.illuminant);
+    const double k2 = *prism::illuminant_kelvin(c2.illuminant);
+    const double g = prism::dng_interpolation_weight(kelvin, k1, k2);
+    const std::string at =
+        number(kelvin) + " K" +
+        (temperature_given && kelvin != prism::dng_default_kelvin ? " (--temperature)"
+                                                                  : " (the default, D65)");
+    if (g == 0 || g == 1) {
+        const std::size_t k = g == 1 ? 0 : 1;
+        const std::string n = std::to_string(k + 1);
+        lines.push_back("Method: " + tag + n + " alone, for a white balance of " + at + ":");
+        lines.push_back("  that is at or beyond calibration " + n + " (" +
+                        describe_illuminant(p.calibrations[k].illuminant) + "), the nearer end of");
+        lines.push_back("  the " + number(std::min(k1, k2)) + "-" + number(std::max(k1, k2)) +
+                        " K range of the two calibrations (DNG 1.7.1.0, chapter 6), and");
+    } else {
+        lines.push_back("Method: " + tag + "1 and " + tag + "2 interpolated at " + at + ",");
+        lines.push_back("  linearly in 1/temperature (DNG 1.7.1.0, chapter 6):");
+        lines.push_back("  weight " + number(g, 4) + " on calibration 1 (" +
+                        describe_illuminant(c1.illuminant) + "),");
+        lines.push_back("  weight " + number(1 - g, 4) + " on calibration 2 (" +
+                        describe_illuminant(c2.illuminant) + "), and");
+    }
+    lines.push_back("  " + (forward ? forward_formula : color_formula));
+    return lines;
+}
+
+std::string describe_embed_policy(std::uint32_t policy) {
+    switch (policy) {
+        case 0: return "0 (allow copying: may be copied between DNG files)";
+        case 1: return "1 (embed if used: may not be copied out of a DNG to process other images)";
+        case 2: return "2 (embed never: may be stored and used, but not embedded in files)";
+        case 3: return "3 (no restrictions)";
+        default: return std::to_string(policy) + " (not a value the DNG specification defines)";
+    }
+}
+
+bool policy_warns(const prism::DngProfile& p) {
+    return p.embed_policy && *p.embed_policy <= 2;
+}
+
+// DNG 1.7.1.0, ProfileEmbedPolicy (p. 52): "allow copying" and "embed if used" say the profile "may
+// not be used to process non-DNG files", and "embed never" refers to those rules. Prism only says
+// so: whether a use is permitted is for the user to decide.
+constexpr std::string_view policy_sentence =
+    "The DNG specification says profiles with ProfileEmbedPolicy 0, 1 or 2 are for processing DNG "
+    "files; using this matrix for non-DNG (RAW) files may not be permitted, and that is your "
+    "responsibility.";
+
+// The profile's tables, with their sizes: none of them can be expressed as a 3x3 matrix.
+std::vector<std::string> skipped_tables(const prism::DngProfile& p) {
+    std::vector<std::string> skipped;
+    if (p.hue_sat_map) {
+        const auto& t = *p.hue_sat_map;
+        skipped.push_back("ProfileHueSatMap (" + std::to_string(t.hue_divisions) + "x" +
+                          std::to_string(t.sat_divisions) + "x" + std::to_string(t.val_divisions) +
+                          ", " + std::to_string(p.hue_sat_map_tables) +
+                          (p.hue_sat_map_tables == 1 ? " table)" : " tables)"));
+    }
+    if (p.look_table) {
+        const auto& t = *p.look_table;
+        skipped.push_back("ProfileLookTable (" + std::to_string(t.hue_divisions) + "x" +
+                          std::to_string(t.sat_divisions) + "x" + std::to_string(t.val_divisions) +
+                          ")");
+    }
+    if (p.tone_curve_points) {
+        skipped.push_back("ProfileToneCurve (" + std::to_string(*p.tone_curve_points) + " points)");
+    }
+    return skipped;
+}
+
+std::string matrix_file(const prism::DngProfile& p, const std::string& source,
+                        const std::vector<std::string>& notes,
+                        const std::vector<std::string>& method, const prism::Mat3& srgb) {
+    const bool dcp = p.source == prism::DngProfile::Source::dcp;
+    std::ostringstream out;
+    out << "# White-balanced camera RGB -> linear sRGB (D65), for prism --raw-camera-matrix.\n"
+        << "# Generated by prism_profile " << prism::version() << " from\n"
+        << "#   file: " << sanitize(std::filesystem::path(source).filename().string()) << '\n'
+        << "#   format: " << (dcp ? "DCP (camera profile)" : "DNG") << '\n'
+        << "#   camera model: " << describe_text(p.unique_camera_model) << '\n'
+        << "#   profile name: " << describe_text(p.profile_name) << '\n'
+        << "#   profile copyright: " << describe_text(p.profile_copyright) << '\n';
+    for (const std::string& note : notes) {
+        out << "#   " << sanitize(note) << '\n';
+    }
+    out << "#\n";
+    for (const std::string& line : method) {
+        out << "# " << line << '\n';
+    }
+    out << "#\n"
+        << "# This is a colorimetric matrix: it maps camera RGB to the colours the profile's\n"
+        << "# calibration measured. The profile's look (its tables and tone curve) is not in it.\n";
+
+    const std::vector<std::string> skipped = skipped_tables(p);
+    if (skipped.empty()) {
+        out << "# Skipped: nothing; the profile has no HueSatMap, LookTable or ToneCurve.\n";
+    } else {
+        out << "# Skipped, as a 3x3 matrix cannot represent them:";
+        for (std::size_t i = 0; i < skipped.size(); ++i) {
+            out << (i ? ", " : " ") << skipped[i];
         }
-        std::ofstream file(*output);
-        if (!(file << text) || !file.flush()) {
-            std::cerr << "error: cannot write '" << *output << "'\n";
-            return 1;
+        out << ".\n";
+    }
+
+    std::vector<std::string> ignored;
+    for (std::size_t k = 0; k < 2; ++k) {
+        if (p.camera_calibration[k]) {
+            ignored.push_back("CameraCalibration" + std::to_string(k + 1));
         }
-        std::cout << "wrote " << *output << " (" << profile.model
+    }
+    if (p.analog_balance) {
+        ignored.push_back("AnalogBalance");
+    }
+    if (!ignored.empty()) {
+        out << "# Ignored: ";
+        for (std::size_t i = 0; i < ignored.size(); ++i) {
+            out << (i ? ", " : "") << ignored[i];
+        }
+        out << " (in the file, but not applied).\n";
+    }
+    if (p.ignored_third_calibration) {
+        out << "# Ignored: the file's third calibration (DNG 1.6 CalibrationIlluminant3 and its\n"
+            << "# matrices); only the first two are used.\n";
+    }
+    out << "# ProfileEmbedPolicy: "
+        << (p.embed_policy ? describe_embed_policy(*p.embed_policy) : "not in the file") << '\n';
+    if (policy_warns(p)) {
+        out << "# " << policy_sentence << '\n';
+    }
+    out << '\n';
+    write_rows(out, srgb, "");
+    return out.str();
+}
+
+// --- Input formats -------------------------------------------------------------------------------
+
+enum class Format { lightcraft_json, tiff };
+
+// Tells the formats apart by their first bytes, not the file name. TIFF (DNG, DCP): "II" or "MM",
+// then the magic number 42 or 0x4352 in that byte order. JSON: '{' after any whitespace.
+Format detect_format(const std::string& path) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        throw std::runtime_error("cannot open profile '" + path + "'");
+    }
+    std::string head(4096, '\0');
+    file.read(head.data(), static_cast<std::streamsize>(head.size()));
+    head.resize(static_cast<std::size_t>(file.gcount()));
+
+    const std::string_view h = head;
+    for (const std::string_view tiff :
+         {std::string_view("II\x2a\x00", 4), std::string_view("MM\x00\x2a", 4),
+          std::string_view("IIRC"), std::string_view("MMCR")}) {
+        if (h.starts_with(tiff)) {
+            return Format::tiff;
+        }
+    }
+    const std::size_t first = h.find_first_not_of(" \t\r\n");
+    if (first != std::string_view::npos && h[first] == '{') {
+        return Format::lightcraft_json;
+    }
+    throw std::runtime_error(path +
+                             ": not a profile prism_profile can read; it accepts a LightCraft "
+                             "camera profile (JSON) or a DNG or DCP file (TIFF)");
+}
+
+struct Options {
+    std::string input;
+    std::optional<std::string> output;
+    std::optional<double> temperature;
+    std::vector<std::string> notes;
+};
+
+// Writes the matrix file to -o, or to stdout. Returns false if -o can't be written.
+bool write_output(const Options& opts, const std::string& text) {
+    if (!opts.output) {
+        std::cout << text;
+        return true;
+    }
+    std::ofstream file(*opts.output);
+    if (!(file << text) || !file.flush()) {
+        std::cerr << "error: cannot write '" << *opts.output << "'\n";
+        return false;
+    }
+    return true;
+}
+
+int run_lightcraft(const Options& opts) {
+    const prism::LightCraftProfile profile = prism::load_lightcraft_profile(opts.input);
+    const prism::Mat3 srgb = prism::camera_to_srgb_from_rec2020(profile.matrix);
+    const std::string text = matrix_file(profile, opts.input, opts.notes, srgb);
+    if (!write_output(opts, text)) {
+        return 1;
+    }
+    if (opts.output) {
+        std::cout << "wrote " << *opts.output << " (" << profile.model
                   << ", camera RGB -> linear sRGB):\n";
         write_rows(std::cout, srgb, "  ");
         if (profile.has_hue_sat) {
             std::cout
                 << "skipped the hue/saturation/value table (not representable as a 3x3 matrix)\n";
         }
+    }
+    return 0;
+}
+
+int run_dng(const Options& opts) {
+    const prism::DngProfile profile = prism::load_dng_profile(opts.input);
+    const double kelvin = opts.temperature.value_or(prism::dng_default_kelvin);
+    // First, so that a profile this can't convert at all says why, rather than being told that
+    // --temperature doesn't apply to it.
+    const prism::Mat3 srgb = prism::camera_to_srgb_from_dng(profile.calibrations, kelvin);
+    if (kelvin != prism::dng_default_kelvin && !interpolates_forward_matrices(profile)) {
+        std::cerr << "error: " << temperature_refusal(profile) << '\n';
+        return 2;
+    }
+    const std::vector<std::string> method =
+        describe_method(profile, kelvin, opts.temperature.has_value());
+    if (policy_warns(profile)) {
+        std::cerr << "warning: " << sanitize(std::filesystem::path(opts.input).filename().string())
+                  << " has ProfileEmbedPolicy " << describe_embed_policy(*profile.embed_policy)
+                  << ". " << policy_sentence << '\n';
+    }
+    const std::string text = matrix_file(profile, opts.input, opts.notes, method, srgb);
+    if (!write_output(opts, text)) {
+        return 1;
+    }
+    if (opts.output) {
+        std::cout << "wrote " << *opts.output << " (" << describe_text(profile.unique_camera_model)
+                  << ", " << describe_text(profile.profile_name)
+                  << ", camera RGB -> linear sRGB):\n";
+        write_rows(std::cout, srgb, "  ");
+        for (const std::string& line : method) {
+            std::cout << line << '\n';
+        }
+        for (const std::string& table : skipped_tables(profile)) {
+            std::cout << "skipped " << table << " (not representable as a 3x3 matrix)\n";
+        }
+    }
+    return 0;
+}
+
+// --temperature's value: a finite number of kelvin above zero.
+std::optional<double> parse_kelvin(const std::string& text) {
+    char* end = nullptr;
+    errno = 0;
+    const double value = std::strtod(text.c_str(), &end);
+    if (text.empty() || end != text.c_str() + text.size() || errno == ERANGE ||
+        !std::isfinite(value) || !(value > 0)) {
+        return std::nullopt;
+    }
+    return value;
+}
+
+}  // namespace
+
+int main(int argc, char* argv[]) {
+    const char* program = (argc > 0 && argv[0] != nullptr) ? argv[0] : "prism_profile";
+    Options opts;
+    std::optional<std::string> input;
+    const auto usage_error = [&](const std::string& why) {
+        std::cerr << "error: " << why << "\n\n";
+        print_usage(program);
+        return 2;
+    };
+    for (int i = 1; i < argc; ++i) {
+        const std::string_view arg = argv[i];
+        if (arg == "-h" || arg == "--help") {
+            print_usage(program);
+            return 0;
+        }
+        if (arg == "-o" && i + 1 < argc && !opts.output) {
+            opts.output = argv[++i];
+        } else if (arg == "--note" && i + 1 < argc) {
+            opts.notes.emplace_back(argv[++i]);
+        } else if (arg == "--temperature" && i + 1 < argc) {
+            const std::string text = argv[++i];
+            if (opts.temperature) {
+                return usage_error("--temperature given more than once");
+            }
+            opts.temperature = parse_kelvin(text);
+            if (!opts.temperature) {
+                return usage_error("--temperature needs a positive number of kelvin, got '" + text +
+                                   "'");
+            }
+        } else if (!arg.starts_with('-') && !input) {
+            input = std::string(arg);
+        } else {
+            return usage_error("unexpected argument '" + std::string(arg) + "'");
+        }
+    }
+    if (!input) {
+        return usage_error("no profile given");
+    }
+    opts.input = *input;
+
+    try {
+        if (detect_format(opts.input) == Format::tiff) {
+            return run_dng(opts);
+        }
+        // Never silently ignored: the user asked for a temperature that a LightCraft profile,
+        // a single matrix fitted to the camera's JPEGs, has no way to apply.
+        if (opts.temperature) {
+            std::cerr << "error: --temperature only applies to DNG and DCP profiles; " << opts.input
+                      << " is a LightCraft profile, which has a single matrix\n";
+            return 2;
+        }
+        return run_lightcraft(opts);
     } catch (const std::exception& e) {
         std::cerr << "error: " << e.what() << '\n';
         return 1;
     }
-    return 0;
 }

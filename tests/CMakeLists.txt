@@ -21,6 +21,7 @@ add_executable(prism_tests
   image_test.cpp
   parallel_test.cpp
   pipeline_test.cpp
+  prism_profile_test.cpp
   raw_test.cpp
   tiff_reader_test.cpp
   version_test.cpp)

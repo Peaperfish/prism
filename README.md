@@ -19,7 +19,7 @@ Prism loads an image (PNG, JPEG or camera RAW), runs it through a simple colour 
 - [x] Histogram output (R, G, B and luma image, plus clipping summary)
 - [x] RAW support (via [LibRaw](https://www.libraw.org): .arw, .dng, .cr2, .cr3, .nef, .raf; optional)
 - [x] Multithreaded processing (standard library threads, no dependencies)
-- [x] Camera matrices from camera profiles (`prism_profile`: LightCraft JSON; DNG ForwardMatrix / ColorMatrix maths in the library)
+- [x] Camera matrices from camera profiles (`prism_profile`: LightCraft JSON, DNG files and DCP camera profiles)
 - [ ] SIMD processing
 
 ## Usage
@@ -113,7 +113,7 @@ Passing exactly this matrix reproduces Prism's default RAW output (mean differen
 
 ### Camera profiles (`prism_profile`)
 
-`prism_profile` turns a camera profile into a matrix file for `--raw-camera-matrix`. It currently reads [LightCraft](https://github.com/storytold/lightcraft) camera profiles (`assets/camera-profiles/<model>.json` there):
+`prism_profile` turns a camera profile into a matrix file for `--raw-camera-matrix`. It reads [LightCraft](https://github.com/storytold/lightcraft) camera profiles (`assets/camera-profiles/<model>.json` there), DNG files and DCP camera profiles (see [DNG and DCP profiles](#dng-and-dcp-profiles)). It tells them apart by their first bytes, not the file name: JSON starts with `{`, a DNG or DCP is a TIFF file (`II` or `MM`, then 42 or `0x4352`). Anything else is refused with an error naming both formats.
 
 ```sh
 ./build/src/prism_profile ILCE-7RM5.json -o samples/a7rv_lightcraft.txt --note "LightCraft PR #3022"
@@ -137,11 +137,30 @@ camera → sRGB = normalize_rows( XYZ→sRGB · Rec2020→XYZ · M_lightcraft )
 
 Rec. 2020 and sRGB share the same white (D65), so no chromatic adaptation is needed. Finally each row is divided by its sum, so camera (1, 1, 1), which is white after white balance, gives sRGB (1, 1, 1). LightCraft's rows sum to 0.997, 0.998 and 1.035, so this only removes a slight blue cast.
 
-**DNG profiles** use the same machinery. The library reads their colour tags from DNG files and DCP camera profiles (`load_dng_profile` in `include/prism/dng_profile.hpp`), but `prism_profile` doesn't use it yet:
+**DNG profiles** use the same machinery. The library reads their colour tags from DNG files and DCP camera profiles (`load_dng_profile` in `include/prism/dng_profile.hpp`):
 
 - **ForwardMatrix** (white-balanced camera → XYZ under D50): `XYZ→sRGB · Bradford(D50→D65) · ForwardMatrix`. The Bradford step adapts D50 white to sRGB's D65 white. Skip it and white comes out slightly yellow.
 - **ColorMatrix** (XYZ → camera, *before* white balance): `XYZ→sRGB · ColorMatrix⁻¹ · diag(ColorMatrix · D65)`. The diagonal term puts back the white balance, as a per-*input*-channel gain (columns), which is what white balance is. Just normalising the rows of `XYZ→sRGB · ColorMatrix⁻¹` would also make white come out white, but it would tint every other colour.
-- With two calibrations, the one whose illuminant is closest to D65 (in mireds) is used, preferring its ForwardMatrix.
+- With two calibrations (usually Standard light A, 2856 K, and D65, 6504 K), the tags are interpolated for a white balance temperature, linearly in 1/temperature, as DNG 1.7.1.0 chapter 6 says: both ForwardMatrices if both calibrations have one, else both ColorMatrices. A temperature outside the two uses the nearer calibration alone. A single calibration is used at any temperature.
+
+#### DNG and DCP profiles
+
+```sh
+./build/src/prism_profile camera.dcp -o camera_dcp.txt
+./build/src/prism_profile photo.dng -o photo_dng.txt --temperature 5000
+```
+
+A DCP holds one camera profile. A DNG carries its main profile in IFD 0, and that is the one read. The output file is the same matrix format as above: `#` comment lines, then three rows. The comments give the file name (without its directory), the format, the camera model, the profile name and copyright, the method (which matrices, interpolated or from one calibration, at what temperature, with the weights), and what was skipped or ignored. Every string taken from the file is cleaned first: control characters (newline, carriage return and tab included) become spaces, so a profile name can't end its comment line and add a matrix row; bytes from 0x80 up become `?`, so the header is plain ASCII; each string is cut to 120 characters, ending in `...`.
+
+**What the matrix is.** It is a *colorimetric* matrix: the profile's ForwardMatrix (or ColorMatrix) describes how the camera's sensor responds to colour, measured against CIE XYZ, so the matrix maps camera RGB to the colours that were in front of the camera, as closely as a 3×3 matrix can. A DNG profile's *look* is somewhere else, in tables that a 3×3 matrix cannot represent: the hue/saturation map (`ProfileHueSatMapData1/2`), the look table (`ProfileLookTable`) and the tone curve (`ProfileToneCurve`). `prism_profile` skips them and lists them, with their sizes, in the header. Since the matrices describe the camera rather than the look, two profiles for the same camera that look very different (say a neutral one and a vivid one) can have the same matrices and differ only in their tables. `prism_profile` then gives both the same output. This is the opposite of a LightCraft profile, whose single matrix was fitted to the camera's JPEGs and so carries their look.
+
+Not applied, and listed in the header when present: a DNG's `CameraCalibration1/2` (per-unit corrections) and `AnalogBalance`, and a third calibration (DNG 1.6), of which only the first two are used.
+
+**`--temperature <K>`** (default 6504, D65) is the white balance temperature, in kelvin, at which the two ForwardMatrices are interpolated. It should be the colour temperature of the light the photo was taken in: Prism's RAW path white-balances with the camera's as-shot multipliers, and `prism_profile` does not read them from the photo. Only profiles with two ForwardMatrices accept a value other than 6504. A profile with one calibration uses it at every temperature, and ColorMatrices are always white-balanced for D65 here, so interpolating them for another light would give a matrix white-balanced for the wrong one (white balance for other lights is a later step). In both cases `--temperature` fails with an error explaining why, instead of being ignored. Two calibrations with the same temperature, or a ForwardMatrix in only one of them, are refused: there is no rule for interpolating them.
+
+**ProfileEmbedPolicy.** Profiles carry usage rules in this tag (DNG 1.7.1.0, p. 52): 0 = allow copying, 1 = embed if used, 2 = embed never, 3 = no restrictions. The header gives the value and its meaning. For 0, 1 and 2, `prism_profile` prints a warning on stderr and adds the same sentence to the header: *"The DNG specification says profiles with ProfileEmbedPolicy 0, 1 or 2 are for processing DNG files; using this matrix for non-DNG (RAW) files may not be permitted, and that is your responsibility."* It still writes the matrix. For 3, or no tag, there is no warning.
+
+No camera profile or DNG is in this repository, and none of their values are: the tests build small files with made-up matrices.
 
 **α7R V results** (DSC03866.ARW, `--raw-half --exposure +1 --curve filmic`):
 
@@ -346,6 +365,12 @@ PRISM_TEST_RAW=~/Pictures/DSC03866.ARW PRISM_TEST_RAW_SIZE=6374x9566 ctest --tes
 ```
 
 They check the size, that every value is in [0, 1], that `--raw-half` halves the dimensions, and that `--raw-camera-matrix` with the identity matrix works.
+
+Camera profiles work the same way: `PRISM_TEST_DCP` and `PRISM_TEST_DNG` point at a DCP and a DNG of your own. The tests check that the file parses and that `prism_profile` turns it into a matrix file that loads, with rows summing to 1. They print no values from the file.
+
+```sh
+PRISM_TEST_DCP=~/profiles/camera.dcp PRISM_TEST_DNG=~/Pictures/photo.dng ctest --test-dir build -R RealFile
+```
 
 ### Code formatting
 
