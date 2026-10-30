@@ -11,6 +11,7 @@
 #include "preview_texture.hpp"
 #include "prism/gui/live_preview.hpp"
 #include "prism/gui/session.hpp"
+#include "prism/gui/settings.hpp"
 
 namespace prism::gui_app {
 
@@ -45,12 +46,17 @@ private:
     void take_dialog_results();
     void update_preview();
     void show_error(gui::Error error);
+    void report(gui::MaybeError error);
+    void undo();
+    void redo();
 
     void handle_shortcuts();
     void draw_menu();
     void draw_canvas();
     void draw_banner();
     void draw_panel();
+    void draw_presets();
+    void draw_simple_slider(const char* label, gui::SimpleControl control);
     void draw_status_bar();
 
     SDL_Window* window_;

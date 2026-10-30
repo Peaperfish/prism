@@ -7,6 +7,8 @@
 #include <utility>
 
 #include "imgui.h"
+#include "prism/gui/presets.hpp"
+#include "prism/gui/slider_gesture.hpp"
 #include "prism/raw.hpp"
 #include "prism/utf8_path.hpp"
 
@@ -145,6 +147,24 @@ void App::show_error(gui::Error error) {
     error_ = std::move(error);
 }
 
+void App::report(gui::MaybeError error) {
+    if (error) {
+        show_error(std::move(*error));
+    }
+}
+
+void App::undo() {
+    if (session_.history().can_undo()) {
+        report(session_.undo());
+    }
+}
+
+void App::redo() {
+    if (session_.history().can_redo()) {
+        report(session_.redo());
+    }
+}
+
 void App::handle_event(const SDL_Event& event) {
     quiet_frames_ = 0;
     switch (event.type) {
@@ -236,6 +256,18 @@ void App::handle_shortcuts() {
     if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_O, ImGuiInputFlags_RouteGlobal)) {
         show_open_dialog();
     }
+    // Not in the middle of a drag: History would end the drag's step, but the slider would keep
+    // sending values that each became a step of their own.
+    if (ImGui::IsAnyItemActive()) {
+        return;
+    }
+    if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Z, ImGuiInputFlags_RouteGlobal)) {
+        undo();
+    }
+    if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_Z, ImGuiInputFlags_RouteGlobal) ||
+        ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Y, ImGuiInputFlags_RouteGlobal)) {
+        redo();
+    }
 }
 
 void App::draw_menu() {
@@ -251,6 +283,17 @@ void App::draw_menu() {
             SDL_Event quit{};
             quit.type = SDL_EVENT_QUIT;
             SDL_PushEvent(&quit);
+        }
+        ImGui::EndMenu();
+    }
+    if (ImGui::BeginMenu("Edit")) {
+        if (ImGui::MenuItem("Undo", shortcut_label("Z").c_str(), false,
+                            session_.history().can_undo())) {
+            undo();
+        }
+        if (ImGui::MenuItem("Redo", shortcut_label("Shift+Z").c_str(), false,
+                            session_.history().can_redo())) {
+            redo();
         }
         ImGui::EndMenu();
     }
@@ -345,7 +388,100 @@ void App::draw_panel() {
         ImGui::TextDisabled("Open a photo to edit it.");
         return;
     }
-    ImGui::TextUnformatted(file_name(session_.path()).c_str());
+    ImGui::BeginDisabled(!session_.history().can_undo());
+    if (ImGui::Button("Undo")) {
+        undo();
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!session_.history().can_redo());
+    if (ImGui::Button("Redo")) {
+        redo();
+    }
+    ImGui::EndDisabled();
+
+    ImGui::SeparatorText("Look");
+    draw_presets();
+
+    ImGui::SeparatorText("Adjust");
+    draw_simple_slider("Brightness", gui::SimpleControl::brightness);
+    draw_simple_slider("Contrast", gui::SimpleControl::contrast);
+    draw_simple_slider("Colour", gui::SimpleControl::colour);
+    ImGui::TextDisabled("Right-click a slider to reset it.");
+}
+
+void App::draw_presets() {
+    const gui::InputKind kind = session_.kind();
+    const gui::Preset* current = gui::matching_preset(kind, session_.settings());
+    const std::string shown = current != nullptr ? std::string(current->name) : "Custom";
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    if (ImGui::BeginCombo("##preset", shown.c_str())) {
+        for (const gui::Preset& preset : gui::presets_for(kind)) {
+            if (ImGui::Selectable(std::string(preset.name).c_str(), &preset == current)) {
+                gui::EditSettings s = session_.settings();
+                gui::apply_preset(s, preset);
+                report(session_.set_settings(s));  // one undo step
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("%s", std::string(preset.description).c_str());
+            }
+        }
+        ImGui::EndCombo();
+    }
+    const gui::Preset& start = gui::default_preset(kind);
+    if (&start != current &&
+        ImGui::Button(("Reset to " + std::string(start.name)).c_str())) {
+        gui::EditSettings s = session_.settings();
+        gui::apply_preset(s, start);
+        report(session_.set_settings(s));
+    }
+}
+
+void App::draw_simple_slider(const char* label, gui::SimpleControl control) {
+    const gui::SimpleControls positions = gui::simple_from(session_.settings());
+    const gui::SimpleOutOfRange beyond = gui::outside_simple_range(session_.settings());
+    float value = 0;
+    bool custom = false;
+    switch (control) {
+        case gui::SimpleControl::brightness:
+            value = positions.brightness;
+            custom = beyond.brightness;
+            break;
+        case gui::SimpleControl::contrast:
+            value = positions.contrast;
+            custom = beyond.contrast;
+            break;
+        case gui::SimpleControl::colour:
+            value = positions.colour;
+            custom = beyond.colour;
+            break;
+    }
+
+    ImGui::PushID(label);
+    ImGui::TextUnformatted(label);
+    if (custom) {
+        // Set beyond the slider's range (e.g. in Advanced mode): shown at its end until moved.
+        ImGui::SameLine();
+        ImGui::TextDisabled("(custom)");
+    }
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    const bool changed =
+        ImGui::SliderFloat("##slider", &value, gui::simple_min, gui::simple_max, "%+.0f");
+    const gui::SliderFrame frame{ImGui::IsItemActivated(), changed, ImGui::IsItemDeactivated()};
+    gui::EditSettings edited = session_.settings();
+    gui::apply_simple_control(edited, control, value);
+    // A drag updates the preview every frame but becomes one undo step, on release.
+    report(gui::apply_slider_frame(session_, frame, edited));
+
+    if (ImGui::BeginPopupContextItem("reset")) {
+        if (ImGui::MenuItem("Reset to 0")) {
+            gui::EditSettings s = session_.settings();
+            gui::apply_simple_control(s, control, 0);
+            report(session_.set_settings(s));
+        }
+        ImGui::EndPopup();
+    }
+    ImGui::PopID();
 }
 
 void App::draw_status_bar() {
