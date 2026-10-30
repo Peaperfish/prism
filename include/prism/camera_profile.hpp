@@ -103,6 +103,32 @@ struct DngCalibration {
 // calibration has a matrix.
 [[nodiscard]] Mat3 camera_to_srgb_from_dng(const std::array<DngCalibration, 2>& calibrations);
 
+// The white balance temperature to pass below for a D65 render. (Not a default argument: that
+// would make a one-argument call ambiguous with the overload above.)
+inline constexpr double dng_default_kelvin = 6504;
+
+// The weight of calibration 1 when interpolating DNG calibrations for illuminants of kelvin1 and
+// kelvin2 at a white balance of `kelvin` (DNG 1.7.1.0, chapter 6): linear in inverse temperature,
+//   g = (1/kelvin - 1/kelvin2) / (1/kelvin1 - 1/kelvin2),
+// clamped to [0, 1], so a temperature outside the two gives the closer calibration alone. Either
+// illuminant may be the warmer one. Throws std::invalid_argument if a temperature is not finite
+// and positive, or if kelvin1 == kelvin2 (no way to tell the calibrations apart).
+[[nodiscard]] double dng_interpolation_weight(double kelvin, double kelvin1, double kelvin2);
+
+// The DNG camera -> sRGB matrix for a white balance of `kelvin`, following DNG 1.7.1.0 chapter 6:
+// with two calibrations, interpolates their ForwardMatrix (if both have one) or ColorMatrix (if
+// neither has a ForwardMatrix) with dng_interpolation_weight, then converts the result as
+// camera_to_srgb_from_forward_matrix or camera_to_srgb_from_color_matrix does. With only one
+// calibration that has a matrix, uses it at any temperature. Throws std::invalid_argument if
+// `kelvin` is not finite and positive or no calibration has a matrix, and std::runtime_error if
+// two calibrations can't be interpolated: only one has a ForwardMatrix, an illuminant has no known
+// temperature (0 = unknown, 255 = other, or an undefined code), or both have the same temperature.
+//
+// The ColorMatrix path still white-balances for D65 (see camera_to_srgb_from_color_matrix), not
+// for the white at `kelvin`; the ForwardMatrix path needs no white point.
+[[nodiscard]] Mat3 camera_to_srgb_from_dng(const std::array<DngCalibration, 2>& calibrations,
+                                           double kelvin);
+
 // --- LightCraft camera profiles ------------------------------------------------------------------
 
 // A LightCraft camera profile (assets/camera-profiles/<model>.json in LightCraft), version 1.

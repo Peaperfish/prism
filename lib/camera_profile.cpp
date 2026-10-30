@@ -245,6 +245,128 @@ Mat3 camera_to_srgb_from_dng(const std::array<DngCalibration, 2>& calibrations) 
                                 : camera_to_srgb_from_color_matrix(*best->color_matrix);
 }
 
+// DNG 1.7.1.0, chapter 6, p. 100 ("Information for two calibrations"):
+//
+//   "DNG versions earlier than 1.2.0.0 allow the raw converter to choose the interpolation
+//   algorithm. DNG 1.2.0.0 and later requires a specific interpolation algorithm: linear
+//   interpolation using inverse correlated color temperature. To find the interpolation weighting
+//   factor between the two tag sets, find the correlated color temperature for the user-selected
+//   white balance and the two calibration illuminants. If the white balance temperature is between
+//   two calibration illuminant temperatures, then invert all the temperatures and use linear
+//   interpolation. Otherwise, use the closest calibration tag set."
+//
+// The matrices interpolated are the tags themselves ("Let CM be the n-by-3 matrix interpolated
+// from the ColorMatrix1, ColorMatrix2 [...] tags", likewise FM, p. 101), not the final transforms.
+
+double dng_interpolation_weight(double kelvin, double kelvin1, double kelvin2) {
+    for (double k : {kelvin, kelvin1, kelvin2}) {
+        if (!(std::isfinite(k) && k > 0)) {
+            throw std::invalid_argument("DNG interpolation: temperature " + std::to_string(k) +
+                                        " K is not a finite positive number");
+        }
+    }
+    if (kelvin1 == kelvin2) {
+        throw std::invalid_argument("DNG interpolation: both calibrations are for " +
+                                    std::to_string(kelvin1) + " K");
+    }
+    // Outside the range (or on an end), the closer calibration alone, with no arithmetic, so the
+    // endpoints reproduce that calibration exactly.
+    if (kelvin <= std::min(kelvin1, kelvin2)) {
+        return kelvin1 < kelvin2 ? 1.0 : 0.0;
+    }
+    if (kelvin >= std::max(kelvin1, kelvin2)) {
+        return kelvin1 > kelvin2 ? 1.0 : 0.0;
+    }
+    return (1 / kelvin - 1 / kelvin2) / (1 / kelvin1 - 1 / kelvin2);
+}
+
+namespace {
+
+// The temperature of calibration `index` (0 or 1), which interpolation needs.
+double calibration_kelvin(const DngCalibration& c, std::size_t index) {
+    const std::string which = "DNG calibration " + std::to_string(index + 1);
+    if (c.illuminant == 0) {
+        throw std::runtime_error(which +
+                                 " has illuminant 0 (unknown), so it has no colour temperature "
+                                 "to interpolate with");
+    }
+    if (c.illuminant == 255) {
+        throw std::runtime_error(which +
+                                 " has illuminant 255 (other: a custom illuminant given by "
+                                 "IlluminantData, which Prism does not read), so it has no colour "
+                                 "temperature to interpolate with");
+    }
+    const std::optional<double> k = illuminant_kelvin(c.illuminant);
+    if (!k) {
+        throw std::runtime_error(which + " has illuminant " + std::to_string(c.illuminant) +
+                                 ", which has no known colour temperature");
+    }
+    return *k;
+}
+
+// One calibration on its own: its ForwardMatrix if it has one, else its ColorMatrix.
+Mat3 calibration_to_srgb(const DngCalibration& c) {
+    return c.forward_matrix ? camera_to_srgb_from_forward_matrix(*c.forward_matrix)
+                            : camera_to_srgb_from_color_matrix(*c.color_matrix);
+}
+
+Mat3 blend(const Mat3& a, const Mat3& b, double weight_a) {
+    Mat3 out{};
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            out[i][j] = weight_a * a[i][j] + (1 - weight_a) * b[i][j];
+        }
+    }
+    return out;
+}
+
+}  // namespace
+
+Mat3 camera_to_srgb_from_dng(const std::array<DngCalibration, 2>& calibrations, double kelvin) {
+    if (!(std::isfinite(kelvin) && kelvin > 0)) {
+        throw std::invalid_argument("DNG white balance temperature " + std::to_string(kelvin) +
+                                    " K is not a finite positive number");
+    }
+    const DngCalibration& c1 = calibrations[0];
+    const DngCalibration& c2 = calibrations[1];
+    const bool has1 = c1.color_matrix || c1.forward_matrix;
+    const bool has2 = c2.color_matrix || c2.forward_matrix;
+    if (!has1 && !has2) {
+        throw std::invalid_argument("DNG profile has no ColorMatrix or ForwardMatrix");
+    }
+    if (!has1 || !has2) {
+        // One calibration: used regardless of the white balance, so its illuminant doesn't matter.
+        return calibration_to_srgb(has1 ? c1 : c2);
+    }
+
+    // Chapter 6 treats "the ForwardMatrix tags" as all present or all absent. It requires that
+    // only for three calibrations ("Either all three ForwardMatrix tags are included, or none of
+    // them are included", p. 101) and states no rule for two, so a mixed pair is rejected rather
+    // than mixing two different camera -> XYZ models. This holds even when the temperature would
+    // pick one calibration alone, so that the method never depends on the white balance.
+    if (c1.forward_matrix.has_value() != c2.forward_matrix.has_value()) {
+        throw std::runtime_error(
+            "DNG profile has a ForwardMatrix for only one of its two calibrations; the DNG "
+            "specification gives no rule for interpolating such a pair");
+    }
+    const double k1 = calibration_kelvin(c1, 0);
+    const double k2 = calibration_kelvin(c2, 1);
+    if (k1 == k2) {
+        throw std::runtime_error(
+            "DNG calibrations 1 and 2 have illuminants " + std::to_string(c1.illuminant) + " and " +
+            std::to_string(c2.illuminant) + ", both " + std::to_string(static_cast<int>(k1)) +
+            " K, so there is no closest one to choose or interpolate");
+    }
+    const double g = dng_interpolation_weight(kelvin, k1, k2);
+    if (g == 0 || g == 1) {
+        return calibration_to_srgb(g == 1 ? c1 : c2);
+    }
+    if (c1.forward_matrix) {
+        return camera_to_srgb_from_forward_matrix(blend(*c1.forward_matrix, *c2.forward_matrix, g));
+    }
+    return camera_to_srgb_from_color_matrix(blend(*c1.color_matrix, *c2.color_matrix, g));
+}
+
 // --- A small JSON reader -------------------------------------------------------------------------
 //
 // Just enough JSON (RFC 8259) for profile files: objects, arrays, numbers, strings, true, false and

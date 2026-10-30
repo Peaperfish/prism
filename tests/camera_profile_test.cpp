@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdlib>
@@ -253,6 +254,237 @@ TEST(CameraToSrgb, IlluminantTemperatures) {
     EXPECT_EQ(prism::illuminant_kelvin(17), 2856);
     EXPECT_FALSE(prism::illuminant_kelvin(0).has_value());
     EXPECT_FALSE(prism::illuminant_kelvin(255).has_value());
+}
+
+// --- Interpolating DNG calibrations by temperature -----------------------------------------------
+
+namespace {
+
+constexpr int light_a = 17;    // 2856 K
+constexpr int light_d65 = 21;  // 6504 K
+
+// The weight of the 2856 K calibration at 4000 K, worked by hand in inverse kelvin:
+//   1/2856 = 0.000350140056    1/6504 = 0.000153751538    1/4000 = 0.000250000000
+//   g = (1/4000 - 1/6504) / (1/2856 - 1/6504)
+//     = 0.000096248462 / 0.000196388519
+//     = 0.490092...
+// (Interpolating in kelvin instead would give (4000 - 6504) / (2856 - 6504) = 0.686.)
+constexpr double weight_a_at_4000 = 0.4900921;
+
+// Two made-up calibrations, different enough that interpolation visibly moves the result.
+constexpr prism::Mat3 color_a = {{{1.02, -0.38, -0.11},  //
+                                  {-0.52, 1.36, 0.19},
+                                  {-0.12, 0.29, 0.85}}};
+constexpr prism::Mat3 forward_a = {{{0.61, 0.24, 0.11},  //
+                                    {0.20, 0.86, -0.06},
+                                    {0.05, -0.18, 0.95}}};
+constexpr prism::Mat3 forward_d65 = {{{0.72, 0.13, 0.11},  //
+                                      {0.31, 0.71, -0.02},
+                                      {0.02, -0.06, 0.86}}};
+
+prism::Mat3 blend(const prism::Mat3& a, const prism::Mat3& b, double weight_a) {
+    prism::Mat3 out{};
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            out[i][j] = weight_a * a[i][j] + (1 - weight_a) * b[i][j];
+        }
+    }
+    return out;
+}
+
+std::array<prism::DngCalibration, 2> color_pair() {
+    return {{{light_a, color_a, std::nullopt}, {light_d65, sample_color_matrix, std::nullopt}}};
+}
+
+std::array<prism::DngCalibration, 2> forward_pair() {
+    return {{{light_a, color_a, forward_a}, {light_d65, sample_color_matrix, forward_d65}}};
+}
+
+std::array<prism::DngCalibration, 2> swapped(std::array<prism::DngCalibration, 2> cal) {
+    std::swap(cal[0], cal[1]);
+    return cal;
+}
+
+// Expects std::runtime_error whose message contains `expected`.
+void expect_dng_error(const std::array<prism::DngCalibration, 2>& cal, double kelvin,
+                      const std::string& expected) {
+    try {
+        (void)prism::camera_to_srgb_from_dng(cal, kelvin);
+        ADD_FAILURE() << "no error at " << kelvin << " K; expected \"" << expected << "\"";
+    } catch (const std::runtime_error& e) {
+        EXPECT_NE(std::string(e.what()).find(expected), std::string::npos) << e.what();
+    }
+}
+
+}  // namespace
+
+TEST(DngInterpolation, WeightIsLinearInInverseTemperature) {
+    EXPECT_NEAR(prism::dng_interpolation_weight(4000, 2856, 6504), weight_a_at_4000, 1e-7);
+    // Halfway in mireds (1e6 / K): 1e6 / 4000 = 250 is halfway between 200 and 300.
+    EXPECT_NEAR(prism::dng_interpolation_weight(4000, 1e6 / 300, 1e6 / 200), 0.5, 1e-12);
+}
+
+TEST(DngInterpolation, WeightDoesNotDependOnOrder) {
+    // Swapping the calibrations swaps which one the weight is for.
+    EXPECT_NEAR(prism::dng_interpolation_weight(4000, 6504, 2856), 1 - weight_a_at_4000, 1e-7);
+    for (double k : {3000.0, 4000.0, 5000.0, 6000.0}) {
+        EXPECT_NEAR(prism::dng_interpolation_weight(k, 2856, 6504) +
+                        prism::dng_interpolation_weight(k, 6504, 2856),
+                    1.0, 1e-12)
+            << k;
+    }
+}
+
+TEST(DngInterpolation, WeightClampsOutsideTheCalibrationsAndIsExactAtThem) {
+    for (double below : {2856.0, 2855.9, 2000.0, 1.0}) {
+        EXPECT_EQ(prism::dng_interpolation_weight(below, 2856, 6504), 1.0) << below;
+        EXPECT_EQ(prism::dng_interpolation_weight(below, 6504, 2856), 0.0) << below;
+    }
+    for (double above : {6504.0, 6504.1, 10000.0, 1e9}) {
+        EXPECT_EQ(prism::dng_interpolation_weight(above, 2856, 6504), 0.0) << above;
+        EXPECT_EQ(prism::dng_interpolation_weight(above, 6504, 2856), 1.0) << above;
+    }
+}
+
+TEST(DngInterpolation, WeightRejectsBadTemperatures) {
+    for (double bad : {0.0, -4000.0, std::nan(""), HUGE_VAL}) {
+        EXPECT_THROW((void)prism::dng_interpolation_weight(bad, 2856, 6504), std::invalid_argument);
+        EXPECT_THROW((void)prism::dng_interpolation_weight(4000, bad, 6504), std::invalid_argument);
+        EXPECT_THROW((void)prism::dng_interpolation_weight(4000, 2856, bad), std::invalid_argument);
+    }
+    EXPECT_THROW((void)prism::dng_interpolation_weight(4000, 5500, 5500), std::invalid_argument);
+}
+
+TEST(DngInterpolation, InterpolatesForwardMatrices) {
+    const prism::Mat3 expected =
+        prism::camera_to_srgb_from_forward_matrix(blend(forward_a, forward_d65, weight_a_at_4000));
+    const prism::Mat3 m = prism::camera_to_srgb_from_dng(forward_pair(), 4000);
+    expect_near(m, expected, 1e-6);
+    expect_rows_sum_to_one(m);
+    expect_near(prism::camera_to_srgb_from_dng(swapped(forward_pair()), 4000), m, 1e-12);
+}
+
+TEST(DngInterpolation, InterpolatesColorMatricesNotTheResults) {
+    const prism::Mat3 expected = prism::camera_to_srgb_from_color_matrix(
+        blend(color_a, sample_color_matrix, weight_a_at_4000));
+    const prism::Mat3 m = prism::camera_to_srgb_from_dng(color_pair(), 4000);
+    expect_near(m, expected, 1e-6);
+    expect_rows_sum_to_one(m);
+    expect_near(prism::camera_to_srgb_from_dng(swapped(color_pair()), 4000), m, 1e-12);
+
+    // Blending the two final sRGB matrices instead gives something measurably different, because
+    // the ColorMatrix is inverted on the way. (For ForwardMatrices the two would agree: every
+    // ForwardMatrix maps (1, 1, 1) to D50 white, so normalize_rows scales them all alike.)
+    const prism::Mat3 blended_results =
+        blend(prism::camera_to_srgb_from_color_matrix(color_a),
+              prism::camera_to_srgb_from_color_matrix(sample_color_matrix), weight_a_at_4000);
+    double largest_difference = 0;
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            largest_difference =
+                std::max(largest_difference, std::abs(m[i][j] - blended_results[i][j]));
+        }
+    }
+    EXPECT_GT(largest_difference, 1e-3);
+}
+
+TEST(DngInterpolation, ClampsToTheCloserCalibration) {
+    for (const auto& cal : {color_pair(), swapped(color_pair())}) {
+        EXPECT_EQ(prism::camera_to_srgb_from_dng(cal, 2000),
+                  prism::camera_to_srgb_from_color_matrix(color_a));
+        EXPECT_EQ(prism::camera_to_srgb_from_dng(cal, 12000),
+                  prism::camera_to_srgb_from_color_matrix(sample_color_matrix));
+    }
+    for (const auto& cal : {forward_pair(), swapped(forward_pair())}) {
+        EXPECT_EQ(prism::camera_to_srgb_from_dng(cal, 2000),
+                  prism::camera_to_srgb_from_forward_matrix(forward_a));
+        EXPECT_EQ(prism::camera_to_srgb_from_dng(cal, 12000),
+                  prism::camera_to_srgb_from_forward_matrix(forward_d65));
+    }
+}
+
+TEST(DngInterpolation, EndpointsGiveExactlyThatCalibration) {
+    for (const auto& cal : {color_pair(), swapped(color_pair())}) {
+        EXPECT_EQ(prism::camera_to_srgb_from_dng(cal, 2856),
+                  prism::camera_to_srgb_from_color_matrix(color_a));
+        EXPECT_EQ(prism::camera_to_srgb_from_dng(cal, 6504),
+                  prism::camera_to_srgb_from_color_matrix(sample_color_matrix));
+    }
+    for (const auto& cal : {forward_pair(), swapped(forward_pair())}) {
+        EXPECT_EQ(prism::camera_to_srgb_from_dng(cal, 2856),
+                  prism::camera_to_srgb_from_forward_matrix(forward_a));
+        EXPECT_EQ(prism::camera_to_srgb_from_dng(cal, 6504),
+                  prism::camera_to_srgb_from_forward_matrix(forward_d65));
+    }
+    // The D65 default matches the one-argument version for a Standard A + D65 profile.
+    EXPECT_EQ(prism::camera_to_srgb_from_dng(color_pair(), prism::dng_default_kelvin),
+              prism::camera_to_srgb_from_dng(color_pair()));
+}
+
+TEST(DngInterpolation, SrgbCameraGivesIdentityBetweenCalibrations) {
+    // As in ColorMatrixOfAnSrgbCameraGivesIdentity, with different channel gains per calibration.
+    // Blending two gain-scaled xyz_to_srgb matrices only blends the gains, which white balance
+    // removes, so the result is the identity at any temperature.
+    prism::Mat3 warm = prism::xyz_to_srgb();
+    prism::Mat3 cool = prism::xyz_to_srgb();
+    for (int j = 0; j < 3; ++j) {
+        warm[0][j] *= 0.5;
+        warm[2][j] *= 2.0;
+        cool[0][j] *= 1.5;
+        cool[1][j] *= 0.8;
+    }
+    const std::array<prism::DngCalibration, 2> cal = {
+        {{light_a, warm, std::nullopt}, {light_d65, cool, std::nullopt}}};
+    expect_near(prism::camera_to_srgb_from_dng(cal, 4000), prism::identity3, 1e-12);
+}
+
+TEST(DngInterpolation, RejectsAForwardMatrixOnOnlyOneCalibration) {
+    std::array<prism::DngCalibration, 2> cal = color_pair();
+    cal[0].forward_matrix = forward_a;
+    // Rejected at every temperature, including those that would use one calibration alone.
+    for (double k : {2000.0, 2856.0, 4000.0, 6504.0, 12000.0}) {
+        expect_dng_error(cal, k, "ForwardMatrix for only one of its two calibrations");
+        expect_dng_error(swapped(cal), k, "ForwardMatrix for only one of its two calibrations");
+    }
+}
+
+TEST(DngInterpolation, RejectsIlluminantsWithoutATemperature) {
+    for (double k : {2000.0, 4000.0, 6504.0}) {
+        std::array<prism::DngCalibration, 2> cal = color_pair();
+        cal[0].illuminant = 0;
+        expect_dng_error(cal, k, "calibration 1 has illuminant 0 (unknown)");
+        cal[0].illuminant = 255;
+        expect_dng_error(cal, k, "calibration 1 has illuminant 255 (other");
+        cal[0].illuminant = light_a;
+        cal[1].illuminant = 255;
+        expect_dng_error(cal, k, "calibration 2 has illuminant 255 (other");
+        cal[1].illuminant = 7;  // not a defined LightSource value
+        expect_dng_error(cal, k, "calibration 2 has illuminant 7, which has no known colour");
+    }
+    std::array<prism::DngCalibration, 2> same = color_pair();
+    same[0].illuminant = 1;  // daylight, 5500 K
+    same[1].illuminant = 4;  // flash, 5500 K
+    expect_dng_error(same, 4000, "illuminants 1 and 4, both 5500 K");
+}
+
+TEST(DngInterpolation, UsesASingleCalibrationAtAnyTemperature) {
+    // No temperature is needed, so even an unknown illuminant is fine.
+    for (int illuminant : {0, 255, light_a}) {
+        std::array<prism::DngCalibration, 2> cal{};
+        cal[1] = {illuminant, color_a, std::nullopt};
+        for (double k : {2000.0, 4000.0, 9000.0}) {
+            EXPECT_EQ(prism::camera_to_srgb_from_dng(cal, k),
+                      prism::camera_to_srgb_from_color_matrix(color_a));
+        }
+        cal[1].forward_matrix = forward_a;
+        EXPECT_EQ(prism::camera_to_srgb_from_dng(cal, 4000),
+                  prism::camera_to_srgb_from_forward_matrix(forward_a));
+    }
+    EXPECT_THROW((void)prism::camera_to_srgb_from_dng({}, 4000), std::invalid_argument);
+    for (double bad : {0.0, -1.0, std::nan(""), HUGE_VAL}) {
+        EXPECT_THROW((void)prism::camera_to_srgb_from_dng(color_pair(), bad),
+                     std::invalid_argument);
+    }
 }
 
 // --- LightCraft profiles -------------------------------------------------------------------------
