@@ -197,6 +197,28 @@ No camera profile or DNG is in this repository, and none of their values are: th
 
 Between the two outputs: mean CIE76 ΔE 5.7 (median 4.0, 95th percentile 16.7, max 53.9). The LightCraft version has clearly warmer, more saturated autumn foliage. Its blue row (`2.10·B − 1.05·G`) drives saturated yellows and oranges below zero in blue. Those colours lie outside sRGB, and the tone curve clips them to 0.
 
+## GUI core
+
+A desktop app for macOS and Windows is planned. **No GUI exists yet**: what is here is its logic without any window, the static library `prism_gui_core` (`gui_core/`, namespace `prism::gui`). It needs nothing beyond `prism_core` and the standard library, so it is always built and every CI job tests it, the ThreadSanitizer and AddressSanitizer jobs included (`prism_gui_core_tests`). The layers:
+
+```
+window (planned: SDL3 + Dear ImGui)          draws and forwards clicks; never calls the pipeline itself
+   ▲
+prism_gui_core (gui_core/)                   no UI code, unit-tested
+   ▲
+prism_core (lib/)                            the pipeline, shared with the CLI
+```
+
+| Part | What it does |
+|------|--------------|
+| `settings.hpp` | `EditSettings`: every value the GUI edits (exposure, colour matrix file, saturation, contrast, tone curve, an on/off switch per stage, RAW options). `to_process_settings()` turns it into what `prism::process` takes, with exactly the CLI's curves; `validate()` explains bad values. Simple mode's brightness, contrast and colour sliders (−100…+100) are invertible maps onto three of its fields, so Simple and Advanced edit the same object |
+| `presets.hpp` | Named looks (Natural, Original, Vivid, Soft, Black & white), different for RAW and PNG/JPEG. A preset sets only the look; settings that match no preset are "Custom" |
+| `history.hpp` | Undo/redo of whole `EditSettings` snapshots. A slider drag, marked by `begin_gesture()` / `end_gesture()`, is one step; at most 100 steps |
+| `session.hpp` | The open photo: `open_file()` decodes it (RAW at half size), shrinks it with `prism::downscale` to a 2560 px preview base and frees the full image; errors come back as a kind plus a sentence for the user. `export_image()` decodes the file again at full size, runs the pipeline with a stop token and saves PNG or JPEG |
+| `preview_renderer.hpp` | A worker thread that re-renders the preview whenever the settings change. The newest request wins: it replaces one that hasn't started and stops the one in progress between stages (`std::stop_token`). The UI polls for finished 8-bit frames; nothing calls back into UI code |
+
+A full preview re-render (every stage plus the sRGB encode, 2560×1707 from a 61 MP image) takes 10 ms on 12 threads and 53 ms on one (`prism_bench`'s "preview render" row).
+
 ## Performance
 
 Every per-pixel stage (sRGB decode/encode, exposure, matrix, tone curve, histogram) splits the image into one contiguous block of rows per thread. Each thread writes only its own rows, so no locks are needed; the histogram gives each thread private counters and adds them up at the end. See `include/prism/parallel.hpp`.
@@ -228,6 +250,7 @@ It is not part of `ctest`. Results on an Apple M2 Pro (8 performance + 4 efficie
 | sRGB encode | 159 | 23 | 7.0× |
 | histogram | 236 | 31 | 7.7× |
 | downscale to 2560 px | 64 | 11 | 5.9× |
+| GUI preview render, 2560 px (all stages + encode) | 53 | 10 | 5.1× |
 
 Contrast used to be the slowest per-pixel stage at 897 ms / 122 ms, because each value needed a `log2`, an `exp2` and a square root (and 1757 ms / 218 ms with `std::tanh` as the sigmoid). It now looks the curve up in a table: see [Fast contrast](#fast-contrast).
 
@@ -436,9 +459,10 @@ prism/
 ├── CMakeLists.txt
 ├── cmake/        # LibRaw.cmake: LibRaw source build (PRISM_LIBRAW_FROM_SOURCE)
 ├── src/          # CLI entry points: prism, prism_profile
+├── gui_core/     # prism_gui_core: the GUI's logic without a window (no GUI yet)
 ├── include/prism # public headers
 ├── lib/          # core image + colour code (raw.cpp: LibRaw; camera_profile.cpp: matrix maths)
-├── tests/        # GoogleTest unit tests
+├── tests/        # GoogleTest unit tests (tests/gui/: prism_gui_core_tests)
 ├── samples/      # example matrix files
 ├── bench/        # prism_bench: per-stage timings on a 61 MP image
 ├── .github/      # CI workflow
