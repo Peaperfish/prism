@@ -8,6 +8,24 @@ Prism loads an image (PNG, JPEG or camera RAW), runs it through a simple colour 
 
 > 🚧 Work in progress.
 
+## Downloading and running Prism
+
+Ready-made builds of the desktop app and the command-line tool are on the [Releases](https://github.com/Peaperfish/prism/releases) page:
+
+| Download | For |
+|---|---|
+| `prism-<version>-macos-universal.zip` | macOS 13.3 or later, Apple Silicon and Intel |
+| `prism-<version>-windows-x64.zip` | Windows 10 and 11, 64-bit |
+
+Each zip holds the app (`Prism.app` on macOS, `prism_gui.exe` on Windows), the command-line tool (`prism`, `prism.exe`), Prism's `LICENSE`, `THIRD_PARTY_NOTICES.txt`, LibRaw's licence files in `licenses/LibRaw/` and a short `README.txt`. Both include RAW support. Nothing needs installing beside them.
+
+The apps aren't signed by Apple or Microsoft yet, so both systems warn the first time:
+
+- **macOS:** unzip and drag `Prism.app` to Applications. The first time, right-click (or Control-click) it and choose **Open**, then **Open** again. On macOS 15 and later that no longer works: try to open Prism once, then go to **System Settings → Privacy & Security**, scroll down to the message about Prism and click **Open Anyway**. After that it opens normally. (Only downloaded files are checked; a build of your own opens straight away.)
+- **Windows:** extract the whole zip, then run `prism_gui.exe`. If Microsoft Defender SmartScreen says "Windows protected your PC", click **More info → Run anyway**. Smart App Control (Windows 11), when it is on, blocks unsigned apps with no way to allow just one.
+
+Each release also has `LibRaw-<version>-source.tar.gz`, the LibRaw source the builds were made from, and `SHA256SUMS.txt`. How the downloads are built: [Release builds](#release-builds).
+
 ## Features
 
 - [x] Load and save PNG / JPEG (via [stb](https://github.com/nothings/stb))
@@ -199,7 +217,7 @@ Between the two outputs: mean CIE76 ΔE 5.7 (median 4.0, 95th percentile 16.7, m
 
 ## GUI
 
-A desktop app for macOS and Windows, in progress. `prism_gui` (`gui_app/`) is a window built with SDL3 and Dear ImGui; it is off by default and built with `-DPRISM_BUILD_GUI=ON` (see [Building the GUI](#building-the-gui)). So far it opens a photo (File → Open, Ctrl/Cmd+O, drag and drop, or a path on the command line), shows a live preview fitted to the window, edits it in Simple mode (a preset plus Brightness, Contrast and Colour, with undo and redo: Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z or Ctrl+Y) and exports it at full resolution as PNG or JPEG (File → Export, Ctrl/Cmd+E). Errors appear as a banner in the window. Advanced mode, the histogram, before/after and packaging come later.
+A desktop app for macOS and Windows, in progress. `prism_gui` (`gui_app/`) is a window built with SDL3 and Dear ImGui; it is off by default and built with `-DPRISM_BUILD_GUI=ON` (see [Building the GUI](#building-the-gui)). So far it opens a photo (File → Open, Ctrl/Cmd+O, drag and drop, or a path on the command line), shows a live preview fitted to the window, edits it in Simple mode (a preset plus Brightness, Contrast and Colour, with undo and redo: Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z or Ctrl+Y) and exports it at full resolution as PNG or JPEG (File → Export, Ctrl/Cmd+E). Errors appear as a banner in the window. Help → About Prism (on macOS: Prism → About Prism) shows the version, Prism's licence and the third-party components with their full notices. Advanced mode, the histogram and before/after come later.
 
 ### Themes and Preferences
 
@@ -408,9 +426,12 @@ With Visual Studio on Windows, the build type is chosen when building rather tha
 ```sh
 cmake -S . -B build-gui -DCMAKE_BUILD_TYPE=Release -DPRISM_BUILD_GUI=ON
 cmake --build build-gui --target prism_gui --config Release
-./build-gui/gui_app/prism_gui                  # macOS, Linux (optionally: a photo to open)
+open build-gui/gui_app/Prism.app               # macOS (or Prism.app/Contents/MacOS/Prism photo.jpg)
+./build-gui/gui_app/prism_gui                  # Linux (optionally: a photo to open)
 build-gui\gui_app\Release\prism_gui.exe         # Windows
 ```
+
+On macOS the target is an app bundle, `Prism.app`, with its `Info.plist` (`packaging/macos/Info.plist.in`) and an icon; on Windows `prism_gui.exe` is a GUI program (no console window) with a version resource and an icon. The icon is a placeholder that the build draws (`packaging/make_icon.cpp`), so no image file is in the repo.
 
 On Linux SDL needs the X11 and Wayland development packages to have a window to open; the CI job's `apt-get install` line lists them. A cold build takes about a minute and a half, most of it SDL.
 
@@ -438,7 +459,25 @@ cmake --build build --config Release
 
 Windows has no rpath, so after each build CMake copies `libraw_r.dll` next to `prism.exe`, `prism_profile.exe`, `prism_bench.exe` and `prism_tests.exe`; copy it along if you move them. On macOS and Linux the executables find the library in the build directory through their rpath.
 
-**Licence:** LibRaw is dual-licensed under the [LGPL 2.1](https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html) or the [CDDL 1.0](https://opensource.org/license/cddl-1-0), at your choice. Prism links it dynamically (the system's `libraw_r` shared library, or the `libraw_r` DLL/dylib built from source) and does not modify it, which the LGPL allows. If you distribute Prism binaries built with LibRaw, include LibRaw's copyright notice and licence, and let users swap in their own build of the library (dynamic linking already allows that). LibRaw in turn uses Little CMS (MIT licence).
+**Licence:** LibRaw is dual-licensed under the [LGPL 2.1](https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html) or the [CDDL 1.0](https://opensource.org/license/cddl-1-0), at your choice. Development builds link it dynamically and unmodified. The release downloads use it under CDDL 1.0, statically linked and unmodified (see [Licences](#licences)).
+
+### Release builds
+
+`-DPRISM_RELEASE=ON` (default `OFF`) is the configuration the downloads are built with. It builds LibRaw from the pinned tarball as above, but as a **static** library, and refuses anything else: turning `PRISM_LIBRAW_FROM_SOURCE` or `PRISM_WITH_LIBRAW` off, or pointing `FETCHCONTENT_SOURCE_DIR_LIBRAW` at a local tree, is a configure error, and `lib/raw.cpp` checks at compile time that the `libraw.h` it includes is the pinned version, so a system or Homebrew LibRaw can't slip in. The tarball is downloaded once to `<build>/LibRaw-<version>-source.tar.gz`, checked against the pinned SHA-256 and unpacked from there, so that file is exactly the source that was built. On Windows the C runtime is linked statically (`/MT`), so no Visual C++ redistributable is needed. On macOS a deployment target must be given. Without the option nothing of this is downloaded or built.
+
+```sh
+cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release -DPRISM_RELEASE=ON -DPRISM_BUILD_GUI=ON \
+      -DCMAKE_OSX_DEPLOYMENT_TARGET=13.3 "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"   # macOS
+cmake --build build-release --parallel
+PRISM_REQUIRE_RAW=1 ctest --test-dir build-release -j
+packaging/macos/package.sh build-release dist "arm64 x86_64"
+```
+
+On Windows: `cmake -S . -B build-release -A x64 -DPRISM_RELEASE=ON -DPRISM_BUILD_GUI=ON`, build and test with `--config Release` / `-C Release`, then `packaging/windows/package.ps1 -Build build-release -Out dist`.
+
+`cmake --install` lays out the download (`cmake/Package.cmake`), and the packaging scripts sign the macOS app ad hoc, check that the binaries use only the operating system's own libraries, check the LibRaw tarball's hash and that its licence files in the download are byte-identical to the tarball's, and zip it (`ditto` on macOS). macOS 13.3 is the minimum because Prism's settings files use `std::to_chars` for floats.
+
+`.github/workflows/release.yml` does the same on GitHub for both systems after running every test with RAW support required. Run by hand (Actions → Release → Run workflow) it is a dry run that uploads the zips and the LibRaw tarball as workflow artifacts. Pushing a tag `v<version>`, which must match `project(prism VERSION …)` in `CMakeLists.txt`, the one place the version is set, also creates a **draft** pre-release with both zips, the LibRaw tarball and `SHA256SUMS.txt`, and notes from `docs/RELEASE_NOTES_TEMPLATE.md`; it is published by hand. The version also reaches `prism --version`, the About window, the macOS `Info.plist` and the Windows version resource.
 
 ### Continuous integration
 
@@ -454,7 +493,7 @@ Windows has no rpath, so after each build CMake copies `libraw_r.dll` next to `p
 | Windows MSVC + LibRaw (source) | MSVC (windows-latest, Visual Studio generator) | Release | on (`PRISM_LIBRAW_FROM_SOURCE=ON`: `libraw_r.dll`) |
 | GUI build (Linux / macOS / Windows) | default compiler of each runner | Release, `PRISM_BUILD_GUI=ON`, builds `prism_gui` only (no window is opened, no tests) | off |
 
-There is no camera RAW file in CI, so the `RawFile.*` integration tests report as skipped. Instead the `RawSyntheticDng.*` tests write a tiny DNG (32×32 uniform grey Bayer pixels, from `tests/synthetic_dng.hpp`) and decode it, including from a non-ASCII path; in the jobs without LibRaw they check the "built without LibRaw" error instead. The two LibRaw jobs set `PRISM_REQUIRE_RAW=1`, so a build that lost RAW support fails. The Windows job also checks with `dumpbin` that `prism.exe` and `prism_tests.exe` import `libraw_r.dll` and that it sits next to them. The GoogleTest and LibRaw downloads are cached between runs.
+There is no camera RAW file in CI, so the `RawFile.*` integration tests report as skipped. Instead the `RawSyntheticDng.*` tests write a tiny DNG (32×32 uniform grey Bayer pixels, from `tests/synthetic_dng.hpp`) and decode it, including from a non-ASCII path; in the jobs without LibRaw they check the "built without LibRaw" error instead. The two LibRaw jobs set `PRISM_REQUIRE_RAW=1`, so a build that lost RAW support fails. The Windows job also checks with `dumpbin` that `prism.exe` and `prism_tests.exe` import `libraw_r.dll` and that it sits next to them. The GoogleTest and LibRaw downloads are cached between runs. The release builds have their own workflow, `release.yml` (see [Release builds](#release-builds)); `ci.yml` doesn't build them.
 
 ### Testing with a real RAW file
 
@@ -492,7 +531,8 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 ```
 prism/
 ├── CMakeLists.txt
-├── cmake/        # LibRaw.cmake: LibRaw source build; GuiDependencies.cmake: SDL3 + Dear ImGui
+├── cmake/        # LibRaw.cmake: LibRaw source build; GuiDependencies.cmake: SDL3 + Dear ImGui;
+│                 # ThirdPartyNotices.cmake, Package.cmake, WindowsResources.cmake: releases
 ├── src/          # CLI entry points: prism, prism_profile
 ├── gui_core/     # prism_gui_core: the GUI's logic without a window
 ├── gui_app/      # prism_gui: the desktop app's window (SDL3 + Dear ImGui; PRISM_BUILD_GUI=ON)
@@ -501,11 +541,13 @@ prism/
 ├── tests/        # GoogleTest unit tests (tests/gui/: prism_gui_core_tests)
 ├── samples/      # example matrix files
 ├── bench/        # prism_bench: per-stage timings on a 61 MP image
-├── .github/      # CI workflow
+├── packaging/    # Info.plist, Windows version resource, icon drawing, README.txt, package scripts
+├── docs/         # release notes template
+├── .github/      # CI and release workflows
 └── third_party/  # stb headers
 ```
 
-## Licence
+## Licences
 
 Prism is licensed under the PolyForm Noncommercial License 1.0.0 (SPDX identifier `PolyForm-Noncommercial-1.0.0`); the full text is in [LICENSE](LICENSE).
 
@@ -513,13 +555,15 @@ In short: you may use, copy, change and share Prism for any noncommercial purpos
 
 This is a source-available licence, not an open-source one: because it restricts commercial use, it is not approved by the Open Source Initiative (OSI).
 
+**LibRaw in the downloads.** The release downloads include [LibRaw](https://www.libraw.org) 0.22.3, which is offered under the LGPL 2.1 or the CDDL 1.0; Prism uses it under the **CDDL 1.0**, statically linked and unmodified. Its licence files, `LICENSE.CDDL` and `COPYRIGHT`, are in each download's `licenses/LibRaw/` folder, unchanged. Its source code is attached to each release on GitHub as `LibRaw-<version>-source.tar.gz` (the exact tarball the release was built from) and is available from libraw.org. Each download's `THIRD_PARTY_NOTICES.txt`, generated by the build from what it links (`cmake/ThirdPartyNotices.cmake`), lists every component with its licence; the About window shows the same.
+
 ### Third-party software
 
 | Name | Licence | How Prism uses it |
 |------|---------|-------------------|
 | [stb](https://github.com/nothings/stb) (`stb_image.h` v2.30, `stb_image_write.h` v1.16) | MIT or public domain (Unlicense), at your choice | Vendored, unmodified, in `third_party/stb/` and compiled into `prism_core` to read and write PNG and JPEG |
 | [GoogleTest](https://github.com/google/googletest) v1.17.0 | BSD 3-Clause | Tests only: downloaded at configure time by CMake `FetchContent` and linked into `prism_tests`. Not in the repo and not linked into `prism` or `prism_profile` |
-| [LibRaw](https://www.libraw.org) 0.22.3 | LGPL 2.1 or CDDL 1.0, at your choice | Optional (`PRISM_WITH_LIBRAW`), always a separate shared library that `prism_core` links dynamically. On Linux and macOS: found on the system with pkg-config (`libraw_r`), not bundled. On Windows (and with `PRISM_LIBRAW_FROM_SOURCE=ON` anywhere): the unmodified release tarball is downloaded at configure time and built as the bundled shared `libraw_r.dll` (`.dylib`, `.so`), which is copied next to the executables. Not in the repo. Its licence files, `LICENSE.LGPL`, `LICENSE.CDDL` and `COPYRIGHT` (which also lists the code LibRaw contains from others, e.g. dcraw), are in the unpacked source: `build/_deps/libraw-src/`, or `<FETCHCONTENT_BASE_DIR>/libraw-src/` when that is set (CI: `.deps/libraw-src/`) |
-| [SDL](https://www.libsdl.org) 3.4.18 | zlib | GUI only (`PRISM_BUILD_GUI=ON`): downloaded at configure time and linked statically into `prism_gui`, with audio, camera, joystick/HIDAPI, haptic, sensor and tray support turned off. Not in the repo |
-| [Dear ImGui](https://github.com/ocornut/imgui) 1.93.0 | MIT | GUI only: downloaded at configure time and compiled into `prism_gui` with its SDL3 and SDL_Renderer backends. Not in the repo |
+| [LibRaw](https://www.libraw.org) 0.22.3 | LGPL 2.1 or CDDL 1.0, at your choice; the release downloads use CDDL 1.0 | Optional (`PRISM_WITH_LIBRAW`). Release downloads (`PRISM_RELEASE=ON`): built from the pinned tarball and linked statically, unmodified, with `LICENSE.CDDL` and `COPYRIGHT` shipped in `licenses/LibRaw/`. Other builds: a separate shared library that `prism_core` links dynamically. On Linux and macOS: found on the system with pkg-config (`libraw_r`), not bundled. On Windows (and with `PRISM_LIBRAW_FROM_SOURCE=ON` anywhere): the unmodified release tarball is downloaded at configure time and built as the bundled shared `libraw_r.dll` (`.dylib`, `.so`), which is copied next to the executables. Not in the repo. Its licence files, `LICENSE.LGPL`, `LICENSE.CDDL` and `COPYRIGHT` (which also lists the code LibRaw contains from others, e.g. dcraw), are in the unpacked source: `build/_deps/libraw-src/`, or `<FETCHCONTENT_BASE_DIR>/libraw-src/` when that is set (CI: `.deps/libraw-src/`) |
+| [SDL](https://www.libsdl.org) 3.4.18 | zlib (a few files it compiles carry their own permissive notices, e.g. fdlibm and yuv2rgb; `THIRD_PARTY_NOTICES.txt` reproduces them) | GUI only (`PRISM_BUILD_GUI=ON`): downloaded at configure time and linked statically into `prism_gui`, with audio, camera, joystick/HIDAPI, haptic, sensor and tray support turned off. Not in the repo |
+| [Dear ImGui](https://github.com/ocornut/imgui) 1.93.0 | MIT | GUI only: downloaded at configure time and compiled into `prism_gui` with its SDL3 and SDL_Renderer backends. Not in the repo. It embeds the fonts the interface uses, ProggyClean and ProggyForever (MIT) |
 | [Little CMS 2](https://www.littlecms.com) | MIT | Not used by Prism's code: the system LibRaw's pkg-config file requires it, so builds with a system LibRaw also link it. Not bundled, and not used by the LibRaw source build |
