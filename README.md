@@ -197,12 +197,16 @@ No camera profile or DNG is in this repository, and none of their values are: th
 
 Between the two outputs: mean CIE76 ΔE 5.7 (median 4.0, 95th percentile 16.7, max 53.9). The LightCraft version has clearly warmer, more saturated autumn foliage. Its blue row (`2.10·B − 1.05·G`) drives saturated yellows and oranges below zero in blue. Those colours lie outside sRGB, and the tone curve clips them to 0.
 
-## GUI core
+## GUI
 
-A desktop app for macOS and Windows is planned. **No GUI exists yet**: what is here is its logic without any window, the static library `prism_gui_core` (`gui_core/`, namespace `prism::gui`). It needs nothing beyond `prism_core` and the standard library, so it is always built and every CI job tests it, the ThreadSanitizer and AddressSanitizer jobs included (`prism_gui_core_tests`). The layers:
+A desktop app for macOS and Windows, in progress. `prism_gui` (`gui_app/`) is a window built with SDL3 and Dear ImGui; it is off by default and built with `-DPRISM_BUILD_GUI=ON` (see [Building the GUI](#building-the-gui)). So far it opens a photo (File → Open, Ctrl/Cmd+O, drag and drop, or a path on the command line), shows a live preview fitted to the window, edits it in Simple mode (a preset plus Brightness, Contrast and Colour, with undo and redo: Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z or Ctrl+Y) and exports it at full resolution as PNG or JPEG (File → Export, Ctrl/Cmd+E). Errors appear as a banner in the window. Advanced mode, the histogram, before/after and packaging come later.
+
+### GUI core
+
+The app's logic lives without any window in the static library `prism_gui_core` (`gui_core/`, namespace `prism::gui`). It needs nothing beyond `prism_core` and the standard library, so it is always built and every CI job tests it, the ThreadSanitizer and AddressSanitizer jobs included (`prism_gui_core_tests`). The layers:
 
 ```
-window (planned: SDL3 + Dear ImGui)          draws and forwards clicks; never calls the pipeline itself
+prism_gui (gui_app/: SDL3 + Dear ImGui)      draws and forwards clicks; never calls the pipeline itself
    ▲
 prism_gui_core (gui_core/)                   no UI code, unit-tested
    ▲
@@ -216,6 +220,11 @@ prism_core (lib/)                            the pipeline, shared with the CLI
 | `history.hpp` | Undo/redo of whole `EditSettings` snapshots. A slider drag, marked by `begin_gesture()` / `end_gesture()`, is one step; at most 100 steps |
 | `session.hpp` | The open photo: `open_file()` decodes it (RAW at half size), shrinks it with `prism::downscale` to a 2560 px preview base and frees the full image; errors come back as a kind plus a sentence for the user. `export_image()` decodes the file again at full size, runs the pipeline with a stop token and saves PNG or JPEG |
 | `preview_renderer.hpp` | A worker thread that re-renders the preview whenever the settings change. The newest request wins: it replaces one that hasn't started and stops the one in progress between stages (`std::stop_token`). The UI polls for finished 8-bit frames; nothing calls back into UI code |
+| `live_preview.hpp` | Keeps the preview in step with the session for a UI that redraws every frame: submits a render only when the preview base or the settings changed, and says whether one is still in flight ("Rendering…") |
+| `slider_gesture.hpp` | Turns a slider's per-frame state (pressed, moved, released) into History gestures, so a whole drag is one undo step, made on release |
+| `background_export.hpp` | Runs `export_image()` on its own thread with a stop token, so the window keeps drawing while a full-resolution export runs; the UI polls for the result |
+| `main_thread_queue.hpp` | A small locked queue that hands values from any thread to the UI thread, e.g. the answer of a file dialog whose callback runs on another thread |
+| `file_types.hpp` | The file dialogs' filters (RAW only in a build with LibRaw), and the export file name: the suggested name next to the source, and the extension added if the user left it out |
 
 A full preview re-render (every stage plus the sRGB encode, 2560×1707 from a 61 MP image) takes 10 ms on 12 threads and 53 ms on one (`prism_bench`'s "preview render" row).
 
@@ -380,6 +389,19 @@ ctest --test-dir build -j    # tests can run in parallel
 
 With Visual Studio on Windows, the build type is chosen when building rather than when configuring (it is a multi-config generator): `cmake --build build --config Release` and `ctest --test-dir build -C Release`.
 
+### Building the GUI
+
+`-DPRISM_BUILD_GUI=ON` (default `OFF`) adds the desktop app, `prism_gui`. It downloads SDL 3.4.18 and Dear ImGui 1.93.0 at configure time (release tarballs, pinned with their SHA-256 in `cmake/GuiDependencies.cmake`) and links both statically, so the app needs no SDL library next to it. With the option off nothing is downloaded and the build is unchanged.
+
+```sh
+cmake -S . -B build-gui -DCMAKE_BUILD_TYPE=Release -DPRISM_BUILD_GUI=ON
+cmake --build build-gui --target prism_gui --config Release
+./build-gui/gui_app/prism_gui                  # macOS, Linux (optionally: a photo to open)
+build-gui\gui_app\Release\prism_gui.exe         # Windows
+```
+
+On Linux SDL needs the X11 and Wayland development packages to have a window to open; the CI job's `apt-get install` line lists them. A cold build takes about a minute and a half, most of it SDL.
+
 ### RAW support (LibRaw)
 
 RAW support is optional. Install LibRaw and pkg-config (which CMake uses to find it) first:
@@ -418,6 +440,7 @@ Windows has no rpath, so after each build CMake copies `libraw_r.dll` next to `p
 | Linux Clang ThreadSanitizer | Clang (ubuntu-latest) | Debug, `PRISM_SANITIZE_THREAD=ON` | off |
 | Linux Clang ASan + UBSan | Clang (ubuntu-latest) | Debug, `PRISM_SANITIZE_ADDRESS=ON` | off |
 | Windows MSVC + LibRaw (source) | MSVC (windows-latest, Visual Studio generator) | Release | on (`PRISM_LIBRAW_FROM_SOURCE=ON`: `libraw_r.dll`) |
+| GUI build (Linux / macOS / Windows) | default compiler of each runner | Release, `PRISM_BUILD_GUI=ON`, builds `prism_gui` only (no window is opened, no tests) | off |
 
 There is no camera RAW file in CI, so the `RawFile.*` integration tests report as skipped. Instead the `RawSyntheticDng.*` tests write a tiny DNG (32×32 uniform grey Bayer pixels, from `tests/synthetic_dng.hpp`) and decode it, including from a non-ASCII path; in the jobs without LibRaw they check the "built without LibRaw" error instead. The two LibRaw jobs set `PRISM_REQUIRE_RAW=1`, so a build that lost RAW support fails. The Windows job also checks with `dumpbin` that `prism.exe` and `prism_tests.exe` import `libraw_r.dll` and that it sits next to them. The GoogleTest and LibRaw downloads are cached between runs.
 
@@ -457,9 +480,10 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 ```
 prism/
 ├── CMakeLists.txt
-├── cmake/        # LibRaw.cmake: LibRaw source build (PRISM_LIBRAW_FROM_SOURCE)
+├── cmake/        # LibRaw.cmake: LibRaw source build; GuiDependencies.cmake: SDL3 + Dear ImGui
 ├── src/          # CLI entry points: prism, prism_profile
-├── gui_core/     # prism_gui_core: the GUI's logic without a window (no GUI yet)
+├── gui_core/     # prism_gui_core: the GUI's logic without a window
+├── gui_app/      # prism_gui: the desktop app's window (SDL3 + Dear ImGui; PRISM_BUILD_GUI=ON)
 ├── include/prism # public headers
 ├── lib/          # core image + colour code (raw.cpp: LibRaw; camera_profile.cpp: matrix maths)
 ├── tests/        # GoogleTest unit tests (tests/gui/: prism_gui_core_tests)
@@ -484,4 +508,6 @@ This is a source-available licence, not an open-source one: because it restricts
 | [stb](https://github.com/nothings/stb) (`stb_image.h` v2.30, `stb_image_write.h` v1.16) | MIT or public domain (Unlicense), at your choice | Vendored, unmodified, in `third_party/stb/` and compiled into `prism_core` to read and write PNG and JPEG |
 | [GoogleTest](https://github.com/google/googletest) v1.17.0 | BSD 3-Clause | Tests only: downloaded at configure time by CMake `FetchContent` and linked into `prism_tests`. Not in the repo and not linked into `prism` or `prism_profile` |
 | [LibRaw](https://www.libraw.org) 0.22.3 | LGPL 2.1 or CDDL 1.0, at your choice | Optional (`PRISM_WITH_LIBRAW`), always a separate shared library that `prism_core` links dynamically. On Linux and macOS: found on the system with pkg-config (`libraw_r`), not bundled. On Windows (and with `PRISM_LIBRAW_FROM_SOURCE=ON` anywhere): the unmodified release tarball is downloaded at configure time and built as the bundled shared `libraw_r.dll` (`.dylib`, `.so`), which is copied next to the executables. Not in the repo. Its licence files, `LICENSE.LGPL`, `LICENSE.CDDL` and `COPYRIGHT` (which also lists the code LibRaw contains from others, e.g. dcraw), are in the unpacked source: `build/_deps/libraw-src/`, or `<FETCHCONTENT_BASE_DIR>/libraw-src/` when that is set (CI: `.deps/libraw-src/`) |
+| [SDL](https://www.libsdl.org) 3.4.18 | zlib | GUI only (`PRISM_BUILD_GUI=ON`): downloaded at configure time and linked statically into `prism_gui`, with audio, camera, joystick/HIDAPI, haptic, sensor and tray support turned off. Not in the repo |
+| [Dear ImGui](https://github.com/ocornut/imgui) 1.93.0 | MIT | GUI only: downloaded at configure time and compiled into `prism_gui` with its SDL3 and SDL_Renderer backends. Not in the repo |
 | [Little CMS 2](https://www.littlecms.com) | MIT | Not used by Prism's code: the system LibRaw's pkg-config file requires it, so builds with a system LibRaw also link it. Not bundled, and not used by the LibRaw source build |
