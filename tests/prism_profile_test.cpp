@@ -512,7 +512,7 @@ TEST(PrismProfile, ReportsTheEmbedPolicyAsTheSpecificationWordsIt) {
          "ProfileEmbedPolicy 4 is not defined by the DNG specification, so the profile's terms are "
          "unknown.",
          "warning: "},
-        {4294967295, true, "4294967295 (not a value the DNG specification defines)",
+        {4294967295u, true, "4294967295 (not a value the DNG specification defines)",
          "ProfileEmbedPolicy 4294967295 is not defined by the DNG specification, so the profile's "
          "terms are unknown.",
          "warning: "},
