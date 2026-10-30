@@ -330,13 +330,15 @@ ASan stops at the first error it finds. UBSan only prints a `runtime error:` lin
 
 ## Building
 
-Requires CMake 3.20+ and a C++20 compiler (GCC 11+, Clang 14+ or MSVC 2022).
+Requires CMake 3.20+ and a C++20 compiler (GCC 11+, Clang 14+ or MSVC 2022 or later).
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ctest --test-dir build -j    # tests can run in parallel
 ```
+
+With Visual Studio on Windows, the build type is chosen when building rather than when configuring (it is a multi-config generator): `cmake --build build --config Release` and `ctest --test-dir build -C Release`.
 
 ### RAW support (LibRaw)
 
@@ -362,6 +364,7 @@ CMake then turns it on automatically (`-- RAW support: LibRaw 0.22.3` when confi
 | macOS (Apple Clang) | Apple Clang (macos-latest) | Release | off |
 | Linux Clang ThreadSanitizer | Clang (ubuntu-latest) | Debug, `PRISM_SANITIZE_THREAD=ON` | off |
 | Linux Clang ASan + UBSan | Clang (ubuntu-latest) | Debug, `PRISM_SANITIZE_ADDRESS=ON` | off |
+| Windows (MSVC) | MSVC (windows-latest, Visual Studio generator) | Release | off |
 
 There is no RAW file in CI, so the RAW integration tests report as skipped. GoogleTest's download is cached between runs.
 
