@@ -379,7 +379,7 @@ Windows has no rpath, so after each build CMake copies `libraw_r.dll` next to `p
 | Linux Clang ASan + UBSan | Clang (ubuntu-latest) | Debug, `PRISM_SANITIZE_ADDRESS=ON` | off |
 | Windows MSVC + LibRaw (source) | MSVC (windows-latest, Visual Studio generator) | Release | on (`PRISM_LIBRAW_FROM_SOURCE=ON`: `libraw_r.dll`) |
 
-There is no camera RAW file in CI, so the `RawFile.*` integration tests report as skipped. Instead the `RawSyntheticDng.*` tests write a tiny DNG (32×32 uniform grey Bayer pixels, from `tests/synthetic_dng.hpp`) and decode it, including from a non-ASCII path; in the jobs without LibRaw they check the "built without LibRaw" error instead. The two LibRaw jobs set `PRISM_REQUIRE_RAW=1`, so a build that lost RAW support fails. The Windows job also checks with `dumpbin` that the executables import `libraw_r.dll` and that it sits next to them. The GoogleTest and LibRaw downloads are cached between runs.
+There is no camera RAW file in CI, so the `RawFile.*` integration tests report as skipped. Instead the `RawSyntheticDng.*` tests write a tiny DNG (32×32 uniform grey Bayer pixels, from `tests/synthetic_dng.hpp`) and decode it, including from a non-ASCII path; in the jobs without LibRaw they check the "built without LibRaw" error instead. The two LibRaw jobs set `PRISM_REQUIRE_RAW=1`, so a build that lost RAW support fails. The Windows job also checks with `dumpbin` that `prism.exe` and `prism_tests.exe` import `libraw_r.dll` and that it sits next to them. The GoogleTest and LibRaw downloads are cached between runs.
 
 ### Testing with a real RAW file
 

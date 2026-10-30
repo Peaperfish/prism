@@ -113,14 +113,15 @@ jobs:
       - name: Build
         run: cmake --build build --config ${{ matrix.build_type }} --parallel
 
-      # LibRaw must stay a separate DLL (its LGPL/CDDL terms): check that prism.exe imports
-      # libraw_r.dll rather than containing LibRaw, and that the build copied the DLL next to it.
+      # LibRaw must stay a separate DLL (its LGPL/CDDL terms): check that prism.exe and the tests
+      # import libraw_r.dll rather than containing LibRaw, and that the build copied the DLL next
+      # to them. (prism_profile.exe calls no RAW code, so MSVC's linker drops the import there.)
       - name: Check that LibRaw is a separate DLL
         if: runner.os == 'Windows' && matrix.libraw_source == 'ON'
         run: |
           $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
           $dumpbin = Get-ChildItem "$vs\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe" | Select-Object -First 1
-          foreach ($exe in 'src\Release\prism.exe', 'src\Release\prism_profile.exe', 'tests\Release\prism_tests.exe') {
+          foreach ($exe in 'src\Release\prism.exe', 'tests\Release\prism_tests.exe') {
             $deps = & $dumpbin.FullName /dependents "build\$exe" | Out-String
             Write-Output "$exe imports:" $deps
             if ($deps -notmatch 'libraw_r\.dll') { throw "$exe does not import libraw_r.dll" }
