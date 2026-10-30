@@ -54,7 +54,7 @@ At least one of `-o` and `--histogram` is required. Without `-o`, the full pipel
 | `--raw-half` | RAW input only: decode at half the width and height using LibRaw's half-size mode (no demosaicing). About twice as fast on an α7R V file |
 | `--raw-camera-matrix <file>` | RAW input only: use your own 3×3 camera RGB → linear sRGB matrix (same file format as `--matrix`) instead of LibRaw's built-in one. See [RAW files](#raw-files) |
 | `--threads <n>` | Use up to `n` threads (default: one per hardware thread; `1` = single-threaded). Images under ~1 MP always run on one thread, where starting threads would cost more than it saves. The output is bit-identical for any thread count |
-| `--time` | Print how long each stage took (load, exposure, matrix, curve, save, histogram) and the total |
+| `--time` | Print how long each stage took (load, exposure, matrix, saturation, contrast, curve, save, histogram) and the total. A stage given its neutral value (e.g. `--exposure 0`) is skipped and not listed |
 
 Options are always applied in pipeline order, whatever order you type them.
 
@@ -67,6 +67,22 @@ load RAW (LibRaw, linear) ─────┘
 ```
 
 All processing happens in 32-bit float, linear light. The histogram is measured on the final 8-bit sRGB values (what ends up in the file, before any JPEG compression), so it matches what a camera or Lightroom shows.
+
+### Using the pipeline from C++
+
+`prism::process` (`include/prism/process.hpp`) runs the whole pipeline in one call; the CLI uses it, so this order is written down in one place only (`lib/process.cpp`):
+
+```cpp
+prism::ProcessSettings settings;              // one std::optional per stage; empty = skipped
+settings.exposure_stops = 0.5f;
+settings.curve = prism::parse_curve("filmic");
+prism::ProcessResult result = prism::process(img, settings, /*threads=*/0, stop,  // stop: a std::stop_token, or {}
+    [](const prism::StageTime& t) { std::cout << t.name << ' ' << t.ms << " ms\n"; });
+```
+
+A stage set to its neutral value (exposure 0, the identity matrix, saturation 1, contrast 1) is skipped too, so it leaves every bit as it was; a tone curve always runs. The optional `std::stop_token` is checked before each stage: once a stop is requested, `process` returns `ProcessResult::cancelled`, with the stages so far applied and the rest not (a valid but unfinished image). The optional callback gets each stage's name and time.
+
+`prism::downscale(img, max_long_side, threads)` (`include/prism/resize.hpp`) shrinks an image so its longer side is `max_long_side`, keeping the aspect ratio. Each output pixel is the average of the source area it covers (a box filter), in linear light. It never enlarges: an image that is already small enough comes back unchanged. On a 61 MP image, down to 2560 px takes 64 ms on one thread and 11 ms on 12 (see [Benchmark](#benchmark)).
 
 ## Saturation and contrast
 
@@ -211,6 +227,7 @@ It is not part of `ctest`. Results on an Apple M2 Pro (8 performance + 4 efficie
 | tone curve (filmic) | 44 | 9 | 5.0× |
 | sRGB encode | 159 | 23 | 7.0× |
 | histogram | 236 | 31 | 7.7× |
+| downscale to 2560 px | 64 | 11 | 5.9× |
 
 Contrast used to be the slowest per-pixel stage at 897 ms / 122 ms, because each value needed a `log2`, an `exp2` and a square root (and 1757 ms / 218 ms with `std::tanh` as the sigmoid). It now looks the curve up in a table: see [Fast contrast](#fast-contrast).
 
