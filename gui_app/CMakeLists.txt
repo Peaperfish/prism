@@ -18,8 +18,8 @@ set(PRISM_ABOUT_REQUIRED_NOTICE "\"${prism_notice}\"")
 configure_file(about_info.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/about_info.cpp @ONLY)
 
 # WIN32: a Windows GUI program, started without a console window. SDL_main.h still gives main()
-# UTF-8 arguments (main.cpp).
-add_executable(prism_gui WIN32
+# UTF-8 arguments (main.cpp). MACOSX_BUNDLE: on macOS it is Prism.app (see below).
+add_executable(prism_gui WIN32 MACOSX_BUNDLE
   app.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/about_info.cpp
   file_dialogs.cpp
@@ -43,6 +43,34 @@ if(WIN32)
     VERBATIM)
   target_sources(prism_gui PRIVATE ${prism_ico})
   prism_add_version_resource(prism_gui "Prism" ICON ${prism_ico})
+endif()
+
+# On macOS the app is a bundle, Prism.app: Info.plist (packaging/macos/Info.plist.in) gives its
+# name, version, bundle id, minimum macOS and Retina support, and the icon goes in Resources as
+# Prism.icns, made from the drawn PNGs with iconutil (part of macOS).
+if(APPLE)
+  set(PRISM_BUNDLE_EXECUTABLE Prism)
+  if(CMAKE_OSX_DEPLOYMENT_TARGET)
+    set(PRISM_MACOS_MINIMUM ${CMAKE_OSX_DEPLOYMENT_TARGET})
+  else()
+    set(PRISM_MACOS_MINIMUM 13.3)
+  endif()
+  configure_file(${PROJECT_SOURCE_DIR}/packaging/macos/Info.plist.in
+                 ${CMAKE_CURRENT_BINARY_DIR}/Info.plist @ONLY)
+  set(prism_iconset ${CMAKE_CURRENT_BINARY_DIR}/Prism.iconset)
+  set(prism_icns ${CMAKE_CURRENT_BINARY_DIR}/Prism.icns)
+  add_custom_command(OUTPUT ${prism_icns}
+    COMMAND ${CMAKE_COMMAND} -E rm -rf ${prism_iconset}
+    COMMAND prism_make_icon --iconset ${prism_iconset}
+    COMMAND iconutil -c icns -o ${prism_icns} ${prism_iconset}
+    DEPENDS prism_make_icon
+    COMMENT "Drawing the app icon"
+    VERBATIM)
+  target_sources(prism_gui PRIVATE ${prism_icns})
+  set_source_files_properties(${prism_icns} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+  set_target_properties(prism_gui PROPERTIES
+    OUTPUT_NAME ${PRISM_BUNDLE_EXECUTABLE}
+    MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_BINARY_DIR}/Info.plist)
 endif()
 
 # windows.h (pulled in by SDL on Windows) defines min and max as macros, which break std::min and
