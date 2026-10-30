@@ -94,6 +94,15 @@ std::string quoted(const fs::path& path) {
     return "\"" + path.string() + "\"";
 }
 
+// What the --note tests put inside a note to try to start a new line. cmd.exe (std::system on
+// Windows) ends the command at a newline, so there a tab stands in for it: prism_profile turns
+// both into a space, so the expected output is the same.
+#ifdef _WIN32
+const std::string note_break = "\t";
+#else
+const std::string note_break = "\n";
+#endif
+
 bool contains(const std::string& haystack, const std::string& needle) {
     return haystack.find(needle) != std::string::npos;
 }
@@ -443,7 +452,8 @@ TEST(PrismProfile, TextFromTheFileCannotAddMatrixRows) {
     s.copyright = "\x1b[31m\xce\xb1 (c)\x7f";
     const fs::path input = write_profile(s);
     const fs::path output = temp_file("matrix.txt");
-    const RunResult r = run_profile(quoted(input) + " -o " + quoted(output) + " --note \"a\nb\"");
+    const RunResult r =
+        run_profile(quoted(input) + " -o " + quoted(output) + " --note \"a" + note_break + "b\"");
     ASSERT_EQ(r.exit_code, 0) << r.err;
 
     // load_matrix would throw on 12 or 15 numbers; it must read exactly the library's 9.
@@ -665,8 +675,8 @@ TEST(PrismProfile, LightCraftTextCannotAddMatrixRows) {
     const std::string matrix = "[[1.2, -0.3, 0.1], [-0.1, 1.2, -0.1], [0.0, -0.8, 1.8]]";
     std::ofstream(json) << R"({"version": 1, "model": "A\n9 9 9\r\u001b[2J\u00e9", "files": 1, )"
                         << R"("samples": 1, "matrix": )" << matrix << "}";
-    const RunResult r =
-        run_profile(quoted(json) + " -o " + quoted(output) + " --note \"b\n8 8 8\"");
+    const RunResult r = run_profile(quoted(json) + " -o " + quoted(output) + " --note \"b" +
+                                    note_break + "8 8 8\"");
     ASSERT_EQ(r.exit_code, 0) << r.err;
 
     // load_matrix would throw on 12 or 15 numbers; it must read exactly the expected 9.
