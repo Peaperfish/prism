@@ -46,3 +46,13 @@ prism_copy_libraw_dll(prism_tests)
 # Registers each TEST() as its own ctest entry by asking the test binary for its list.
 include(GoogleTest)
 gtest_discover_tests(prism_tests)
+
+# The GUI core's tests, in their own executable so that they show up under their own name.
+add_executable(prism_gui_core_tests
+  gui/settings_test.cpp)
+target_link_libraries(prism_gui_core_tests PRIVATE prism_gui_core prism_warnings GTest::gtest_main)
+# The RAW tests use the synthetic DNG writer (synthetic_dng.hpp, which needs lib/tiff_reader.hpp).
+target_include_directories(prism_gui_core_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+                                                        ${PROJECT_SOURCE_DIR}/lib)
+prism_copy_libraw_dll(prism_gui_core_tests)
+gtest_discover_tests(prism_gui_core_tests)

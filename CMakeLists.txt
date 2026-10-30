@@ -117,6 +117,7 @@ endif()
 
 add_subdirectory(third_party/stb)
 add_subdirectory(lib)
+add_subdirectory(gui_core)
 add_subdirectory(src)
 add_subdirectory(bench)
 
