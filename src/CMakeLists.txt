@@ -5,6 +5,10 @@ target_link_libraries(prism PRIVATE prism_core prism_warnings)
 add_executable(prism_profile prism_profile.cpp)
 target_link_libraries(prism_profile PRIVATE prism_core prism_warnings)
 
+# With a LibRaw source build on Windows, put libraw_r.dll next to both executables so they start.
+prism_copy_libraw_dll(prism)
+prism_copy_libraw_dll(prism_profile)
+
 # On Windows the C runtime builds argv from the UTF-16 command line in the "ANSI" code page
 # (e.g. Windows-1252), so a file name in CJK or with an emoji arrives as '?'. This manifest makes
 # UTF-8 the process's ANSI code page (Windows 10 1903 and later): argv arrives as UTF-8, which

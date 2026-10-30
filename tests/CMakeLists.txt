@@ -37,6 +37,10 @@ target_compile_definitions(prism_tests PRIVATE PRISM_EXE="$<TARGET_FILE:prism>"
                                               PRISM_PROFILE_EXE="$<TARGET_FILE:prism_profile>")
 add_dependencies(prism_tests prism prism_profile)
 
+# The test executable needs libraw_r.dll next to it too (Windows source build), and already when
+# gtest_discover_tests runs it after the build, so this comes first.
+prism_copy_libraw_dll(prism_tests)
+
 # Registers each TEST() as its own ctest entry by asking the test binary for its list.
 include(GoogleTest)
 gtest_discover_tests(prism_tests)

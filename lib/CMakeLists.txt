@@ -24,8 +24,9 @@ target_compile_definitions(prism_core PRIVATE PRISM_VERSION="${PROJECT_VERSION}"
 target_link_libraries(prism_core PRIVATE stb prism_warnings)
 
 # Also PRIVATE, for the same reason: only raw.cpp includes LibRaw's headers. (prism_core is a
-# static library, so CMake still passes LibRaw on to whatever finally links it.)
+# static library, so CMake still passes LibRaw on to whatever finally links it.) The target is
+# PkgConfig::LIBRAW for a system LibRaw or libraw_r for a source build (top-level CMakeLists.txt).
 if(PRISM_WITH_LIBRAW)
-  target_link_libraries(prism_core PRIVATE PkgConfig::LIBRAW)
+  target_link_libraries(prism_core PRIVATE ${prism_libraw_target})
   target_compile_definitions(prism_core PRIVATE PRISM_HAVE_LIBRAW)
 endif()

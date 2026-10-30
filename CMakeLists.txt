@@ -18,31 +18,53 @@ option(PRISM_SANITIZE_ADDRESS
 # `brew install libraw`; we use libraw_r, the thread-safe build. The option defaults to ON
 # when LibRaw is found, so a plain configure picks it up. Without it Prism still builds and
 # RAW files fail with a clear error.
-find_package(PkgConfig QUIET)
-if(PkgConfig_FOUND)
-  pkg_check_modules(LIBRAW QUIET IMPORTED_TARGET libraw_r)
-endif()
-# LibRaw's .pc file asks for -lstdc++, which on macOS is an alias for libc++, already linked by
-# the compiler: drop it to avoid ld's "ignoring duplicate libraries" warning.
-if(APPLE AND TARGET PkgConfig::LIBRAW)
-  get_target_property(prism_libraw_libs PkgConfig::LIBRAW INTERFACE_LINK_LIBRARIES)
-  list(REMOVE_ITEM prism_libraw_libs stdc++ -lstdc++)
-  set_target_properties(PkgConfig::LIBRAW PROPERTIES INTERFACE_LINK_LIBRARIES "${prism_libraw_libs}")
-endif()
-if(LIBRAW_FOUND)
+#
+# PRISM_LIBRAW_FROM_SOURCE=ON skips pkg-config and builds the pinned LibRaw release from source
+# instead, as a shared library next to Prism (cmake/LibRaw.cmake). Windows has no system LibRaw, so
+# that is the way to get RAW support there.
+option(PRISM_LIBRAW_FROM_SOURCE
+       "Build LibRaw from its pinned release tarball as a shared library instead of using a system install"
+       OFF)
+if(PRISM_LIBRAW_FROM_SOURCE)
   set(prism_libraw_default ON)
 else()
-  set(prism_libraw_default OFF)
+  find_package(PkgConfig QUIET)
+  if(PkgConfig_FOUND)
+    pkg_check_modules(LIBRAW QUIET IMPORTED_TARGET libraw_r)
+  endif()
+  # LibRaw's .pc file asks for -lstdc++, which on macOS is an alias for libc++, already linked by
+  # the compiler: drop it to avoid ld's "ignoring duplicate libraries" warning.
+  if(APPLE AND TARGET PkgConfig::LIBRAW)
+    get_target_property(prism_libraw_libs PkgConfig::LIBRAW INTERFACE_LINK_LIBRARIES)
+    list(REMOVE_ITEM prism_libraw_libs stdc++ -lstdc++)
+    set_target_properties(PkgConfig::LIBRAW PROPERTIES INTERFACE_LINK_LIBRARIES "${prism_libraw_libs}")
+  endif()
+  if(LIBRAW_FOUND)
+    set(prism_libraw_default ON)
+  else()
+    set(prism_libraw_default OFF)
+  endif()
 endif()
 option(PRISM_WITH_LIBRAW "Read camera RAW files (.arw, .dng, ...) with LibRaw" ${prism_libraw_default})
-if(PRISM_WITH_LIBRAW AND NOT LIBRAW_FOUND)
-  message(FATAL_ERROR "PRISM_WITH_LIBRAW is ON but LibRaw was not found via pkg-config "
-                      "(install it, e.g. `brew install libraw pkg-config`, or pass -DPRISM_WITH_LIBRAW=OFF)")
-endif()
-if(PRISM_WITH_LIBRAW)
+if(PRISM_WITH_LIBRAW AND PRISM_LIBRAW_FROM_SOURCE)
+  include(cmake/LibRaw.cmake)
+  set(prism_libraw_target libraw_r)
+  message(STATUS "RAW support: LibRaw ${PRISM_LIBRAW_VERSION} (built from source, shared)")
+elseif(PRISM_WITH_LIBRAW)
+  if(NOT LIBRAW_FOUND)
+    message(FATAL_ERROR "PRISM_WITH_LIBRAW is ON but LibRaw was not found via pkg-config "
+                        "(install it, e.g. `brew install libraw pkg-config`, pass "
+                        "-DPRISM_LIBRAW_FROM_SOURCE=ON to build it, or pass -DPRISM_WITH_LIBRAW=OFF)")
+  endif()
+  set(prism_libraw_target PkgConfig::LIBRAW)
   message(STATUS "RAW support: LibRaw ${LIBRAW_VERSION}")
 else()
   message(STATUS "RAW support: off (LibRaw not found or PRISM_WITH_LIBRAW=OFF)")
+endif()
+# Only a source build has a DLL of ours to copy next to the executables (see cmake/LibRaw.cmake).
+if(NOT COMMAND prism_copy_libraw_dll)
+  function(prism_copy_libraw_dll target)
+  endfunction()
 endif()
 
 # ThreadSanitizer instruments every memory access and reports two threads touching the same

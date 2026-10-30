@@ -134,8 +134,8 @@ Image load_raw(const std::filesystem::path& path, const RawOptions& options, int
 
     // path.c_str() is the path in the OS's own form: const char* (bytes) on macOS and Linux,
     // const wchar_t* (UTF-16) on Windows, where LibRaw has an open_file overload for it, so names
-    // outside the ANSI code page open too. Not yet tested on Windows: the Windows CI job builds
-    // without LibRaw.
+    // outside the ANSI code page open too. tests/raw_test.cpp checks that with a synthetic DNG
+    // under a non-ASCII name, which the Windows CI job (LibRaw built from source) runs.
     check(raw->open_file(path.c_str()), path, "open");
     check(raw->unpack(), path, "unpack");
     check(raw->dcraw_process(), path, "processing");
@@ -173,9 +173,11 @@ Image load_raw(const std::filesystem::path& path, const RawOptions& options, int
 #else  // !PRISM_HAVE_LIBRAW
 
 Image load_raw(const std::filesystem::path& path, const RawOptions&, int) {
-    throw std::runtime_error("cannot load RAW file '" + utf8(path) +
-                             "': Prism was built without LibRaw (install it, e.g. `brew install "
-                             "libraw`, then reconfigure with -DPRISM_WITH_LIBRAW=ON)");
+    throw std::runtime_error(
+        "cannot load RAW file '" + utf8(path) +
+        "': Prism was built without LibRaw (install it, e.g. `brew install "
+        "libraw`, then reconfigure with -DPRISM_WITH_LIBRAW=ON, or reconfigure "
+        "with -DPRISM_LIBRAW_FROM_SOURCE=ON to build it)");
 }
 
 #endif

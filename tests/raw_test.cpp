@@ -5,15 +5,23 @@
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
+#ifdef _WIN32
+#include <process.h>  // _getpid
+#else
+#include <unistd.h>  // getpid
+#endif
+
 #include "env_var.hpp"
 #include "prism/image.hpp"
 #include "prism/pipeline.hpp"
 #include "prism/raw.hpp"
+#include "synthetic_dng.hpp"
 
 namespace fs = std::filesystem;
 
@@ -77,6 +85,129 @@ TEST(Raw, MissingRawFileGivesClearError) {
         const bool says_no_libraw = message.find("built without LibRaw") != std::string::npos;
         EXPECT_EQ(says_no_libraw, !prism::raw_support_available()) << message;
     }
+}
+
+// Without LibRaw the tests below check the "built without LibRaw" error and pass, so a CI job
+// that should have RAW support sets PRISM_REQUIRE_RAW=1: then a build that lost LibRaw fails here
+// instead of passing quietly.
+TEST(Raw, SupportIsAvailableWhenRequired) {
+    if (prism_test::env_var("PRISM_REQUIRE_RAW") != "1") {
+        GTEST_SKIP() << "PRISM_REQUIRE_RAW is not set";
+    }
+    EXPECT_TRUE(prism::raw_support_available());
+}
+
+// --- Synthetic DNG: a real decode on every build with LibRaw
+// --------------------------------------
+//
+// synthetic_dng.hpp writes a 32 x 32 uniform grey Bayer DNG, so LibRaw's whole path (open, unpack,
+// demosaic, colour conversion, output) runs in CI without a camera file. Without LibRaw the same
+// tests check that loading it fails with the "built without LibRaw" error.
+
+namespace {
+
+constexpr std::uint16_t grey_level = 16384;  // 0.25 of white
+constexpr float grey = grey_level / 65535.0f;
+
+// The test's name and the process id keep `ctest -j` runs apart, as in cli_test.cpp. `suffix` is
+// UTF-8 text before ".dng".
+fs::path write_synthetic_dng(const std::u8string& suffix) {
+    const testing::TestInfo* test = testing::UnitTest::GetInstance()->current_test_info();
+#ifdef _WIN32
+    const int pid = _getpid();
+#else
+    const int pid = static_cast<int>(getpid());
+#endif
+    fs::path path = fs::path(testing::TempDir()) /
+                    ("prism_raw_" + std::string(test->name()) + "_" + std::to_string(pid));
+    path += suffix;
+    path += ".dng";
+    const std::vector<std::byte> bytes = prism_test::synthetic_dng(grey_level);
+    // ofstream takes the fs::path itself, so it opens the UTF-16 name on Windows.
+    std::ofstream out(path, std::ios::binary);
+    out.write(reinterpret_cast<const char*>(bytes.data()),
+              static_cast<std::streamsize>(bytes.size()));
+    EXPECT_TRUE(out.good()) << "cannot write the test DNG";
+    return path;
+}
+
+// Loads `path`; with LibRaw, checks that the result is a uniform grey of `width` x `height` at
+// `grey` in every channel. Without LibRaw, checks the error instead.
+void expect_grey_dng(const fs::path& path, const prism::RawOptions& options, int width,
+                     int height) {
+    if (!prism::raw_support_available()) {
+        try {
+            (void)prism::load_image(path, options);
+            FAIL() << "expected an exception";
+        } catch (const std::runtime_error& e) {
+            EXPECT_NE(std::string(e.what()).find("built without LibRaw"), std::string::npos)
+                << e.what();
+        }
+        return;
+    }
+    const prism::Image img = prism::load_image(path, options);
+    ASSERT_EQ(img.width, width);
+    ASSERT_EQ(img.height, height);
+    ASSERT_EQ(img.pixels.size(), static_cast<std::size_t>(width) * height * prism::Image::channels);
+    for (std::size_t i = 0; i < img.pixels.size(); ++i) {
+        // LibRaw works in integers and its sRGB matrix is a rounded inverse of ours, so allow 1%.
+        ASSERT_NEAR(img.pixels[i], grey, 0.01f * grey) << "sample " << i;
+    }
+}
+
+constexpr int dng_size = prism_test::synthetic_dng_size;
+
+}  // namespace
+
+TEST(RawSyntheticDng, FullSizeDecodesToUniformGrey) {
+    const fs::path path = write_synthetic_dng(u8"");
+    expect_grey_dng(path, {}, dng_size, dng_size);
+    fs::remove(path);
+}
+
+TEST(RawSyntheticDng, HalfSizeHalvesTheDimensions) {
+    const fs::path path = write_synthetic_dng(u8"");
+    prism::RawOptions options;
+    options.half_size = true;
+    expect_grey_dng(path, options, dng_size / 2, dng_size / 2);
+    fs::remove(path);
+}
+
+// With an identity matrix LibRaw outputs camera RGB, which for this file is already linear sRGB.
+TEST(RawSyntheticDng, IdentityCameraMatrixGivesTheSameGrey) {
+    const fs::path path = write_synthetic_dng(u8"");
+    prism::RawOptions options;
+    options.camera_matrix = prism::identity_matrix;
+    expect_grey_dng(path, options, dng_size, dng_size);
+    fs::remove(path);
+}
+
+// "ü_写真_📷", as u-escapes (see unicode_path_test.cpp). On Windows this goes through LibRaw's
+// open_file(const wchar_t*): a name outside the ANSI code page must open.
+TEST(RawSyntheticDng, LoadsFromANonAsciiPath) {
+    const fs::path path = write_synthetic_dng(u8"_\u00fc_\u5199\u771f_\U0001F4F7");
+    expect_grey_dng(path, {}, dng_size, dng_size);
+    fs::remove(path);
+}
+
+// A file LibRaw can't parse must give LibRaw's own error, with the (non-ASCII) path in it.
+TEST(RawSyntheticDng, TruncatedFileGivesClearError) {
+    const fs::path path = write_synthetic_dng(u8"_\u5199\u771f");
+    fs::resize_file(path, 64);
+    try {
+        (void)prism::load_image(path);
+        FAIL() << "expected an exception";
+    } catch (const std::runtime_error& e) {
+        const std::string message = e.what();
+        EXPECT_NE(message.find("cannot load RAW file"), std::string::npos) << message;
+        const std::u8string name = path.filename().u8string();
+        EXPECT_NE(message.find(std::string(name.begin(), name.end())), std::string::npos)
+            << message;
+        if (prism::raw_support_available()) {
+            EXPECT_EQ(message.find("built without LibRaw"), std::string::npos) << message;
+        }
+    }
+    fs::remove(path);
 }
 
 // --- Integration tests: only with a real RAW file ------------------------------------------------
