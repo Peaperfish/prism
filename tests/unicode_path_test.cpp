@@ -37,7 +37,7 @@ namespace {
 // compiler reads this file in; u8"" makes them char8_t, which fs::path knows is UTF-8 (a plain
 // "" string would be read in the ANSI code page on Windows). Latin, CJK and an emoji (outside
 // the Basic Multilingual Plane, so two UTF-16 units): "ü_写真_📷".
-const std::u8string unicode_part = u8"ü_写真_\U0001F4F7";
+const std::u8string unicode_part = u8"\u00fc_\u5199\u771f_\U0001F4F7";
 
 // As in cli_test.cpp: the test's name and the process id keep `ctest -j` runs apart. The
 // non-ASCII part comes before the extension, e.g. ".../prism_unicode_Test_123_ü_写真_📷.png".
@@ -181,7 +181,7 @@ TEST(UnicodePath, ImageErrorsNameTheFile) {
 TEST(UnicodePath, NonAsciiExtensionIsNotAnImage) {
     // The extension itself is non-ASCII: checking it for .png or .arw must not fail.
     fs::path path = temp_file(".");
-    path += u8"写";
+    path += u8"\u5199";
     const std::string message = runtime_error_message([&] { (void)prism::load_image(path); });
     EXPECT_TRUE(contains(message, "cannot load image")) << message;
 }
