@@ -15,6 +15,7 @@
 
 #include "env_var.hpp"
 #include "prism/image.hpp"
+#include "prism/version.hpp"
 #include "run_command.hpp"
 
 // End-to-end tests: run the real prism executable (path supplied by CMake as PRISM_EXE)
@@ -80,6 +81,13 @@ bool contains(const std::string& haystack, const std::string& needle) {
 }
 
 }  // namespace
+
+TEST(Cli, VersionPrintsTheProjectVersion) {
+    const RunResult r = run_prism("--version");
+
+    EXPECT_EQ(r.exit_code, 0) << r.output;
+    EXPECT_EQ(r.output, "prism " + std::string(prism::version()) + "\n");
+}
 
 TEST(Cli, NoOutputAndNoHistogramIsUsageError) {
     const fs::path input = write_grey_input();

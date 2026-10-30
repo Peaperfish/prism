@@ -56,7 +56,8 @@ void print_usage(const char* program) {
               << ", one per hardware thread;\n"
               << "                      1 = single-threaded; images under ~1 MP always use 1)\n"
               << "  --time              print how long each stage took\n"
-              << "  -h, --help          show this help\n";
+              << "  -h, --help          show this help\n"
+              << "  --version           print the version and exit\n";
 }
 
 // Raised for bad command-line input, so main() can also print the usage text.
@@ -132,8 +133,8 @@ Options parse_args(int argc, char* argv[]) {
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg = argv[i];
 
-        // Every flag except --help and --time takes the next argument as its value. We take it
-        // as-is, even if it starts with '-', so "--exposure -1" works.
+        // Every flag except --help, --version and --time takes the next argument as its value. We
+        // take it as-is, even if it starts with '-', so "--exposure -1" works.
         auto next_value = [&]() -> std::string {
             if (i + 1 >= argc) {
                 throw UsageError(std::string(arg) + " needs a value");
@@ -143,6 +144,9 @@ Options parse_args(int argc, char* argv[]) {
 
         if (arg == "-h" || arg == "--help") {
             print_usage(argv[0]);
+            std::exit(0);
+        } else if (arg == "--version") {
+            std::cout << "prism " << prism::version() << '\n';
             std::exit(0);
         } else if (arg == "-o") {
             set_once(opts.output, arg, next_value());
