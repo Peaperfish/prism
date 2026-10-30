@@ -38,6 +38,7 @@
 #include "prism/parallel.hpp"
 #include "prism/pipeline.hpp"
 #include "prism/raw.hpp"
+#include "prism/resize.hpp"
 
 namespace {
 
@@ -423,10 +424,16 @@ int main(int argc, char* argv[]) {
     bench_stage(s, "histogram", f32, none,
                 [&](int t) { hist = prism::compute_histogram(input, t); });
 
+    // What a preview gets made from: the long side down to 2560 px (to 2560x1707 at 3:2). It reads
+    // the whole image once and writes a much smaller one.
+    prism::Image preview;
+    bench_stage(s, "downscale 2560", f32, none,
+                [&](int t) { preview = prism::downscale(input, 2560, t); });
+
     bench_raw(s);
 
     // Use the results so the optimiser cannot decide the work is pointless and delete it.
-    if (encoded.empty() || hist.pixel_count != samples / 3) {
+    if (encoded.empty() || hist.pixel_count != samples / 3 || preview.pixels.empty()) {
         std::cerr << "unexpected result\n";
         return 1;
     }

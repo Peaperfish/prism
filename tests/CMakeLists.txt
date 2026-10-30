@@ -24,6 +24,7 @@ add_executable(prism_tests
   process_test.cpp
   prism_profile_test.cpp
   raw_test.cpp
+  resize_test.cpp
   tiff_reader_test.cpp
   unicode_path_test.cpp
   version_test.cpp)
