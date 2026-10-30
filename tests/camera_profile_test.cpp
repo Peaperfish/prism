@@ -10,12 +10,9 @@
 #include <stdexcept>
 #include <string>
 
-#ifndef _WIN32
-#include <sys/wait.h>
-#endif
-
 #include "prism/camera_profile.hpp"
 #include "prism/pipeline.hpp"
+#include "run_command.hpp"
 
 namespace fs = std::filesystem;
 
@@ -557,12 +554,7 @@ TEST(PrismProfile, WritesAMatrixThatLoadMatrixReads) {
     const std::string command = "\"" + std::string(PRISM_PROFILE_EXE) + "\" \"" + json.string() +
                                 "\" -o \"" + out.string() + "\" --note \"from a test\" > \"" +
                                 (dir / "prism_profile_log.txt").string() + "\" 2>&1";
-    const int status = std::system(command.c_str());
-#ifndef _WIN32
-    ASSERT_TRUE(WIFEXITED(status) && WEXITSTATUS(status) == 0);
-#else
-    ASSERT_EQ(status, 0);
-#endif
+    ASSERT_EQ(prism_test::run_command(command), 0);
 
     std::ifstream file(out);
     const std::string text((std::istreambuf_iterator<char>(file)),

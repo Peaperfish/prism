@@ -10,11 +10,11 @@
 #ifdef _WIN32
 #include <process.h>  // _getpid
 #else
-#include <sys/wait.h>
 #include <unistd.h>  // getpid
 #endif
 
 #include "prism/image.hpp"
+#include "run_command.hpp"
 
 // End-to-end tests: run the real prism executable (path supplied by CMake as PRISM_EXE)
 // and check its exit code and output.
@@ -48,20 +48,14 @@ RunResult run_prism(const std::string& args) {
     const fs::path log = temp_file("output.txt");
     const std::string command =
         "\"" + std::string(PRISM_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
-    const int status = std::system(command.c_str());
+    const int exit_code = prism_test::run_command(command);
 
     std::ifstream file(log);
     std::stringstream text;
     text << file.rdbuf();
     file.close();
     fs::remove(log);
-
-#ifdef _WIN32
-    return {status, text.str()};
-#else
-    // On POSIX, std::system returns a wait status; WEXITSTATUS extracts the exit code.
-    return {WIFEXITED(status) ? WEXITSTATUS(status) : -1, text.str()};
-#endif
+    return {exit_code, text.str()};
 }
 
 std::string quoted(const fs::path& path) {

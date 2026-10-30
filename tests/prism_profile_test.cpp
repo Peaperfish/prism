@@ -19,7 +19,6 @@
 #ifdef _WIN32
 #include <process.h>  // _getpid
 #else
-#include <sys/wait.h>
 #include <unistd.h>  // getpid
 #endif
 
@@ -27,6 +26,7 @@
 #include "prism/dng_profile.hpp"
 #include "prism/pipeline.hpp"
 #include "prism/version.hpp"
+#include "run_command.hpp"
 #include "tiff_builder.hpp"
 
 // End-to-end tests of prism_profile (path supplied by CMake as PRISM_PROFILE_EXE) reading DNG and
@@ -74,15 +74,10 @@ RunResult run_profile(const std::string& args) {
     const fs::path err = temp_file("stderr.txt");
     const std::string command = "\"" + std::string(PRISM_PROFILE_EXE) + "\" " + args + " > \"" +
                                 out.string() + "\" 2> \"" + err.string() + "\"";
-    const int status = std::system(command.c_str());
-    RunResult r{0, read_file(out), read_file(err)};
+    const int exit_code = prism_test::run_command(command);
+    RunResult r{exit_code, read_file(out), read_file(err)};
     fs::remove(out);
     fs::remove(err);
-#ifdef _WIN32
-    r.exit_code = status;
-#else
-    r.exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-#endif
     return r;
 }
 
