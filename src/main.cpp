@@ -18,6 +18,7 @@
 #include "prism/image.hpp"
 #include "prism/parallel.hpp"
 #include "prism/pipeline.hpp"
+#include "prism/process.hpp"
 #include "prism/raw.hpp"
 #include "prism/utf8_path.hpp"
 #include "prism/version.hpp"
@@ -212,8 +213,11 @@ public:
         const auto start = Clock::now();
         std::forward<Fn>(fn)();
         const std::chrono::duration<double, std::milli> elapsed = Clock::now() - start;
-        stages_.push_back({std::move(name), elapsed.count()});
+        add(std::move(name), elapsed.count());
     }
+
+    // Records a stage that was timed elsewhere (by prism::process).
+    void add(std::string name, double ms) { stages_.push_back({std::move(name), ms}); }
 
     void print(int threads) const {
         double total = 0;
@@ -247,46 +251,37 @@ int main(int argc, char* argv[]) {
 
         // Read the matrix and curve before the image: they are quick to check, so a typo
         // fails immediately instead of after decoding a large photo.
-        std::optional<prism::Matrix3> matrix;
+        prism::ProcessSettings settings;
+        settings.exposure_stops = opts.exposure_stops;
         if (opts.matrix_path) {
-            matrix = prism::load_matrix(prism::path_from_utf8(*opts.matrix_path));
+            settings.matrix = prism::load_matrix(prism::path_from_utf8(*opts.matrix_path));
         }
+        settings.saturation = opts.saturation;
+        settings.contrast = opts.contrast;
         prism::RawOptions raw;
         raw.half_size = opts.raw_half;
         if (opts.raw_camera_matrix_path) {
             raw.camera_matrix =
                 prism::load_matrix(prism::path_from_utf8(*opts.raw_camera_matrix_path));
         }
-        std::optional<prism::ToneCurve> curve;
         if (opts.curve_spec) {
-            curve = prism::parse_curve(*opts.curve_spec);
+            settings.curve = prism::parse_curve(*opts.curve_spec);
         }
 
         // 0 asks the library for one thread per hardware thread.
         const int threads = opts.threads.value_or(0);
         StageTimer timer;
 
-        // Pipeline order from the README: exposure -> colour matrix -> saturation -> contrast ->
-        // tone curve.
         prism::Image img;
         timer.run("load", [&] {
             img = prism::load_image(prism::path_from_utf8(opts.input), raw, threads);
         });
-        if (opts.exposure_stops) {
-            timer.run("exposure", [&] { prism::exposure(img, *opts.exposure_stops, threads); });
-        }
-        if (matrix) {
-            timer.run("matrix", [&] { prism::apply_matrix(img, *matrix, threads); });
-        }
-        if (opts.saturation) {
-            timer.run("saturation", [&] { prism::saturation(img, *opts.saturation, threads); });
-        }
-        if (opts.contrast) {
-            timer.run("contrast", [&] { prism::contrast(img, *opts.contrast, threads); });
-        }
-        if (curve) {
-            timer.run("curve", [&] { prism::tone_curve(img, *curve, threads); });
-        }
+        // process() applies the stages in the README's order and skips those left at their
+        // neutral value. Without a stop token it always runs to the end, so the result is always
+        // ProcessResult::completed.
+        (void)prism::process(img, settings, threads, {}, [&](const prism::StageTime& t) {
+            timer.add(std::string(t.name), t.ms);
+        });
         // With both -o and --histogram the image is converted to 8-bit sRGB once: the saved bytes
         // are also what the histogram counts. (Without -o the histogram encodes block by block.)
         std::vector<std::uint8_t> bytes;

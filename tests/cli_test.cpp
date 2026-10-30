@@ -190,6 +190,12 @@ TEST(Cli, TimePrintsEachStageThatRan) {
     }
     EXPECT_FALSE(contains(r.output, "matrix")) << "no --matrix was given: " << r.output;
 
+    // A stage given its neutral value is skipped, so it is not listed either.
+    r = run_prism(quoted(input) + " -o " + quoted(output) + " --exposure 0 --saturation 1 --time");
+    EXPECT_EQ(r.exit_code, 0) << r.output;
+    EXPECT_FALSE(contains(r.output, "exposure")) << r.output;
+    EXPECT_FALSE(contains(r.output, "saturation")) << r.output;
+
     // Without --time, no timings.
     r = run_prism(quoted(input) + " -o " + quoted(output) + " --threads 1");
     EXPECT_EQ(r.exit_code, 0) << r.output;
