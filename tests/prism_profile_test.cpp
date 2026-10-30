@@ -53,9 +53,17 @@ fs::path temp_file(const std::string& name) {
            ("prism_profile_" + std::string(test->name()) + "_" + std::to_string(pid) + "_" + name);
 }
 
+// The exact bytes: used for -o files, which prism_profile writes with "\n" on every OS.
 std::string read_file(const fs::path& path) {
     std::ifstream file(path, std::ios::binary);
     return std::string(std::istreambuf_iterator<char>(file), {});
+}
+
+// Captured stdout or stderr, with Windows' "\r\n" (console output is in text mode) as "\n".
+std::string read_console_output(const fs::path& path) {
+    std::string text = read_file(path);
+    std::erase(text, '\r');
+    return text;
 }
 
 void write_file(const fs::path& path, const std::vector<std::byte>& bytes) {
@@ -76,7 +84,7 @@ RunResult run_profile(const std::string& args) {
     const std::string command = "\"" + std::string(PRISM_PROFILE_EXE) + "\" " + args + " > \"" +
                                 out.string() + "\" 2> \"" + err.string() + "\"";
     const int exit_code = prism_test::run_command(command);
-    RunResult r{exit_code, read_file(out), read_file(err)};
+    RunResult r{exit_code, read_console_output(out), read_console_output(err)};
     fs::remove(out);
     fs::remove(err);
     return r;

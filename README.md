@@ -120,7 +120,7 @@ Passing exactly this matrix reproduces Prism's default RAW output (mean differen
 prism DSC03866.ARW --raw-half --exposure +1 --curve filmic --raw-camera-matrix samples/a7rv_lightcraft.txt -o out.jpg
 ```
 
-The output file starts with comments saying which profile it came from (plus any `--note` lines), the original matrix, and what was skipped. The profile's file name (without its directory), its model and the notes are cleaned as for DNG and DCP files (see below), so they can't add a matrix row. `samples/a7rv_lightcraft.txt` is the α7R V (ILCE-7RM5) profile from LightCraft PR #3022.
+The output file starts with comments saying which profile it came from (plus any `--note` lines), the original matrix, and what was skipped. The profile's file name (without its directory), its model and the notes are cleaned as for DNG and DCP files (see below), so they can't add a matrix row. With `-o` the file has `\n` line endings on every OS, Windows included, so it is the same bytes wherever it was made; `load_matrix` also reads `\r\n` files. `samples/a7rv_lightcraft.txt` is the α7R V (ILCE-7RM5) profile from LightCraft PR #3022.
 
 **What a LightCraft profile is.** One 3×3 matrix from white-balanced camera RGB to **linear Rec. 2020**, plus a hue/saturation/value table. Both were fitted (least squares over hundreds of thousands of pixels from many photos) so that the raw data matches **the camera's own JPEGs**. So the matrix reproduces the in-camera look (Sony "Standard": noticeably more saturated), and **it is not a colorimetric calibration** like a DNG profile measured against a colour chart. The hue/saturation/value table bends individual hues, which a 3×3 matrix can't do, so `prism_profile` skips it and says so.
 

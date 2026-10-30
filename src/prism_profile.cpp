@@ -450,13 +450,15 @@ struct Options {
     std::vector<std::string> notes;
 };
 
-// Writes the matrix file to -o, or to stdout. Returns false if -o can't be written.
+// Writes the matrix file to -o, or to stdout. Returns false if -o can't be written. The file is
+// written in binary mode, so it has "\n" line endings on every OS, Windows included, and is the
+// same bytes wherever it was made. stdout stays in text mode: it is console output.
 bool write_output(const Options& opts, const std::string& text) {
     if (!opts.output) {
         std::cout << text;
         return true;
     }
-    std::ofstream file(*opts.output);
+    std::ofstream file(*opts.output, std::ios::binary);
     if (!(file << text) || !file.flush()) {
         std::cerr << "error: cannot write '" << *opts.output << "'\n";
         return false;

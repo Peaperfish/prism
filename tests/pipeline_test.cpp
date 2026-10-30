@@ -110,6 +110,17 @@ TEST(LoadMatrix, ReadsNineNumbersWithComments) {
     EXPECT_EQ(m, expected);
 }
 
+// A matrix file saved by a Windows editor: "\r\n" line endings, written in binary mode so the
+// test file has them on every OS.
+TEST(LoadMatrix, AcceptsWindowsLineEndings) {
+    const fs::path path = fs::path(testing::TempDir()) / "prism_matrix_crlf.txt";
+    std::ofstream(path, std::ios::binary) << "# comment\r\n1 0 0\r\n0 1 0  # row\r\n0 0 1\r\n";
+    const prism::Matrix3 m = prism::load_matrix(path);
+    fs::remove(path);
+    const prism::Matrix3 expected = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+    EXPECT_EQ(m, expected);
+}
+
 TEST(LoadMatrix, TooFewNumbersThrows) {
     const fs::path path = write_temp_file("prism_matrix_short.txt", "1 0 0\n0 1 0\n0 0\n");
     EXPECT_THROW((void)prism::load_matrix(path), std::runtime_error);
