@@ -158,7 +158,16 @@ Not applied, and listed in the header when present: a DNG's `CameraCalibration1/
 
 **`--temperature <K>`** (default 6504, D65) is the white balance temperature, in kelvin, at which the two ForwardMatrices are interpolated. It should be the colour temperature of the light the photo was taken in: Prism's RAW path white-balances with the camera's as-shot multipliers, and `prism_profile` does not read them from the photo. Only profiles with two ForwardMatrices accept a value other than 6504. A profile with one calibration uses it at every temperature, and ColorMatrices are always white-balanced for D65 here, so interpolating them for another light would give a matrix white-balanced for the wrong one (white balance for other lights is a later step). In both cases `--temperature` fails with an error explaining why, instead of being ignored. Two calibrations with the same temperature, or a ForwardMatrix in only one of them, are refused: there is no rule for interpolating them.
 
-**ProfileEmbedPolicy.** Profiles carry usage rules in this tag (DNG 1.7.1.0, p. 52): 0 = allow copying, 1 = embed if used, 2 = embed never, 3 = no restrictions. The header gives the value and its meaning. For 0, 1 and 2, `prism_profile` prints a warning on stderr and adds the same sentence to the header: *"The DNG specification says profiles with ProfileEmbedPolicy 0, 1 or 2 are for processing DNG files; using this matrix for non-DNG (RAW) files may not be permitted, and that is your responsibility."* It still writes the matrix. For 3, or no tag, there is no warning.
+**ProfileEmbedPolicy.** Profiles carry usage rules in this tag (DNG 1.7.1.0, p. 52): 0 = allow copying, 1 = embed if used, 2 = embed never, 3 = no restrictions. The header gives the value and its meaning, and `prism_profile` always writes the matrix. What the specification says, and what `prism_profile` adds:
+
+| Policy | The specification says | stderr and header |
+|---|---|---|
+| 0, 1 | "The camera profile may not be used to process non-DNG files" (1 applies "the same rules as 'allow copying'") | a warning: *"The DNG specification says profiles with ProfileEmbedPolicy 0 or 1, or 2 when embedded in a DNG, may not be used to process non-DNG files; using this matrix for non-DNG (RAW) files may not be permitted, and that is your responsibility."* |
+| 2, in a DCP | stored profiles "can be used to process images but cannot be embedded in files" | a note: *"The DNG specification says this profile may not be embedded in files."* |
+| 2, in a DNG | "If a camera profile is already embedded in a DNG file, then this value has the same restrictions as 'embed if used'" | the same warning as 0 and 1 |
+| 3 | "no restrictions" | nothing |
+
+With no tag there is nothing either.
 
 No camera profile or DNG is in this repository, and none of their values are: the tests build small files with made-up matrices.
 

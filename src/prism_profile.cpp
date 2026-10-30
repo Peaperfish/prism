@@ -262,27 +262,59 @@ std::vector<std::string> describe_method(const prism::DngProfile& p, double kelv
     return lines;
 }
 
-std::string describe_embed_policy(std::uint32_t policy) {
-    switch (policy) {
-        case 0: return "0 (allow copying: may be copied between DNG files)";
-        case 1: return "1 (embed if used: may not be copied out of a DNG to process other images)";
-        case 2: return "2 (embed never: may be stored and used, but not embedded in files)";
-        case 3: return "3 (no restrictions)";
-        default: return std::to_string(policy) + " (not a value the DNG specification defines)";
+// DNG 1.7.1.0, ProfileEmbedPolicy (p. 52):
+//   0 = "allow copying": [...] "The camera profile may not be used to process non-DNG files."
+//   1 = "embed if used": "the same rules as 'allow copying'", except for copying it out of a DNG.
+//   2 = "embed never": "only applies to profiles stored on a user's system but not already
+//       embedded in DNG files. These stored profiles can be used to process images but cannot be
+//       embedded in files. If a camera profile is already embedded in a DNG file, then this value
+//       has the same restrictions as 'embed if used'."
+//   3 = "no restrictions".
+// Prism only reports what the specification says: whether a use is permitted is for the user.
+constexpr std::string_view raw_use_sentence =
+    "The DNG specification says profiles with ProfileEmbedPolicy 0 or 1, or 2 when embedded in a "
+    "DNG, may not be used to process non-DNG files; using this matrix for non-DNG (RAW) files may "
+    "not be permitted, and that is your responsibility.";
+constexpr std::string_view no_embedding_sentence =
+    "The DNG specification says this profile may not be embedded in files.";
+
+// What ProfileEmbedPolicy means for this file, for the header and stderr alike.
+struct PolicyReport {
+    std::string value;        // after "ProfileEmbedPolicy: " in the header
+    std::string_view notice;  // a sentence for stderr and the header, or empty
+    bool warning = false;     // stderr says "warning:" rather than "note:"
+};
+
+PolicyReport embed_policy_report(const prism::DngProfile& p) {
+    if (!p.embed_policy) {
+        return {"not in the file", {}, false};
+    }
+    const bool embedded = p.source == prism::DngProfile::Source::dng;
+    switch (*p.embed_policy) {
+        case 0:
+            return {"0 (allow copying: may be copied between DNG files)", raw_use_sentence, true};
+        case 1:
+            return {"1 (embed if used: may not be copied out of a DNG to process other images)",
+                    raw_use_sentence, true};
+        case 2:
+            if (embedded) {
+                return {
+                    "2 (embed never; embedded in this DNG, so it has the restrictions of 1, "
+                    "embed if used)",
+                    raw_use_sentence, true};
+            }
+            return {
+                "2 (embed never: a stored profile, which may be used to process images but "
+                "not embedded in files)",
+                no_embedding_sentence, false};
+        case 3: return {"3 (no restrictions)", {}, false};
+        default:
+            return {
+                std::to_string(*p.embed_policy) + " (not a value the DNG specification defines)",
+                {},
+                false};
     }
 }
-
-bool policy_warns(const prism::DngProfile& p) {
-    return p.embed_policy && *p.embed_policy <= 2;
-}
-
-// DNG 1.7.1.0, ProfileEmbedPolicy (p. 52): "allow copying" and "embed if used" say the profile "may
-// not be used to process non-DNG files", and "embed never" refers to those rules. Prism only says
-// so: whether a use is permitted is for the user to decide.
-constexpr std::string_view policy_sentence =
-    "The DNG specification says profiles with ProfileEmbedPolicy 0, 1 or 2 are for processing DNG "
-    "files; using this matrix for non-DNG (RAW) files may not be permitted, and that is your "
-    "responsibility.";
 
 // The profile's tables, with their sizes: none of them can be expressed as a 3x3 matrix.
 std::vector<std::string> skipped_tables(const prism::DngProfile& p) {
@@ -360,10 +392,10 @@ std::string matrix_file(const prism::DngProfile& p, const std::string& source,
         out << "# Ignored: the file's third calibration (DNG 1.6 CalibrationIlluminant3 and its\n"
             << "# matrices); only the first two are used.\n";
     }
-    out << "# ProfileEmbedPolicy: "
-        << (p.embed_policy ? describe_embed_policy(*p.embed_policy) : "not in the file") << '\n';
-    if (policy_warns(p)) {
-        out << "# " << policy_sentence << '\n';
+    const PolicyReport policy = embed_policy_report(p);
+    out << "# ProfileEmbedPolicy: " << policy.value << '\n';
+    if (!policy.notice.empty()) {
+        out << "# " << policy.notice << '\n';
     }
     out << '\n';
     write_rows(out, srgb, "");
@@ -454,10 +486,10 @@ int run_dng(const Options& opts) {
     }
     const std::vector<std::string> method =
         describe_method(profile, kelvin, opts.temperature.has_value());
-    if (policy_warns(profile)) {
-        std::cerr << "warning: " << sanitize(std::filesystem::path(opts.input).filename().string())
-                  << " has ProfileEmbedPolicy " << describe_embed_policy(*profile.embed_policy)
-                  << ". " << policy_sentence << '\n';
+    if (const PolicyReport policy = embed_policy_report(profile); !policy.notice.empty()) {
+        std::cerr << (policy.warning ? "warning: " : "note: ")
+                  << sanitize(std::filesystem::path(opts.input).filename().string())
+                  << " has ProfileEmbedPolicy " << policy.value << ". " << policy.notice << '\n';
     }
     const std::string text = matrix_file(profile, opts.input, opts.notes, method, srgb);
     if (!write_output(opts, text)) {

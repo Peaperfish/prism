@@ -199,10 +199,12 @@ void expect_matrix_eq(const prism::Matrix3& actual, const prism::Matrix3& expect
     }
 }
 
-const std::string policy_sentence =
-    "The DNG specification says profiles with ProfileEmbedPolicy 0, 1 or 2 are for processing DNG "
-    "files; using this matrix for non-DNG (RAW) files may not be permitted, and that is your "
-    "responsibility.";
+const std::string raw_use_sentence =
+    "The DNG specification says profiles with ProfileEmbedPolicy 0 or 1, or 2 when embedded in a "
+    "DNG, may not be used to process non-DNG files; using this matrix for non-DNG (RAW) files may "
+    "not be permitted, and that is your responsibility.";
+const std::string no_embedding_sentence =
+    "The DNG specification says this profile may not be embedded in files.";
 
 }  // namespace
 
@@ -481,36 +483,55 @@ TEST(PrismProfile, LongTextIsCutAt120Characters) {
 
 // --- ProfileEmbedPolicy --------------------------------------------------------------------------
 
-TEST(PrismProfile, WarnsAboutTheEmbedPolicyFor0To2) {
-    const char* meanings[] = {"0 (allow copying", "1 (embed if used", "2 (embed never",
-                              "3 (no restrictions)"};
-    for (std::uint32_t policy = 0; policy <= 3; ++policy) {
-        SCOPED_TRACE("ProfileEmbedPolicy " + std::to_string(policy));
+TEST(PrismProfile, ReportsTheEmbedPolicyAsTheSpecificationWordsIt) {
+    // DNG 1.7.1.0, p. 52: 0 and 1 may not process non-DNG files; 2 is a stored profile that may
+    // not be embedded in files, but once embedded in a DNG it has the restrictions of 1.
+    struct Case {
+        std::optional<std::uint32_t> policy;
+        bool dng;
+        std::string value;   // the header's "ProfileEmbedPolicy: " line starts with this
+        std::string notice;  // empty: none
+        std::string level;   // "warning: " or "note: "
+    };
+    const std::vector<Case> cases = {
+        {0, false, "0 (allow copying", raw_use_sentence, "warning: "},
+        {0, true, "0 (allow copying", raw_use_sentence, "warning: "},
+        {1, false, "1 (embed if used", raw_use_sentence, "warning: "},
+        {1, true, "1 (embed if used", raw_use_sentence, "warning: "},
+        {2, false, "2 (embed never: a stored profile", no_embedding_sentence, "note: "},
+        {2, true, "2 (embed never; embedded in this DNG, so it has the restrictions of 1",
+         raw_use_sentence, "warning: "},
+        {3, false, "3 (no restrictions)", "", ""},
+        {3, true, "3 (no restrictions)", "", ""},
+        {std::nullopt, false, "not in the file", "", ""},
+    };
+    for (const Case& c : cases) {
+        SCOPED_TRACE("ProfileEmbedPolicy " + (c.policy ? std::to_string(*c.policy) : "absent") +
+                     (c.dng ? " in a DNG" : " in a DCP"));
         Spec s;
-        s.embed_policy = policy;
-        const fs::path input = write_profile(s);
+        s.embed_policy = c.policy;
+        s.magic = c.dng ? 42 : dcp_magic;
+        const fs::path input = write_profile(s, c.dng ? "in.dng" : "in.dcp");
         const RunResult r = run_profile(quoted(input));
         ASSERT_EQ(r.exit_code, 0) << r.err;
-        EXPECT_TRUE(contains(r.out, std::string("# ProfileEmbedPolicy: ") + meanings[policy]))
-            << r.out;
-        const bool warns = policy <= 2;
-        EXPECT_EQ(contains(r.err, "warning: " + input.filename().string() +
-                                      " has ProfileEmbedPolicy " + meanings[policy]),
-                  warns)
-            << r.err;
-        EXPECT_EQ(contains(r.err, policy_sentence), warns) << r.err;
-        EXPECT_EQ(contains(r.out, "# " + policy_sentence + "\n"), warns) << r.out;
-        EXPECT_FALSE(contains(r.out, "warning")) << "the warning goes to stderr only";
+        EXPECT_TRUE(contains(r.out, "# ProfileEmbedPolicy: " + c.value)) << r.out;
+        if (c.notice.empty()) {
+            EXPECT_TRUE(r.err.empty()) << r.err;
+        } else {
+            // The same sentence on stderr and in the header.
+            EXPECT_TRUE(contains(
+                r.err, c.level + input.filename().string() + " has ProfileEmbedPolicy " + c.value))
+                << r.err;
+            EXPECT_TRUE(contains(r.err, c.notice)) << r.err;
+            EXPECT_TRUE(contains(r.out, "\n# " + c.notice + "\n")) << r.out;
+        }
+        // Only 0 and 1, or 2 in a DNG, say anything about non-DNG (RAW) files.
+        const bool raw = c.notice == raw_use_sentence;
+        EXPECT_EQ(contains(r.err, "RAW"), raw) << r.err;
+        EXPECT_EQ(contains(r.out, "RAW"), raw) << r.out;
+        EXPECT_FALSE(contains(r.out, "warning") || contains(r.out, "note:")) << "stderr only";
         fs::remove(input);
     }
-
-    const fs::path input = write_profile(Spec{});  // no ProfileEmbedPolicy tag
-    const RunResult r = run_profile(quoted(input));
-    ASSERT_EQ(r.exit_code, 0) << r.err;
-    EXPECT_TRUE(contains(r.out, "# ProfileEmbedPolicy: not in the file\n")) << r.out;
-    EXPECT_TRUE(r.err.empty()) << r.err;
-    EXPECT_FALSE(contains(r.out, policy_sentence)) << r.out;
-    fs::remove(input);
 }
 
 // --- Input formats -------------------------------------------------------------------------------
