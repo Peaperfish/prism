@@ -23,8 +23,10 @@ namespace prism::gui_app {
 class App {
 public:
     // `dialogs` receives the file dialogs' answers; it must outlive any dialog still open, so it
-    // is owned by main() rather than by the App.
-    App(SDL_Window* window, SDL_Renderer* renderer, DialogQueue& dialogs);
+    // is owned by main() rather than by the App. `preferences_file` is where Preferences are
+    // read from now and saved to on every change (empty: nowhere, the defaults are used).
+    App(SDL_Window* window, SDL_Renderer* renderer, DialogQueue& dialogs,
+        std::filesystem::path preferences_file);
 
     // Opens `path_utf8` (e.g. from the command line) on the next frames.
     void open_utf8(const char* path_utf8);
@@ -72,6 +74,9 @@ private:
     void draw_simple_slider(const char* label, gui::SimpleControl control);
     void draw_status_bar();
     void draw_saving_popup();
+    void draw_preferences();
+    void save_preferences();
+    void set_preferences(gui::Preferences prefs);
 
     SDL_Window* window_;
     DialogQueue& dialogs_;
@@ -91,7 +96,12 @@ private:
     std::optional<gui::Error> error_;  // shown as a banner until dismissed
     std::string notice_;               // a short note that isn't an error, e.g. "Saved ..."
 
+    std::filesystem::path prefs_file_;
     gui::Preferences prefs_;
+    bool prefs_open_ = false;
+    // SDL event that the macOS app menu's Preferences item sends; 0 if it isn't connected, and
+    // then Preferences is in our own Edit menu.
+    Uint32 native_prefs_event_ = 0;
     float display_scale_ = 1.0f;  // the display's content scale (1.5 at 150% on Windows)
     bool style_dirty_ = true;     // rebuild the style before the next frame
 

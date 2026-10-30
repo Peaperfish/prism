@@ -16,4 +16,12 @@ if(WIN32)
   target_compile_definitions(prism_gui PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 endif()
 
+# On macOS, a few lines of Objective-C++ connect the app menu's Preferences item (see
+# macos_menu.hpp).
+if(APPLE)
+  enable_language(OBJCXX)
+  target_sources(prism_gui PRIVATE macos_menu.mm)
+  target_link_libraries(prism_gui PRIVATE "-framework Cocoa")
+endif()
+
 prism_copy_libraw_dll(prism_gui)

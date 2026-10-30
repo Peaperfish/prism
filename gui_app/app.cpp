@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "imgui.h"
+#include "macos_menu.hpp"
 #include "theme.hpp"
 #include "prism/gui/file_types.hpp"
 #include "prism/gui/layout.hpp"
@@ -77,9 +78,41 @@ std::string file_name(const fs::path& path) {
 
 }  // namespace
 
-App::App(SDL_Window* window, SDL_Renderer* renderer, DialogQueue& dialogs)
-    : window_(window), dialogs_(dialogs), texture_(renderer), display_scale_(content_scale(window)) {
+App::App(SDL_Window* window, SDL_Renderer* renderer, DialogQueue& dialogs,
+         fs::path preferences_file)
+    : window_(window),
+      dialogs_(dialogs),
+      texture_(renderer),
+      prefs_file_(std::move(preferences_file)),
+      display_scale_(content_scale(window)) {
+    if (!prefs_file_.empty()) {
+        prefs_ = gui::load_preferences(prefs_file_);  // the defaults if missing or unreadable
+    }
     apply_minimum_size();
+#ifdef __APPLE__
+    const Uint32 event = SDL_RegisterEvents(1);
+    if (event != 0 && connect_macos_preferences_item(event)) {
+        native_prefs_event_ = event;
+    }
+#endif
+}
+
+void App::save_preferences() {
+    if (prefs_file_.empty()) {
+        return;
+    }
+    if (std::optional<std::string> error = gui::save_preferences(prefs_file_, prefs_)) {
+        show_error({gui::ErrorKind::save_failed, "Couldn't save your preferences.", *error});
+    }
+}
+
+void App::set_preferences(gui::Preferences prefs) {
+    if (prefs == prefs_) {
+        return;
+    }
+    prefs_ = std::move(prefs);
+    style_dirty_ = true;  // theme and size apply live, from the next frame
+    save_preferences();
 }
 
 float App::content_scale(SDL_Window* window) {
@@ -246,6 +279,11 @@ void App::before_frame() {
 
 void App::handle_event(const SDL_Event& event) {
     quiet_frames_ = 0;
+    if (native_prefs_event_ != 0 && event.type == native_prefs_event_) {
+        prefs_open_ = true;
+        ImGui::SetWindowFocus("Preferences");
+        return;
+    }
     switch (event.type) {
         case SDL_EVENT_SYSTEM_THEME_CHANGED:
             style_dirty_ = true;  // "System" follows the OS live
@@ -342,6 +380,7 @@ void App::frame() {
     draw_status_bar();
     draw_saving_popup();
     ImGui::End();
+    draw_preferences();
 
     if (pending_open_) {
         pending_open_shown_ = true;
@@ -353,6 +392,11 @@ void App::handle_shortcuts() {
     // claims the same keys.
     if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_O, ImGuiInputFlags_RouteGlobal)) {
         show_open_dialog();
+    }
+    // On macOS the app menu's item takes Cmd+, itself when it is connected.
+    if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Comma, ImGuiInputFlags_RouteGlobal)) {
+        prefs_open_ = true;
+        ImGui::SetWindowFocus("Preferences");
     }
     if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_E, ImGuiInputFlags_RouteGlobal) ||
         ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S, ImGuiInputFlags_RouteGlobal)) {
@@ -400,6 +444,12 @@ void App::draw_menu() {
         if (ImGui::MenuItem("Redo", shortcut_label("Shift+Z").c_str(), false,
                             session_.history().can_redo())) {
             redo();
+        }
+        if (native_prefs_event_ == 0) {  // otherwise it's in the macOS app menu
+            ImGui::Separator();
+            if (ImGui::MenuItem("Preferences...", shortcut_label(",").c_str())) {
+                prefs_open_ = true;
+            }
         }
         ImGui::EndMenu();
     }
@@ -680,6 +730,83 @@ void App::draw_status_bar() {
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
         ImGui::SetTooltip("%s", utf8(session_.path()).c_str());
     }
+}
+
+void App::draw_preferences() {
+    if (!prefs_open_) {
+        return;
+    }
+    // A normal window, not modal: the photo stays editable, and every change shows at once.
+    const ImVec2 centre = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(centre, ImGuiCond_FirstUseEver, ImVec2(0.5f, 0.5f));
+    if (!ImGui::Begin("Preferences", &prefs_open_,
+                      ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse)) {
+        ImGui::End();
+        return;
+    }
+    gui::Preferences p = prefs_;
+
+    ImGui::SeparatorText("Appearance");
+    int theme = static_cast<int>(p.theme);
+    ImGui::RadioButton("System", &theme, static_cast<int>(gui::ThemeChoice::system));
+    ImGui::SameLine();
+    ImGui::RadioButton("Light", &theme, static_cast<int>(gui::ThemeChoice::light));
+    ImGui::SameLine();
+    ImGui::RadioButton("Dark", &theme, static_cast<int>(gui::ThemeChoice::dark));
+    p.theme = static_cast<gui::ThemeChoice>(theme);
+
+    ImGui::SeparatorText("Interface size");
+    const std::string automatic =
+        "Auto (" + std::to_string(static_cast<int>(std::lround(display_scale_ * 100))) + "%)";
+    const std::string current = p.interface_size == gui::interface_size_auto
+                                    ? automatic
+                                    : std::to_string(p.interface_size) + "%";
+    ImGui::SetNextItemWidth(ImGui::CalcTextSize("Auto (200%)").x * 1.6f);
+    if (ImGui::BeginCombo("##size", current.c_str())) {
+        if (ImGui::Selectable(automatic.c_str(), p.interface_size == gui::interface_size_auto)) {
+            p.interface_size = gui::interface_size_auto;
+        }
+        for (int size = gui::interface_size_min; size <= gui::interface_size_max;
+             size += gui::interface_size_step) {
+            if (ImGui::Selectable((std::to_string(size) + "%").c_str(),
+                                  p.interface_size == size)) {
+                p.interface_size = size;
+            }
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("Auto follows the display.");
+
+    ImGui::SeparatorText("Layout");
+    ImGui::SetNextItemWidth(ImGui::CalcTextSize("Auto (200%)").x * 1.6f);
+    int width = p.panel_width;
+    if (ImGui::SliderInt("Panel width", &width, gui::panel_width_min, 800, "%d pt",
+                         ImGuiSliderFlags_AlwaysClamp)) {
+        p.panel_width = gui::clamp_panel_width(width);
+    }
+    const bool dragging = ImGui::IsItemActive();
+    const bool released = ImGui::IsItemDeactivatedAfterEdit();
+    if (ImGui::Button("Reset layout")) {
+        p.panel_width = gui::panel_width_default;
+    }
+    ImGui::TextDisabled("You can also drag the panel's left edge.");
+
+    ImGui::Separator();
+    if (ImGui::Button("Restore defaults")) {
+        gui::Preferences defaults;
+        defaults.unknown = p.unknown;  // keep what a newer version of Prism wrote
+        p = defaults;
+    }
+
+    if (dragging) {
+        prefs_.panel_width = p.panel_width;  // live while dragging; saved once, on release
+    } else if (released) {
+        prefs_.panel_width = p.panel_width;
+        save_preferences();
+    }
+    set_preferences(std::move(p));
+    ImGui::End();
 }
 
 void App::draw_saving_popup() {

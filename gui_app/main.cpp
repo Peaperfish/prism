@@ -6,9 +6,11 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <filesystem>
 #include <string>
 
 #include "app.hpp"
+#include "prism/utf8_path.hpp"
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_sdlrenderer3.h"
@@ -54,8 +56,11 @@ int main(int argc, char** argv) {
     // ImGui would write imgui.ini into the working directory, which may be read-only (e.g. inside
     // a disk image): keep it in the per-user folder SDL picks for the app instead.
     std::string ini_path;
+    std::filesystem::path preferences_file;
     if (char* pref = SDL_GetPrefPath("Prism", "Prism")) {
         ini_path = std::string(pref) + "imgui.ini";
+        // SDL gives the folder as UTF-8: a user name in CJK must survive on Windows too.
+        preferences_file = prism::path_from_utf8(pref) / "preferences.txt";
         SDL_free(pref);
         io.IniFilename = ini_path.c_str();
     } else {
@@ -75,7 +80,7 @@ int main(int argc, char** argv) {
     // may answer into it late.
     prism::gui_app::DialogQueue dialogs;
     {
-        prism::gui_app::App app(window, renderer, dialogs);
+        prism::gui_app::App app(window, renderer, dialogs, preferences_file);
         // "Open with" on Windows, or prism_gui photo.jpg: SDL's argv is UTF-8 on every OS.
         if (argc > 1) {
             app.open_utf8(argv[1]);
