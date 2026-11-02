@@ -48,6 +48,12 @@ struct Palette {
     ImU32 scope_cyan;
     ImU32 scope_magenta;
     ImU32 scope_yellow;
+    // The clipping overlay drawn over the photo: pixels above white and pixels below black. Opaque
+    // enough to read on any photo; they sit on the picture, not the panel, so they are chosen to
+    // be told apart from each other and from grey, and to stay visible in either theme. The
+    // pipeline view's dots use clip_highlights_fill / clip_shadows_fill so they match the chips.
+    ImU32 clip_overlay_over;
+    ImU32 clip_overlay_under;
 };
 
 [[nodiscard]] const Palette& palette(gui::Theme theme);

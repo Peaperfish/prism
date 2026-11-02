@@ -2,6 +2,9 @@
 
 #include <SDL3/SDL.h>
 
+#include <cstdint>
+#include <vector>
+
 #include "prism/gui/preview_renderer.hpp"
 
 namespace prism::gui_app {
@@ -21,7 +24,15 @@ public:
     // couldn't; the previous image is gone then.
     bool upload(const gui::PreviewFrame& frame);
 
-    // Drops the texture: nothing to show.
+    // The clipping overlay: a second texture, same size as the picture, with `over` where
+    // clip_mask has the high bit and `under` where it has the low bit (both set: `over`) and
+    // transparent elsewhere. False if the mask does not match width x height (then there is none).
+    bool upload_overlay(const std::vector<std::uint8_t>& clip_mask, int width, int height,
+                        std::uint32_t over_abgr, std::uint32_t under_abgr);
+    void reset_overlay();
+    [[nodiscard]] SDL_Texture* overlay() const noexcept { return overlay_; }
+
+    // Drops the textures: nothing to show.
     void reset();
 
     [[nodiscard]] SDL_Texture* texture() const noexcept { return texture_; }
@@ -31,6 +42,10 @@ public:
 private:
     SDL_Renderer* renderer_;
     SDL_Texture* texture_ = nullptr;
+    SDL_Texture* overlay_ = nullptr;
+    std::vector<std::uint32_t> overlay_pixels_;
+    int overlay_width_ = 0;
+    int overlay_height_ = 0;
     int width_ = 0;
     int height_ = 0;
 };

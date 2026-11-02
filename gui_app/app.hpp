@@ -11,6 +11,7 @@
 #include "preview_texture.hpp"
 #include "scope_view.hpp"
 #include "prism/gui/background_export.hpp"
+#include "prism/gui/clipping.hpp"
 #include "prism/gui/histogram.hpp"
 #include "prism/gui/live_preview.hpp"
 #include "prism/gui/preferences.hpp"
@@ -77,6 +78,11 @@ private:
     void draw_histogram_graph(const gui::StageHistogram& h, float avail_w);
     void draw_clip_chips(const gui::StageHistogram& h, float avail_w);
     void draw_scope_selector();
+    void draw_clip_overlay_button();
+    void toggle_clip_overlay();
+    void update_clip_overlay_texture();
+    bool draw_stage_clip_indicator(const gui::StageClip& clip, ImVec2 row_min, ImVec2 row_max);
+    void draw_clipping_summary();
     void draw_presets();
     void draw_simple_slider(const char* label, gui::SimpleControl control);
     void draw_pipeline();
@@ -97,6 +103,17 @@ private:
     std::optional<gui::StageHistogram> histogram_;
     gui::StageId histogram_stage_ = gui::final_stage;  // the stage histogram_ was measured on
     gui::StageId viewed_stage_ = gui::final_stage;
+    // Clipping at every stage, of the frame on screen. Only asked for (and so only present) while
+    // the pipeline view is open: pipeline_open_ is what the last frame's draw_pipeline saw.
+    std::optional<gui::ClipReport> clips_;
+    bool pipeline_open_ = true;
+    // The clip mask of the frame on screen (empty: none), and what the overlay texture was made
+    // from, to rebuild it when the mask or the theme changes.
+    std::vector<std::uint8_t> clip_mask_;
+    int clip_mask_width_ = 0;
+    int clip_mask_height_ = 0;
+    bool overlay_dirty_ = false;
+    std::optional<gui::Theme> overlay_theme_;
     gui::BackgroundExport exporter_;
     double last_render_ms_ = 0;
 

@@ -168,6 +168,9 @@ void App::open_now(const fs::path& path) {
     error_.reset();
     texture_.reset();  // don't show the previous photo under the new name
     histogram_.reset();
+    clips_.reset();
+    clip_mask_.clear();
+    texture_.reset_overlay();
     scope_view_.set(std::nullopt);
     viewed_stage_ = gui::final_stage;
     SDL_SetWindowTitle(window_, ("Prism - " + file_name(path)).c_str());
@@ -227,9 +230,13 @@ void App::take_export_result() {
 }
 
 void App::update_preview() {
-    // Scopes are only computed while one is on screen; the histogram comes with every frame.
-    preview_.update(session_.preview_base(), session_.settings(), viewed_stage_,
-                    prefs_.scope != gui::ScopeChoice::histogram);
+    // Scopes, the per-stage clipping and the clip mask are only computed while they are on screen
+    // (the pipeline view open, the overlay on); the histogram comes with every frame.
+    gui::PreviewOptions options;
+    options.scopes = prefs_.scope != gui::ScopeChoice::histogram;
+    options.clip_report = pipeline_open_;
+    options.clip_mask = prefs_.clip_overlay;
+    preview_.update(session_.preview_base(), session_.settings(), viewed_stage_, options);
     std::optional<gui::PreviewFrame> frame = preview_.poll();
     if (!frame) {
         return;
@@ -244,9 +251,42 @@ void App::update_preview() {
         return;
     }
     histogram_ = std::move(frame->histogram);
+    clips_ = std::move(frame->clips);
+    clip_mask_ = std::move(frame->clip_mask);
+    clip_mask_width_ = frame->width;
+    clip_mask_height_ = frame->height;
+    overlay_dirty_ = true;
     scope_view_.set(std::move(frame->scopes));
     histogram_stage_ = frame->stage;  // may differ from viewed_stage_ until the next frame
     last_render_ms_ = frame->total_ms;
+}
+
+// (Re)makes the overlay texture when the mask or the theme changed. Called while drawing, where
+// the theme is known.
+void App::update_clip_overlay_texture() {
+    if (!prefs_.clip_overlay || clip_mask_.empty()) {
+        texture_.reset_overlay();
+        overlay_theme_.reset();
+        return;
+    }
+    const gui::Theme current = theme();
+    if (!overlay_dirty_ && overlay_theme_ == current && texture_.overlay() != nullptr) {
+        return;
+    }
+    const Palette& colours = palette(current);
+    texture_.upload_overlay(clip_mask_, clip_mask_width_, clip_mask_height_,
+                            colours.clip_overlay_over, colours.clip_overlay_under);
+    overlay_dirty_ = false;
+    overlay_theme_ = current;
+}
+
+void App::toggle_clip_overlay() {
+    if (!session_.has_file()) {
+        return;
+    }
+    gui::Preferences p = prefs_;
+    p.clip_overlay = !p.clip_overlay;
+    set_preferences(std::move(p));
 }
 
 void App::show_error(gui::Error error) {
@@ -438,6 +478,9 @@ void App::handle_shortcuts() {
         ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Y, ImGuiInputFlags_RouteGlobal)) {
         redo();
     }
+    if (ImGui::Shortcut(ImGuiKey_J, ImGuiInputFlags_RouteGlobal)) {
+        toggle_clip_overlay();  // J: "jumping" highlights; free of every other shortcut
+    }
     if (viewed_stage_ != gui::final_stage &&
         ImGui::Shortcut(ImGuiKey_Escape, ImGuiInputFlags_RouteGlobal)) {
         viewed_stage_ = gui::final_stage;
@@ -510,6 +553,13 @@ void App::draw_canvas() {
         draw->AddImage(ImTextureRef(static_cast<ImTextureID>(
                            reinterpret_cast<std::uintptr_t>(texture_.texture()))),
                        at, ImVec2(at.x + shown.x, at.y + shown.y));
+        update_clip_overlay_texture();
+        if (texture_.overlay() != nullptr && prefs_.clip_overlay &&
+            clip_mask_width_ == texture_.width() && clip_mask_height_ == texture_.height()) {
+            draw->AddImage(ImTextureRef(static_cast<ImTextureID>(
+                               reinterpret_cast<std::uintptr_t>(texture_.overlay()))),
+                           at, ImVec2(at.x + shown.x, at.y + shown.y));
+        }
     } else if (!session_.has_file() && !pending_open_) {
         // Empty state: a dashed drop area with the one thing to do. It lights up while a file is
         // dragged over the window.
@@ -709,6 +759,7 @@ void App::draw_histogram() {
     }
     draw_clip_chips(h, avail_w);
     draw_scope_selector();
+    draw_clip_overlay_button();
 }
 
 void App::draw_histogram_graph(const gui::StageHistogram& h, float avail_w) {
@@ -906,6 +957,30 @@ void App::draw_scope_selector() {
     }
 }
 
+void App::draw_clip_overlay_button() {
+    const bool on = prefs_.clip_overlay;
+    const float s = ui_scale();
+    ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 0.85f);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
+                        ImVec2(3.0f * s, ImGui::GetStyle().FramePadding.y * 0.7f));
+    if (on) {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+    }
+    if (ImGui::Button("Show clipping on photo  (J)", ImVec2(-FLT_MIN, 0))) {
+        toggle_clip_overlay();
+    }
+    if (on) {
+        ImGui::PopStyleColor();
+    }
+    ImGui::PopStyleVar();
+    ImGui::PopFont();
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip(
+            "Marks pixels that are brighter than white or darker than black at this "
+            "stage.\nBrighter than white is orange-red, darker than black is blue.");
+    }
+}
+
 void App::draw_presets() {
     const gui::InputKind kind = session_.kind();
     const gui::Preset* current = gui::matching_preset(kind, session_.settings());
@@ -989,8 +1064,107 @@ void App::draw_simple_slider(const char* label, gui::SimpleControl control) {
     ImGui::PopID();
 }
 
+// The dots and percentages at the right of a stage's row: highlights above white, then shadows
+// below black, each hidden at 0. A filled dot means the stage clamped them (the detail is gone), a
+// hollow one that they are out of range but a later stage may still bring them back. True if the
+// mouse is over them (and their tooltip was shown).
+bool App::draw_stage_clip_indicator(const gui::StageClip& clip, ImVec2 row_min, ImVec2 row_max) {
+    if (!clips_ || !clip.ran) {
+        return false;
+    }
+    const Palette& colours = palette(theme());
+    const float s = ui_scale();
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    const std::uint64_t total = clips_->sample_count;
+
+    struct Mark {
+        const gui::ClipCounts* counts;
+        gui::ClipFate fate;
+        ImU32 colour;
+        const char* what;
+    };
+    const Mark marks[] = {
+        {&clip.over, clip.over_fate, colours.clip_highlights_fill, "Highlights above white"},
+        {&clip.under, clip.under_fate, colours.clip_shadows_fill, "Shadows below black"},
+    };
+
+    const float radius = 4.0f * s;
+    const float gap = 4.0f * s;
+    const float between = 8.0f * s;
+    const float cy = (row_min.y + row_max.y) * 0.5f;
+    ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 0.85f);
+    float right = row_max.x - 6.0f * s;
+    float left = right;
+    // Drawn right to left (shadows last in the array, so first here), so highlights end up on the
+    // left of shadows and the percentages line up across rows.
+    for (int i = 1; i >= 0; --i) {
+        const Mark& m = marks[i];
+        if (m.fate == gui::ClipFate::none) {
+            continue;
+        }
+        const std::string text = gui::format_clip_percent(m.counts->any, total);
+        const ImVec2 size = ImGui::CalcTextSize(text.c_str());
+        const float text_x = right - size.x;
+        draw->AddText(ImVec2(text_x, cy - size.y * 0.5f), ImGui::GetColorU32(ImGuiCol_Text),
+                      text.c_str());
+        const ImVec2 centre(text_x - gap - radius, cy);
+        if (m.fate == gui::ClipFate::lost) {
+            draw->AddCircleFilled(centre, radius, m.colour);
+        } else {
+            draw->AddCircle(centre, radius - 0.75f * s, m.colour, 0, 1.75f * s);
+        }
+        left = centre.x - radius;
+        right = left - between;
+    }
+    ImGui::PopFont();
+    if (left >= row_max.x - 6.0f * s) {
+        return false;  // nothing drawn
+    }
+
+    const bool hovered = ImGui::IsMouseHoveringRect(ImVec2(left - 4.0f * s, row_min.y),
+                                                    ImVec2(row_max.x, row_max.y)) &&
+                         ImGui::IsWindowHovered();
+    if (hovered) {
+        ImGui::BeginTooltip();
+        for (const Mark& m : marks) {
+            if (m.fate == gui::ClipFate::none) {
+                continue;
+            }
+            ImGui::Text("%s: %s of pixels", m.what,
+                        gui::format_clip_percent(m.counts->any, total).c_str());
+            ImGui::TextDisabled(
+                m.fate == gui::ClipFate::lost
+                    ? "Clipped here: this stage cut them off, so the detail is gone."
+                    : "Out of range, but a later stage may still bring them back.");
+        }
+        ImGui::Separator();
+        ImGui::TextDisabled("Filled dot: detail lost here.  Hollow dot: still recoverable.");
+        ImGui::TextDisabled("Orange: above white.  Blue: below black.");
+        ImGui::EndTooltip();
+    }
+    return hovered;
+}
+
+// One plain line under the pipeline view about where clipping starts and where it costs detail.
+void App::draw_clipping_summary() {
+    if (!clips_ || !session_.has_file()) {
+        return;
+    }
+    ImGui::Spacing();
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextUnformatted(gui::describe_clipping(*clips_).c_str());
+    ImGui::PopTextWrapPos();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
+        ImGui::SetTooltip(
+            "Detail is lost only where a stage cuts values off at white or black.\n"
+            "Until then the values are kept, so a later stage can still bring them back.");
+    }
+}
+
 void App::draw_pipeline() {
-    if (!ImGui::CollapsingHeader("Pipeline", ImGuiTreeNodeFlags_DefaultOpen)) {
+    // The per-stage clipping is only worked out while this section is open.
+    pipeline_open_ = ImGui::CollapsingHeader("Pipeline", ImGuiTreeNodeFlags_DefaultOpen);
+    if (!pipeline_open_) {
         return;
     }
 
@@ -1031,11 +1205,17 @@ void App::draw_pipeline() {
         if (!enabled) {
             ImGui::PopStyleColor();
         }
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
+        const bool row_hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal);
+        const ImVec2 row_min = ImGui::GetItemRectMin();
+        const ImVec2 row_max = ImGui::GetItemRectMax();
+        const bool over_indicator =
+            clips_ && draw_stage_clip_indicator(clips_->at(stage.id), row_min, row_max);
+        if (row_hovered && !over_indicator) {
             ImGui::SetTooltip("%s", std::string(stage.description).c_str());
         }
         ImGui::PopID();
     }
+    draw_clipping_summary();
 }
 
 void App::draw_status_bar() {

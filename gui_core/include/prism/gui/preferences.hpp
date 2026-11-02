@@ -17,6 +17,7 @@ namespace prism::gui {
 //   interface_size=auto
 //   panel_width=320
 //   scope=histogram
+//   clip_overlay=off
 //
 // Reading never fails: a missing or unreadable file gives the defaults, and a key whose value is
 // missing, malformed or out of range falls back to its default (or is clamped) on its own, without
@@ -51,6 +52,7 @@ struct Preferences {
     int interface_size = interface_size_auto;
     int panel_width = panel_width_default;
     ScopeChoice scope = ScopeChoice::histogram;
+    bool clip_overlay = false;  // mark pixels above white / below black on the preview
     // Lines with keys this version doesn't know, as key/value pairs in file order.
     std::vector<std::pair<std::string, std::string>> unknown;
 

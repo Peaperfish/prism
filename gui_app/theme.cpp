@@ -111,6 +111,8 @@ const Palette& palette(gui::Theme theme) {
         IM_COL32(70, 215, 225, 240),   // cyan target
         IM_COL32(225, 95, 205, 240),   // magenta target
         IM_COL32(235, 215, 70, 240),   // yellow target
+        IM_COL32(255, 70, 30, 215),    // clipping overlay: above white
+        IM_COL32(30, 140, 255, 215),   // clipping overlay: below black
     };
     static const Palette light{
         IM_COL32(96, 96, 96, 255),    // canvas: a lighter neutral grey, still well below mid-grey
@@ -145,6 +147,8 @@ const Palette& palette(gui::Theme theme) {
         IM_COL32(0, 140, 155, 245),    // cyan target
         IM_COL32(175, 30, 145, 245),   // magenta target
         IM_COL32(150, 120, 0, 245),    // yellow target
+        IM_COL32(255, 60, 20, 225),    // clipping overlay: above white
+        IM_COL32(10, 110, 245, 225),   // clipping overlay: below black
     };
     return theme == gui::Theme::light ? light : dark;
 }
