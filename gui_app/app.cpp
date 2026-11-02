@@ -494,9 +494,16 @@ void App::handle_shortcuts() {
     if (ImGui::Shortcut(ImGuiKey_J, ImGuiInputFlags_RouteGlobal)) {
         toggle_clip_overlay();  // J: "jumping" highlights; free of every other shortcut
     }
-    if (viewed_stage_ != gui::final_stage &&
+    // Esc backs out one level: first the comparison, then the viewed stage.
+    const bool comparing = gui::effective_compare(viewed_stage_, compare_stage_).has_value();
+    if ((comparing || viewed_stage_ != gui::final_stage) &&
         ImGui::Shortcut(ImGuiKey_Escape, ImGuiInputFlags_RouteGlobal)) {
-        viewed_stage_ = gui::final_stage;
+        if (comparing) {
+            compare_stage_.reset();
+        } else {
+            viewed_stage_ = gui::final_stage;
+            compare_stage_.reset();  // one that equalled the viewed stage goes too
+        }
     }
 }
 
@@ -1393,12 +1400,59 @@ void App::draw_curve_controls() {
     ImGui::EndDisabled();
 }
 
+// "Compare with": Off, Original or a stage, and Swap. The viewed stage is the right half of the
+// split, the chosen one the left half. Choosing the viewed stage itself is the same as Off.
+void App::draw_compare_controls() {
+    const std::optional<gui::StageId> shown = gui::effective_compare(viewed_stage_, compare_stage_);
+    const float spacing = ImGui::GetStyle().ItemSpacing.x;
+    const float swap_width =
+        ImGui::CalcTextSize("Swap").x + ImGui::GetStyle().FramePadding.x * 2;
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Compare with");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(std::max(1.0f, ImGui::GetContentRegionAvail().x - swap_width - spacing));
+    const std::string current = shown ? gui::stage_caption(*shown) : std::string("Off");
+    if (ImGui::BeginCombo("##compare_with", current.c_str())) {
+        if (ImGui::Selectable("Off", !shown)) {
+            compare_stage_.reset();
+        }
+        for (const gui::StageInfo& stage : gui::pipeline_stages()) {
+            const bool is_viewed = stage.id == viewed_stage_;
+            const std::string caption = gui::stage_caption(stage.id);
+            if (ImGui::Selectable(caption.c_str(), shown == stage.id)) {
+                if (is_viewed) {
+                    compare_stage_.reset();  // comparing a stage with itself: Off
+                } else {
+                    compare_stage_ = stage.id;
+                }
+            }
+        }
+        ImGui::EndCombo();
+    }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
+        ImGui::SetTooltip("Show another point in the pipeline next to the one you're viewing.\n"
+                          "It is the left half; the stage you click below is the right half.");
+    }
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!shown);
+    if (ImGui::Button("Swap") && shown) {
+        const gui::StageId was_viewed = viewed_stage_;
+        viewed_stage_ = *shown;
+        compare_stage_ = was_viewed;
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled)) {
+        ImGui::SetTooltip("Swap the two halves.");
+    }
+}
+
 void App::draw_pipeline() {
     // The per-stage clipping is only worked out while this section is open.
     pipeline_open_ = ImGui::CollapsingHeader("Pipeline", ImGuiTreeNodeFlags_DefaultOpen);
     if (!pipeline_open_) {
         return;
     }
+    draw_compare_controls();
 
     const float row_h = ImGui::GetFrameHeight();
     for (const gui::StageInfo& stage : gui::pipeline_stages()) {
@@ -1445,11 +1499,11 @@ void App::draw_pipeline() {
         if (row_hovered && !over_indicator) {
             ImGui::SetTooltip("%s", std::string(stage.description).c_str());
         }
-        if (gui::hidden_by_view(session_.settings(), stage.id, viewed_stage_)) {
+        if (gui::hidden_by_view(session_.settings(), stage.id, viewed_stage_, compare_stage_)) {
             // An edit after the viewed stage changes the photo but not what is on screen.
             ImGui::Indent(row_h + ImGui::GetStyle().ItemSpacing.x);
             ImGui::PushTextWrapPos(0.0f);
-            ImGui::TextDisabled("%s", gui::view_hint(viewed_stage_).c_str());
+            ImGui::TextDisabled("%s", gui::view_hint(viewed_stage_, compare_stage_).c_str());
             ImGui::PopTextWrapPos();
             ImGui::Unindent(row_h + ImGui::GetStyle().ItemSpacing.x);
         }

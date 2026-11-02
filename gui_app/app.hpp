@@ -93,6 +93,7 @@ private:
     void draw_slider(const char* label, gui::SimpleControl control, bool in_stage_row);
     void draw_matrix_name();
     void draw_curve_controls();
+    void draw_compare_controls();
     void draw_pipeline();
     void draw_status_bar();
     void draw_saving_popup();
