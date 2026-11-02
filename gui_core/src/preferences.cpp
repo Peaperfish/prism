@@ -60,6 +60,30 @@ const char* theme_name(ThemeChoice t) {
     return "system";
 }
 
+const char* scope_name(ScopeChoice c) {
+    switch (c) {
+        case ScopeChoice::parade:
+            return "parade";
+        case ScopeChoice::waveform:
+            return "waveform";
+        case ScopeChoice::vectorscope:
+            return "vectorscope";
+        case ScopeChoice::histogram:
+            break;
+    }
+    return "histogram";
+}
+
+std::optional<ScopeChoice> parse_scope(std::string_view s) {
+    for (const ScopeChoice c : {ScopeChoice::histogram, ScopeChoice::parade, ScopeChoice::waveform,
+                                ScopeChoice::vectorscope}) {
+        if (s == scope_name(c)) {
+            return c;
+        }
+    }
+    return std::nullopt;
+}
+
 }  // namespace
 
 Theme resolve_theme(ThemeChoice choice, SystemTheme system) {
@@ -116,6 +140,8 @@ Preferences parse_preferences(std::string_view text) {
             prefs.interface_size = clamp_interface_size(percent.value_or(interface_size_auto));
         } else if (key == "panel_width") {
             prefs.panel_width = clamp_panel_width(parse_int(value).value_or(panel_width_default));
+        } else if (key == "scope") {
+            prefs.scope = parse_scope(value).value_or(ScopeChoice::histogram);
         } else if (!key.empty()) {
             prefs.unknown.emplace_back(std::string(key), std::string(value));
         }
@@ -130,6 +156,7 @@ std::string serialize_preferences(const Preferences& prefs) {
     text += "interface_size=" +
             (size == interface_size_auto ? std::string("auto") : std::to_string(size)) + "\n";
     text += "panel_width=" + std::to_string(clamp_panel_width(prefs.panel_width)) + "\n";
+    text += "scope=" + std::string(scope_name(prefs.scope)) + "\n";
     for (const auto& [key, value] : prefs.unknown) {
         text += key + "=" + value + "\n";
     }

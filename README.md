@@ -236,6 +236,10 @@ At the top of the control panel, above Simple mode, **Histogram** shows the dist
 
 Below Simple mode's sliders, a collapsible **Pipeline** section lists the seven stages in the order the light passes through them: **Decode**, **Exposure**, **Colour matrix**, **Saturation**, **Contrast**, **Tone curve** and **Output encode**. Hovering a stage shows a one-sentence explanation of what it does to the light. The five middle stages have checkboxes to turn them on or off; each toggle goes through History as a single undo step. Clicking any row taps the pipeline after that stage—stopping the preview render there and applying only the 8-bit sRGB display encode—so you see the photo and its histogram at that exact point in the pipeline. While viewing an earlier stage, the canvas shows a **Viewing: after \<stage\>** badge with a **Final image (Esc)** button (or press `Esc`) to return to the final output.
 
+### Colour scopes
+
+Under the histogram, a selector switches the graph between **Histogram**, **Parade**, **Waveform** and **Vectorscope** (the choice is remembered). The parade shows the red, green and blue levels side by side from left to right across the image, the waveform shows the luma of each part of the image the same way, with guide lines at 0, 25, 50, 75 and 100%, and the vectorscope plots hue and strength on a round graticule (centre = neutral grey) with targets for R, Mg, B, Cy, G and Yl at 75% saturation and the skin-tone line at about 123°. Like the histogram, a scope measures the stage being viewed, on the display scale (the 8-bit sRGB values on screen). The counts come from a sample of at most 250,000 pixels, computed on the render worker only while a scope is shown, and are drawn log-scaled so faint detail stays visible.
+
 ### Themes and Preferences
 
 Preferences (on macOS: Prism → Preferences…, Cmd+,; on Windows and Linux: Edit → Preferences…, Ctrl+,) is an ordinary window whose changes apply at once:
@@ -262,6 +266,7 @@ prism_core (lib/)                            the pipeline, shared with the CLI
 |------|--------------|
 | `settings.hpp` | `EditSettings`: every value the GUI edits (exposure, colour matrix file, saturation, contrast, tone curve, an on/off switch per stage, RAW options), plus `StageId` and `pipeline_stages()` for the seven pipeline stages. `to_process_settings(s, stop_after)` turns it into what `prism::process` takes, disabling stages after a chosen tap; `validate()` explains bad values. Simple mode's brightness, contrast and colour sliders (−100…+100) are invertible maps onto three of its fields, so Simple and Advanced edit the same object |
 | `histogram.hpp` | `StageHistogram`: 256-bin R, G, B and Rec. 709 luminance counts plus separate under-black (`< 0`) and over-white (`> 1`) clip counts per channel, computed from the stage's float image before the 8-bit sRGB encode (and fused with `encode_srgb8` in L1-sized slices on the preview worker) |
+| `scopes.hpp` | `Scopes`: RGB parade, Rec. 709 luma waveform and Cb/Cr vectorscope as 256 × 256 count grids, counted from the 8-bit sRGB bytes of the frame on screen (display scale) on a strided sample of at most 250k pixels. Computed on the render worker only when a scope is visible, so with scopes hidden the render costs the same as without them |
 | `presets.hpp` | Named looks (Natural, Original, Vivid, Soft, Black & white), different for RAW and PNG/JPEG. A preset sets only the look; settings that match no preset are "Custom" |
 | `history.hpp` | Undo/redo of whole `EditSettings` snapshots. A slider drag, marked by `begin_gesture()` / `end_gesture()`, is one step; at most 100 steps |
 | `session.hpp` | The open photo: `open_file()` decodes it (RAW at half size), shrinks it with `prism::downscale` to a 2560 px preview base and frees the full image; errors come back as a kind plus a sentence for the user. `export_image()` decodes the file again at full size, runs the pipeline with a stop token and saves PNG or JPEG |
@@ -270,7 +275,7 @@ prism_core (lib/)                            the pipeline, shared with the CLI
 | `slider_gesture.hpp` | Turns a slider's per-frame state (pressed, moved, released) into History gestures, so a whole drag is one undo step, made on release |
 | `background_export.hpp` | Runs `export_image()` on its own thread with a stop token, so the window keeps drawing while a full-resolution export runs; the UI polls for the result |
 | `main_thread_queue.hpp` | A small locked queue that hands values from any thread to the UI thread, e.g. the answer of a file dialog whose callback runs on another thread |
-| `preferences.hpp` | The app's own settings (theme, interface size, panel width): defaults, reading and writing the key=value file, clamping, and resolving "System" to light or dark |
+| `preferences.hpp` | The app's own settings (theme, interface size, panel width, which scope is shown): defaults, reading and writing the key=value file, clamping, and resolving "System" to light or dark |
 | `layout.hpp` | Window layout as pure functions: the panel's width for a given window and scale, and shortening a file name in the middle to fit the status bar |
 | `file_types.hpp` | The file dialogs' filters (RAW only in a build with LibRaw), and the export file name: the suggested name next to the source, and the extension added if the user left it out |
 
@@ -283,7 +288,7 @@ v0.1.0 is the first pre-release of the desktop app. What's planned next is track
 [**0.2.0 – See the light**](https://github.com/Peaperfish/prism/milestone/1): understand what each step does to the light.
 
 - [A histogram for any pipeline stage](https://github.com/Peaperfish/prism/issues/1), RGB and luminance *(in progress)*
-- [Colour scopes](https://github.com/Peaperfish/prism/issues/13): RGB parade/waveform and vectorscope, for any stage
+- [Colour scopes](https://github.com/Peaperfish/prism/issues/13): RGB parade/waveform and vectorscope, for any stage *(in progress)*
 - [A gamut warning](https://github.com/Peaperfish/prism/issues/14): colours outside sRGB, and which stage pushed them out
 - [A pipeline view](https://github.com/Peaperfish/prism/issues/2): every stage visible and toggleable; click a stage to preview the photo at that point *(in progress)*
 - [Compare any two stages](https://github.com/Peaperfish/prism/issues/3), including the original, side by side or split

@@ -48,6 +48,7 @@ Preferences customised() {
     p.theme = ThemeChoice::light;
     p.interface_size = 150;
     p.panel_width = 400;
+    p.scope = prism::gui::ScopeChoice::vectorscope;
     return p;
 }
 
@@ -61,11 +62,24 @@ TEST(Preferences, DefaultsAreSystemThemeAutoSizeAndTheStandardPanel) {
     EXPECT_TRUE(p.unknown.empty());
 }
 
+TEST(Preferences, TheScopeIsRememberedAndABadValueFallsBackToTheHistogram) {
+    using prism::gui::ScopeChoice;
+    EXPECT_EQ(Preferences{}.scope, ScopeChoice::histogram);
+    for (const ScopeChoice c : {ScopeChoice::histogram, ScopeChoice::parade, ScopeChoice::waveform,
+                                ScopeChoice::vectorscope}) {
+        Preferences p;
+        p.scope = c;
+        EXPECT_EQ(prism::gui::parse_preferences(prism::gui::serialize_preferences(p)).scope, c);
+    }
+    EXPECT_EQ(prism::gui::parse_preferences("scope=radar\n").scope, ScopeChoice::histogram);
+    EXPECT_TRUE(prism::gui::parse_preferences("scope=parade\n").unknown.empty());
+}
+
 TEST(Preferences, SerializeAndParseRoundTrip) {
     const Preferences p = customised();
     const std::string text = prism::gui::serialize_preferences(p);
     EXPECT_EQ(text,
-              "# Prism preferences\ntheme=light\ninterface_size=150\npanel_width=400\n");
+              "# Prism preferences\ntheme=light\ninterface_size=150\npanel_width=400\nscope=vectorscope\n");
     EXPECT_EQ(prism::gui::parse_preferences(text), p);
     EXPECT_EQ(prism::gui::parse_preferences(prism::gui::serialize_preferences(Preferences{})),
               Preferences{});

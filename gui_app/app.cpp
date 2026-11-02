@@ -86,6 +86,7 @@ App::App(SDL_Window* window, SDL_Renderer* renderer, DialogQueue& dialogs,
     : window_(window),
       dialogs_(dialogs),
       texture_(renderer),
+      scope_view_(renderer),
       prefs_file_(std::move(preferences_file)),
       display_scale_(content_scale(window)) {
     if (!prefs_file_.empty()) {
@@ -167,6 +168,7 @@ void App::open_now(const fs::path& path) {
     error_.reset();
     texture_.reset();  // don't show the previous photo under the new name
     histogram_.reset();
+    scope_view_.set(std::nullopt);
     viewed_stage_ = gui::final_stage;
     SDL_SetWindowTitle(window_, ("Prism - " + file_name(path)).c_str());
 }
@@ -225,7 +227,9 @@ void App::take_export_result() {
 }
 
 void App::update_preview() {
-    preview_.update(session_.preview_base(), session_.settings(), viewed_stage_);
+    // Scopes are only computed while one is on screen; the histogram comes with every frame.
+    preview_.update(session_.preview_base(), session_.settings(), viewed_stage_,
+                    prefs_.scope != gui::ScopeChoice::histogram);
     std::optional<gui::PreviewFrame> frame = preview_.poll();
     if (!frame) {
         return;
@@ -240,6 +244,7 @@ void App::update_preview() {
         return;
     }
     histogram_ = std::move(frame->histogram);
+    scope_view_.set(std::move(frame->scopes));
     histogram_stage_ = frame->stage;  // may differ from viewed_stage_ until the next frame
     last_render_ms_ = frame->total_ms;
 }
@@ -687,16 +692,28 @@ void App::draw_histogram() {
     if (!histogram_ || histogram_->pixel_count == 0) {
         return;
     }
+    const char* const scope_titles[] = {"Histogram", "RGB parade", "Waveform", "Vectorscope"};
+    const std::string base_title = scope_titles[static_cast<int>(prefs_.scope)];
     const std::string title =
         histogram_stage_ == gui::final_stage
-            ? "Histogram"
-            : "Histogram (" + std::string(gui::stage_info(histogram_stage_).name) + ")";
+            ? base_title
+            : base_title + " (" + std::string(gui::stage_info(histogram_stage_).name) + ")";
     ImGui::SeparatorText(title.c_str());
 
     const gui::StageHistogram& h = *histogram_;
+    const float avail_w = std::max(1.0f, ImGui::GetContentRegionAvail().x);
+    if (prefs_.scope == gui::ScopeChoice::histogram) {
+        draw_histogram_graph(h, avail_w);
+    } else {
+        scope_view_.draw(prefs_.scope, theme(), avail_w, ui_scale());
+    }
+    draw_clip_chips(h, avail_w);
+    draw_scope_selector();
+}
+
+void App::draw_histogram_graph(const gui::StageHistogram& h, float avail_w) {
     const Palette& colours = palette(theme());
     const float s = ui_scale();
-    const float avail_w = std::max(1.0f, ImGui::GetContentRegionAvail().x);
     const float graph_h = std::round(68.0f * s);
     const float rounding = 4.0f * s;
 
@@ -761,6 +778,12 @@ void App::draw_histogram() {
                       ImDrawFlags_None, line_thickness);
     draw->PopClipRect();
     draw->AddRect(box_min, box_max, colours.histogram_border, rounding, 0, 1.0f * s);
+}
+
+void App::draw_clip_chips(const gui::StageHistogram& h, float avail_w) {
+    const Palette& colours = palette(theme());
+    const float s = ui_scale();
+    ImDrawList* draw = ImGui::GetWindowDrawList();
 
     // Two small clip indicators below the graph: shadows on the left, highlights on the right.
     const bool shadows_clipped = gui::has_shadow_clipping(h);
@@ -813,6 +836,74 @@ void App::draw_histogram() {
     draw_clip_chip("##clip_highlights", "Highlights", false, highlights_clipped,
                    colours.clip_highlights_fill, h.red_clips.over_white, h.green_clips.over_white,
                    h.blue_clips.over_white, "Highlights clipped (above white):");
+}
+
+void App::draw_scope_selector() {
+    struct Choice {
+        gui::ScopeChoice scope;
+        const char* label;
+        const char* tip;
+    };
+    static const Choice choices[] = {
+        {gui::ScopeChoice::histogram, "Histogram",
+         "Shows how many pixels are at each brightness, from black on the left to white on the "
+         "right."},
+        {gui::ScopeChoice::parade, "Parade",
+         "Shows how bright the red, green and blue parts of the image are, side by side, from "
+         "left to right."},
+        {gui::ScopeChoice::waveform, "Waveform",
+         "Shows how bright each part of the image is, from left to right."},
+        {gui::ScopeChoice::vectorscope, "Vectorscope",
+         "Shows which colours are in the image and how strong they are; the centre is neutral "
+         "grey."},
+    };
+    const float s = ui_scale();
+    const float avail = std::max(1.0f, ImGui::GetContentRegionAvail().x);
+    const float spacing = ImGui::GetStyle().ItemSpacing.x;
+    // A slightly smaller font, so the full names fit in one row at the default panel width.
+    ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 0.85f);
+    const char* hovered_tip = nullptr;
+    const float pad = 3.0f * s;  // tighter than a normal button so all four fit in a row
+    const float gap = 2.0f * s;  // and closer together
+    float needed = 3 * gap;
+    for (const Choice& c : choices) {
+        needed += ImGui::CalcTextSize(c.label).x + 2 * pad;
+    }
+    const bool one_row = needed <= avail;
+    const float row_w = one_row ? avail : (avail - spacing) * 0.5f;
+
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
+                        ImVec2(pad, ImGui::GetStyle().FramePadding.y * 0.7f));
+    int index = 0;
+    for (const Choice& c : choices) {
+        const bool selected = prefs_.scope == c.scope;
+        const float w = one_row ? ImGui::CalcTextSize(c.label).x + 2 * pad +
+                                      (avail - needed) / static_cast<float>(std::size(choices))
+                                : row_w;
+        if (index % (one_row ? 4 : 2) != 0) {
+            ImGui::SameLine(0.0f, one_row ? gap : spacing);
+        }
+        if (selected) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+        }
+        if (ImGui::Button(c.label, ImVec2(w, 0)) && !selected) {
+            gui::Preferences p = prefs_;
+            p.scope = c.scope;
+            set_preferences(std::move(p));
+        }
+        if (selected) {
+            ImGui::PopStyleColor();
+        }
+        if (ImGui::IsItemHovered()) {
+            hovered_tip = c.tip;
+        }
+        ++index;
+    }
+    ImGui::PopStyleVar();
+    ImGui::PopFont();
+    if (hovered_tip != nullptr) {
+        ImGui::SetTooltip("%s", hovered_tip);  // in the normal font size
+    }
 }
 
 void App::draw_presets() {

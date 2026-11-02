@@ -59,6 +59,7 @@ add_executable(prism_gui_core_tests
   gui/preferences_test.cpp
   gui/presets_test.cpp
   gui/preview_renderer_test.cpp
+  gui/scopes_test.cpp
   gui/session_test.cpp
   gui/settings_test.cpp
   gui/slider_gesture_test.cpp)

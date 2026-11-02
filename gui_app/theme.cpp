@@ -105,6 +105,12 @@ const Palette& palette(gui::Theme theme) {
         IM_COL32(225, 85, 45, 255),    // highlights clipped fill
         IM_COL32(255, 235, 220, 255),  // clip indicator border (lit)
         IM_COL32(255, 255, 255, 255),  // clip indicator text (lit)
+        IM_COL32(225, 225, 225, 255),  // scope trace
+        IM_COL32(255, 255, 255, 52),   // scope guide lines
+        IM_COL32(245, 195, 120, 240),  // skin-tone line
+        IM_COL32(70, 215, 225, 240),   // cyan target
+        IM_COL32(225, 95, 205, 240),   // magenta target
+        IM_COL32(235, 215, 70, 240),   // yellow target
     };
     static const Palette light{
         IM_COL32(96, 96, 96, 255),    // canvas: a lighter neutral grey, still well below mid-grey
@@ -133,6 +139,12 @@ const Palette& palette(gui::Theme theme) {
         IM_COL32(215, 65, 30, 255),    // highlights clipped fill
         IM_COL32(90, 25, 10, 255),     // clip indicator border (lit)
         IM_COL32(255, 255, 255, 255),  // clip indicator text (lit)
+        IM_COL32(45, 45, 45, 255),     // scope trace
+        IM_COL32(0, 0, 0, 55),         // scope guide lines
+        IM_COL32(165, 95, 15, 245),    // skin-tone line
+        IM_COL32(0, 140, 155, 245),    // cyan target
+        IM_COL32(175, 30, 145, 245),   // magenta target
+        IM_COL32(150, 120, 0, 245),    // yellow target
     };
     return theme == gui::Theme::light ? light : dark;
 }

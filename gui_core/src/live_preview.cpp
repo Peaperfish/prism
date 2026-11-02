@@ -11,20 +11,26 @@ LivePreview::LivePreview(PreviewRenderer::RenderFunction render) : renderer_(std
 LivePreview::LivePreview(PreviewRenderer::StageRenderFunction render)
     : renderer_(std::move(render)) {}
 
+LivePreview::LivePreview(PreviewRenderer::ScopeRenderFunction render)
+    : renderer_(std::move(render)) {}
+
 void LivePreview::update(const std::shared_ptr<const Image>& base, const EditSettings& settings,
-                         StageId stop_after) {
+                         StageId stop_after, bool scopes) {
     if (!base) {
         base_.reset();
         shown_ = submitted_;  // nothing to wait for: a frame still in flight is just ignored
         return;
     }
-    if (base == base_ && settings == settings_ && stop_after == stop_after_) {
+    if (base == base_ && settings == settings_ && stop_after == stop_after_ &&
+        (scopes_ || !scopes)) {
+        scopes_ = scopes_ && scopes;  // hidden: the next time they show, ask again
         return;
     }
     base_ = base;
     settings_ = settings;
     stop_after_ = stop_after;
-    submitted_ = renderer_.submit(base_, settings_, stop_after_);
+    scopes_ = scopes;
+    submitted_ = renderer_.submit(base_, settings_, stop_after_, scopes);
 }
 
 std::optional<PreviewFrame> LivePreview::poll() {

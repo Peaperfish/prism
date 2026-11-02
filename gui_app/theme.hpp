@@ -39,6 +39,15 @@ struct Palette {
     ImU32 clip_highlights_fill;
     ImU32 clip_active_border;
     ImU32 clip_active_text;
+    // The colour scopes (they share histogram_background / histogram_border and the red, green and
+    // blue above). The trace is the neutral colour counts are drawn in, the guides are the light
+    // lines at 0, 25, 50, 75 and 100%, and the vectorscope's targets and skin-tone line.
+    ImU32 scope_trace;
+    ImU32 scope_guide;
+    ImU32 scope_skin;
+    ImU32 scope_cyan;
+    ImU32 scope_magenta;
+    ImU32 scope_yellow;
 };
 
 [[nodiscard]] const Palette& palette(gui::Theme theme);

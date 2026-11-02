@@ -12,6 +12,7 @@ add_library(prism_gui_core STATIC
   src/preferences.cpp
   src/presets.cpp
   src/preview_renderer.cpp
+  src/scopes.cpp
   src/session.cpp
   src/settings.cpp
   src/slider_gesture.cpp)

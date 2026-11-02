@@ -16,6 +16,7 @@ namespace prism::gui {
 //   theme=system
 //   interface_size=auto
 //   panel_width=320
+//   scope=histogram
 //
 // Reading never fails: a missing or unreadable file gives the defaults, and a key whose value is
 // missing, malformed or out of range falls back to its default (or is clamped) on its own, without
@@ -42,10 +43,14 @@ inline constexpr int panel_width_default = 320;
 inline constexpr int panel_width_min = 240;
 inline constexpr int panel_width_max = 1200;
 
+// What the panel shows under the stage heading: the histogram or one of the colour scopes.
+enum class ScopeChoice { histogram, parade, waveform, vectorscope };
+
 struct Preferences {
     ThemeChoice theme = ThemeChoice::system;
     int interface_size = interface_size_auto;
     int panel_width = panel_width_default;
+    ScopeChoice scope = ScopeChoice::histogram;
     // Lines with keys this version doesn't know, as key/value pairs in file order.
     std::vector<std::pair<std::string, std::string>> unknown;
 
