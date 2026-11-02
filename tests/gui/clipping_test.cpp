@@ -116,15 +116,72 @@ TEST(Clipping, ExposureBoostGoesOverWhiteAndIsRecoverableUntilEncode) {
 }
 
 TEST(Clipping, ValuesClampedOnlyAtOutputEncodeAreLostThere) {
-    // Decoded values above white (a float source) and nothing else in the pipeline.
-    const ClipReport r = compute_clip_report(solid(10, 10, 1.5f, 0.5f, 0.5f), EditSettings{});
-    EXPECT_EQ(r.at(StageId::decode).over.any, 100u);
-    EXPECT_EQ(r.at(StageId::decode).over.red, 100u);
-    EXPECT_EQ(r.at(StageId::decode).over.green, 0u);
-    EXPECT_EQ(r.at(StageId::decode).over_fate, ClipFate::recoverable);
+    // 0.6 + 1 stop = 1.2: out of range after Exposure, clamped by the encode; nothing at Decode.
+    const ClipReport r = compute_clip_report(solid(10, 10, 0.6f, 0.4f, 0.4f), with_exposure(1.0f));
+    EXPECT_EQ(r.at(StageId::decode).over.any, 0u);
+    EXPECT_EQ(r.at(StageId::decode).over_fate, ClipFate::none);
+    EXPECT_EQ(r.at(StageId::exposure).over.any, 100u);
+    EXPECT_EQ(r.at(StageId::exposure).over.red, 100u);
+    EXPECT_EQ(r.at(StageId::exposure).over.green, 0u);
+    EXPECT_EQ(r.at(StageId::exposure).over_fate, ClipFate::recoverable);
     EXPECT_EQ(r.at(StageId::encode).over.any, 100u);
     EXPECT_EQ(r.at(StageId::encode).over_fate, ClipFate::lost);
+    EXPECT_EQ(r.first_over, StageId::exposure);
     EXPECT_EQ(r.first_over_lost, StageId::encode);
+}
+
+TEST(Clipping, PixelsAtTheCeilingOfAnEightBitFileAreLostAtDecode) {
+    // Real 8-bit decode: 255 is exactly 1.0. 30 of the 100 pixels have a channel at 255.
+    std::vector<std::uint8_t> bytes;
+    for (int i = 0; i < 100; ++i) {
+        const bool clipped = i < 30;
+        bytes.insert(bytes.end(), {static_cast<std::uint8_t>(clipped ? 255 : 200), 100, 100});
+    }
+    const Image img = prism::decode_srgb8(bytes, 10, 10);
+    const ClipReport r = compute_clip_report(img, EditSettings{});
+
+    const prism::gui::StageClip& decode = r.at(StageId::decode);
+    EXPECT_EQ(decode.over.any, 30u);
+    EXPECT_EQ(decode.over.red, 30u);
+    EXPECT_EQ(decode.over.green, 0u);
+    EXPECT_EQ(decode.over_fate, ClipFate::lost);
+    EXPECT_EQ(r.first_over, StageId::decode);
+    EXPECT_EQ(r.first_over_lost, StageId::decode);
+    EXPECT_EQ(r.at(StageId::encode).over.any, 0u);  // nothing more to lose there
+    EXPECT_EQ(describe_clipping(r),
+              "30% of pixels were already clipped in the file; no edit can bring them back.");
+}
+
+TEST(Clipping, AnImageThatTopsOutBelowTheCeilingHasNoDecodeLoss) {
+    // 0.9 is the brightest value: not at the ceiling.
+    const ClipReport r = compute_clip_report(solid(10, 10, 0.9f, 0.5f, 0.1f), EditSettings{});
+    EXPECT_EQ(r.at(StageId::decode).over.any, 0u);
+    EXPECT_EQ(r.at(StageId::decode).over_fate, ClipFate::none);
+    EXPECT_FALSE(r.first_over || r.first_over_lost);
+    EXPECT_EQ(describe_clipping(r), "Nothing clips.");
+}
+
+TEST(Clipping, TheCeilingToleranceIsOneMillionth) {
+    Image img;
+    img.width = 3;
+    img.height = 1;
+    // 1 - 5e-7 is within 1e-6 of 1.0; 1 - 2e-6 and 0.999 are not.
+    img.pixels = {1.0f - 5e-7f, 0.2f, 0.2f, 1.0f - 2e-6f, 0.2f, 0.2f, 0.999f, 0.2f, 0.2f};
+    EXPECT_EQ(compute_clip_report(img, EditSettings{}).at(StageId::decode).over.any, 1u);
+}
+
+TEST(Clipping, DecodeLossAndLaterClippingAreSaidInOneSentence) {
+    // Half the pixels are at the ceiling; +1 stop pushes those (and only those) over white.
+    Image img = solid(10, 10, 0.3f, 0.3f, 0.3f);
+    for (std::size_t i = 0; i < img.pixels.size() / 2; ++i) {
+        img.pixels[i] = 1.0f;
+    }
+    const ClipReport r = compute_clip_report(img, with_exposure(1.0f));
+    EXPECT_EQ(r.first_over_lost, StageId::decode);
+    EXPECT_EQ(r.at(StageId::exposure).over.any, 50u);
+    EXPECT_EQ(describe_clipping(r),
+              "50% of pixels were already clipped in the file, for good; "
+              "edits push 50% over white at Exposure.");
 }
 
 TEST(Clipping, AToneCurveThatBringsHighlightsBackLosesNothing) {
@@ -184,7 +241,7 @@ TEST(Clipping, HighlightsAndShadowsAreDescribedTogether) {
     const ClipReport r = compute_clip_report(img, EditSettings{});
     EXPECT_EQ(
         describe_clipping(r),
-        "Highlights first clip at Decode (50% of pixels); still recoverable until Output encode. "
+        "50% of pixels were already clipped in the file; no edit can bring them back. "
         "Shadows first clip at Decode (50% of pixels); still recoverable until Output encode.");
 }
 
@@ -257,9 +314,9 @@ TEST(Clipping, TheStageClampTable) {
     for (const prism::gui::StageInfo& info : prism::gui::pipeline_stages()) {
         const bool lows = info.id == StageId::saturation || info.id == StageId::curve ||
                           info.id == StageId::encode;
+        const bool highs = info.id == StageId::decode || info.id == StageId::encode;
         EXPECT_EQ(stage_clamps(info.id, ClipDirection::shadows), lows) << info.name;
-        EXPECT_EQ(stage_clamps(info.id, ClipDirection::highlights), info.id == StageId::encode)
-            << info.name;
+        EXPECT_EQ(stage_clamps(info.id, ClipDirection::highlights), highs) << info.name;
     }
 }
 
@@ -370,4 +427,67 @@ TEST(ClippingPreview, LivePreviewAsksAgainOnlyWhenClippingTurnsOn) {
     preview.update(base, s, prism::gui::final_stage, off);  // hidden: the frame is still right
     EXPECT_FALSE(preview.rendering());
     EXPECT_EQ(calls.load(), 2);
+}
+
+TEST(ClippingPreview, TheOverlayAloneNeedsNoReport) {
+    // The overlay's mask is its own option: it works with the Pipeline section collapsed, where
+    // the app asks for no report.
+    prism::gui::PreviewOptions options;
+    options.clip_mask = true;
+    const auto frame = prism::gui::render_preview(half_and_half(8, 8), with_exposure(2.0f), 1, {},
+                                                  {}, prism::gui::final_stage, options);
+    ASSERT_TRUE(frame);
+    EXPECT_FALSE(frame->clips);
+    ASSERT_EQ(frame->clip_mask.size(), 64u);
+    EXPECT_EQ(frame->clip_mask.front(), prism::gui::clip_mask_high);  // 0.5 * 4 = 2.0
+    EXPECT_EQ(frame->clip_mask.back(), 0);
+}
+
+TEST(ClippingPreview, TheMaskAtDecodeMarksPixelsAtTheFilesCeiling) {
+    Image img = solid(4, 1, 0.5f, 0.5f, 0.5f);
+    img.pixels[0] = 1.0f;  // pixel 0: red at the ceiling
+    img.pixels[3] = 1.5f;  // pixel 1: over white (a float source)
+    prism::gui::PreviewOptions options;
+    options.clip_mask = true;
+    const auto at_decode =
+        prism::gui::render_preview(img, EditSettings{}, 1, {}, {}, StageId::decode, options);
+    ASSERT_TRUE(at_decode);
+    EXPECT_EQ(at_decode->clip_mask, (std::vector<std::uint8_t>{prism::gui::clip_mask_high,
+                                                               prism::gui::clip_mask_high, 0, 0}));
+    // Past Decode only values above 1.0 are out of range; the 1.0 is just white.
+    const auto at_exposure =
+        prism::gui::render_preview(img, with_exposure(0.0f), 1, {}, {}, StageId::exposure, options);
+    ASSERT_TRUE(at_exposure);
+    EXPECT_EQ(at_exposure->clip_mask,
+              (std::vector<std::uint8_t>{0, prism::gui::clip_mask_high, 0, 0}));
+}
+
+TEST(ClippingPreview, RunningTheLaterStagesOnTheSampledGridGivesTheFullImagesNumbers) {
+    // 1000 x 1000: sampled with stride 2, so the rest of the pipeline runs on a 500 x 500 grid.
+    Image img = solid(1000, 1000, 0.0f, 0.0f, 0.0f);
+    for (int y = 0; y < 1000; ++y) {
+        for (int x = 0; x < 1000; ++x) {
+            float* p = &img.pixels[(static_cast<std::size_t>(y) * 1000 + x) * 3];
+            p[0] = static_cast<float>(x % 101) / 90.0f;  // some at and above 1.0
+            p[1] = static_cast<float>(y % 97) / 120.0f;
+            p[2] = static_cast<float>((x + y) % 83) / 100.0f;
+        }
+    }
+    EditSettings s = with_exposure(0.7f);
+    s.matrix =
+        prism::gui::MatrixFile{{}, {1.4f, -0.5f, 0.0f, -0.2f, 1.2f, 0.0f, 0.0f, -0.4f, 1.3f}};
+    s.saturation = 1.4f;
+    s.contrast = 1.2f;
+    s.curve = prism::gui::CurveKind::filmic;
+    const ClipReport expected = compute_clip_report(img, s, 1);
+    EXPECT_EQ(expected.stride, 2);
+    EXPECT_TRUE(expected.first_over && expected.first_under);
+
+    prism::gui::PreviewOptions options;
+    options.clip_report = true;
+    for (const prism::gui::StageInfo& info : prism::gui::pipeline_stages()) {
+        const auto frame = prism::gui::render_preview(img, s, 1, {}, {}, info.id, options);
+        ASSERT_TRUE(frame && frame->clips) << info.name;
+        EXPECT_EQ(*frame->clips, expected) << info.name;
+    }
 }

@@ -1084,7 +1084,8 @@ bool App::draw_stage_clip_indicator(const gui::StageClip& clip, ImVec2 row_min, 
         const char* what;
     };
     const Mark marks[] = {
-        {&clip.over, clip.over_fate, colours.clip_highlights_fill, "Highlights above white"},
+        {&clip.over, clip.over_fate, colours.clip_highlights_fill,
+         clip.stage == gui::StageId::decode ? "Highlights at white" : "Highlights above white"},
         {&clip.under, clip.under_fate, colours.clip_shadows_fill, "Shadows below black"},
     };
 
@@ -1133,9 +1134,11 @@ bool App::draw_stage_clip_indicator(const gui::StageClip& clip, ImVec2 row_min, 
             ImGui::Text("%s: %s of pixels", m.what,
                         gui::format_clip_percent(m.counts->any, total).c_str());
             ImGui::TextDisabled(
-                m.fate == gui::ClipFate::lost
-                    ? "Clipped here: this stage cut them off, so the detail is gone."
-                    : "Out of range, but a later stage may still bring them back.");
+                m.fate != gui::ClipFate::lost
+                    ? "Out of range, but a later stage may still bring them back."
+                : clip.stage == gui::StageId::decode
+                    ? "Already clipped in the file: no edit can bring them back."
+                    : "Clipped here: this stage cut them off, so the detail is gone.");
         }
         ImGui::Separator();
         ImGui::TextDisabled("Filled dot: detail lost here.  Hollow dot: still recoverable.");

@@ -55,10 +55,10 @@ ProcessSettings process_settings_after(ProcessSettings full, StageId stop_after)
 
 bool stage_clamps(StageId stage, ClipDirection direction) noexcept {
     switch (stage) {
+        case StageId::decode: return direction == ClipDirection::highlights;
         case StageId::saturation:
         case StageId::curve: return direction == ClipDirection::shadows;
         case StageId::encode: return true;
-        case StageId::decode:
         case StageId::exposure:
         case StageId::matrix:
         case StageId::contrast: return false;
@@ -84,20 +84,22 @@ ClipRecorder::ClipRecorder(int width, int height) : width_(width), height_(heigh
     }
 }
 
-ClipRecorder::Range ClipRecorder::measure(const Image& img) const {
+ClipRecorder::Range ClipRecorder::measure(const Image& img, int stride, int first) const {
     Range r;
-    if (!have_dimensions_ || img.width != width_ || img.height != height_ ||
-        img.pixels.size() != static_cast<std::size_t>(width_) * height_ * Image::channels) {
+    if (!have_dimensions_ || img.width <= 0 || img.height <= 0 ||
+        img.pixels.size() != static_cast<std::size_t>(img.width) *
+                                 static_cast<std::size_t>(img.height) * Image::channels) {
         return r;
     }
-    const int stride = report_.stride;
-    for (int y = first_; y < height_; y += stride) {
-        const float* row = img.pixels.data() + static_cast<std::size_t>(y) * width_ * 3;
-        for (int x = first_; x < width_; x += stride) {
+    constexpr float ceiling = 1.0f - file_ceiling_epsilon;
+    for (int y = first; y < img.height; y += stride) {
+        const float* row = img.pixels.data() + static_cast<std::size_t>(y) * img.width * 3;
+        for (int x = first; x < img.width; x += stride) {
             const float* p = row + static_cast<std::size_t>(x) * 3;
             // Comparisons are false for NaN, so NaN counts as neither; +-inf count.
             const bool hi[3] = {p[0] > 1.0f, p[1] > 1.0f, p[2] > 1.0f};
             const bool lo[3] = {p[0] < 0.0f, p[1] < 0.0f, p[2] < 0.0f};
+            const bool ce[3] = {p[0] >= ceiling, p[1] >= ceiling, p[2] >= ceiling};
             r.over.red += hi[0];
             r.over.green += hi[1];
             r.over.blue += hi[2];
@@ -106,9 +108,42 @@ ClipRecorder::Range ClipRecorder::measure(const Image& img) const {
             r.under.green += lo[1];
             r.under.blue += lo[2];
             r.under.any += lo[0] || lo[1] || lo[2];
+            r.ceiling.red += ce[0];
+            r.ceiling.green += ce[1];
+            r.ceiling.blue += ce[2];
+            r.ceiling.any += ce[0] || ce[1] || ce[2];
         }
     }
     return r;
+}
+
+Image ClipRecorder::sample_grid(const Image& img) const {
+    Image grid;
+    if (!have_dimensions_ || img.width != width_ || img.height != height_ ||
+        img.pixels.size() != static_cast<std::size_t>(width_) * height_ * Image::channels) {
+        return grid;
+    }
+    const int stride = report_.stride;
+    const int across = static_cast<int>((width_ - first_ + stride - 1) / stride);
+    const int down = static_cast<int>((height_ - first_ + stride - 1) / stride);
+    grid.width = across;
+    grid.height = down;
+    grid.pixels.reserve(static_cast<std::size_t>(across) * down * 3);
+    for (int y = first_; y < height_; y += stride) {
+        const float* row = img.pixels.data() + static_cast<std::size_t>(y) * width_ * 3;
+        for (int x = first_; x < width_; x += stride) {
+            const float* p = row + static_cast<std::size_t>(x) * 3;
+            grid.pixels.insert(grid.pixels.end(), p, p + 3);
+        }
+    }
+    return grid;
+}
+
+void ClipRecorder::stage_done_samples(StageId stage, const Image& grid) {
+    if (stage == StageId::decode || stage == StageId::encode) {
+        return;
+    }
+    record(stage, measure(grid, 1, 0));
 }
 
 void ClipRecorder::record(StageId stage, const Range& output) {
@@ -117,7 +152,8 @@ void ClipRecorder::record(StageId stage, const Range& output) {
     const bool clamps_hi = stage_clamps(stage, ClipDirection::highlights);
     const bool clamps_lo = stage_clamps(stage, ClipDirection::shadows);
     // A clamping stage's row counts what it clamped, i.e. what came in out of range.
-    row.over = clamps_hi ? previous_.over : output.over;
+    // Decode's "clamp" happened in the file: its row counts the pixels at the file's ceiling.
+    row.over = stage == StageId::decode ? output.ceiling : clamps_hi ? previous_.over : output.over;
     row.under = clamps_lo ? previous_.under : output.under;
     row.over_fate = fate_of(row.over.any, clamps_hi);
     row.under_fate = fate_of(row.under.any, clamps_lo);
@@ -138,14 +174,14 @@ void ClipRecorder::record(StageId stage, const Range& output) {
 
 void ClipRecorder::decoded(const Image& img) {
     previous_ = Range{};
-    record(StageId::decode, measure(img));
+    record(StageId::decode, measure(img, report_.stride, first_));
 }
 
 void ClipRecorder::stage_done(StageId stage, const Image& img) {
     if (stage == StageId::decode || stage == StageId::encode) {
         return;
     }
-    record(stage, measure(img));
+    record(stage, measure(img, report_.stride, first_));
 }
 
 void ClipRecorder::finish() {
@@ -172,7 +208,8 @@ ClipReport compute_clip_report(const Image& base, const EditSettings& settings, 
     return recorder.report();
 }
 
-void compute_clip_mask(const Image& img, int threads, std::vector<std::uint8_t>& mask) {
+void compute_clip_mask(const Image& img, int threads, std::vector<std::uint8_t>& mask,
+                       bool file_ceiling) {
     const std::size_t pixels = static_cast<std::size_t>(std::max(img.width, 0)) *
                                static_cast<std::size_t>(std::max(img.height, 0));
     if (img.pixels.size() != pixels * Image::channels) {
@@ -182,6 +219,7 @@ void compute_clip_mask(const Image& img, int threads, std::vector<std::uint8_t>&
     if (pixels == 0) {
         return;
     }
+    const float high = file_ceiling ? 1.0f - file_ceiling_epsilon : 1.0f;
     const int n = threads_for_pixels(pixels, threads);
     parallel_for_rows(img.height, n, [&](int begin, int end) {
         for (int y = begin; y < end; ++y) {
@@ -189,7 +227,8 @@ void compute_clip_mask(const Image& img, int threads, std::vector<std::uint8_t>&
             std::uint8_t* out = mask.data() + static_cast<std::size_t>(y) * img.width;
             for (int x = 0; x < img.width; ++x) {
                 const float* p = row + static_cast<std::size_t>(x) * 3;
-                const bool hi = p[0] > 1.0f || p[1] > 1.0f || p[2] > 1.0f;
+                const bool hi = file_ceiling ? (p[0] >= high || p[1] >= high || p[2] >= high)
+                                             : (p[0] > high || p[1] > high || p[2] > high);
                 const bool lo = p[0] < 0.0f || p[1] < 0.0f || p[2] < 0.0f;
                 out[x] =
                     static_cast<std::uint8_t>((hi ? clip_mask_high : 0) | (lo ? clip_mask_low : 0));
@@ -236,8 +275,29 @@ std::string sentence(const ClipReport& r, std::string_view noun, std::optional<S
 }  // namespace
 
 std::string describe_clipping(const ClipReport& report) {
-    std::string text =
-        sentence(report, "Highlights", report.first_over, report.first_over_lost, true);
+    std::string text;
+    if (report.first_over_lost == StageId::decode) {
+        // Pixels at the file's ceiling were clipped before any edit. If edits push more out of
+        // range, say so in the same sentence.
+        text = format_clip_percent(report.at(StageId::decode).over.any, report.sample_count) +
+               " of pixels were already clipped in the file";
+        std::optional<StageId> later;
+        for (std::size_t i = static_cast<std::size_t>(StageId::exposure);
+             i < static_cast<std::size_t>(StageId::encode) && !later; ++i) {
+            if (report.stages[i].over_fate != ClipFate::none) {
+                later = report.stages[i].stage;
+            }
+        }
+        if (later) {
+            text += ", for good; edits push " +
+                    format_clip_percent(report.at(*later).over.any, report.sample_count) +
+                    " over white at " + std::string(stage_info(*later).name) + ".";
+        } else {
+            text += "; no edit can bring them back.";
+        }
+    } else {
+        text = sentence(report, "Highlights", report.first_over, report.first_over_lost, true);
+    }
     const std::string shadows =
         sentence(report, "Shadows", report.first_under, report.first_under_lost, false);
     if (!text.empty() && !shadows.empty()) {

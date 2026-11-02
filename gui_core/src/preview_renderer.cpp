@@ -47,7 +47,7 @@ std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings
             frame.scopes = compute_scopes(frame.rgb8, frame.width, frame.height);
         }
         if (options.clip_mask) {
-            compute_clip_mask(shown, threads, frame.clip_mask);
+            compute_clip_mask(shown, threads, frame.clip_mask, stop_after == StageId::decode);
         }
     };
     const auto finish = [&] {
@@ -55,21 +55,26 @@ std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings
         return std::move(frame);
     };
 
-    // The stages after `stop_after` only run to measure their clipping.
-    const auto run_rest = [&](Image& img) {
+    // The stages after `stop_after` only run to measure their clipping. Every stage is a per-pixel
+    // operation, so they run on the sampled pixels only (a small copy), not on the whole image.
+    const auto run_rest = [&](const Image& current) {
         if (!recorder) {
             return true;
         }
-        const auto record_stage = [&](const StageTime& t) {
-            if (const std::optional<StageId> id = stage_from_name(t.name)) {
-                recorder->stage_done(*id, img);
+        if (stop_after != final_stage) {
+            Image grid = recorder->sample_grid(current);
+            const auto record_stage = [&](const StageTime& t) {
+                if (const std::optional<StageId> id = stage_from_name(t.name)) {
+                    recorder->stage_done_samples(*id, grid);
+                }
+            };
+            const ProcessSettings rest =
+                process_settings_after(to_process_settings(settings), stop_after);
+            // The grid is at most 250,000 pixels: one thread, below the parallel threshold anyway.
+            if (process(grid, rest, 1, stop, record_stage) == ProcessResult::cancelled ||
+                stop.stop_requested()) {
+                return false;
             }
-        };
-        const ProcessSettings rest =
-            process_settings_after(to_process_settings(settings), stop_after);
-        if (process(img, rest, threads, stop, record_stage) == ProcessResult::cancelled ||
-            stop.stop_requested()) {
-            return false;
         }
         recorder->finish();
         frame.clips = recorder->report();
@@ -82,9 +87,8 @@ std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings
         }
         show(base);
         if (recorder) {
-            Image img = base;  // the rest of the pipeline works in place on a copy
-            recorder->decoded(img);
-            if (!run_rest(img)) {
+            recorder->decoded(base);
+            if (!run_rest(base)) {
                 return std::nullopt;
             }
         }

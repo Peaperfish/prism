@@ -21,18 +21,29 @@ namespace prism::gui {
 // down, a lower exposure undoes a boost). Detail is lost only where a stage clamps it, because
 // the clamped values are all equal afterwards. Which stages do that:
 //
+//   Decode        clamps above 1: the file's own ceiling (see below)
 //   Saturation    clamps below 0 (it pulls a negative channel up to 0 and makes Y <= 0 black)
 //   Tone curve    clamps below 0 (all three curves floor their input at 0)
 //   Output encode clamps both ends (8-bit sRGB can only hold 0..1)
 //
 // Exposure, Colour matrix and Contrast never clamp (a matrix can create values below 0, contrast
-// keeps them below 0). Decode doesn't either: a RAW file's sensor-saturated pixels are already
-// clamped to 1.0 by LibRaw, and the Image has no per-pixel record of them, so they look like any
-// other 1.0 here.
+// keeps them below 0).
+//
+// Decode's ceiling: LibRaw maps the sensor's white level to exactly 1.0 (and clips there), and an
+// 8-bit file's 255 is exactly 1.0, so a pixel with a channel at 1.0 after Decode was already
+// clipped before any edit, and nothing can bring its detail back. Decode therefore counts any
+// channel >= 1.0 - file_ceiling_epsilon as lost, for RAW and 8-bit sources alike. (A real,
+// unclipped value at exactly 1.0 can't be told apart; that is rare in a photo.) Below 0 Decode is
+// not changed: both kinds of source give values in 0..1 (an 8-bit 0 is 0.0; LibRaw's 16-bit output
+// has the black level subtracted and floored at 0), so black in the file looks like true black.
 //
 // Note for a gamut warning (#14): after Colour matrix, a value below 0 is a colour outside sRGB.
 // That is the `under` count of that stage's row, so a gamut warning can share this pass.
 enum class ClipDirection { highlights, shadows };
+
+// How close to 1.0 counts as at the file's ceiling when counting Decode's clipped pixels. It only
+// absorbs float rounding (e.g. an average of 1.0s in the downscaled preview).
+inline constexpr float file_ceiling_epsilon = 1e-6f;
 
 // Whether `stage`, when it runs, clamps values in `direction`.
 [[nodiscard]] bool stage_clamps(StageId stage, ClipDirection direction) noexcept;
@@ -54,7 +65,8 @@ struct ClipCounts {
     bool operator==(const ClipCounts&) const = default;
 };
 
-// One row of the pipeline view. `over` counts values above 1.0 and `under` values below 0.0.
+// One row of the pipeline view. `over` counts values above 1.0 and `under` values below 0.0
+// (at Decode, `over` counts values at the file's ceiling, >= 1.0 - file_ceiling_epsilon: lost).
 // For a direction the stage does not clamp, the count is of its output (still out of range,
 // fate recoverable). For a direction it clamps, the count is of the pixels that were out of range
 // going in, which the stage just clamped (fate lost); the output has none left.
@@ -112,6 +124,13 @@ public:
 
     void decoded(const Image& img);
     void stage_done(StageId stage, const Image& img);
+
+    // Every stage after the viewed one is a per-pixel operation (no pixel reads its neighbours), so
+    // they can run on just the sampled pixels. sample_grid() copies the pixels this recorder would
+    // read from `img` into a small image; run the remaining stages on that, and report each one
+    // with stage_done_samples(). The counts are the same as running them on the whole image.
+    [[nodiscard]] Image sample_grid(const Image& img) const;
+    void stage_done_samples(StageId stage, const Image& grid);
     // Output encode, after the last stage: it clamps what the last stage left out of range.
     void finish();
 
@@ -121,8 +140,10 @@ private:
     struct Range {
         ClipCounts over;
         ClipCounts under;
+        ClipCounts ceiling;  // channels >= 1.0 - file_ceiling_epsilon (used for Decode)
     };
-    [[nodiscard]] Range measure(const Image& img) const;
+    // Counts the pixels of `img` on the grid `stride` apart from `first` (stride 1: all of them).
+    [[nodiscard]] Range measure(const Image& img, int stride, int first) const;
     void record(StageId stage, const Range& output);
 
     ClipReport report_;
@@ -144,7 +165,9 @@ private:
 // tint those pixels on the picture. Reads every pixel, so only ask for it while it is shown.
 inline constexpr std::uint8_t clip_mask_high = 1;
 inline constexpr std::uint8_t clip_mask_low = 2;
-void compute_clip_mask(const Image& img, int threads, std::vector<std::uint8_t>& mask);
+// With `file_ceiling` (for Decode), "high" means at the file's ceiling, as counted at Decode.
+void compute_clip_mask(const Image& img, int threads, std::vector<std::uint8_t>& mask,
+                       bool file_ceiling = false);
 
 // "12%", "0.4%", or "<0.1%" for anything above 0 but under 0.1% (0 is "0%").
 [[nodiscard]] std::string format_clip_percent(std::uint64_t count, std::uint64_t total);
@@ -152,6 +175,7 @@ void compute_clip_mask(const Image& img, int threads, std::vector<std::uint8_t>&
 // One plain sentence per direction that clips, or "Nothing clips." Examples:
 //   "Highlights first clip at Exposure (2.1% of pixels); still recoverable until Output encode."
 //   "Shadows clip at Output encode (0.4% of pixels)."
+//   "3.2% of pixels were already clipped in the file; no edit can bring them back."
 [[nodiscard]] std::string describe_clipping(const ClipReport& report);
 
 }  // namespace prism::gui
