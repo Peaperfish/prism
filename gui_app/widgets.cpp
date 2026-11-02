@@ -186,6 +186,44 @@ bool styled_radio(const char* label, int* current, int value) {
     return pressed;
 }
 
+void draw_chevron(ImDrawList* draw, ImVec2 c, Chevron direction, ImU32 colour) {
+    const float h = token_metrics().chevron_size;
+    const float t = token_metrics().chevron_thickness;
+    ImVec2 points[3];
+    switch (direction) {
+        case Chevron::down:
+            points[0] = ImVec2(c.x - h, c.y - h * 0.5f);
+            points[1] = ImVec2(c.x, c.y + h * 0.5f);
+            points[2] = ImVec2(c.x + h, c.y - h * 0.5f);
+            break;
+        case Chevron::right:
+            points[0] = ImVec2(c.x - h * 0.5f, c.y - h);
+            points[1] = ImVec2(c.x + h * 0.5f, c.y);
+            points[2] = ImVec2(c.x - h * 0.5f, c.y + h);
+            break;
+        case Chevron::left:
+            points[0] = ImVec2(c.x + h * 0.5f, c.y - h);
+            points[1] = ImVec2(c.x - h * 0.5f, c.y);
+            points[2] = ImVec2(c.x + h * 0.5f, c.y + h);
+            break;
+    }
+    draw->AddPolyline(points, 3, colour, ImDrawFlags_RoundCornersAll, t);
+}
+
+bool styled_begin_combo(const char* id, const char* preview) {
+    // The frame's place, worked out before BeginCombo (which opens its popup as the current
+    // window when it returns true): the cursor, the item width and the frame height.
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    const ImVec2 pos = ImGui::GetCursorScreenPos();
+    const float width = ImGui::CalcItemWidth();
+    const float height = ImGui::GetFrameHeight();
+    const bool open = ImGui::BeginCombo(id, preview, ImGuiComboFlags_NoArrowButton);
+    const float inset = ImGui::GetStyle().FramePadding.x + token_metrics().chevron_size;
+    draw_chevron(draw, ImVec2(std::round(pos.x + width - inset), std::round(pos.y + height * 0.5f)),
+                 Chevron::down, ImGui::GetColorU32(ImGuiCol_TextDisabled));
+    return open;
+}
+
 bool styled_slider(const char* id, float* value, float min, float max, float neutral,
                    ImGuiSliderFlags flags) {
     bool changed = false;

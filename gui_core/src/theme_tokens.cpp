@@ -31,6 +31,8 @@ constexpr TokenMetrics darkroom_metrics{
     .slider_knob_shadow = 3,
     .checkbox_size = 14,
     .checkbox_rounding = 4,
+    .chevron_size = 4,
+    .chevron_thickness = 1.5f,
 };
 
 // Body text is 16 px at 100%: readable on a Retina laptop without squinting. Headers and small
@@ -147,6 +149,8 @@ TokenMetrics scaled(const TokenMetrics& m, float s) {
     r.slider_knob_shadow = m.slider_knob_shadow * s;
     r.checkbox_size = m.checkbox_size * s;
     r.checkbox_rounding = m.checkbox_rounding * s;
+    r.chevron_size = m.chevron_size * s;
+    r.chevron_thickness = m.chevron_thickness * s;
     return r;
 }
 

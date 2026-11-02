@@ -59,6 +59,8 @@ struct TokenMetrics {
     float slider_track, slider_knob, slider_knob_shadow;
     // Checkbox and radio button: the box's side, and its corner radius.
     float checkbox_size, checkbox_rounding;
+    // The thin chevrons that replace ImGui's triangles: half the width, and the stroke.
+    float chevron_size, chevron_thickness;
 };
 
 // Type sizes in points at 100%.

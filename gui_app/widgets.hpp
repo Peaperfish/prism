@@ -27,4 +27,14 @@ bool styled_checkbox(const char* label, bool* value);
 // The same, round, with a dot: ImGui::RadioButton.
 bool styled_radio(const char* label, int* current, int value);
 
+enum class Chevron { down, right, left };
+
+// A thin chevron centred at `centre`, sized from the theme's chevron tokens: what stands in for
+// ImGui's heavy filled triangles.
+void draw_chevron(ImDrawList* draw, ImVec2 centre, Chevron direction, ImU32 colour);
+
+// ImGui::BeginCombo with a light chevron at its right end instead of the arrow button. Call
+// EndCombo when it returns true, as usual. Set the width first with SetNextItemWidth.
+bool styled_begin_combo(const char* id, const char* preview);
+
 }  // namespace prism::gui_app

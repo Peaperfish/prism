@@ -1030,18 +1030,18 @@ void App::draw_clip_chips(const gui::StageHistogram& h, float avail_w) {
         draw->AddRectFilled(cmin, cmax, fill, 3.0f * s);
         draw->AddRect(cmin, cmax, border, 3.0f * s, 0, 1.0f * s);
 
-        const float tri = 4.5f * s;
+        const float tri = token_metrics().chevron_size;
         const float cy = (cmin.y + cmax.y) * 0.5f;
         const float pad_x = 7.0f * s;
         if (left_arrow) {
             const float tx = cmin.x + pad_x;
-            draw->AddTriangleFilled(ImVec2(tx, cy), ImVec2(tx + tri, cy - tri * 0.85f),
-                                    ImVec2(tx + tri, cy + tri * 0.85f), text_col);
+            draw_chevron(draw, ImVec2(std::round(tx + tri * 0.5f), std::round(cy)), Chevron::left,
+                         text_col);
             draw->AddText(ImVec2(tx + tri + 5.0f * s, cmin.y + 3.0f * s), text_col, label);
         } else {
             const float tx = cmax.x - pad_x;
-            draw->AddTriangleFilled(ImVec2(tx, cy), ImVec2(tx - tri, cy - tri * 0.85f),
-                                    ImVec2(tx - tri, cy + tri * 0.85f), text_col);
+            draw_chevron(draw, ImVec2(std::round(tx - tri * 0.5f), std::round(cy)), Chevron::right,
+                         text_col);
             const ImVec2 tsize = ImGui::CalcTextSize(label);
             draw->AddText(ImVec2(tx - tri - 5.0f * s - tsize.x, cmin.y + 3.0f * s), text_col,
                           label);
@@ -1162,7 +1162,7 @@ void App::draw_presets() {
     const gui::Preset* current = gui::matching_preset(kind, session_.settings());
     const std::string shown = current != nullptr ? std::string(current->name) : "Custom";
     ImGui::SetNextItemWidth(-FLT_MIN);
-    if (ImGui::BeginCombo("##preset", shown.c_str())) {
+    if (styled_begin_combo("##preset", shown.c_str())) {
         for (const gui::Preset& preset : gui::presets_for(kind)) {
             if (ImGui::Selectable(std::string(preset.name).c_str(), &preset == current)) {
                 gui::EditSettings s = session_.settings();
@@ -1422,7 +1422,7 @@ void App::draw_curve_controls() {
     ImGui::BeginDisabled(!current.curve_on);
 
     ImGui::SetNextItemWidth(-FLT_MIN);
-    if (ImGui::BeginCombo("##curve", std::string(gui::curve_kind_name(current.curve)).c_str())) {
+    if (styled_begin_combo("##curve", std::string(gui::curve_kind_name(current.curve)).c_str())) {
         for (const gui::CurveKind kind : gui::curve_kinds) {
             if (ImGui::Selectable(std::string(gui::curve_kind_name(kind)).c_str(),
                                   kind == current.curve)) {
@@ -1503,7 +1503,7 @@ void App::draw_compare_controls() {
     }
     ImGui::SetNextItemWidth(-FLT_MIN);
     const std::string current = shown ? gui::stage_caption(*shown) : std::string("Off");
-    if (ImGui::BeginCombo("##compare_with", current.c_str())) {
+    if (styled_begin_combo("##compare_with", current.c_str())) {
         if (ImGui::Selectable("Off", !shown)) {
             compare_stage_.reset();
         }
@@ -1676,7 +1676,7 @@ void App::draw_preferences() {
                                     ? automatic
                                     : std::to_string(p.interface_size) + "%";
     ImGui::SetNextItemWidth(ImGui::CalcTextSize("Auto (200%)").x * 1.6f);
-    if (ImGui::BeginCombo("##size", current.c_str())) {
+    if (styled_begin_combo("##size", current.c_str())) {
         if (ImGui::Selectable(automatic.c_str(), p.interface_size == gui::interface_size_auto)) {
             p.interface_size = gui::interface_size_auto;
         }
