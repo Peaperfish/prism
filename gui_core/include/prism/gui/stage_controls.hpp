@@ -72,6 +72,10 @@ void set_curve_parameter(EditSettings& s, float value);
 
 // --- Viewing vs. editing -------------------------------------------------------------------------
 
+// What a picture of `stage` is called on screen: "Original" for Decode (the file as it came, before
+// any edit), otherwise "after Exposure", "after Colour matrix", and so on.
+[[nodiscard]] std::string stage_caption(StageId stage);
+
 // The compare stage that counts: none if there is none or it is the viewed stage itself (comparing
 // a stage with itself shows nothing new, so it is the same as Off).
 [[nodiscard]] std::optional<StageId> effective_compare(StageId viewed,

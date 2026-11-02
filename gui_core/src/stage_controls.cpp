@@ -125,6 +125,11 @@ void set_curve_parameter(EditSettings& s, float value) {
     s.curve_on = true;
 }
 
+std::string stage_caption(StageId stage) {
+    return stage == StageId::decode ? "Original"
+                                    : "after " + std::string(stage_info(stage).name);
+}
+
 std::optional<StageId> effective_compare(StageId viewed, std::optional<StageId> compare) noexcept {
     return compare == viewed ? std::nullopt : compare;
 }

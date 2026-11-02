@@ -174,6 +174,7 @@ void App::open_now(const fs::path& path) {
     texture_.reset_overlay();
     scope_view_.set(std::nullopt);
     viewed_stage_ = gui::final_stage;
+    compare_stage_.reset();
     SDL_SetWindowTitle(window_, ("Prism - " + file_name(path)).c_str());
 }
 
@@ -237,6 +238,7 @@ void App::update_preview() {
     options.scopes = prefs_.scope != gui::ScopeChoice::histogram;
     options.clip_report = pipeline_open_;
     options.clip_mask = prefs_.clip_overlay;
+    options.compare_stage = gui::effective_compare(viewed_stage_, compare_stage_);
     preview_.update(session_.preview_base(), session_.settings(), viewed_stage_, options);
     std::optional<gui::PreviewFrame> frame = preview_.poll();
     if (!frame) {
@@ -250,6 +252,15 @@ void App::update_preview() {
     if (!texture_.upload(*frame)) {
         show_error({gui::ErrorKind::out_of_memory, "Couldn't show the preview.", SDL_GetError()});
         return;
+    }
+    if (frame->compare) {
+        if (!texture_.upload_compare(*frame->compare)) {
+            show_error({gui::ErrorKind::out_of_memory, "Couldn't show the preview.",
+                        SDL_GetError()});
+            return;
+        }
+    } else {
+        texture_.reset_compare();
     }
     histogram_ = std::move(frame->histogram);
     clips_ = std::move(frame->clips);
@@ -552,15 +563,19 @@ void App::draw_canvas() {
                                      size.y / static_cast<float>(texture_.height()));
         const ImVec2 shown(texture_.width() * scale, texture_.height() * scale);
         const ImVec2 at(min.x + (size.x - shown.x) / 2, min.y + (size.y - shown.y) / 2);
-        draw->AddImage(ImTextureRef(static_cast<ImTextureID>(
-                           reinterpret_cast<std::uintptr_t>(texture_.texture()))),
-                       at, ImVec2(at.x + shown.x, at.y + shown.y));
         update_clip_overlay_texture();
-        if (texture_.overlay() != nullptr && prefs_.clip_overlay &&
-            clip_mask_width_ == texture_.width() && clip_mask_height_ == texture_.height()) {
+        if (splitting()) {
+            draw_split(draw, at, shown);
+        } else {
             draw->AddImage(ImTextureRef(static_cast<ImTextureID>(
-                               reinterpret_cast<std::uintptr_t>(texture_.overlay()))),
+                               reinterpret_cast<std::uintptr_t>(texture_.texture()))),
                            at, ImVec2(at.x + shown.x, at.y + shown.y));
+            if (texture_.overlay() != nullptr && prefs_.clip_overlay &&
+                clip_mask_width_ == texture_.width() && clip_mask_height_ == texture_.height()) {
+                draw->AddImage(ImTextureRef(static_cast<ImTextureID>(
+                                   reinterpret_cast<std::uintptr_t>(texture_.overlay()))),
+                               at, ImVec2(at.x + shown.x, at.y + shown.y));
+            }
         }
     } else if (!session_.has_file() && !pending_open_) {
         // Empty state: a dashed drop area with the one thing to do. It lights up while a file is
@@ -596,6 +611,90 @@ void App::draw_canvas() {
     if (drag_over_ && session_.has_file()) {
         draw->AddRect(min, max, colours.drop_highlight, 0.0f, 0, 3.0f * ui_scale());
     }
+}
+
+bool App::splitting() const {
+    return texture_.texture() != nullptr && texture_.compare_texture() != nullptr &&
+           texture_.compare_width() == texture_.width() &&
+           texture_.compare_height() == texture_.height() &&
+           gui::effective_compare(viewed_stage_, compare_stage_).has_value();
+}
+
+// The compare stage on the left, the viewed stage on the right, one picture size and position.
+// The divider is a whole pixel and both halves take their edge and their texture coordinate from
+// it, so they meet exactly.
+void App::draw_split(ImDrawList* draw, ImVec2 at, ImVec2 shown) {
+    const Palette& colours = palette(theme());
+    const float scale = ui_scale();
+    const gui::SplitLayout split = gui::split_layout(at.x, shown.x, split_fraction_);
+    const float top = at.y;
+    const float bottom = at.y + shown.y;
+    const auto id = [](SDL_Texture* t) {
+        return ImTextureRef(static_cast<ImTextureID>(reinterpret_cast<std::uintptr_t>(t)));
+    };
+    draw->AddImage(id(texture_.compare_texture()), ImVec2(split.left_x0, top),
+                   ImVec2(split.divider_x, bottom), ImVec2(0.0f, 0.0f),
+                   ImVec2(split.u_divider, 1.0f));
+    draw->AddImage(id(texture_.texture()), ImVec2(split.divider_x, top),
+                   ImVec2(split.right_x1, bottom), ImVec2(split.u_divider, 0.0f),
+                   ImVec2(1.0f, 1.0f));
+    // The clipping overlay belongs to the viewed stage: only over its half.
+    if (texture_.overlay() != nullptr && prefs_.clip_overlay &&
+        clip_mask_width_ == texture_.width() && clip_mask_height_ == texture_.height()) {
+        draw->AddImage(id(texture_.overlay()), ImVec2(split.divider_x, top),
+                       ImVec2(split.right_x1, bottom), ImVec2(split.u_divider, 0.0f),
+                       ImVec2(1.0f, 1.0f));
+    }
+
+    // The divider: a line with a dark edge so it shows on any picture, and a grip in its middle.
+    const float line = 2.0f * scale;
+    draw->AddRectFilled(ImVec2(split.divider_x - line, top), ImVec2(split.divider_x + line, bottom),
+                        IM_COL32(0, 0, 0, 90));
+    draw->AddRectFilled(ImVec2(split.divider_x - line / 2, top),
+                        ImVec2(split.divider_x + line / 2, bottom), IM_COL32(255, 255, 255, 235));
+    const float mid = (top + bottom) / 2;
+    const float grip = 9.0f * scale;
+    draw->AddCircleFilled(ImVec2(split.divider_x, mid), grip, IM_COL32(255, 255, 255, 235));
+    draw->AddCircle(ImVec2(split.divider_x, mid), grip, IM_COL32(0, 0, 0, 110), 0, 1.0f * scale);
+    const float arrow = 4.0f * scale;
+    const ImU32 ink = IM_COL32(40, 40, 40, 255);
+    draw->AddTriangleFilled(ImVec2(split.divider_x - arrow - 1 * scale, mid),
+                            ImVec2(split.divider_x - 1 * scale, mid - arrow),
+                            ImVec2(split.divider_x - 1 * scale, mid + arrow), ink);
+    draw->AddTriangleFilled(ImVec2(split.divider_x + arrow + 1 * scale, mid),
+                            ImVec2(split.divider_x + 1 * scale, mid - arrow),
+                            ImVec2(split.divider_x + 1 * scale, mid + arrow), ink);
+
+    // Dragging: a strip around the divider, as tall as the picture. The cursor is put back after,
+    // so the banner and badge below this lay out as before.
+    const ImVec2 saved = ImGui::GetCursorScreenPos();
+    const float strip = 14.0f * scale;
+    ImGui::SetCursorScreenPos(ImVec2(split.divider_x - strip / 2, top));
+    ImGui::InvisibleButton("##split_divider", ImVec2(strip, std::max(1.0f, shown.y)));
+    if (ImGui::IsItemHovered() || ImGui::IsItemActive()) {
+        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+    }
+    if (ImGui::IsItemActive()) {
+        split_fraction_ = gui::split_fraction_from_x(ImGui::GetIO().MousePos.x, at.x, shown.x);
+    }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal) && !ImGui::IsItemActive()) {
+        ImGui::SetTooltip("Drag to move the divider");
+    }
+    ImGui::SetCursorScreenPos(saved);
+
+    // One chip in each half's top corner, named by the stage each picture really shows.
+    const float margin = 10.0f * scale;
+    const std::string left_text = gui::stage_caption(texture_.compare_stage());
+    const std::string right_text = gui::stage_caption(histogram_stage_);
+    const float pad = 6.0f * scale;
+    draw->PushClipRect(ImVec2(split.left_x0, top), ImVec2(split.divider_x, bottom), true);
+    overlay_text(draw, colours, ImVec2(split.left_x0 + margin, top + margin), left_text);
+    draw->PopClipRect();
+    const float right_width = ImGui::CalcTextSize(right_text.c_str()).x + 2 * pad;
+    draw->PushClipRect(ImVec2(split.divider_x, top), ImVec2(split.right_x1, bottom), true);
+    overlay_text(draw, colours, ImVec2(split.right_x1 - margin - right_width, top + margin),
+                 right_text);
+    draw->PopClipRect();
 }
 
 void App::draw_banner() {
@@ -638,7 +737,8 @@ void App::draw_banner() {
 }
 
 void App::draw_stage_badge() {
-    if (!session_.has_file() || viewed_stage_ == gui::final_stage) {
+    // Two halves have their own chips; the badge is for the single picture.
+    if (!session_.has_file() || viewed_stage_ == gui::final_stage || splitting()) {
         return;
     }
     const float margin = 12.0f * ui_scale();

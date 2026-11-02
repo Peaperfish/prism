@@ -308,3 +308,10 @@ TEST(StageHint, TheViewedStageAsCompareIsOff) {
     EXPECT_EQ(prism::gui::view_hint(StageId::contrast, StageId::exposure),
               "Not visible here: the furthest stage shown is after Contrast.");
 }
+
+TEST(StageHint, CaptionsNameEachPicture) {
+    EXPECT_EQ(prism::gui::stage_caption(StageId::decode), "Original");
+    EXPECT_EQ(prism::gui::stage_caption(StageId::exposure), "after Exposure");
+    EXPECT_EQ(prism::gui::stage_caption(StageId::matrix), "after Colour matrix");
+    EXPECT_EQ(prism::gui::stage_caption(StageId::encode), "after Output encode");
+}

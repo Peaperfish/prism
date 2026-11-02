@@ -13,6 +13,7 @@
 #include "prism/gui/background_export.hpp"
 #include "prism/gui/clipping.hpp"
 #include "prism/gui/histogram.hpp"
+#include "prism/gui/layout.hpp"
 #include "prism/gui/live_preview.hpp"
 #include "prism/gui/preferences.hpp"
 #include "prism/gui/session.hpp"
@@ -72,6 +73,10 @@ private:
     void draw_canvas();
     void draw_banner();
     void draw_stage_badge();
+    // True while the canvas shows two halves: a compare stage is set and its picture has arrived.
+    [[nodiscard]] bool splitting() const;
+    // Both halves of the picture drawn at `at` with size `shown`, the divider and the two chips.
+    void draw_split(ImDrawList* draw, ImVec2 at, ImVec2 shown);
     void draw_splitter(float canvas_width, float width, float height, float available);
     void draw_panel();
     void draw_histogram();
@@ -106,6 +111,11 @@ private:
     std::optional<gui::StageHistogram> histogram_;
     gui::StageId histogram_stage_ = gui::final_stage;  // the stage histogram_ was measured on
     gui::StageId viewed_stage_ = gui::final_stage;
+    // The stage to compare the viewed one with (Original is Decode), or none. View state like
+    // viewed_stage_: not in the settings, not in undo, back to none when a file is opened. The
+    // left half of the split shows it, the right half the viewed stage.
+    std::optional<gui::StageId> compare_stage_;
+    float split_fraction_ = gui::split_fraction_default;  // where the divider is, 0 to 1
     // Clipping at every stage, of the frame on screen. Only asked for (and so only present) while
     // the pipeline view is open: pipeline_open_ is what the last frame's draw_pipeline saw.
     std::optional<gui::ClipReport> clips_;

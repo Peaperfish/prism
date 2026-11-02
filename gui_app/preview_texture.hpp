@@ -35,6 +35,17 @@ public:
     void reset_overlay();
     [[nodiscard]] SDL_Texture* overlay() const noexcept { return overlay_; }
 
+    // The compare picture (the left half of a split): a second texture of the same kind, from a
+    // frame's `compare`. Same behaviour as upload(): false (with SDL_GetError() set) if SDL
+    // couldn't, and the compare picture is gone then.
+    bool upload_compare(const gui::CompareFrame& compare);
+    void reset_compare();
+    [[nodiscard]] SDL_Texture* compare_texture() const noexcept { return compare_; }
+    [[nodiscard]] int compare_width() const noexcept { return compare_width_; }
+    [[nodiscard]] int compare_height() const noexcept { return compare_height_; }
+    // The stage the compare picture shows.
+    [[nodiscard]] gui::StageId compare_stage() const noexcept { return compare_stage_; }
+
     // Drops the textures: nothing to show.
     void reset();
 
@@ -46,6 +57,10 @@ private:
     SDL_Renderer* renderer_;
     SDL_Texture* texture_ = nullptr;
     SDL_Texture* overlay_ = nullptr;
+    SDL_Texture* compare_ = nullptr;
+    gui::StageId compare_stage_ = gui::StageId::decode;
+    int compare_width_ = 0;
+    int compare_height_ = 0;
     std::vector<std::uint32_t> overlay_pixels_;
     int overlay_width_ = 0;
     int overlay_height_ = 0;

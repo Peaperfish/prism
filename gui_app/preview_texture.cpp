@@ -31,6 +31,42 @@ bool PreviewTexture::upload(const gui::PreviewFrame& frame) {
     return true;
 }
 
+bool PreviewTexture::upload_compare(const gui::CompareFrame& compare) {
+    if (compare.width <= 0 || compare.height <= 0 ||
+        compare.rgb8.size() != static_cast<std::size_t>(compare.width) * compare.height * 3) {
+        SDL_SetError("the compare picture is empty or the wrong size");
+        reset_compare();
+        return false;
+    }
+    if (compare_ == nullptr || compare.width != compare_width_ ||
+        compare.height != compare_height_) {
+        reset_compare();
+        compare_ = SDL_CreateTexture(renderer_, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STATIC,
+                                     compare.width, compare.height);
+        if (compare_ == nullptr) {
+            return false;
+        }
+        SDL_SetTextureScaleMode(compare_, SDL_SCALEMODE_LINEAR);
+        compare_width_ = compare.width;
+        compare_height_ = compare.height;
+    }
+    compare_stage_ = compare.stage;
+    if (!SDL_UpdateTexture(compare_, nullptr, compare.rgb8.data(), compare.width * 3)) {
+        reset_compare();
+        return false;
+    }
+    return true;
+}
+
+void PreviewTexture::reset_compare() {
+    if (compare_ != nullptr) {
+        SDL_DestroyTexture(compare_);
+        compare_ = nullptr;
+    }
+    compare_width_ = 0;
+    compare_height_ = 0;
+}
+
 bool PreviewTexture::upload_overlay(const std::vector<std::uint8_t>& clip_mask, int width,
                                     int height, std::uint32_t over_abgr, std::uint32_t under_abgr,
                                     std::uint32_t gamut_abgr) {
@@ -79,6 +115,7 @@ void PreviewTexture::reset_overlay() {
 
 void PreviewTexture::reset() {
     reset_overlay();
+    reset_compare();
     if (texture_ != nullptr) {
         SDL_DestroyTexture(texture_);
         texture_ = nullptr;
