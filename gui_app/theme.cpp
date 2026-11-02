@@ -107,7 +107,7 @@ const Palette& palette(gui::Theme theme) {
         IM_COL32(255, 255, 255, 255),  // clip indicator text (lit)
     };
     static const Palette light{
-        IM_COL32(96, 96, 96, 255),     // canvas: a lighter neutral grey, still well below mid-grey
+        IM_COL32(96, 96, 96, 255),    // canvas: a lighter neutral grey, still well below mid-grey
         IM_COL32(245, 245, 245, 255),  // canvas text
         IM_COL32(190, 190, 190, 255),  // drop outline (on the grey canvas)
         IM_COL32(150, 200, 255, 255),  // drop highlight

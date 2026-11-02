@@ -157,9 +157,10 @@ TEST(LivePreview, RenderingStaysTrueUntilTheLatestFrameArrives) {
 }
 
 TEST(LivePreview, AnErrorFrameStillEndsRendering) {
-    LivePreview preview(
-        [](const prism::Image&, const EditSettings&,
-           std::stop_token) -> std::optional<PreviewFrame> { throw std::runtime_error("broken"); });
+    LivePreview preview([](const prism::Image&, const EditSettings&,
+                           std::stop_token) -> std::optional<PreviewFrame> {
+        throw std::runtime_error("broken");
+    });
     preview.update(make_base(), with_exposure(1));
     const std::optional<PreviewFrame> f = next_frame(preview);
     ASSERT_TRUE(f);
