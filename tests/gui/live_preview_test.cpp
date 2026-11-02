@@ -215,3 +215,41 @@ TEST(LivePreview, ChangingViewedStageTriggersANewRender) {
     EXPECT_EQ(decode_frame->stage, StageId::decode);
     EXPECT_NE(decode_frame->rgb8, final_frame->rgb8);
 }
+
+TEST(LivePreview, ShowingScopesRendersOnceMoreAndHidingThemDoesNot) {
+    std::atomic<int> calls{0};
+    std::atomic<bool> last_scopes{false};
+    LivePreview preview(prism::gui::PreviewRenderer::ScopeRenderFunction(
+        [&](const prism::Image&, const EditSettings&, prism::gui::StageId, bool scopes,
+            std::stop_token) {
+            ++calls;
+            last_scopes = scopes;
+            PreviewFrame f;
+            f.width = 1;
+            f.height = 1;
+            f.rgb8 = {0, 0, 0};
+            return std::optional<PreviewFrame>(f);
+        }));
+    const auto base = make_base();
+    const EditSettings s = with_exposure(1);
+
+    preview.update(base, s, prism::gui::final_stage, false);
+    ASSERT_TRUE(next_frame(preview));
+    EXPECT_EQ(calls.load(), 1);
+    EXPECT_FALSE(last_scopes.load());
+
+    preview.update(base, s, prism::gui::final_stage, true);  // scopes turned on
+    EXPECT_TRUE(preview.rendering());
+    ASSERT_TRUE(next_frame(preview));
+    EXPECT_EQ(calls.load(), 2);
+    EXPECT_TRUE(last_scopes.load());
+
+    preview.update(base, s, prism::gui::final_stage, true);  // still on: nothing new
+    preview.update(base, s, prism::gui::final_stage, false);  // hidden: the picture is still right
+    EXPECT_FALSE(preview.rendering());
+    EXPECT_EQ(calls.load(), 2);
+
+    preview.update(base, s, prism::gui::final_stage, true);  // shown again: asks again
+    ASSERT_TRUE(next_frame(preview));
+    EXPECT_EQ(calls.load(), 3);
+}

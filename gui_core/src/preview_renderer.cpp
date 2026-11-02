@@ -23,7 +23,8 @@ std::optional<Image> render_stage_image(const Image& base, const EditSettings& s
 
 std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings& settings,
                                            int threads, std::stop_token stop,
-                                           const StageCallback& on_stage, StageId stop_after) {
+                                           const StageCallback& on_stage, StageId stop_after,
+                                           bool scopes) {
     using Clock = std::chrono::steady_clock;
     const auto start = Clock::now();
     const ProcessSettings process_settings = to_process_settings(settings, stop_after);
@@ -37,6 +38,9 @@ std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings
         frame.width = base.width;
         frame.height = base.height;
         encode_srgb8_with_histogram(base, threads, frame.rgb8, frame.histogram);
+        if (scopes) {
+            frame.scopes = compute_scopes(frame.rgb8, frame.width, frame.height);
+        }
         frame.total_ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
         return frame;
     }
@@ -55,14 +59,17 @@ std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings
     frame.width = img.width;
     frame.height = img.height;
     encode_srgb8_with_histogram(img, threads, frame.rgb8, frame.histogram);
+    if (scopes) {
+        frame.scopes = compute_scopes(frame.rgb8, frame.width, frame.height);
+    }
     frame.total_ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
     return frame;
 }
 
 PreviewRenderer::PreviewRenderer(int threads)
     : PreviewRenderer([threads](const Image& base, const EditSettings& settings, StageId stop_after,
-                                std::stop_token stop) {
-          return render_preview(base, settings, threads, stop, {}, stop_after);
+                                bool scopes, std::stop_token stop) {
+          return render_preview(base, settings, threads, stop, {}, stop_after, scopes);
       }) {}
 
 PreviewRenderer::PreviewRenderer(RenderFunction render)
@@ -70,8 +77,14 @@ PreviewRenderer::PreviewRenderer(RenderFunction render)
           [r = std::move(render)](const Image& base, const EditSettings& settings, StageId,
                                   std::stop_token stop) { return r(base, settings, stop); }) {}
 
+PreviewRenderer::PreviewRenderer(StageRenderFunction render)
+    : PreviewRenderer([r = std::move(render)](const Image& base, const EditSettings& settings,
+                                              StageId stop_after, bool, std::stop_token stop) {
+          return r(base, settings, stop_after, stop);
+      }) {}
+
 // The worker starts last, in the constructor's body, once render_ is set.
-PreviewRenderer::PreviewRenderer(StageRenderFunction render) : render_(std::move(render)) {
+PreviewRenderer::PreviewRenderer(ScopeRenderFunction render) : render_(std::move(render)) {
     worker_ = std::jthread([this](std::stop_token thread_stop) { run(thread_stop); });
 }
 
@@ -85,7 +98,8 @@ PreviewRenderer::~PreviewRenderer() {
 }
 
 std::uint64_t PreviewRenderer::submit(std::shared_ptr<const Image> base,
-                                      const EditSettings& settings, StageId stop_after) {
+                                      const EditSettings& settings, StageId stop_after,
+                                      bool scopes) {
     if (!base) {
         throw std::invalid_argument("PreviewRenderer::submit: no image");
     }
@@ -94,7 +108,7 @@ std::uint64_t PreviewRenderer::submit(std::shared_ptr<const Image> base,
         std::lock_guard lock(mutex_);
         generation = ++latest_generation_;
         // Replaces a waiting request and supersedes a running one.
-        pending_ = Request{generation, std::move(base), settings, stop_after};
+        pending_ = Request{generation, std::move(base), settings, stop_after, scopes};
         render_stop_.request_stop();
     }
     wake_.notify_one();
@@ -130,7 +144,8 @@ void PreviewRenderer::run(std::stop_token thread_stop) {
         lock.unlock();  // never hold the lock while rendering, so submit() and poll() don't wait
         std::optional<PreviewFrame> frame;
         try {
-            frame = render_(*request.base, request.settings, request.stop_after, render_stop);
+            frame = render_(*request.base, request.settings, request.stop_after, request.scopes,
+                             render_stop);
         } catch (const std::exception& e) {
             // An exception must not leave the thread (that would call std::terminate).
             frame = PreviewFrame{};
