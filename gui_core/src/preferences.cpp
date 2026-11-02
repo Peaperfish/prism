@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cmath>
 #include <fstream>
 #include <iterator>
 #include <system_error>
@@ -105,6 +106,33 @@ int clamp_interface_size(int percent) {
     const int clamped = std::clamp(percent, interface_size_min, interface_size_max);
     const int steps = (clamped - interface_size_min + interface_size_step / 2) / interface_size_step;
     return interface_size_min + steps * interface_size_step;
+}
+
+int step_interface_size(int current, int direction, float display_scale) {
+    if (direction == 0) {
+        return current;
+    }
+    current = clamp_interface_size(current);
+    if (current != interface_size_auto) {
+        return clamp_interface_size(current + (direction > 0 ? interface_size_step
+                                                              : -interface_size_step));
+    }
+    // Auto: where the display's scale falls on the preset ladder, in steps (a fraction, since it
+    // may lie between two presets). A small tolerance keeps 100.0000001% from counting as above.
+    const double percent = (display_scale > 0 ? display_scale : 1.0f) * 100.0;
+    const double position = (percent - interface_size_min) / interface_size_step;
+    const double last = (interface_size_max - interface_size_min) / interface_size_step;
+    constexpr double tolerance = 1e-3;
+    if (direction > 0) {
+        const double next = std::floor(position + tolerance) + 1;
+        return next > last ? interface_size_auto
+                           : interface_size_min + static_cast<int>(std::max(next, 0.0)) *
+                                                      interface_size_step;
+    }
+    const double previous = std::ceil(position - tolerance) - 1;
+    return previous < 0 ? interface_size_auto
+                        : interface_size_min + static_cast<int>(std::min(previous, last)) *
+                                                   interface_size_step;
 }
 
 int clamp_panel_width(int points) {

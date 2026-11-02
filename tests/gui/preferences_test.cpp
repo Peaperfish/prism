@@ -53,6 +53,63 @@ Preferences customised() {
     return p;
 }
 
+TEST(StepInterfaceSize, MovesThroughThePresetsAndStopsAtTheEnds) {
+    using prism::gui::step_interface_size;
+    EXPECT_EQ(step_interface_size(100, +1, 1.0f), 125);
+    EXPECT_EQ(step_interface_size(100, -1, 1.0f), 75);
+    EXPECT_EQ(step_interface_size(125, -1, 1.0f), 100);
+    EXPECT_EQ(step_interface_size(175, +1, 1.0f), 200);
+    EXPECT_EQ(step_interface_size(200, +1, 1.0f), 200);
+    EXPECT_EQ(step_interface_size(75, -1, 1.0f), 75);
+    EXPECT_EQ(step_interface_size(100, 0, 1.0f), 100);
+    // Walking the whole way up and down visits every preset once.
+    int size = 75;
+    for (int expected = 100; expected <= 200; expected += 25) {
+        size = step_interface_size(size, +1, 1.0f);
+        EXPECT_EQ(size, expected);
+    }
+    for (int expected = 175; expected >= 75; expected -= 25) {
+        size = step_interface_size(size, -1, 1.0f);
+        EXPECT_EQ(size, expected);
+    }
+}
+
+TEST(StepInterfaceSize, ASizeOffTheLadderIsSnappedFirst) {
+    using prism::gui::step_interface_size;
+    EXPECT_EQ(step_interface_size(110, +1, 1.0f), 125);  // 110 is read as 100
+    EXPECT_EQ(step_interface_size(500, -1, 1.0f), 175);  // 500 is read as 200
+    EXPECT_EQ(step_interface_size(10, -1, 1.0f), 75);
+}
+
+TEST(StepInterfaceSize, AutoSitsAtTheDisplaysScaleOnTheLadder) {
+    using prism::gui::interface_size_auto;
+    using prism::gui::step_interface_size;
+    // On a preset: the neighbours.
+    EXPECT_EQ(step_interface_size(interface_size_auto, +1, 1.0f), 125);
+    EXPECT_EQ(step_interface_size(interface_size_auto, -1, 1.0f), 75);
+    EXPECT_EQ(step_interface_size(interface_size_auto, +1, 1.5f), 175);
+    EXPECT_EQ(step_interface_size(interface_size_auto, -1, 1.5f), 125);
+    // Between two presets (a 110% display): the ones either side.
+    EXPECT_EQ(step_interface_size(interface_size_auto, +1, 1.1f), 125);
+    EXPECT_EQ(step_interface_size(interface_size_auto, -1, 1.1f), 100);
+    // Rounding noise on a preset doesn't count as being past it.
+    EXPECT_EQ(step_interface_size(interface_size_auto, +1, 1.2500001f), 150);
+    EXPECT_EQ(step_interface_size(interface_size_auto, -1, 1.2499999f), 100);
+    // A display scale that is no usable number counts as 100%.
+    EXPECT_EQ(step_interface_size(interface_size_auto, +1, 0.0f), 125);
+}
+
+TEST(StepInterfaceSize, AutoBeyondTheEndsStaysAutoThatWay) {
+    using prism::gui::interface_size_auto;
+    using prism::gui::step_interface_size;
+    EXPECT_EQ(step_interface_size(interface_size_auto, +1, 2.0f), interface_size_auto);
+    EXPECT_EQ(step_interface_size(interface_size_auto, +1, 3.0f), interface_size_auto);
+    EXPECT_EQ(step_interface_size(interface_size_auto, -1, 3.0f), 200);
+    EXPECT_EQ(step_interface_size(interface_size_auto, -1, 0.75f), interface_size_auto);
+    EXPECT_EQ(step_interface_size(interface_size_auto, -1, 0.5f), interface_size_auto);
+    EXPECT_EQ(step_interface_size(interface_size_auto, +1, 0.5f), 75);
+}
+
 }  // namespace
 
 TEST(Preferences, DefaultsAreSystemThemeAutoSizeAndTheStandardPanel) {

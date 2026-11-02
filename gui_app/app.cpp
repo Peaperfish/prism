@@ -474,6 +474,14 @@ void App::frame() {
     focused_window_last_frame_ = focused_window_this_frame_;
 }
 
+void App::step_interface_size(int direction) {
+    gui::Preferences p = prefs_;
+    p.interface_size = direction == 0 ? gui::interface_size_auto
+                                      : gui::step_interface_size(p.interface_size, direction,
+                                                                 display_scale_);
+    set_preferences(std::move(p));
+}
+
 void App::handle_shortcuts() {
     // RouteGlobal: they work wherever the focus is, unless a focused widget (e.g. a text field)
     // claims the same keys.
@@ -484,6 +492,22 @@ void App::handle_shortcuts() {
     if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Comma, ImGuiInputFlags_RouteGlobal)) {
         prefs_open_ = true;
         ImGui::SetWindowFocus("Preferences");
+    }
+    // Interface size. "+" is Shift+= on most keyboards, so Cmd+= and Cmd+Shift+= both mean bigger;
+    // the keypad has its own keys.
+    const auto global = [](ImGuiKeyChord chord) {
+        return ImGui::Shortcut(chord, ImGuiInputFlags_RouteGlobal);
+    };
+    if (global(ImGuiMod_Ctrl | ImGuiKey_Equal) ||
+        global(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_Equal) ||
+        global(ImGuiMod_Ctrl | ImGuiKey_KeypadAdd)) {
+        step_interface_size(+1);
+    }
+    if (global(ImGuiMod_Ctrl | ImGuiKey_Minus) || global(ImGuiMod_Ctrl | ImGuiKey_KeypadSubtract)) {
+        step_interface_size(-1);
+    }
+    if (global(ImGuiMod_Ctrl | ImGuiKey_0) || global(ImGuiMod_Ctrl | ImGuiKey_Keypad0)) {
+        step_interface_size(0);
     }
     if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_E, ImGuiInputFlags_RouteGlobal) ||
         ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S, ImGuiInputFlags_RouteGlobal)) {
@@ -566,6 +590,22 @@ void App::draw_menu() {
             if (ImGui::MenuItem("Preferences...", shortcut_label(",").c_str())) {
                 prefs_open_ = true;
             }
+        }
+        ImGui::EndMenu();
+    }
+    if (ImGui::BeginMenu("View")) {
+        const int size = prefs_.interface_size;
+        if (ImGui::MenuItem("Bigger Interface", shortcut_label("+").c_str(), false,
+                            gui::step_interface_size(size, +1, display_scale_) != size)) {
+            step_interface_size(+1);
+        }
+        if (ImGui::MenuItem("Smaller Interface", shortcut_label("-").c_str(), false,
+                            gui::step_interface_size(size, -1, display_scale_) != size)) {
+            step_interface_size(-1);
+        }
+        if (ImGui::MenuItem("Interface Size: Auto", shortcut_label("0").c_str(), false,
+                            size != gui::interface_size_auto)) {
+            step_interface_size(0);
         }
         ImGui::EndMenu();
     }

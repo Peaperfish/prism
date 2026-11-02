@@ -67,6 +67,13 @@ struct Preferences {
 // nearest step of 25 (ties upwards: 87 -> 75, 88 -> 100).
 [[nodiscard]] int clamp_interface_size(int percent);
 
+// One step bigger (direction > 0) or smaller (direction < 0) through the presets 75, 100, ... 200.
+// A chosen size moves to the next preset and stops at the ends. Auto counts as the display's own
+// percentage, which sits between two presets or on one: bigger goes to the first preset above it,
+// smaller to the first below it, and at the end of the range (nothing bigger or smaller left)
+// Auto stays Auto. Stepping always yields a chosen size otherwise; Cmd+0 is what goes back to Auto.
+[[nodiscard]] int step_interface_size(int current, int direction, float display_scale);
+
 // The panel width clamped to panel_width_min..panel_width_max.
 [[nodiscard]] int clamp_panel_width(int points);
 

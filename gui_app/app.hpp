@@ -106,6 +106,9 @@ private:
     void draw_notices();
     void save_preferences();
     void set_preferences(gui::Preferences prefs);
+    // View menu and Cmd/Ctrl +, -, 0: one preset bigger or smaller (direction +1 / -1), or back to
+    // Auto (0). Saved like the Preferences window's choice.
+    void step_interface_size(int direction);
 
     SDL_Window* window_;
     DialogQueue& dialogs_;
