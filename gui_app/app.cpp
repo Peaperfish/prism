@@ -11,7 +11,6 @@
 #include "about_info.hpp"
 #include "imgui.h"
 #include "macos_menu.hpp"
-#include "theme.hpp"
 #include "prism/gui/file_types.hpp"
 #include "prism/gui/layout.hpp"
 #include "prism/gui/presets.hpp"
@@ -19,6 +18,7 @@
 #include "prism/raw.hpp"
 #include "prism/utf8_path.hpp"
 #include "prism/version.hpp"
+#include "theme.hpp"
 
 namespace prism::gui_app {
 
@@ -61,8 +61,8 @@ void dashed_rect(ImDrawList* draw, ImVec2 min, ImVec2 max, ImU32 colour, float d
 // Centres `text` horizontally in the current window's content region, at the cursor's height.
 void centred_text(const std::string& text) {
     const float width = ImGui::CalcTextSize(text.c_str()).x;
-    ImGui::SetCursorPosX(std::max(0.0f, (ImGui::GetContentRegionAvail().x - width) / 2 +
-                                            ImGui::GetCursorPosX()));
+    ImGui::SetCursorPosX(
+        std::max(0.0f, (ImGui::GetContentRegionAvail().x - width) / 2 + ImGui::GetCursorPosX()));
     ImGui::TextUnformatted(text.c_str());
 }
 
@@ -157,8 +157,8 @@ void App::open_now(const fs::path& path) {
         error = session_.open_file(path);
     } catch (const std::exception& e) {
         // Session reports what it expects as an Error; anything else still must not crash.
-        error = gui::Error{gui::ErrorKind::unreadable,
-                           "Couldn't open '" + file_name(path) + "'.", e.what()};
+        error = gui::Error{gui::ErrorKind::unreadable, "Couldn't open '" + file_name(path) + "'.",
+                           e.what()};
     }
     if (error) {
         show_error(std::move(*error));  // the previous photo, if any, stays open
@@ -167,6 +167,7 @@ void App::open_now(const fs::path& path) {
     error_.reset();
     texture_.reset();  // don't show the previous photo under the new name
     histogram_.reset();
+    viewed_stage_ = gui::final_stage;
     SDL_SetWindowTitle(window_, ("Prism - " + file_name(path)).c_str());
 }
 
@@ -193,8 +194,8 @@ void App::take_dialog_results() {
     for (DialogResult& result : dialogs_.take_all()) {
         dialog_open_ = false;
         if (!result.error.empty()) {
-            show_error({gui::ErrorKind::unreadable, "Couldn't show the file dialog.",
-                        result.error});
+            show_error(
+                {gui::ErrorKind::unreadable, "Couldn't show the file dialog.", result.error});
         } else if (!result.path) {
             // Cancelled.
         } else if (result.kind == DialogResult::Kind::open) {
@@ -224,14 +225,14 @@ void App::take_export_result() {
 }
 
 void App::update_preview() {
-    preview_.update(session_.preview_base(), session_.settings());
+    preview_.update(session_.preview_base(), session_.settings(), viewed_stage_);
     std::optional<gui::PreviewFrame> frame = preview_.poll();
     if (!frame) {
         return;
     }
     if (!frame->error.empty()) {
-        show_error({gui::ErrorKind::invalid_settings, "Couldn't render the preview.",
-                    frame->error});
+        show_error(
+            {gui::ErrorKind::invalid_settings, "Couldn't render the preview.", frame->error});
         return;
     }
     if (!texture_.upload(*frame)) {
@@ -267,14 +268,9 @@ void App::redo() {
 gui::Theme App::theme() const {
     gui::SystemTheme system = gui::SystemTheme::unknown;
     switch (SDL_GetSystemTheme()) {
-        case SDL_SYSTEM_THEME_LIGHT:
-            system = gui::SystemTheme::light;
-            break;
-        case SDL_SYSTEM_THEME_DARK:
-            system = gui::SystemTheme::dark;
-            break;
-        default:
-            break;
+        case SDL_SYSTEM_THEME_LIGHT: system = gui::SystemTheme::light; break;
+        case SDL_SYSTEM_THEME_DARK: system = gui::SystemTheme::dark; break;
+        default: break;
     }
     return gui::resolve_theme(prefs_.theme, system);
 }
@@ -313,9 +309,7 @@ void App::handle_event(const SDL_Event& event) {
             drag_over_ = true;
             dropped_.clear();
             break;
-        case SDL_EVENT_DROP_POSITION:
-            drag_over_ = true;
-            break;
+        case SDL_EVENT_DROP_POSITION: drag_over_ = true; break;
         case SDL_EVENT_DROP_FILE:
             if (event.drop.data != nullptr) {
                 dropped_.push_back(path_from_utf8(event.drop.data));  // UTF-8 from SDL
@@ -333,8 +327,7 @@ void App::handle_event(const SDL_Event& event) {
             // No motion events arrive during a system drag: the drag left without dropping.
             drag_over_ = false;
             break;
-        default:
-            break;
+        default: break;
     }
 }
 
@@ -383,6 +376,7 @@ void App::frame() {
                       ImGuiWindowFlags_NoScrollbar);
     draw_canvas();
     draw_banner();
+    draw_stage_badge();
     ImGui::EndChild();
     ImGui::SameLine(0.0f, 0.0f);
     draw_splitter(canvas, splitter, body_height, avail.x);
@@ -429,6 +423,10 @@ void App::handle_shortcuts() {
     if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_Z, ImGuiInputFlags_RouteGlobal) ||
         ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Y, ImGuiInputFlags_RouteGlobal)) {
         redo();
+    }
+    if (viewed_stage_ != gui::final_stage &&
+        ImGui::Shortcut(ImGuiKey_Escape, ImGuiInputFlags_RouteGlobal)) {
+        viewed_stage_ = gui::final_stage;
     }
 }
 
@@ -504,14 +502,14 @@ void App::draw_canvas() {
         const float inset = 24.0f * ui_scale();
         dashed_rect(draw, ImVec2(min.x + inset, min.y + inset),
                     ImVec2(max.x - inset, max.y - inset),
-                    drag_over_ ? colours.drop_highlight : colours.drop_outline,
-                    8.0f * ui_scale(), 2.0f * ui_scale());
+                    drag_over_ ? colours.drop_highlight : colours.drop_outline, 8.0f * ui_scale(),
+                    2.0f * ui_scale());
         ImGui::SetCursorPosY(size.y / 2 - ImGui::GetFrameHeightWithSpacing() * 1.5f);
         ImGui::PushStyleColor(ImGuiCol_Text, colours.canvas_text);
         centred_text("Drop a photo here");
         ImGui::PopStyleColor();
-        const float button = ImGui::CalcTextSize("Open photo...").x +
-                             ImGui::GetStyle().FramePadding.x * 2;
+        const float button =
+            ImGui::CalcTextSize("Open photo...").x + ImGui::GetStyle().FramePadding.x * 2;
         ImGui::SetCursorPosX((size.x - button) / 2);
         if (ImGui::Button("Open photo...")) {
             show_open_dialog();
@@ -523,10 +521,12 @@ void App::draw_canvas() {
     }
 
     if (pending_open_) {
-        overlay_text(draw, colours, ImVec2(min.x + margin, max.y - margin - 2 * ImGui::GetFontSize()),
+        overlay_text(draw, colours,
+                     ImVec2(min.x + margin, max.y - margin - 2 * ImGui::GetFontSize()),
                      "Opening " + file_name(*pending_open_) + "...");
     } else if (preview_.rendering()) {
-        overlay_text(draw, colours, ImVec2(min.x + margin, max.y - margin - 2 * ImGui::GetFontSize()),
+        overlay_text(draw, colours,
+                     ImVec2(min.x + margin, max.y - margin - 2 * ImGui::GetFontSize()),
                      "Rendering...");
     }
     if (drag_over_ && session_.has_file()) {
@@ -570,6 +570,37 @@ void App::draw_banner() {
         notice_.clear();
     }
     ImGui::EndChild();
+    ImGui::PopStyleColor(3);
+}
+
+void App::draw_stage_badge() {
+    if (!session_.has_file() || viewed_stage_ == gui::final_stage) {
+        return;
+    }
+    const float margin = 12.0f * ui_scale();
+    if (!error_ && notice_.empty()) {
+        ImGui::SetCursorPos(ImVec2(margin, margin));
+    } else {
+        ImGui::SetCursorPosX(margin);
+    }
+
+    const Palette& colours = palette(theme());
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, colours.notice_background);
+    ImGui::PushStyleColor(ImGuiCol_Text, colours.notice_text);
+    ImGui::PushStyleColor(ImGuiCol_Border, colours.notice_border);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f * ui_scale(), 5.0f * ui_scale()));
+    ImGui::BeginChild("stage_badge", ImVec2(0, 0),
+                      ImGuiChildFlags_AutoResizeX | ImGuiChildFlags_AutoResizeY |
+                          ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_Borders);
+    const std::string label = "Viewing: after " + std::string(gui::stage_info(viewed_stage_).name);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(label.c_str());
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Final image (Esc)")) {
+        viewed_stage_ = gui::final_stage;
+    }
+    ImGui::EndChild();
+    ImGui::PopStyleVar();
     ImGui::PopStyleColor(3);
 }
 
@@ -641,19 +672,25 @@ void App::draw_panel() {
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
     ImGui::TextWrapped("Right-click a slider to reset it.");
     ImGui::PopStyleColor();
+
+    draw_pipeline();
 }
 
 void App::draw_histogram() {
     if (!histogram_ || histogram_->pixel_count == 0) {
         return;
     }
-    ImGui::SeparatorText("Histogram");
+    const std::string title =
+        viewed_stage_ == gui::final_stage
+            ? "Histogram"
+            : "Histogram (" + std::string(gui::stage_info(viewed_stage_).name) + ")";
+    ImGui::SeparatorText(title.c_str());
 
     const gui::StageHistogram& h = *histogram_;
     const Palette& colours = palette(theme());
     const float s = ui_scale();
     const float avail_w = std::max(1.0f, ImGui::GetContentRegionAvail().x);
-    const float graph_h = std::round(84.0f * s);
+    const float graph_h = std::round(68.0f * s);
     const float rounding = 4.0f * s;
 
     ImGui::InvisibleButton("##histogram_graph", ImVec2(avail_w, graph_h));
@@ -684,10 +721,10 @@ void App::draw_histogram() {
         std::array<ImVec2, gui::StageHistogram::bins> pts{};
         for (int b = 0; b < gui::StageHistogram::bins; ++b) {
             const float x = plot_min.x + (static_cast<float>(b) / 255.0f) * plot_w;
-            const double ratio = max_count > 0
-                                     ? std::min(1.0, static_cast<double>(counts[b]) /
-                                                         static_cast<double>(max_count))
-                                     : 0.0;
+            const double ratio =
+                max_count > 0
+                    ? std::min(1.0, static_cast<double>(counts[b]) / static_cast<double>(max_count))
+                    : 0.0;
             const float y = plot_max.y - static_cast<float>(ratio) * plot_h;
             pts[static_cast<std::size_t>(b)] = ImVec2(x, y);
         }
@@ -725,10 +762,9 @@ void App::draw_histogram() {
     const float gap = 6.0f * s;
     const float chip_w = std::max(1.0f, (avail_w - gap) * 0.5f);
 
-    const auto draw_clip_chip = [&](const char* id, const char* label, bool left_arrow,
-                                    bool active, ImU32 active_fill, std::uint64_t r_clip,
-                                    std::uint64_t g_clip, std::uint64_t b_clip,
-                                    const char* tooltip_title) {
+    const auto draw_clip_chip = [&](const char* id, const char* label, bool left_arrow, bool active,
+                                    ImU32 active_fill, std::uint64_t r_clip, std::uint64_t g_clip,
+                                    std::uint64_t b_clip, const char* tooltip_title) {
         ImGui::InvisibleButton(id, ImVec2(chip_w, chip_h));
         const ImVec2 cmin = ImGui::GetItemRectMin();
         const ImVec2 cmax = ImGui::GetItemRectMax();
@@ -791,8 +827,7 @@ void App::draw_presets() {
         ImGui::EndCombo();
     }
     const gui::Preset& start = gui::default_preset(kind);
-    if (&start != current &&
-        ImGui::Button(("Reset to " + std::string(start.name)).c_str())) {
+    if (&start != current && ImGui::Button(("Reset to " + std::string(start.name)).c_str())) {
         gui::EditSettings s = session_.settings();
         gui::apply_preset(s, start);
         report(session_.set_settings(s));
@@ -830,9 +865,9 @@ void App::draw_simple_slider(const char* label, gui::SimpleControl control) {
     // sit on top of the grab at 0.
     char shown[16];
     std::snprintf(shown, sizeof shown, "%+.0f", static_cast<double>(value));
-    ImGui::SameLine(std::max(ImGui::GetCursorPosX(),
-                             ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x -
-                                 ImGui::CalcTextSize(shown).x));
+    ImGui::SameLine(std::max(
+        ImGui::GetCursorPosX(),
+        ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize(shown).x));
     ImGui::TextUnformatted(shown);
     ImGui::SetNextItemWidth(-FLT_MIN);
     // An empty format draws no text on the slider; Ctrl/Cmd-click still types a value.
@@ -853,6 +888,55 @@ void App::draw_simple_slider(const char* label, gui::SimpleControl control) {
         ImGui::EndPopup();
     }
     ImGui::PopID();
+}
+
+void App::draw_pipeline() {
+    if (!ImGui::CollapsingHeader("Pipeline", ImGuiTreeNodeFlags_DefaultOpen)) {
+        return;
+    }
+
+    const float row_h = ImGui::GetFrameHeight();
+    for (const gui::StageInfo& stage : gui::pipeline_stages()) {
+        ImGui::PushID(static_cast<int>(stage.id));
+        const bool enabled = gui::stage_enabled(session_.settings(), stage.id);
+
+        if (stage.can_toggle) {
+            bool on = enabled;
+            if (ImGui::Checkbox("##on", &on)) {
+                gui::EditSettings s = session_.settings();
+                gui::set_stage_enabled(s, stage.id, on);
+                report(session_.set_settings(s));  // one undo step in History
+            }
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
+                ImGui::SetTooltip("%s", std::string(stage.description).c_str());
+            }
+        } else {
+            ImGui::Dummy(ImVec2(row_h, row_h));
+        }
+        ImGui::SameLine();
+
+        const bool selected = viewed_stage_ == stage.id;
+        std::string row_label(stage.name);
+        if (!enabled) {
+            row_label += " (off)";
+        }
+        if (!enabled) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        }
+        ImGui::PushStyleVar(ImGuiStyleVar_SelectableTextAlign, ImVec2(0.0f, 0.5f));
+        if (ImGui::Selectable(row_label.c_str(), selected, ImGuiSelectableFlags_None,
+                              ImVec2(0.0f, row_h))) {
+            viewed_stage_ = stage.id;
+        }
+        ImGui::PopStyleVar();
+        if (!enabled) {
+            ImGui::PopStyleColor();
+        }
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
+            ImGui::SetTooltip("%s", std::string(stage.description).c_str());
+        }
+        ImGui::PopID();
+    }
 }
 
 void App::draw_status_bar() {
@@ -876,11 +960,9 @@ void App::draw_status_bar() {
     };
     const float width = ImGui::GetContentRegionAvail().x;
     const float name_width = std::max(width - measure(details), width * 0.3f);
-    const std::string status =
-        gui::ellipsize_middle(gui::ellipsize_middle(file_name(session_.path()), name_width,
-                                                    measure) +
-                                  details,
-                              width, measure);
+    const std::string status = gui::ellipsize_middle(
+        gui::ellipsize_middle(file_name(session_.path()), name_width, measure) + details, width,
+        measure);
     ImGui::TextDisabled("%s", status.c_str());
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
         ImGui::SetTooltip("%s", utf8(session_.path()).c_str());
@@ -923,8 +1005,7 @@ void App::draw_preferences() {
         }
         for (int size = gui::interface_size_min; size <= gui::interface_size_max;
              size += gui::interface_size_step) {
-            if (ImGui::Selectable((std::to_string(size) + "%").c_str(),
-                                  p.interface_size == size)) {
+            if (ImGui::Selectable((std::to_string(size) + "%").c_str(), p.interface_size == size)) {
                 p.interface_size = size;
             }
         }
@@ -1040,8 +1121,8 @@ void App::draw_saving_popup() {
             ImGui::CloseCurrentPopup();
         }
         ImGui::TextUnformatted("Saving...");
-        ImGui::ProgressBar(-1.0f * static_cast<float>(ImGui::GetTime()), ImVec2(240 * ui_scale(), 0),
-                           "");
+        ImGui::ProgressBar(-1.0f * static_cast<float>(ImGui::GetTime()),
+                           ImVec2(240 * ui_scale(), 0), "");
         if (ImGui::Button("Cancel")) {
             exporter_.cancel();
         }
