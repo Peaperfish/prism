@@ -131,13 +131,19 @@ TEST(LivePreview, ChangedSettingsOrBaseRenderAgain) {
 
 TEST(LivePreview, RenderingStaysTrueUntilTheLatestFrameArrives) {
     // The first render waits until the test releases it; a second request arrives meanwhile.
+    // The second render is held up too, so the frame of the first (older than the latest request)
+    // is what shows next: it is accepted, and rendering() stays true until the latest arrives.
     Gate first_started;
-    Gate release;
+    Gate release_first;
+    Gate release_second;
     std::atomic<int> calls{0};
     LivePreview preview([&](const prism::Image&, const EditSettings& s, std::stop_token) {
-        if (calls++ == 0) {
+        const int n = ++calls;
+        if (n == 1) {
             first_started.open();
-            release.wait();
+            release_first.wait();
+        } else {
+            release_second.wait();
         }
         PreviewFrame f;
         f.rgb8 = {static_cast<std::uint8_t>(s.exposure_stops)};
@@ -148,11 +154,17 @@ TEST(LivePreview, RenderingStaysTrueUntilTheLatestFrameArrives) {
     ASSERT_TRUE(first_started.wait());
     preview.update(base, with_exposure(2));
     EXPECT_TRUE(preview.rendering());
-    release.open();
+    release_first.open();
+
+    const std::optional<PreviewFrame> older = next_frame(preview);
+    ASSERT_TRUE(older);
+    EXPECT_EQ(older->rgb8[0], 1) << "a frame older than the latest request is shown";
+    EXPECT_TRUE(preview.rendering()) << "but the latest is still to come";
+    release_second.open();
 
     const std::optional<PreviewFrame> f = next_frame(preview);
     ASSERT_TRUE(f);
-    EXPECT_EQ(f->rgb8[0], 2) << "only the latest request's frame is shown";
+    EXPECT_EQ(f->rgb8[0], 2);
     EXPECT_FALSE(preview.rendering());
 }
 

@@ -11,6 +11,7 @@
 #include <stdexcept>
 #include <stop_token>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "prism/gui/preview_renderer.hpp"
@@ -171,7 +172,7 @@ TEST(PreviewRenderer, OnlyTheNewestOfManyFastRequestsIsDelivered) {
     EXPECT_EQ(rendered, (std::vector<float>{1, 100})) << "requests 2 to 99 were never started";
 }
 
-TEST(PreviewRenderer, ANewRequestCancelsTheRunningRenderBetweenStages) {
+TEST(PreviewRenderer, ANewBaseImageCancelsTheRunningRenderBetweenStages) {
     // The real render_preview; its stage callback holds up the first render after its first
     // stage until the renderer stops it. process() must then give up before the next stage.
     Gate first_stage_done;
@@ -190,7 +191,8 @@ TEST(PreviewRenderer, ANewRequestCancelsTheRunningRenderBetweenStages) {
                         first_render_stages.emplace_back(t.name);
                     }
                     first_stage_done.open();
-                    EXPECT_TRUE(wait_for_stop(stop)) << "the second submit must stop this render";
+                    EXPECT_TRUE(wait_for_stop(stop))
+                        << "a request for another image must stop this render";
                 }
             });
         std::lock_guard lock(m);
@@ -199,46 +201,150 @@ TEST(PreviewRenderer, ANewRequestCancelsTheRunningRenderBetweenStages) {
     });
 
     const auto base = make_base(32, 32);
+    const auto other = make_base(16, 16);  // another photo
     renderer.submit(base, every_stage());
     ASSERT_TRUE(first_stage_done.wait());
-    renderer.submit(base, with_exposure(2));
+    renderer.submit(other, with_exposure(2));
     ASSERT_TRUE(renderer.wait_until_idle(timeout));
 
     const std::optional<PreviewFrame> frame = renderer.poll();
     ASSERT_TRUE(frame);
     EXPECT_EQ(frame->generation, 2u);
-    EXPECT_EQ(frame->rgb8, expected_bytes(*base, with_exposure(2)));
+    EXPECT_EQ(frame->rgb8, expected_bytes(*other, with_exposure(2)));
+    EXPECT_EQ(renderer.poll(), std::nullopt) << "the stopped render gives no frame";
     std::lock_guard lock(m);
     EXPECT_EQ(first_render_stages, std::vector<std::string>{"exposure"});
     EXPECT_EQ(finished, (std::vector<bool>{false, true}));
 }
 
-TEST(PreviewRenderer, ASupersededRenderNeverDeliversAFrame) {
-    // Even a render that ignores its stop token and finishes anyway: its frame is dropped.
-    Gate first_started;
-    Gate release;
-    std::atomic<int> renders{0};
-    PreviewRenderer renderer([&](const prism::Image&, const EditSettings& s, std::stop_token) {
-        if (renders++ == 0) {
-            first_started.open();
-            release.wait();
+namespace {
+
+// Lets the test step a fake render function: render n announces that it started, then waits
+// until the test releases it. No sleeps, so no timing assumptions.
+class Stepper {
+public:
+    void started() {
+        {
+            std::lock_guard lock(mutex_);
+            ++started_;
         }
+        cv_.notify_all();
+    }
+    bool wait_started(int n) {
+        std::unique_lock lock(mutex_);
+        return cv_.wait_for(lock, timeout, [&] { return started_ >= n; });
+    }
+    void release(int n) {
+        {
+            std::lock_guard lock(mutex_);
+            released_ = n;
+        }
+        cv_.notify_all();
+    }
+    bool wait_released(int n) {
+        std::unique_lock lock(mutex_);
+        return cv_.wait_for(lock, timeout, [&] { return released_ >= n; });
+    }
+
+private:
+    std::mutex mutex_;
+    std::condition_variable cv_;
+    int started_ = 0;
+    int released_ = 0;
+};
+
+// Polls until a frame arrives, or the timeout passes.
+std::optional<PreviewFrame> next_frame(PreviewRenderer& renderer) {
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (std::optional<PreviewFrame> f = renderer.poll()) {
+            return f;
+        }
+        std::this_thread::yield();
+    }
+    return std::nullopt;
+}
+
+}  // namespace
+
+TEST(PreviewRenderer, ASupersededRenderOfTheSameImageStillDeliversItsFrame) {
+    Stepper step;
+    PreviewRenderer renderer([&](const prism::Image&, const EditSettings& s, std::stop_token) {
+        step.started();
+        const int n = static_cast<int>(s.exposure_stops);
+        EXPECT_TRUE(step.wait_released(n));
         return std::optional<PreviewFrame>(tagged_frame(s));
     });
-
     const auto base = make_base(4, 4);
     renderer.submit(base, with_exposure(1));
-    ASSERT_TRUE(first_started.wait());
-    renderer.submit(base, with_exposure(2));
-    release.open();
-    ASSERT_TRUE(renderer.wait_until_idle(timeout));
+    ASSERT_TRUE(step.wait_started(1));
+    renderer.submit(base, with_exposure(2));  // arrives while render 1 runs
+    step.release(1);
 
+    // Render 2 is held up, so the next frame can only be render 1's: older than the latest request.
+    const std::optional<PreviewFrame> first = next_frame(renderer);
+    ASSERT_TRUE(first);
+    EXPECT_EQ(first->generation, 1u);
+    EXPECT_EQ(first->rgb8[0], 1);
+    step.release(2);
+    ASSERT_TRUE(renderer.wait_until_idle(timeout));
+    const std::optional<PreviewFrame> second = renderer.poll();
+    ASSERT_TRUE(second);
+    EXPECT_EQ(second->generation, 2u);
+    EXPECT_EQ(second->rgb8[0], 2);
+}
+
+TEST(PreviewRenderer, SubmitsFasterThanARenderStillPublishFramesWithRisingGenerations) {
+    // A drag: a new request arrives during every render, so every render is superseded before it
+    // ends. Each must still be published, then the latest request rendered after the last.
+    constexpr int renders = 25;
+    Stepper step;
+    PreviewRenderer renderer([&](const prism::Image&, const EditSettings& s, std::stop_token) {
+        step.started();
+        EXPECT_TRUE(step.wait_released(static_cast<int>(s.exposure_stops)));
+        return std::optional<PreviewFrame>(tagged_frame(s));
+    });
+    const auto base = make_base(4, 4);
+    renderer.submit(base, with_exposure(1));
+    std::uint64_t previous = 0;
+    for (int i = 1; i <= renders; ++i) {
+        ASSERT_TRUE(step.wait_started(i));
+        renderer.submit(base, with_exposure(static_cast<float>(i + 1)));
+        step.release(i);
+        const std::optional<PreviewFrame> frame = next_frame(renderer);
+        ASSERT_TRUE(frame) << "render " << i << " was never published";
+        EXPECT_EQ(frame->generation, static_cast<std::uint64_t>(i));
+        EXPECT_GT(frame->generation, previous);
+        previous = frame->generation;
+    }
+    // Submits stop: the render of the latest settings runs and is the last frame.
+    step.release(renders + 1);
+    ASSERT_TRUE(renderer.wait_until_idle(timeout));
+    const std::optional<PreviewFrame> last = renderer.poll();
+    ASSERT_TRUE(last);
+    EXPECT_EQ(last->generation, static_cast<std::uint64_t>(renders + 1));
+    EXPECT_EQ(last->rgb8[0], renders + 1);
+}
+
+TEST(PreviewRenderer, AfterAFastBurstOfSubmitsTheLastFrameMatchesTheLatestSettings) {
+    // The real render on a small image, with 40 requests in a row.
+    PreviewRenderer renderer(1);
+    const auto base = make_base(64, 48);
+    std::uint64_t last = 0;
+    std::uint64_t previous = 0;
+    for (int i = 1; i <= 40; ++i) {
+        last = renderer.submit(base, with_exposure(static_cast<float>(i) / 10));
+        if (const std::optional<PreviewFrame> f = renderer.poll()) {
+            EXPECT_GT(f->generation, previous);
+            previous = f->generation;
+        }
+    }
+    ASSERT_TRUE(renderer.wait_until_idle(timeout));
     const std::optional<PreviewFrame> frame = renderer.poll();
     ASSERT_TRUE(frame);
-    EXPECT_EQ(frame->generation, 2u);
-    EXPECT_EQ(frame->rgb8[0], 2);
-    EXPECT_EQ(renderer.poll(), std::nullopt) << "generation 1 must not turn up later either";
-    EXPECT_EQ(renders, 2);
+    EXPECT_EQ(frame->generation, last);
+    EXPECT_GT(frame->generation, previous);
+    EXPECT_EQ(frame->rgb8, expected_bytes(*base, with_exposure(4.0f)));
 }
 
 TEST(PreviewRenderer, DestroyingItWhileRenderingStopsAndJoinsTheWorker) {
@@ -255,6 +361,27 @@ TEST(PreviewRenderer, DestroyingItWhileRenderingStopsAndJoinsTheWorker) {
         ASSERT_TRUE(started.wait());
     }  // the destructor runs here, with the render still waiting for its stop token
     EXPECT_TRUE(saw_stop) << "the destructor must stop the render before joining";
+}
+
+TEST(PreviewRenderer, DestroyingItWithARenderInFlightAndARequestPendingIsClean) {
+    Gate started;
+    std::atomic<int> renders{0};
+    std::atomic<bool> saw_stop{false};
+    {
+        PreviewRenderer renderer(
+            [&](const prism::Image&, const EditSettings& s, std::stop_token stop) {
+                ++renders;
+                started.open();
+                saw_stop = wait_for_stop(stop);
+                return std::optional<PreviewFrame>(tagged_frame(s));
+            });
+        const auto base = make_base(4, 4);
+        renderer.submit(base, with_exposure(1));
+        ASSERT_TRUE(started.wait());
+        renderer.submit(base, with_exposure(2));  // same image: does not stop the render
+    }  // the destructor stops the render and does not start the pending request
+    EXPECT_TRUE(saw_stop);
+    EXPECT_EQ(renders, 1);
 }
 
 TEST(PreviewRenderer, DestroyingItWithARequestWaitingIsFine) {

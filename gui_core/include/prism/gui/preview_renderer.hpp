@@ -102,11 +102,16 @@ struct PreviewFrame {
 //   UI thread, when the settings change:  renderer.submit(session.preview_base(), settings);
 //   UI thread, every frame:               if (auto frame = renderer.poll()) upload(*frame);
 //
-// Latest wins: submit() replaces a request that has not started yet and stops the one being
-// rendered (through the std::stop_token passed to process(), which checks it between stages),
-// so a slider drag never builds up a queue. A render that was superseded before it finished never
-// produces a frame. The finished frame waits in a mailbox until poll() takes it; nothing ever
-// calls back into UI code. The destructor stops the current render and waits for the thread.
+// Latest wins, one pending slot: submit() replaces a request that has not started yet, so a slider
+// drag never builds up a queue. A render already running is NOT abandoned for a newer request of
+// the same image: it finishes and is published, and then the worker renders the latest pending
+// request. (Cancelling it would mean that when a render takes longer than the gap between
+// changes, as in a drag, nothing is ever published.) A frame can therefore be older than the
+// latest request; its `generation` says so. Only a request for another base image (another
+// photo) stops the running render, through the std::stop_token passed to process(), which checks
+// it between stages; so does the destructor. A stopped render never produces a frame. The
+// finished frame waits in a mailbox until poll() takes it; nothing ever calls back into UI code.
+// The destructor stops the current render and waits for the thread.
 //
 // All public functions are thread-safe, but are meant to be called from one (UI) thread.
 class PreviewRenderer {
@@ -143,12 +148,14 @@ public:
     // Asks for a preview of `base` with `settings` stopped after `stop_after` (with whatever
     // `options` asks for), and returns its generation number (1, 2, 3... in the order of the
     // calls). Returns at once: it only swaps the request in under a lock that the worker never
-    // holds while rendering. `base` is shared, not copied, so it must not change (Session's preview
+    // holds while rendering. It stops the running render only if that one has another `base`.
+    // `base` is shared, not copied, so it must not change (Session's preview
     // base never does). Throws std::invalid_argument if `base` is null.
     std::uint64_t submit(std::shared_ptr<const Image> base, const EditSettings& settings,
                          StageId stop_after = final_stage, PreviewOptions options = {});
 
     // The newest finished frame, if one arrived since the last poll(); otherwise nothing.
+    // Its generation can be older than the latest submit()'s (see above); they only increase.
     [[nodiscard]] std::optional<PreviewFrame> poll();
 
     // Waits until no request is waiting or being rendered, for at most `timeout`; false if that
@@ -177,6 +184,7 @@ private:
     std::optional<PreviewFrame> ready_;
     std::uint64_t latest_generation_ = 0;
     bool busy_ = false;
+    std::shared_ptr<const Image> running_base_;  // the base of the request being rendered
     std::stop_source render_stop_;  // stops the request being rendered
 
     // Declared last so it starts after everything above exists, and is destroyed (joined) first.

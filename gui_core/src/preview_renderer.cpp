@@ -245,9 +245,12 @@ std::uint64_t PreviewRenderer::submit(std::shared_ptr<const Image> base,
     {
         std::lock_guard lock(mutex_);
         generation = ++latest_generation_;
-        // Replaces a waiting request and supersedes a running one.
+        // Replaces a waiting request. The running render is left to finish (and be published)
+        // unless it is of another image, whose frame nobody wants.
+        if (busy_ && running_base_ != base) {
+            render_stop_.request_stop();
+        }
         pending_ = Request{generation, std::move(base), settings, stop_after, options};
-        render_stop_.request_stop();
     }
     wake_.notify_one();
     return generation;
@@ -277,6 +280,7 @@ void PreviewRenderer::run(std::stop_token thread_stop) {
         // A fresh stop source for this request: submit() stops it if a newer request arrives.
         render_stop_ = std::stop_source{};
         const std::stop_token render_stop = render_stop_.get_token();
+        running_base_ = request.base;
         busy_ = true;
 
         lock.unlock();  // never hold the lock while rendering, so submit() and poll() don't wait
@@ -291,9 +295,11 @@ void PreviewRenderer::run(std::stop_token thread_stop) {
         }
         lock.lock();
 
-        // Publish only if no newer request arrived meanwhile: a superseded render's frame would
-        // show settings the user has already moved away from.
-        if (frame && request.generation == latest_generation_) {
+        // Publish whatever finished, even if a newer request has arrived meanwhile: during a drag
+        // that is what keeps the picture moving. Only a stopped render (another image, shutdown)
+        // is dropped. Requests run in order, so published generations only increase.
+        running_base_.reset();
+        if (frame && !render_stop.stop_requested()) {
             frame->generation = request.generation;
             frame->stage = request.stop_after;
             ready_ = std::move(frame);

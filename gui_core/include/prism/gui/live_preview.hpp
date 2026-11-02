@@ -18,7 +18,10 @@ namespace prism::gui {
 //
 // update() submits a render only when the base image or the settings differ from the last
 // request, so calling it every frame costs a comparison, and a slider drag sends one request per
-// frame in which the value moved (PreviewRenderer's latest-wins keeps that from queueing up).
+// frame in which the value moved (PreviewRenderer keeps one request pending, the latest, so that does not queue up). A frame
+// older than the latest request is still shown if it is for the same image and viewed stage and
+// newer than the one on screen, so the picture keeps moving during a drag; one for an earlier
+// image or stage, or not newer than the frame already shown, is dropped.
 // Not thread-safe: it belongs to the UI thread, like the Session.
 class LivePreview {
 public:
@@ -55,6 +58,7 @@ private:
     StageId stop_after_ = final_stage;
     PreviewOptions options_;       // what the latest request asked for
     std::uint64_t submitted_ = 0;  // generation of the latest request
+    std::uint64_t epoch_ = 0;      // generation of the first request for the current base and stage
     std::uint64_t shown_ = 0;      // generation of the latest frame poll() returned
 };
 

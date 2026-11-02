@@ -44,11 +44,15 @@ void LivePreview::update(const std::shared_ptr<const Image>& base, const EditSet
         }
         return;
     }
+    const bool same_view = base == base_ && stop_after == stop_after_;
     base_ = base;
     settings_ = settings;
     stop_after_ = stop_after;
     options_ = options;
     submitted_ = renderer_.submit(base_, settings_, stop_after_, options);
+    if (!same_view) {
+        epoch_ = submitted_;  // frames of earlier requests show another image or stage
+    }
 }
 
 std::optional<PreviewFrame> LivePreview::poll() {
@@ -56,8 +60,10 @@ std::optional<PreviewFrame> LivePreview::poll() {
     if (!frame) {
         return std::nullopt;
     }
-    // A frame from before update(nullptr) (the file was closed) or older than one already shown.
-    if (!base_ || frame->generation <= shown_) {
+    // A frame from before update(nullptr) (the file was closed), from before the base or the viewed
+    // stage changed, or not newer than the one already shown. One merely older than the latest
+    // request is fine.
+    if (!base_ || frame->generation < epoch_ || frame->generation <= shown_) {
         return std::nullopt;
     }
     shown_ = frame->generation;
