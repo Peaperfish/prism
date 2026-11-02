@@ -249,10 +249,9 @@ ClipReport compute_clip_report(const Image& base, const EditSettings& settings, 
 
 namespace {
 
-// The mask of `img`: highs too if `highs`, then low and gamut, with `earlier` (if it fits) OR-ed
-// in.
-void fill_mask(const Image& img, int threads, std::vector<std::uint8_t>& mask, bool highs,
-               bool file_ceiling, const std::vector<std::uint8_t>* earlier) {
+// The mask of `img`: highs, low and gamut, with `earlier` (if it fits) OR-ed in.
+void fill_mask(const Image& img, int threads, std::vector<std::uint8_t>& mask, bool file_ceiling,
+               const std::vector<std::uint8_t>* earlier) {
     const std::size_t pixels = static_cast<std::size_t>(std::max(img.width, 0)) *
                                static_cast<std::size_t>(std::max(img.height, 0));
     if (img.pixels.size() != pixels * Image::channels) {
@@ -273,11 +272,9 @@ void fill_mask(const Image& img, int threads, std::vector<std::uint8_t>& mask, b
             for (int x = 0; x < img.width; ++x) {
                 const float* p = row + static_cast<std::size_t>(x) * 3;
                 std::uint8_t bits = merge ? (*earlier)[first + x] : std::uint8_t{0};
-                if (highs) {
-                    const bool hi = file_ceiling ? (p[0] >= high || p[1] >= high || p[2] >= high)
-                                                 : (p[0] > high || p[1] > high || p[2] > high);
-                    bits |= hi ? clip_mask_high : 0;
-                }
+                const bool hi = file_ceiling ? (p[0] >= high || p[1] >= high || p[2] >= high)
+                                             : (p[0] > high || p[1] > high || p[2] > high);
+                bits |= hi ? clip_mask_high : 0;
                 const Negative neg = negative_kind(p);
                 bits |= (neg.low ? clip_mask_low : 0) | (neg.gamut ? clip_mask_gamut : 0);
                 out[x] = bits;
@@ -290,11 +287,35 @@ void fill_mask(const Image& img, int threads, std::vector<std::uint8_t>& mask, b
 
 void compute_clip_mask(const Image& img, int threads, std::vector<std::uint8_t>& mask,
                        bool file_ceiling, const std::vector<std::uint8_t>* earlier) {
-    fill_mask(img, threads, mask, true, file_ceiling, earlier);
+    fill_mask(img, threads, mask, file_ceiling, earlier);
 }
 
-void compute_negative_mask(const Image& img, int threads, std::vector<std::uint8_t>& mask) {
-    fill_mask(img, threads, mask, false, false, nullptr);
+void mark_lost_negatives(const Image& img, int threads, std::vector<std::uint8_t>& lost) {
+    const std::size_t pixels = static_cast<std::size_t>(std::max(img.width, 0)) *
+                               static_cast<std::size_t>(std::max(img.height, 0));
+    if (img.pixels.size() != pixels * Image::channels) {
+        throw std::invalid_argument("mark_lost_negatives: pixel buffer size does not match");
+    }
+    if (lost.size() != pixels) {
+        lost.assign(pixels, 0);
+    }
+    if (pixels == 0) {
+        return;
+    }
+    const int n = threads_for_pixels(pixels, threads);
+    parallel_for_rows(img.height, n, [&](int begin, int end) {
+        for (int y = begin; y < end; ++y) {
+            const std::size_t first = static_cast<std::size_t>(y) * img.width;
+            const float* row = img.pixels.data() + first * 3;
+            for (int x = 0; x < img.width; ++x) {
+                const Negative neg = negative_kind(row + static_cast<std::size_t>(x) * 3);
+                if (neg.low || neg.gamut) {
+                    lost[first + x] |= static_cast<std::uint8_t>((neg.low ? clip_mask_low : 0) |
+                                                                 (neg.gamut ? clip_mask_gamut : 0));
+                }
+            }
+        }
+    });
 }
 
 std::string format_clip_percent(std::uint64_t count, std::uint64_t total) {

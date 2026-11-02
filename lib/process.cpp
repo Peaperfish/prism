@@ -5,7 +5,8 @@
 namespace prism {
 
 ProcessResult process(Image& img, const ProcessSettings& settings, int threads,
-                      std::stop_token stop, const StageCallback& on_stage) {
+                      std::stop_token stop, const StageCallback& on_stage,
+                      const BeforeStageCallback& before_stage) {
     using Clock = std::chrono::steady_clock;
 
     // Runs one stage and reports its time, unless a stop was requested; returns false if it was.
@@ -13,6 +14,9 @@ ProcessResult process(Image& img, const ProcessSettings& settings, int threads,
     const auto run = [&](std::string_view name, auto&& stage) {
         if (stop.stop_requested()) {
             return false;
+        }
+        if (before_stage) {
+            before_stage(name, img);
         }
         const auto start = Clock::now();
         stage();

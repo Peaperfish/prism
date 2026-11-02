@@ -535,6 +535,25 @@ TEST(ClippingMask, PixelsNeverOutOfRangeStayUnmarked) {
               (std::vector<std::uint8_t>{0, 0}));
 }
 
+TEST(ClippingMask, AReportOnlyRenderGivesTheSameReportAndNoMask) {
+    EditSettings s = orange_matrix();
+    s.saturation = 1.5f;
+    s.curve = prism::gui::CurveKind::filmic;
+    prism::gui::PreviewOptions options;
+    options.clip_report = true;
+    const auto frame = prism::gui::render_preview(orange_and_grey(), s, 1, {}, {},
+                                                  prism::gui::final_stage, options);
+    ASSERT_TRUE(frame && frame->clips);
+    EXPECT_TRUE(frame->clip_mask.empty());
+    EXPECT_EQ(*frame->clips, compute_clip_report(orange_and_grey(), s, 1));
+    // With the mask too, the report is the same.
+    options.clip_mask = true;
+    const auto both = prism::gui::render_preview(orange_and_grey(), s, 1, {}, {},
+                                                 prism::gui::final_stage, options);
+    ASSERT_TRUE(both && both->clips);
+    EXPECT_EQ(*both->clips, *frame->clips);
+}
+
 TEST(ClippingMask, NothingIsRememberedWhenTheMaskIsNotAsked) {
     EditSettings s = orange_matrix();
     s.saturation = 1.5f;

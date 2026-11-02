@@ -32,6 +32,10 @@ struct StageTime {
 // Called after each stage that ran, on the thread that called process().
 using StageCallback = std::function<void(const StageTime&)>;
 
+// Called just before each stage that will run, with the stage's name and the image it is about to
+// receive (read-only), on the thread that called process().
+using BeforeStageCallback = std::function<void(std::string_view name, const Image& input)>;
+
 enum class ProcessResult {
     completed,  // every stage that `settings` asks for ran
     cancelled,  // `stop` was requested: the image is valid but only partly processed
@@ -46,6 +50,7 @@ enum class ProcessResult {
 // applied, the rest are not, so the image holds no garbage but is unfinished. Throws
 // std::invalid_argument as the stages do if the pixel buffer does not match the dimensions.
 [[nodiscard]] ProcessResult process(Image& img, const ProcessSettings& settings, int threads = 0,
-                                    std::stop_token stop = {}, const StageCallback& on_stage = {});
+                                    std::stop_token stop = {}, const StageCallback& on_stage = {},
+                                    const BeforeStageCallback& before_stage = {});
 
 }  // namespace prism
