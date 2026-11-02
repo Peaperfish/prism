@@ -25,31 +25,36 @@ std::size_t require_consistent(const Image& img, const char* caller) {
     return expected;
 }
 
-// Bins `v` on the display scale: the bin is the 8-bit sRGB value linear_to_srgb8 gives `v`, i.e.
-// the sRGB transfer of the float value rounded as the encode rounds it, so the graph lines up with
-// the pixels on screen. Out-of-range values are counted as clips instead, from the float itself.
-// NaN is in neither range, and linear_to_srgb8 turns it into 0 (black), so it lands in bin 0.
-void record_sample(float v, StageHistogram::Counts& bins, ChannelClips& clips) noexcept {
+// Counts one sample: below 0 and above 1 are clips, measured on the float. Anything else (NaN
+// included, which is in neither range) is binned by `code`, its 8-bit sRGB value.
+void record_sample(float v, std::uint8_t code, StageHistogram::Counts& bins,
+                   ChannelClips& clips) noexcept {
     if (v < 0.0f) {
         ++clips.under_black;
     } else if (v > 1.0f) {
         ++clips.over_white;
     } else {
-        ++bins[linear_to_srgb8(v)];
+        ++bins[code];
     }
 }
 
-void count_range(const float* pixels, std::size_t first, std::size_t last,
-                 StageHistogram& local) noexcept {
+// Counts pixels in sample range [first, last) of `pixels`. Bins are on the display scale: the bin
+// of a value is the sRGB code linear_to_srgb8 gives it (NaN gives 0, black, as on screen). R, G and
+// B read that code from `encoded` (the bytes the encode already produced for the same samples)
+// when it is given, and look it up otherwise; luminance has no output byte, so it is encoded here.
+void count_range(const float* pixels, const std::uint8_t* encoded, std::size_t first,
+                 std::size_t last, StageHistogram& local) noexcept {
     for (std::size_t i = first; i < last; i += Image::channels) {
         const float r = pixels[i];
         const float g = pixels[i + 1];
         const float b = pixels[i + 2];
         const float y = 0.2126f * r + 0.7152f * g + 0.0722f * b;
-        record_sample(r, local.red, local.red_clips);
-        record_sample(g, local.green, local.green_clips);
-        record_sample(b, local.blue, local.blue_clips);
-        record_sample(y, local.luminance, local.luminance_clips);
+        record_sample(r, encoded ? encoded[i] : linear_to_srgb8(r), local.red, local.red_clips);
+        record_sample(g, encoded ? encoded[i + 1] : linear_to_srgb8(g), local.green,
+                      local.green_clips);
+        record_sample(b, encoded ? encoded[i + 2] : linear_to_srgb8(b), local.blue,
+                      local.blue_clips);
+        record_sample(y, linear_to_srgb8(y), local.luminance, local.luminance_clips);
     }
     local.pixel_count += (last - first) / Image::channels;
 }
@@ -97,7 +102,8 @@ StageHistogram compute_stage_histogram(const Image& img, int threads) {
     parallel_for(chunks, [&](int chunk) {
         const RowRange rows = chunk_rows(img.height, chunks, chunk);
         StageHistogram local;
-        count_range(img.pixels.data(), rows.begin * row_samples, rows.end * row_samples, local);
+        count_range(img.pixels.data(), nullptr, rows.begin * row_samples,
+                    rows.end * row_samples, local);
         partial[static_cast<std::size_t>(chunk)] = local;
     });
 
@@ -124,12 +130,12 @@ void encode_srgb8_with_histogram(const Image& img, int threads, std::vector<std:
         const std::size_t last = rows.end * row_samples;
         StageHistogram local;
         // Work in L1-sized slices (1024 pixels = 12 KB of float) so counting reads cache lines
-        // that linear_to_srgb8 just loaded.
+        // that linear_to_srgb8 just loaded, and bins R, G and B from the bytes it just wrote.
         constexpr std::size_t block = 3 * 1024;
         for (std::size_t i = first; i < last; i += block) {
             const std::size_t count = std::min(block, last - i);
             linear_to_srgb8(img.pixels.data() + i, rgb8.data() + i, count);
-            count_range(img.pixels.data(), i, i + count, local);
+            count_range(img.pixels.data(), rgb8.data(), i, i + count, local);
         }
         partial[static_cast<std::size_t>(chunk)] = local;
     });
