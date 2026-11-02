@@ -10,12 +10,15 @@
 #include <string>
 
 #include "app.hpp"
+#include "prism/gui/wheel_scaling.hpp"
 #include "prism/utf8_path.hpp"
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_sdlrenderer3.h"
 
 int main(int argc, char** argv) {
+    // Keep the trackpad's momentum scrolling after the fingers lift (off by default in SDL).
+    SDL_SetHint(SDL_HINT_MAC_SCROLL_MOMENTUM, "1");
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         std::fprintf(stderr, "Prism: couldn't start SDL: %s\n", SDL_GetError());
         return 1;
@@ -87,6 +90,7 @@ int main(int argc, char** argv) {
         }
 
         bool done = false;
+        prism::gui::WheelScaler wheel_scaler;
         while (!done) {
             // Sleep until something happens while nothing is moving, instead of redrawing the
             // same frame 60 times a second.
@@ -95,6 +99,14 @@ int main(int argc, char** argv) {
             }
             SDL_Event event;
             while (SDL_PollEvent(&event)) {
+                if (event.type == SDL_EVENT_MOUSE_WHEEL) {
+                    // Before ImGui sees it: a trackpad's deltas are scaled to follow the fingers.
+                    const prism::gui::WheelDelta wheel = wheel_scaler.scale(
+                        {event.wheel.x, event.wheel.y}, ImGui::GetFontSize(),
+                        event.wheel.timestamp / 1'000'000);
+                    event.wheel.x = wheel.x;
+                    event.wheel.y = wheel.y;
+                }
                 ImGui_ImplSDL3_ProcessEvent(&event);
                 if (event.type == SDL_EVENT_QUIT ||
                     (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED &&
