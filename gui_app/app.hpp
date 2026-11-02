@@ -9,6 +9,7 @@
 
 #include "file_dialogs.hpp"
 #include "preview_texture.hpp"
+#include "scope_view.hpp"
 #include "prism/gui/background_export.hpp"
 #include "prism/gui/histogram.hpp"
 #include "prism/gui/live_preview.hpp"
@@ -73,6 +74,9 @@ private:
     void draw_splitter(float canvas_width, float width, float height, float available);
     void draw_panel();
     void draw_histogram();
+    void draw_histogram_graph(const gui::StageHistogram& h, float avail_w);
+    void draw_clip_chips(const gui::StageHistogram& h, float avail_w);
+    void draw_scope_selector();
     void draw_presets();
     void draw_simple_slider(const char* label, gui::SimpleControl control);
     void draw_pipeline();
@@ -89,6 +93,7 @@ private:
     gui::Session session_;
     gui::LivePreview preview_;
     PreviewTexture texture_;
+    ScopeView scope_view_;
     std::optional<gui::StageHistogram> histogram_;
     gui::StageId histogram_stage_ = gui::final_stage;  // the stage histogram_ was measured on
     gui::StageId viewed_stage_ = gui::final_stage;

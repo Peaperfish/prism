@@ -25,6 +25,7 @@ add_executable(prism_gui WIN32 MACOSX_BUNDLE
   file_dialogs.cpp
   main.cpp
   preview_texture.cpp
+  scope_view.cpp
   theme.cpp)
 target_include_directories(prism_gui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
