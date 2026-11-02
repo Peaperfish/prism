@@ -33,11 +33,11 @@ TEST(StageHistogram, FlatGreyFillsExactBinAcrossAllChannelsWithZeroClips) {
 
     const StageHistogram h = prism::gui::compute_stage_histogram(img, 1);
     EXPECT_EQ(h.pixel_count, 12u);
-    // 0.5 * 255 + 0.5 = 128.0 -> bin 128.
-    EXPECT_EQ(h.red[128], 12u);
-    EXPECT_EQ(h.green[128], 12u);
-    EXPECT_EQ(h.blue[128], 12u);
-    EXPECT_EQ(h.luminance[128], 12u);
+    // Linear 0.5 is sRGB 0.7354, times 255 = 187.5 -> code 188.
+    EXPECT_EQ(h.red[188], 12u);
+    EXPECT_EQ(h.green[188], 12u);
+    EXPECT_EQ(h.blue[188], 12u);
+    EXPECT_EQ(h.luminance[188], 12u);
     EXPECT_EQ(sum_bins(h.red), 12u);
     EXPECT_EQ(sum_bins(h.green), 12u);
     EXPECT_EQ(sum_bins(h.blue), 12u);
@@ -50,16 +50,14 @@ TEST(StageHistogram, FlatGreyFillsExactBinAcrossAllChannelsWithZeroClips) {
     EXPECT_FALSE(prism::gui::has_highlight_clipping(h));
 }
 
-TEST(StageHistogram, LinearRampPopulatesEveryBinExactlyOnce) {
+TEST(StageHistogram, SrgbRampPopulatesEveryBinExactlyOnce) {
+    // Linear values of the 256 sRGB codes: each must land in its own code's bin.
     prism::Image img;
     img.width = 256;
     img.height = 1;
-    img.pixels.reserve(256 * 3);
     for (int i = 0; i < 256; ++i) {
-        const float v = static_cast<float>(i) / 255.0f;
-        img.pixels.push_back(v);
-        img.pixels.push_back(v);
-        img.pixels.push_back(v);
+        const float v = prism::srgb8_to_linear(static_cast<std::uint8_t>(i));
+        img.pixels.insert(img.pixels.end(), {v, v, v});
     }
 
     const StageHistogram h = prism::gui::compute_stage_histogram(img, 1);
@@ -73,6 +71,21 @@ TEST(StageHistogram, LinearRampPopulatesEveryBinExactlyOnce) {
     EXPECT_EQ(h.red_clips, (ChannelClips{0, 0}));
     EXPECT_EQ(h.green_clips, (ChannelClips{0, 0}));
     EXPECT_EQ(h.blue_clips, (ChannelClips{0, 0}));
+}
+
+TEST(StageHistogram, MidGreyLinear018LandsInBin118NotBin46) {
+    prism::Image img;
+    img.width = 2;
+    img.height = 1;
+    img.pixels.assign(6, 0.18f);
+
+    const StageHistogram h = prism::gui::compute_stage_histogram(img, 1);
+    // sRGB(0.18) = 0.4614, times 255 = 117.7 -> code 118 (a linear scale would give bin 46).
+    EXPECT_EQ(h.red[118], 2u);
+    EXPECT_EQ(h.green[118], 2u);
+    EXPECT_EQ(h.blue[118], 2u);
+    EXPECT_EQ(h.luminance[118], 2u);
+    EXPECT_EQ(h.red[46], 0u);
 }
 
 TEST(StageHistogram, PureRedGivesExactChannelAndRec709LuminanceBins) {
@@ -90,8 +103,9 @@ TEST(StageHistogram, PureRedGivesExactChannelAndRec709LuminanceBins) {
     EXPECT_EQ(h.red[255], 10u);
     EXPECT_EQ(h.green[0], 10u);
     EXPECT_EQ(h.blue[0], 10u);
-    // Rec. 709 luminance of pure red (1, 0, 0) is 0.2126; 0.2126 * 255 + 0.5 = 54.713 -> bin 54.
-    EXPECT_EQ(h.luminance[54], 10u);
+    // Rec. 709 luminance of pure red (1, 0, 0) is 0.2126 in linear light; encoded that is
+    // sRGB 0.4984, times 255 = 127.10 -> code 127.
+    EXPECT_EQ(h.luminance[127], 10u);
     EXPECT_EQ(sum_bins(h.red), 10u);
     EXPECT_EQ(sum_bins(h.green), 10u);
     EXPECT_EQ(sum_bins(h.blue), 10u);
@@ -106,8 +120,8 @@ TEST(StageHistogram, OutOfRangeValuesCountAsUnderBlackAndOverWhiteSeparateFromBi
     // 4 pixels:
     //   0: (-0.2,  1.5,  0.0) -> R under, G over, B bin 0
     //   1: ( 1.1, -0.01, 1.0) -> R over,  G under, B bin 255
-    //   2: ( 2.0,  0.5, -3.0) -> R over,  G bin 128, B under
-    //   3: ( 0.0,  1.0,  0.5) -> R bin 0, G bin 255, B bin 128
+    //   2: ( 2.0,  0.5, -3.0) -> R over,  G bin 188, B under
+    //   3: ( 0.0,  1.0,  0.5) -> R bin 0, G bin 255, B bin 188
     prism::Image img;
     img.width = 4;
     img.height = 1;
@@ -127,13 +141,13 @@ TEST(StageHistogram, OutOfRangeValuesCountAsUnderBlackAndOverWhiteSeparateFromBi
 
     EXPECT_EQ(h.green_clips, (ChannelClips{1, 1}));
     EXPECT_EQ(h.green[0], 0u);
-    EXPECT_EQ(h.green[128], 1u);
+    EXPECT_EQ(h.green[188], 1u);
     EXPECT_EQ(h.green[255], 1u);
     EXPECT_EQ(sum_bins(h.green), 2u);
 
     EXPECT_EQ(h.blue_clips, (ChannelClips{1, 0}));
     EXPECT_EQ(h.blue[0], 1u);
-    EXPECT_EQ(h.blue[128], 1u);
+    EXPECT_EQ(h.blue[188], 1u);
     EXPECT_EQ(h.blue[255], 1u);
     EXPECT_EQ(sum_bins(h.blue), 3u);
 
@@ -184,7 +198,7 @@ TEST(StageHistogram, PreviewFrameDeliversHistogramMatchingTheViewedStage) {
     EXPECT_FALSE(prism::gui::has_highlight_clipping(at_decode->histogram));
 
     EXPECT_EQ(at_exposure->histogram.red_clips.over_white, 3u);
-    EXPECT_EQ(at_exposure->histogram.red[static_cast<std::size_t>(0.8f * 255.0f + 0.5f)], 1u);
+    EXPECT_EQ(at_exposure->histogram.red[231], 1u);
     EXPECT_TRUE(prism::gui::has_highlight_clipping(at_exposure->histogram));
 }
 
@@ -219,10 +233,10 @@ TEST(StageHistogram, NaNCountsAsBlackLikeTheEncodeAndInfinitiesAsClips) {
     EXPECT_EQ(h.red[0], 1u);  // the NaN
     EXPECT_EQ(h.red_clips, (ChannelClips{1, 1}));
     EXPECT_EQ(sum_bins(h.red), 1u);
-    EXPECT_EQ(h.green[128], 1u);
+    EXPECT_EQ(h.green[188], 1u);
     EXPECT_EQ(h.green[0], 1u);
     EXPECT_EQ(h.green_clips, (ChannelClips{0, 1}));
-    EXPECT_EQ(h.blue[128], 1u);
+    EXPECT_EQ(h.blue[188], 1u);
     EXPECT_EQ(h.blue[255], 1u);
     EXPECT_EQ(h.blue_clips, (ChannelClips{0, 1}));
     // Every channel accounts for every pixel exactly once, bins plus clips.
@@ -237,4 +251,23 @@ TEST(StageHistogram, NaNCountsAsBlackLikeTheEncodeAndInfinitiesAsClips) {
     EXPECT_EQ(h.luminance_clips, (ChannelClips{1, 1}));
     EXPECT_EQ(sum_bins(h.luminance) + h.luminance_clips.under_black + h.luminance_clips.over_white,
               h.pixel_count);
+}
+
+TEST(StageHistogram, LuminanceWeightsAreRec709InLinearLightThenEncoded) {
+    prism::Image img;
+    img.width = 3;
+    img.height = 1;
+    img.pixels = {1.0f, 0.0f, 0.0f,   // red
+                  0.0f, 1.0f, 0.0f,   // green
+                  0.0f, 0.0f, 1.0f};  // blue
+
+    const StageHistogram h = prism::gui::compute_stage_histogram(img, 1);
+    // Linear 0.2126 / 0.7152 / 0.0722, sRGB-encoded and times 255: 127.10, 219.93, 75.96.
+    EXPECT_EQ(h.luminance[127], 1u);
+    EXPECT_EQ(h.luminance[220], 1u);
+    EXPECT_EQ(h.luminance[76], 1u);
+    EXPECT_EQ(sum_bins(h.luminance), 3u);
+    // Each channel is 1.0 in one pixel (bin 255) and 0.0 in two (bin 0).
+    EXPECT_EQ(h.red[255], 1u);
+    EXPECT_EQ(h.red[0], 2u);
 }

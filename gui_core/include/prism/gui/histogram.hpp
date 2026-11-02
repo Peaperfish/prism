@@ -20,7 +20,9 @@ struct ChannelClips {
 };
 
 // Per-channel and Rec. 709 luminance histograms of a pipeline stage's float image before the
-// 8-bit encode, with 256 bins over [0, 1] and separate under-black / over-white clip counts.
+// 8-bit encode, with separate under-black / over-white clip counts. The 256 bins are on the display
+// scale: a value falls in the bin of its 8-bit sRGB code (linear 0.18 is in bin 118), so the graph
+// matches what is on screen. Luminance is computed in linear light, then encoded the same way.
 struct StageHistogram {
     static constexpr int bins = 256;
     using Counts = std::array<std::uint64_t, bins>;

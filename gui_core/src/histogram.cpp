@@ -25,17 +25,17 @@ std::size_t require_consistent(const Image& img, const char* caller) {
     return expected;
 }
 
+// Bins `v` on the display scale: the bin is the 8-bit sRGB value linear_to_srgb8 gives `v`, i.e.
+// the sRGB transfer of the float value rounded as the encode rounds it, so the graph lines up with
+// the pixels on screen. Out-of-range values are counted as clips instead, from the float itself.
+// NaN is in neither range, and linear_to_srgb8 turns it into 0 (black), so it lands in bin 0.
 void record_sample(float v, StageHistogram::Counts& bins, ChannelClips& clips) noexcept {
-    if (v >= 0.0f && v <= 1.0f) {
-        ++bins[static_cast<std::size_t>(v * 255.0f + 0.5f)];
-    } else if (v < 0.0f) {
+    if (v < 0.0f) {
         ++clips.under_black;
     } else if (v > 1.0f) {
         ++clips.over_white;
     } else {
-        // NaN: linear_to_srgb8 shows it as black, so count it as black rather than losing it
-        // (every pixel is counted once per channel, in a bin or as a clip).
-        ++bins[0];
+        ++bins[linear_to_srgb8(v)];
     }
 }
 
