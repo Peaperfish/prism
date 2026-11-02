@@ -170,6 +170,37 @@ TEST(Clipping, TheCeilingToleranceIsOneMillionth) {
     EXPECT_EQ(compute_clip_report(img, EditSettings{}).at(StageId::decode).over.any, 1u);
 }
 
+TEST(Clipping, ValuesAboveWhiteInAFloatImageAreNotLostAtDecode) {
+    // A float source (the library can be given one; the app's own decoders never go above 1.0):
+    // 1.5 is real highlight data, out of range and recoverable, like Exposure's.
+    const ClipReport r = compute_clip_report(solid(10, 10, 1.5f, 0.5f, 0.5f), EditSettings{});
+    EXPECT_EQ(r.at(StageId::decode).over.any, 100u);
+    EXPECT_EQ(r.at(StageId::decode).over.red, 100u);
+    EXPECT_EQ(r.at(StageId::decode).over_fate, ClipFate::recoverable);
+    EXPECT_EQ(r.first_over, StageId::decode);
+    EXPECT_EQ(r.first_over_lost, StageId::encode);
+    EXPECT_NE(r.first_over_lost, StageId::decode);
+    EXPECT_EQ(describe_clipping(r),
+              "Highlights first clip at Decode (100% of pixels); "
+              "still recoverable until Output encode.");
+}
+
+TEST(Clipping, EditsThatPushFileClippedPixelsOnlyAreRecoverableWhenAToneCurveHelps) {
+    // Half at the ceiling, half at 0.3; +2 stops then Reinhard brings 4.0 back below 1.
+    Image img = solid(10, 10, 0.3f, 0.3f, 0.3f);
+    for (std::size_t i = 0; i < img.pixels.size() / 2; ++i) {
+        img.pixels[i] = 1.0f;
+    }
+    EditSettings s = with_exposure(1.0f);
+    s.curve = prism::gui::CurveKind::reinhard;
+    const ClipReport r = compute_clip_report(img, s);
+    EXPECT_EQ(r.first_over_lost, StageId::decode);
+    EXPECT_EQ(r.at(StageId::encode).over_fate, ClipFate::none);
+    EXPECT_EQ(describe_clipping(r),
+              "50% of pixels were already clipped in the file. "
+              "Edits push 50% over white at Exposure; still recoverable.");
+}
+
 TEST(Clipping, DecodeLossAndLaterClippingAreSaidInOneSentence) {
     // Half the pixels are at the ceiling; +1 stop pushes those (and only those) over white.
     Image img = solid(10, 10, 0.3f, 0.3f, 0.3f);
@@ -180,8 +211,8 @@ TEST(Clipping, DecodeLossAndLaterClippingAreSaidInOneSentence) {
     EXPECT_EQ(r.first_over_lost, StageId::decode);
     EXPECT_EQ(r.at(StageId::exposure).over.any, 50u);
     EXPECT_EQ(describe_clipping(r),
-              "50% of pixels were already clipped in the file, for good; "
-              "edits push 50% over white at Exposure.");
+              "50% of pixels were already clipped in the file. "
+              "Edits push 50% over white at Exposure; lost at Output encode.");
 }
 
 TEST(Clipping, AToneCurveThatBringsHighlightsBackLosesNothing) {
@@ -241,7 +272,7 @@ TEST(Clipping, HighlightsAndShadowsAreDescribedTogether) {
     const ClipReport r = compute_clip_report(img, EditSettings{});
     EXPECT_EQ(
         describe_clipping(r),
-        "50% of pixels were already clipped in the file; no edit can bring them back. "
+        "Highlights first clip at Decode (50% of pixels); still recoverable until Output encode. "
         "Shadows first clip at Decode (50% of pixels); still recoverable until Output encode.");
 }
 

@@ -99,7 +99,10 @@ ClipRecorder::Range ClipRecorder::measure(const Image& img, int stride, int firs
             // Comparisons are false for NaN, so NaN counts as neither; +-inf count.
             const bool hi[3] = {p[0] > 1.0f, p[1] > 1.0f, p[2] > 1.0f};
             const bool lo[3] = {p[0] < 0.0f, p[1] < 0.0f, p[2] < 0.0f};
-            const bool ce[3] = {p[0] >= ceiling, p[1] >= ceiling, p[2] >= ceiling};
+            // The ceiling band is [1 - epsilon, 1]: an integer source never goes above 1.0, so a
+            // value above it can only come from a float image, where it is real highlight data.
+            const bool ce[3] = {p[0] >= ceiling && p[0] <= 1.0f, p[1] >= ceiling && p[1] <= 1.0f,
+                                p[2] >= ceiling && p[2] <= 1.0f};
             r.over.red += hi[0];
             r.over.green += hi[1];
             r.over.blue += hi[2];
@@ -152,10 +155,14 @@ void ClipRecorder::record(StageId stage, const Range& output) {
     const bool clamps_hi = stage_clamps(stage, ClipDirection::highlights);
     const bool clamps_lo = stage_clamps(stage, ClipDirection::shadows);
     // A clamping stage's row counts what it clamped, i.e. what came in out of range.
-    // Decode's "clamp" happened in the file: its row counts the pixels at the file's ceiling.
-    row.over = stage == StageId::decode ? output.ceiling : clamps_hi ? previous_.over : output.over;
+    // Decode's "clamp" happened in the file: its row counts the pixels at the file's ceiling
+    // (lost). With none, any values above 1.0 (a float image) are out of range but recoverable.
+    const bool at_ceiling = stage == StageId::decode && output.ceiling.any > 0;
+    row.over = at_ceiling                              ? output.ceiling
+               : clamps_hi && stage != StageId::decode ? previous_.over
+                                                       : output.over;
     row.under = clamps_lo ? previous_.under : output.under;
-    row.over_fate = fate_of(row.over.any, clamps_hi);
+    row.over_fate = fate_of(row.over.any, at_ceiling || (clamps_hi && stage != StageId::decode));
     row.under_fate = fate_of(row.under.any, clamps_lo);
 
     const auto note = [&](std::optional<StageId>& first, std::optional<StageId>& first_lost,
@@ -289,9 +296,20 @@ std::string describe_clipping(const ClipReport& report) {
             }
         }
         if (later) {
-            text += ", for good; edits push " +
-                    format_clip_percent(report.at(*later).over.any, report.sample_count) +
-                    " over white at " + std::string(stage_info(*later).name) + ".";
+            // Where the edits' highlights are lost, if they are (the first stage after Decode).
+            std::optional<StageId> lost;
+            for (std::size_t i = static_cast<std::size_t>(StageId::exposure);
+                 i < report.stages.size() && !lost; ++i) {
+                if (report.stages[i].over_fate == ClipFate::lost) {
+                    lost = report.stages[i].stage;
+                }
+            }
+            text +=
+                ". Edits push " +
+                format_clip_percent(report.at(*later).over.any, report.sample_count) +
+                " over white at " + std::string(stage_info(*later).name) + "; " +
+                (lost ? "lost at " + std::string(stage_info(*lost).name) : "still recoverable") +
+                ".";
         } else {
             text += "; no edit can bring them back.";
         }

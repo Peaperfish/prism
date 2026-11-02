@@ -32,8 +32,12 @@ namespace prism::gui {
 // Decode's ceiling: LibRaw maps the sensor's white level to exactly 1.0 (and clips there), and an
 // 8-bit file's 255 is exactly 1.0, so a pixel with a channel at 1.0 after Decode was already
 // clipped before any edit, and nothing can bring its detail back. Decode therefore counts any
-// channel >= 1.0 - file_ceiling_epsilon as lost, for RAW and 8-bit sources alike. (A real,
-// unclipped value at exactly 1.0 can't be told apart; that is rare in a photo.) Below 0 Decode is
+// channel in [1.0 - file_ceiling_epsilon, 1.0] as lost, for RAW and 8-bit sources alike. (A real,
+// unclipped value at exactly 1.0 can't be told apart; that is rare in a photo.) Prism has no float
+// decode path: every source is integer (8-bit, or RAW at 16 bits), and those never exceed 1.0. So
+// a value above 1.0 at Decode can only come from a float image given to the library directly,
+// where it is real highlight data: it counts as out of range and recoverable, like Exposure's.
+// (If a pixel set has both, the row counts the ceiling pixels.) Below 0 Decode is
 // not changed: both kinds of source give values in 0..1 (an 8-bit 0 is 0.0; LibRaw's 16-bit output
 // has the black level subtracted and floored at 0), so black in the file looks like true black.
 //
@@ -66,7 +70,8 @@ struct ClipCounts {
 };
 
 // One row of the pipeline view. `over` counts values above 1.0 and `under` values below 0.0
-// (at Decode, `over` counts values at the file's ceiling, >= 1.0 - file_ceiling_epsilon: lost).
+// (at Decode, `over` counts values at the file's ceiling, in [1.0 - file_ceiling_epsilon, 1.0]:
+// lost; with none, values above 1.0: recoverable).
 // For a direction the stage does not clamp, the count is of its output (still out of range,
 // fate recoverable). For a direction it clamps, the count is of the pixels that were out of range
 // going in, which the stage just clamped (fate lost); the output has none left.
@@ -140,7 +145,7 @@ private:
     struct Range {
         ClipCounts over;
         ClipCounts under;
-        ClipCounts ceiling;  // channels >= 1.0 - file_ceiling_epsilon (used for Decode)
+        ClipCounts ceiling;  // channels in [1.0 - file_ceiling_epsilon, 1.0] (used for Decode)
     };
     // Counts the pixels of `img` on the grid `stride` apart from `first` (stride 1: all of them).
     [[nodiscard]] Range measure(const Image& img, int stride, int first) const;
@@ -176,6 +181,9 @@ void compute_clip_mask(const Image& img, int threads, std::vector<std::uint8_t>&
 //   "Highlights first clip at Exposure (2.1% of pixels); still recoverable until Output encode."
 //   "Shadows clip at Output encode (0.4% of pixels)."
 //   "3.2% of pixels were already clipped in the file; no edit can bring them back."
+//   "3.2% of pixels were already clipped in the file. Edits push 51% over white at Exposure; lost
+//   at
+//    Output encode."
 [[nodiscard]] std::string describe_clipping(const ClipReport& report);
 
 }  // namespace prism::gui
