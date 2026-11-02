@@ -315,3 +315,40 @@ TEST(StageHint, CaptionsNameEachPicture) {
     EXPECT_EQ(prism::gui::stage_caption(StageId::matrix), "after Colour matrix");
     EXPECT_EQ(prism::gui::stage_caption(StageId::encode), "after Output encode");
 }
+
+namespace {
+
+using prism::gui::EscapeAction;
+using prism::gui::EscapeContext;
+using prism::gui::escape_action;
+
+TEST(Escape, FirstClearsTheComparisonThenReturnsToTheFinalPicture) {
+    EscapeContext c;
+    c.comparing = true;
+    c.viewing_earlier = true;
+    EXPECT_EQ(escape_action(c), EscapeAction::clear_compare);
+    c.comparing = false;
+    EXPECT_EQ(escape_action(c), EscapeAction::show_final);
+    c.viewing_earlier = false;
+    EXPECT_EQ(escape_action(c), EscapeAction::none);
+}
+
+TEST(Escape, ComparingAgainstTheFinalPictureStillClears) {
+    EscapeContext c;
+    c.comparing = true;
+    EXPECT_EQ(escape_action(c), EscapeAction::clear_compare);
+}
+
+TEST(Escape, ClosesAPopupOrEndsATextEditOrDragFirst) {
+    for (int which = 0; which < 3; ++which) {
+        EscapeContext c;
+        c.comparing = true;
+        c.viewing_earlier = true;
+        c.text_editing = which == 0;
+        c.popup_open = which == 1;
+        c.item_active = which == 2;
+        EXPECT_EQ(escape_action(c), EscapeAction::none) << which;
+    }
+}
+
+}  // namespace

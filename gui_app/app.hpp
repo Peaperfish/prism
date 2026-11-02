@@ -149,6 +149,8 @@ private:
     Uint32 native_prefs_event_ = 0;
     bool about_open_ = false;
     bool notices_open_ = false;  // the full third-party notices, opened from About
+    bool popup_open_last_frame_ = false;   // for Esc: see handle_shortcuts
+    bool item_active_last_frame_ = false;
     // Likewise for the macOS app menu's "About Prism" item; 0: About is in our Help menu.
     Uint32 native_about_event_ = 0;
     float display_scale_ = 1.0f;  // the display's content scale (1.5 at 150% on Windows)

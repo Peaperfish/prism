@@ -95,4 +95,24 @@ void set_curve_parameter(EditSettings& s, float value);
 // stage shown: "Not visible here: the furthest stage shown is after Exposure."
 [[nodiscard]] std::string view_hint(StageId viewed, std::optional<StageId> compare = {});
 
+// What Esc does to the picture. All the flags describe the frame before the key arrived: by the time
+// the app sees the key, Dear ImGui has already used it to close a popup or end a drag.
+struct EscapeContext {
+    bool comparing = false;      // a compare stage is in effect (see effective_compare)
+    bool viewing_earlier = false;  // the viewed stage is not the final picture
+    bool text_editing = false;   // a text field (or a slider typed into) has the keyboard
+    bool popup_open = false;     // a popup, menu or combo list was open
+    bool item_active = false;    // a slider was being dragged
+};
+
+enum class EscapeAction {
+    none,           // Esc belongs to something else, or there's nothing to back out of
+    clear_compare,  // first Esc: drop the comparison, keep the viewed stage
+    show_final,     // second Esc: back to the final picture
+};
+
+// Esc backs out one level, whatever widget was used last, but never while it is closing a popup,
+// ending a text edit or cancelling a drag.
+[[nodiscard]] EscapeAction escape_action(const EscapeContext& c) noexcept;
+
 }  // namespace prism::gui

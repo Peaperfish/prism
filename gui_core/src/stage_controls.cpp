@@ -164,4 +164,14 @@ std::string view_hint(StageId viewed, std::optional<StageId> compare) {
     return "Not visible here: you're viewing after " + std::string(stage_info(viewed).name) + ".";
 }
 
+EscapeAction escape_action(const EscapeContext& c) noexcept {
+    if (c.text_editing || c.popup_open || c.item_active) {
+        return EscapeAction::none;
+    }
+    if (c.comparing) {
+        return EscapeAction::clear_compare;
+    }
+    return c.viewing_earlier ? EscapeAction::show_final : EscapeAction::none;
+}
+
 }  // namespace prism::gui

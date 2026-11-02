@@ -462,6 +462,10 @@ void App::frame() {
     if (pending_open_) {
         pending_open_shown_ = true;
     }
+    // For Esc next frame: ImGui will have used the key on these before the app sees it.
+    popup_open_last_frame_ =
+        ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
+    item_active_last_frame_ = ImGui::IsAnyItemActive();
 }
 
 void App::handle_shortcuts() {
@@ -479,6 +483,28 @@ void App::handle_shortcuts() {
         ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S, ImGuiInputFlags_RouteGlobal)) {
         show_save_dialog();
     }
+    // Esc backs out one level: first the comparison, then the viewed stage. Read as a plain key
+    // press, not a Shortcut(): a Shortcut route loses to the panel once a slider or combo there
+    // has the keyboard focus, so Esc did nothing until the picture was clicked.
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        gui::EscapeContext esc;
+        esc.comparing = gui::effective_compare(viewed_stage_, compare_stage_).has_value();
+        esc.viewing_earlier = viewed_stage_ != gui::final_stage;
+        esc.text_editing = ImGui::GetIO().WantTextInput;  // as of the last frame
+        esc.popup_open = popup_open_last_frame_;
+        esc.item_active = item_active_last_frame_;
+        switch (gui::escape_action(esc)) {
+            case gui::EscapeAction::clear_compare:
+                compare_stage_.reset();
+                break;
+            case gui::EscapeAction::show_final:
+                viewed_stage_ = gui::final_stage;
+                compare_stage_.reset();  // one that equalled the viewed stage goes too
+                break;
+            case gui::EscapeAction::none:
+                break;
+        }
+    }
     // Not in the middle of a drag: History would end the drag's step, but the slider would keep
     // sending values that each became a step of their own.
     if (ImGui::IsAnyItemActive()) {
@@ -493,17 +519,6 @@ void App::handle_shortcuts() {
     }
     if (ImGui::Shortcut(ImGuiKey_J, ImGuiInputFlags_RouteGlobal)) {
         toggle_clip_overlay();  // J: "jumping" highlights; free of every other shortcut
-    }
-    // Esc backs out one level: first the comparison, then the viewed stage.
-    const bool comparing = gui::effective_compare(viewed_stage_, compare_stage_).has_value();
-    if ((comparing || viewed_stage_ != gui::final_stage) &&
-        ImGui::Shortcut(ImGuiKey_Escape, ImGuiInputFlags_RouteGlobal)) {
-        if (comparing) {
-            compare_stage_.reset();
-        } else {
-            viewed_stage_ = gui::final_stage;
-            compare_stage_.reset();  // one that equalled the viewed stage goes too
-        }
     }
 }
 
