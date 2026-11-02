@@ -10,6 +10,8 @@ Prism loads an image (PNG, JPEG or camera RAW), runs it through a simple colour 
 
 > 🚧 Work in progress.
 
+![The Prism window: a photo with the control panel beside it, in the dark theme](docs/images/prism-window.jpg)
+
 ## Why Prism
 
 Mainstream photo editors often come with a subscription and a cloud catalog, hide what their sliders do, and sell looks as presets you can't read. Prism is built on four principles instead:
@@ -259,7 +261,7 @@ Each row shows a third, violet dot and percentage, hollow while a later stage ma
 Preferences (on macOS: Prism → Preferences…, Cmd+,; on Windows and Linux: Edit → Preferences…, Ctrl+,) is an ordinary window whose changes apply at once:
 
 - **Appearance:** System (the default: follows the operating system's light or dark mode, also when it switches while Prism is open), Light or Dark. Whatever the theme, the canvas behind the photo stays a neutral grey (slightly lighter in Light), never white, black or tinted, so it doesn't sway how bright or colourful the photo looks.
-- **Interface size:** Auto (the display's scale, e.g. 150% on a Windows laptop set to 150%) or 75–200% in steps of 25.
+- **Interface size:** Auto (the display's scale, e.g. 150% on a Windows laptop set to 150%) or 75–200% in steps of 25. Cmd+= (or Cmd++) makes it one step bigger, Cmd+- one step smaller and Cmd+0 returns to Auto, also from the View menu (Ctrl instead of Cmd on Windows and Linux); the choice is kept like the others.
 - **Panel width:** the control panel's width; it can also be dragged at its left edge. It never takes more than 40% of the window (or less than 240 points where there is room). "Reset layout" goes back to 320 points, "Restore defaults" resets everything.
 
 They are kept in `preferences.txt`, key=value lines next to ImGui's `imgui.ini` in the folder SDL picks for the app: `~/Library/Application Support/Prism/Prism/` on macOS, `%APPDATA%\Prism\Prism\` on Windows, `~/.local/share/Prism/Prism/` on Linux. The file is written atomically (a temporary file renamed over it). A missing or damaged file, or a bad value, falls back to the default for that setting alone, and settings Prism doesn't know (from a newer version) are kept.
