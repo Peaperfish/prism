@@ -1218,7 +1218,6 @@ void App::draw_slider(const char* label, gui::SimpleControl control, bool in_sta
     }
 
     ImGui::PushID(label);
-    ImGui::BeginDisabled(!enabled);
     if (in_stage_row) {
         gui::EditSettings stored = shown;
         gui::set_stage_enabled(stored, stage, true);
@@ -1226,7 +1225,15 @@ void App::draw_slider(const char* label, gui::SimpleControl control, bool in_sta
         if (!enabled) {
             text += " when on";
         }
+        // The value in the regular face at full strength; for a stage that is off, in the muted
+        // colour (which is checked for contrast) rather than the dimmed look of a disabled item.
+        if (!enabled) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        }
         ImGui::TextUnformatted(text.c_str());
+        if (!enabled) {
+            ImGui::PopStyleColor();
+        }
         if (custom) {
             ImGui::SameLine();
             ImGui::TextDisabled("(beyond the slider)");
@@ -1247,8 +1254,9 @@ void App::draw_slider(const char* label, gui::SimpleControl control, bool in_sta
                                                              ImGui::CalcTextSize(text).x));
         ImGui::TextUnformatted(text);
     }
+    ImGui::BeginDisabled(!enabled);
     ImGui::SetNextItemWidth(-FLT_MIN);
-    // An empty format draws no text on the slider; Ctrl/Cmd-click still types a value.
+    // Ctrl/Cmd-click still types a value.
     const bool changed =
         styled_slider("##slider", &value, gui::simple_min, gui::simple_max, 0.0f);
     const gui::SliderFrame frame{ImGui::IsItemActivated(), changed, ImGui::IsItemDeactivated()};
@@ -1447,6 +1455,11 @@ void App::draw_curve_controls() {
         // slider moves a position (gui_core maps it to the value, in ratios for Reinhard), so it
         // takes no typed input: that would be a position, not the value.
         const float value = gui::curve_parameter_value(current);
+        // Text keeps its full alpha even while the controls are disabled, in the muted colour.
+        ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 1.0f);
+        if (!current.curve_on) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        }
         ImGui::TextUnformatted(std::string(p->label).c_str());
         char text[16];
         std::snprintf(text, sizeof text, "%.2f", static_cast<double>(value));
@@ -1454,6 +1467,10 @@ void App::draw_curve_controls() {
                                                              ImGui::GetContentRegionAvail().x -
                                                              ImGui::CalcTextSize(text).x));
         ImGui::TextUnformatted(text);
+        if (!current.curve_on) {
+            ImGui::PopStyleColor();
+        }
+        ImGui::PopStyleVar();
         float position = gui::curve_slider_position(*p, value);
         ImGui::SetNextItemWidth(-FLT_MIN);
         const bool changed =
@@ -1528,17 +1545,51 @@ void App::draw_compare_controls() {
 
 void App::draw_pipeline() {
     // The per-stage clipping is only worked out while this section is open.
-    pipeline_open_ = ImGui::CollapsingHeader("Pipeline", ImGuiTreeNodeFlags_DefaultOpen);
+    section_header("Pipeline", &pipeline_open_);
     if (!pipeline_open_) {
         return;
     }
     draw_compare_controls();
 
+    const ImGuiStyle& style = ImGui::GetStyle();
     const float row_h = ImGui::GetFrameHeight();
+    const float box = std::round(token_metrics().checkbox_size);
+    // The name starts after the checkbox (or the gap where there is none); what hangs under it, the
+    // value and its control, lines up with it.
+    const float inset = style.ItemInnerSpacing.x;
+    const float name_indent = inset + box + style.ItemInnerSpacing.x;
     for (const gui::StageInfo& stage : gui::pipeline_stages()) {
         ImGui::PushID(static_cast<int>(stage.id));
         const bool enabled = gui::stage_enabled(session_.settings(), stage.id);
+        const bool selected = viewed_stage_ == stage.id;
 
+        // The row is one hit area across the panel's width, drawn with its own highlight so that
+        // it covers the checkbox too; the checkbox, submitted over it, takes its own clicks.
+        const ImVec2 row_pos = ImGui::GetCursorScreenPos();
+        const float row_w = ImGui::GetContentRegionAvail().x;
+        ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(0, 0, 0, 0));
+        ImGui::SetNextItemAllowOverlap();
+        if (ImGui::Selectable("##row", selected, ImGuiSelectableFlags_AllowOverlap,
+                              ImVec2(0.0f, row_h))) {
+            viewed_stage_ = stage.id;
+        }
+        ImGui::PopStyleColor(3);
+        const ImVec2 row_min = ImGui::GetItemRectMin();
+        const ImVec2 row_max = ImVec2(row_pos.x + row_w, row_pos.y + row_h);
+        const bool row_over =
+            ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(row_min, row_max);
+        if (selected || row_over) {
+            const gui::TokenColours& tokens = token_colours();
+            const gui::Rgba& fill = selected ? tokens.header_active : tokens.header_hovered;
+            ImGui::GetWindowDrawList()->AddRectFilled(
+                row_min, row_max, ImGui::GetColorU32(ImVec4(fill.r, fill.g, fill.b, fill.a)),
+                style.FrameRounding);
+        }
+        const bool row_hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal);
+
+        ImGui::SetCursorScreenPos(ImVec2(row_pos.x + inset, row_pos.y));
         if (stage.can_toggle) {
             bool on = enabled;
             if (styled_checkbox("##on", &on)) {
@@ -1550,30 +1601,24 @@ void App::draw_pipeline() {
                 ImGui::SetTooltip("%s", std::string(stage.description).c_str());
             }
         } else {
-            ImGui::Dummy(ImVec2(row_h, row_h));
+            ImGui::Dummy(ImVec2(box, row_h));
         }
-        ImGui::SameLine();
+        ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
 
-        const bool selected = viewed_stage_ == stage.id;
-        std::string row_label(stage.name);
+        // The name in the semi-bold face, in the muted colour when the stage is off.
+        std::string name(stage.name);
         if (!enabled) {
-            row_label += " (off)";
-        }
-        if (!enabled) {
+            name += " (off)";
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
         }
-        ImGui::PushStyleVar(ImGuiStyleVar_SelectableTextAlign, ImVec2(0.0f, 0.5f));
-        if (ImGui::Selectable(row_label.c_str(), selected, ImGuiSelectableFlags_None,
-                              ImVec2(0.0f, row_h))) {
-            viewed_stage_ = stage.id;
-        }
-        ImGui::PopStyleVar();
+        ImGui::PushFont(fonts().semibold, token_type().body);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(name.c_str());
+        ImGui::PopFont();
         if (!enabled) {
             ImGui::PopStyleColor();
         }
-        const bool row_hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal);
-        const ImVec2 row_min = ImGui::GetItemRectMin();
-        const ImVec2 row_max = ImGui::GetItemRectMax();
+
         const bool over_indicator =
             clips_ && draw_stage_clip_indicator(clips_->at(stage.id), row_min, row_max);
         if (row_hovered && !over_indicator) {
@@ -1581,24 +1626,24 @@ void App::draw_pipeline() {
         }
         if (gui::hidden_by_view(session_.settings(), stage.id, viewed_stage_, compare_stage_)) {
             // An edit after the viewed stage changes the photo but not what is on screen.
-            ImGui::Indent(row_h + ImGui::GetStyle().ItemSpacing.x);
+            ImGui::Indent(name_indent);
             ImGui::PushTextWrapPos(0.0f);
             ImGui::TextDisabled("%s", gui::view_hint(viewed_stage_, compare_stage_).c_str());
             ImGui::PopTextWrapPos();
-            ImGui::Unindent(row_h + ImGui::GetStyle().ItemSpacing.x);
+            ImGui::Unindent(name_indent);
         }
         if (const std::optional<gui::SimpleControl> slider = gui::stage_slider(stage.id)) {
-            ImGui::Indent(row_h + ImGui::GetStyle().ItemSpacing.x);
+            ImGui::Indent(name_indent);
             draw_slider(std::string(stage.slug).c_str(), *slider, true);
-            ImGui::Unindent(row_h + ImGui::GetStyle().ItemSpacing.x);
+            ImGui::Unindent(name_indent);
         } else if (stage.id == gui::StageId::matrix || stage.id == gui::StageId::curve) {
-            ImGui::Indent(row_h + ImGui::GetStyle().ItemSpacing.x);
+            ImGui::Indent(name_indent);
             if (stage.id == gui::StageId::matrix) {
                 draw_matrix_name();
             } else {
                 draw_curve_controls();
             }
-            ImGui::Unindent(row_h + ImGui::GetStyle().ItemSpacing.x);
+            ImGui::Unindent(name_indent);
         }
         ImGui::PopID();
     }
