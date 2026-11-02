@@ -103,6 +103,7 @@ const Palette& palette(gui::Theme theme) {
         IM_COL32(150, 150, 150, 255),  // clip indicator text (unlit)
         IM_COL32(55, 130, 230, 255),   // shadows clipped fill
         IM_COL32(225, 85, 45, 255),    // highlights clipped fill
+        IM_COL32(205, 95, 240, 255),   // gamut (outside sRGB) fill
         IM_COL32(255, 235, 220, 255),  // clip indicator border (lit)
         IM_COL32(255, 255, 255, 255),  // clip indicator text (lit)
         IM_COL32(225, 225, 225, 255),  // scope trace
@@ -113,9 +114,10 @@ const Palette& palette(gui::Theme theme) {
         IM_COL32(235, 215, 70, 240),   // yellow target
         IM_COL32(255, 70, 30, 215),    // clipping overlay: above white
         IM_COL32(30, 140, 255, 215),   // clipping overlay: below black
+        IM_COL32(235, 60, 245, 235),   // clipping overlay: outside sRGB (stripes)
     };
     static const Palette light{
-        IM_COL32(96, 96, 96, 255),    // canvas: a lighter neutral grey, still well below mid-grey
+        IM_COL32(96, 96, 96, 255),     // canvas: a lighter neutral grey, still well below mid-grey
         IM_COL32(245, 245, 245, 255),  // canvas text
         IM_COL32(190, 190, 190, 255),  // drop outline (on the grey canvas)
         IM_COL32(150, 200, 255, 255),  // drop highlight
@@ -139,6 +141,7 @@ const Palette& palette(gui::Theme theme) {
         IM_COL32(105, 105, 105, 255),  // clip indicator text (unlit)
         IM_COL32(30, 110, 215, 255),   // shadows clipped fill
         IM_COL32(215, 65, 30, 255),    // highlights clipped fill
+        IM_COL32(155, 45, 195, 255),   // gamut (outside sRGB) fill
         IM_COL32(90, 25, 10, 255),     // clip indicator border (lit)
         IM_COL32(255, 255, 255, 255),  // clip indicator text (lit)
         IM_COL32(45, 45, 45, 255),     // scope trace
@@ -149,6 +152,7 @@ const Palette& palette(gui::Theme theme) {
         IM_COL32(150, 120, 0, 245),    // yellow target
         IM_COL32(255, 60, 20, 225),    // clipping overlay: above white
         IM_COL32(10, 110, 245, 225),   // clipping overlay: below black
+        IM_COL32(190, 20, 200, 240),   // clipping overlay: outside sRGB (stripes)
     };
     return theme == gui::Theme::light ? light : dark;
 }

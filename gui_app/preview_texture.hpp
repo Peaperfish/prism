@@ -25,10 +25,13 @@ public:
     bool upload(const gui::PreviewFrame& frame);
 
     // The clipping overlay: a second texture, same size as the picture, with `over` where
-    // clip_mask has the high bit and `under` where it has the low bit (both set: `over`) and
-    // transparent elsewhere. False if the mask does not match width x height (then there is none).
+    // clip_mask has the high bit and `under` where it has the low bit, and `gamut` where it has the
+    // gamut bit, as diagonal stripes about 4 pixels wide (so the colour underneath shows between
+    // them). With several bits set the order is high, then gamut, then low. Transparent elsewhere.
+    // False if the mask does not match width x height (then there is none).
     bool upload_overlay(const std::vector<std::uint8_t>& clip_mask, int width, int height,
-                        std::uint32_t over_abgr, std::uint32_t under_abgr);
+                        std::uint32_t over_abgr, std::uint32_t under_abgr,
+                        std::uint32_t gamut_abgr);
     void reset_overlay();
     [[nodiscard]] SDL_Texture* overlay() const noexcept { return overlay_; }
 

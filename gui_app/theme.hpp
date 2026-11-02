@@ -37,6 +37,7 @@ struct Palette {
     ImU32 clip_inactive_text;
     ImU32 clip_shadows_fill;
     ImU32 clip_highlights_fill;
+    ImU32 clip_gamut_fill;  // colours outside sRGB: magenta-violet, apart from orange and blue
     ImU32 clip_active_border;
     ImU32 clip_active_text;
     // The colour scopes (they share histogram_background / histogram_border and the red, green and
@@ -54,6 +55,8 @@ struct Palette {
     // pipeline view's dots use clip_highlights_fill / clip_shadows_fill so they match the chips.
     ImU32 clip_overlay_over;
     ImU32 clip_overlay_under;
+    // Colours outside sRGB, drawn as diagonal stripes so the colour underneath stays visible.
+    ImU32 clip_overlay_gamut;
 };
 
 [[nodiscard]] const Palette& palette(gui::Theme theme);

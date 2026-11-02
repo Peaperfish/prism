@@ -275,7 +275,8 @@ void App::update_clip_overlay_texture() {
     }
     const Palette& colours = palette(current);
     texture_.upload_overlay(clip_mask_, clip_mask_width_, clip_mask_height_,
-                            colours.clip_overlay_over, colours.clip_overlay_under);
+                            colours.clip_overlay_over, colours.clip_overlay_under,
+                            colours.clip_overlay_gamut);
     overlay_dirty_ = false;
     overlay_theme_ = current;
 }
@@ -1064,10 +1065,10 @@ void App::draw_simple_slider(const char* label, gui::SimpleControl control) {
     ImGui::PopID();
 }
 
-// The dots and percentages at the right of a stage's row: highlights above white, then shadows
-// below black, each hidden at 0. A filled dot means the stage clamped them (the detail is gone), a
-// hollow one that they are out of range but a later stage may still bring them back. True if the
-// mouse is over them (and their tooltip was shown).
+// The dots and percentages at the right of a stage's row: highlights above white, shadows with no
+// light, and colours outside sRGB, each hidden at 0. A filled dot means the stage clamped them (the
+// detail is gone), a hollow one that they are out of range but a later stage may still bring them
+// back. True if the mouse is over them (and their tooltip was shown).
 bool App::draw_stage_clip_indicator(const gui::StageClip& clip, ImVec2 row_min, ImVec2 row_max) {
     if (!clips_ || !clip.ran) {
         return false;
@@ -1082,11 +1083,20 @@ bool App::draw_stage_clip_indicator(const gui::StageClip& clip, ImVec2 row_min, 
         gui::ClipFate fate;
         ImU32 colour;
         const char* what;
+        const char* recoverable_note;  // nullptr: the general wording
+        const char* lost_note;
     };
     const Mark marks[] = {
         {&clip.over, clip.over_fate, colours.clip_highlights_fill,
-         clip.stage == gui::StageId::decode ? "Highlights at white" : "Highlights above white"},
-        {&clip.under, clip.under_fate, colours.clip_shadows_fill, "Shadows below black"},
+         clip.stage == gui::StageId::decode ? "Highlights at white" : "Highlights above white",
+         nullptr, nullptr},
+        {&clip.under, clip.under_fate, colours.clip_shadows_fill, "Shadows below black", nullptr,
+         nullptr},
+        {&clip.gamut, clip.gamut_fate, colours.clip_gamut_fill, "Colours outside sRGB",
+         "Colours more saturated than the screen and file can show. They get clipped later and "
+         "their hue can shift.",
+         "Clipped here: these colours were more saturated than the screen and file can show, so "
+         "their hue can shift."},
     };
 
     const float radius = 4.0f * s;
@@ -1096,9 +1106,9 @@ bool App::draw_stage_clip_indicator(const gui::StageClip& clip, ImVec2 row_min, 
     ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 0.85f);
     float right = row_max.x - 6.0f * s;
     float left = right;
-    // Drawn right to left (shadows last in the array, so first here), so highlights end up on the
-    // left of shadows and the percentages line up across rows.
-    for (int i = 1; i >= 0; --i) {
+    // Drawn right to left (the last in the array is first here), so highlights end up on the left
+    // and the percentages line up across rows.
+    for (int i = 2; i >= 0; --i) {
         const Mark& m = marks[i];
         if (m.fate == gui::ClipFate::none) {
             continue;
@@ -1133,16 +1143,23 @@ bool App::draw_stage_clip_indicator(const gui::StageClip& clip, ImVec2 row_min, 
             }
             ImGui::Text("%s: %s of pixels", m.what,
                         gui::format_clip_percent(m.counts->any, total).c_str());
-            ImGui::TextDisabled(
+            const char* note =
                 m.fate != gui::ClipFate::lost
-                    ? "Out of range, but a later stage may still bring them back."
+                    ? (m.recoverable_note ? m.recoverable_note
+                                          : "Out of range, but a later stage may still bring them "
+                                            "back.")
+                : m.lost_note ? m.lost_note
                 : clip.stage == gui::StageId::decode
                     ? "Already clipped in the file: no edit can bring them back."
-                    : "Clipped here: this stage cut them off, so the detail is gone.");
+                    : "Clipped here: this stage cut them off, so the detail is gone.";
+            ImGui::PushTextWrapPos(ImGui::GetFontSize() * 24.0f);
+            ImGui::TextDisabled("%s", note);
+            ImGui::PopTextWrapPos();
         }
         ImGui::Separator();
         ImGui::TextDisabled("Filled dot: detail lost here.  Hollow dot: still recoverable.");
         ImGui::TextDisabled("Orange: above white.  Blue: below black.");
+        ImGui::TextDisabled("Violet: too saturated for sRGB.");
         ImGui::EndTooltip();
     }
     return hovered;
@@ -1156,8 +1173,14 @@ void App::draw_clipping_summary() {
     ImGui::Spacing();
     ImGui::PushTextWrapPos(0.0f);
     ImGui::TextUnformatted(gui::describe_clipping(*clips_).c_str());
+    const bool hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal);
+    const std::string gamut = gui::describe_gamut(*clips_);
+    if (!gamut.empty()) {
+        ImGui::Spacing();
+        ImGui::TextUnformatted(gamut.c_str());
+    }
     ImGui::PopTextWrapPos();
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
+    if (hovered) {
         ImGui::SetTooltip(
             "Detail is lost only where a stage cuts values off at white or black.\n"
             "Until then the values are kept, so a later stage can still bring them back.");

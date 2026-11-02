@@ -32,7 +32,8 @@ bool PreviewTexture::upload(const gui::PreviewFrame& frame) {
 }
 
 bool PreviewTexture::upload_overlay(const std::vector<std::uint8_t>& clip_mask, int width,
-                                    int height, std::uint32_t over_abgr, std::uint32_t under_abgr) {
+                                    int height, std::uint32_t over_abgr, std::uint32_t under_abgr,
+                                    std::uint32_t gamut_abgr) {
     const std::size_t pixels = static_cast<std::size_t>(std::max(width, 0)) *
                                static_cast<std::size_t>(std::max(height, 0));
     if (pixels == 0 || clip_mask.size() != pixels) {
@@ -52,11 +53,15 @@ bool PreviewTexture::upload_overlay(const std::vector<std::uint8_t>& clip_mask, 
         overlay_height_ = height;
     }
     overlay_pixels_.resize(pixels);
+    const std::size_t across = static_cast<std::size_t>(width);
     for (std::size_t i = 0; i < pixels; ++i) {
         const std::uint8_t m = clip_mask[i];
-        overlay_pixels_[i] = (m & gui::clip_mask_high)  ? over_abgr
-                             : (m & gui::clip_mask_low) ? under_abgr
-                                                        : 0u;
+        // Gamut stripes run diagonally: on where (x + y) / 4 is even.
+        const bool stripe = (((i % across) + (i / across)) / 4) % 2 == 0;
+        overlay_pixels_[i] = (m & gui::clip_mask_high)    ? over_abgr
+                             : (m & gui::clip_mask_gamut) ? (stripe ? gamut_abgr : 0u)
+                             : (m & gui::clip_mask_low)   ? under_abgr
+                                                          : 0u;
     }
     if (!SDL_UpdateTexture(overlay_, nullptr, overlay_pixels_.data(), width * 4)) {
         reset_overlay();
