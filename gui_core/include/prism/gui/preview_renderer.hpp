@@ -12,21 +12,24 @@
 #include <thread>
 #include <vector>
 
+#include "prism/gui/histogram.hpp"
 #include "prism/gui/settings.hpp"
 #include "prism/image.hpp"
 #include "prism/process.hpp"
 
 namespace prism::gui {
 
-// One finished preview, ready to upload as a texture.
+// One finished preview, ready to upload as a texture, together with the histogram of the stage
+// it shows (computed from that stage's values before the 8-bit encode).
 struct PreviewFrame {
     std::uint64_t generation = 0;  // the number submit() returned for its request
     StageId stage = final_stage;   // the stage whose output this frame shows
     int width = 0;
     int height = 0;
     std::vector<std::uint8_t> rgb8;  // width * height * 3 bytes of 8-bit sRGB, row-major
+    StageHistogram histogram;        // R, G, B and luminance bins + clip counts for this stage
     std::vector<StageTime> stages;   // the pipeline stages that ran, with their times
-    double total_ms = 0;             // the whole render: copy, pipeline and sRGB encode
+    double total_ms = 0;             // the whole render: copy, pipeline, histogram and sRGB encode
     std::string error;               // if not empty, rendering failed and rgb8 is empty
 };
 

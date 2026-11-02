@@ -36,7 +36,7 @@ std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings
         }
         frame.width = base.width;
         frame.height = base.height;
-        frame.rgb8 = encode_srgb8(base, threads);
+        encode_srgb8_with_histogram(base, threads, frame.rgb8, frame.histogram);
         frame.total_ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
         return frame;
     }
@@ -54,7 +54,7 @@ std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings
     }
     frame.width = img.width;
     frame.height = img.height;
-    frame.rgb8 = encode_srgb8(img, threads);
+    encode_srgb8_with_histogram(img, threads, frame.rgb8, frame.histogram);
     frame.total_ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
     return frame;
 }
