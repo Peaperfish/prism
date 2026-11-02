@@ -449,6 +449,16 @@ int main(int argc, char* argv[]) {
         frame = prism::gui::render_preview(preview, look, t, {}, {}, prism::gui::final_stage, true);
     });
 
+    // With the per-stage clipping report and the clip mask too: the stages after the viewed one
+    // are measured as they run (here all of them run anyway), on a sampled grid.
+    bench_stage(s, "preview render + clipping", 2 * preview_f32, none, [&](int t) {
+        prism::gui::PreviewOptions options;
+        options.clip_report = true;
+        options.clip_mask = true;
+        frame =
+            prism::gui::render_preview(preview, look, t, {}, {}, prism::gui::final_stage, options);
+    });
+
     bench_raw(s);
 
     // Use the results so the optimiser cannot decide the work is pointless and delete it.

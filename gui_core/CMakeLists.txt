@@ -4,6 +4,7 @@
 # (SDL + ImGui) will be a separate target on top of this one.
 add_library(prism_gui_core STATIC
   src/background_export.cpp
+  src/clipping.cpp
   src/file_types.cpp
   src/histogram.cpp
   src/history.cpp

@@ -12,6 +12,7 @@
 #include <thread>
 #include <vector>
 
+#include "prism/gui/clipping.hpp"
 #include "prism/gui/histogram.hpp"
 #include "prism/gui/scopes.hpp"
 #include "prism/gui/settings.hpp"
@@ -19,6 +20,20 @@
 #include "prism/process.hpp"
 
 namespace prism::gui {
+
+// What a render computes besides the picture and its histogram. Each costs something, so each is
+// asked for only while it is on screen; with all off, a render does exactly what it did before.
+struct PreviewOptions {
+    bool scopes = false;       // the colour scopes of the picture
+    bool clip_report = false;  // the clipping of every stage (runs the stages after the viewed one)
+    bool clip_mask = false;    // which pixels of the viewed stage are out of range
+
+    PreviewOptions() = default;
+    // Implicit, so that "scopes on/off" can still be written as a plain bool.
+    PreviewOptions(bool scopes_on) : scopes(scopes_on) {}  // NOLINT(google-explicit-constructor)
+
+    bool operator==(const PreviewOptions&) const = default;
+};
 
 // One finished preview, ready to upload as a texture, together with the histogram of the stage
 // it shows (computed from that stage's values before the 8-bit encode).
@@ -30,6 +45,9 @@ struct PreviewFrame {
     std::vector<std::uint8_t> rgb8;  // width * height * 3 bytes of 8-bit sRGB, row-major
     StageHistogram histogram;        // R, G, B and luminance bins + clip counts for this stage
     std::optional<Scopes> scopes;    // parade, waveform and vectorscope; only if requested
+    std::optional<ClipReport> clips;  // clipping at every stage; only if requested
+    // One byte per pixel (clip_mask_high / clip_mask_low bits) of this stage; only if requested.
+    std::vector<std::uint8_t> clip_mask;
     std::vector<StageTime> stages;   // the pipeline stages that ran, with their times
     double total_ms = 0;             // the whole render: copy, pipeline, histogram and sRGB encode
     std::string error;               // if not empty, rendering failed and rgb8 is empty
@@ -47,15 +65,18 @@ struct PreviewFrame {
 
 // Renders `base` with `settings` up to `stop_after` on the calling thread: runs only the stages
 // up to `stop_after` and then encodes that stage's image to 8-bit sRGB with encode_srgb8. With
-// `scopes`, the frame also carries the colour scopes of the encoded picture; without, nothing is
-// computed for them. Nothing if `stop` was requested before it finished. Throws std::invalid_argument for invalid settings
-// (see to_process_settings).
+// `options.scopes`, the frame also carries the colour scopes of the encoded picture. With
+// `clip_report`, the stages after `stop_after` also run (on the same buffer, after the picture is
+// encoded) so that every stage's clipping is measured; the frame still shows `stop_after`. With
+// `clip_mask`, the frame carries the out-of-range pixels of `stop_after`. With none of them,
+// nothing extra is computed. Nothing if `stop` was requested before it finished. Throws
+// std::invalid_argument for invalid settings (see to_process_settings).
 [[nodiscard]] std::optional<PreviewFrame> render_preview(const Image& base,
                                                          const EditSettings& settings, int threads,
                                                          std::stop_token stop,
                                                          const StageCallback& on_stage = {},
                                                          StageId stop_after = final_stage,
-                                                         bool scopes = false);
+                                                         PreviewOptions options = {});
 
 // Renders previews on a worker thread, so the UI never waits for one.
 //
@@ -83,26 +104,30 @@ public:
     using ScopeRenderFunction = std::function<std::optional<PreviewFrame>(
         const Image& base, const EditSettings& settings, StageId stop_after, bool scopes,
         std::stop_token stop)>;
+    // As above, and told everything the frame should carry.
+    using OptionsRenderFunction = std::function<std::optional<PreviewFrame>(
+        const Image& base, const EditSettings& settings, StageId stop_after,
+        const PreviewOptions& options, std::stop_token stop)>;
 
     // `threads` as for the pipeline: 0 = one per hardware thread.
     explicit PreviewRenderer(int threads = 0);
     explicit PreviewRenderer(RenderFunction render);
     explicit PreviewRenderer(StageRenderFunction render);
     explicit PreviewRenderer(ScopeRenderFunction render);
+    explicit PreviewRenderer(OptionsRenderFunction render);
     ~PreviewRenderer();
 
     // A running thread can't be copied or moved somewhere else.
     PreviewRenderer(const PreviewRenderer&) = delete;
     PreviewRenderer& operator=(const PreviewRenderer&) = delete;
 
-    // Asks for a preview of `base` with `settings` stopped after `stop_after` (with the colour
-    // scopes if `scopes`), and returns its
-    // generation number (1, 2, 3... in the order of the calls). Returns at once: it only swaps the
-    // request in under a lock that the worker never holds while rendering. `base` is shared, not
-    // copied, so it must not change (Session's preview base never does). Throws
-    // std::invalid_argument if `base` is null.
+    // Asks for a preview of `base` with `settings` stopped after `stop_after` (with whatever
+    // `options` asks for), and returns its generation number (1, 2, 3... in the order of the
+    // calls). Returns at once: it only swaps the request in under a lock that the worker never
+    // holds while rendering. `base` is shared, not copied, so it must not change (Session's preview
+    // base never does). Throws std::invalid_argument if `base` is null.
     std::uint64_t submit(std::shared_ptr<const Image> base, const EditSettings& settings,
-                         StageId stop_after = final_stage, bool scopes = false);
+                         StageId stop_after = final_stage, PreviewOptions options = {});
 
     // The newest finished frame, if one arrived since the last poll(); otherwise nothing.
     [[nodiscard]] std::optional<PreviewFrame> poll();
@@ -117,12 +142,12 @@ private:
         std::shared_ptr<const Image> base;
         EditSettings settings;
         StageId stop_after = final_stage;
-        bool scopes = false;
+        PreviewOptions options;
     };
 
     void run(std::stop_token thread_stop);
 
-    ScopeRenderFunction render_;
+    OptionsRenderFunction render_;
 
     std::mutex mutex_;  // guards everything below except worker_
     // condition_variable_any rather than condition_variable: only it can also wait for a

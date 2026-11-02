@@ -49,6 +49,7 @@ Preferences customised() {
     p.interface_size = 150;
     p.panel_width = 400;
     p.scope = prism::gui::ScopeChoice::vectorscope;
+    p.clip_overlay = true;
     return p;
 }
 
@@ -79,10 +80,19 @@ TEST(Preferences, SerializeAndParseRoundTrip) {
     const Preferences p = customised();
     const std::string text = prism::gui::serialize_preferences(p);
     EXPECT_EQ(text,
-              "# Prism preferences\ntheme=light\ninterface_size=150\npanel_width=400\nscope=vectorscope\n");
+              "# Prism preferences\ntheme=light\ninterface_size=150\npanel_width=400\n"
+              "scope=vectorscope\nclip_overlay=on\n");
     EXPECT_EQ(prism::gui::parse_preferences(text), p);
     EXPECT_EQ(prism::gui::parse_preferences(prism::gui::serialize_preferences(Preferences{})),
               Preferences{});
+}
+
+TEST(Preferences, TheClippingOverlayIsOffByDefaultAndRemembered) {
+    EXPECT_FALSE(Preferences{}.clip_overlay);
+    EXPECT_TRUE(prism::gui::parse_preferences("clip_overlay=on\n").clip_overlay);
+    EXPECT_FALSE(prism::gui::parse_preferences("clip_overlay=off\n").clip_overlay);
+    EXPECT_FALSE(prism::gui::parse_preferences("clip_overlay=maybe\n").clip_overlay);
+    EXPECT_TRUE(prism::gui::parse_preferences("clip_overlay=on\n").unknown.empty());
 }
 
 TEST(Preferences, SaveAndLoadRoundTripThroughANonAsciiPath) {
