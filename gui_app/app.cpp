@@ -1140,16 +1140,13 @@ void App::draw_simple_slider(const char* label, gui::SimpleControl control) {
 // One of Simple's three sliders, or (in_stage_row) the same slider in its stage's row in the
 // pipeline: both edit the same EditSettings field through the same conversions, so they always
 // agree. In a stage row the value is shown in its own units ("+0.70 stops"), and a stage that is
-// off shows its stored value greyed out and cannot be moved.
+// off is greyed out and cannot be moved.
 void App::draw_slider(const char* label, gui::SimpleControl control, bool in_stage_row) {
     const gui::StageId stage = gui::stage_of(control);
-    // A stage that is off sits at 0 in Simple; in its row it shows the value it will come back
-    // with.
-    gui::EditSettings shown = session_.settings();
-    if (in_stage_row) {
-        gui::set_stage_enabled(shown, stage, true);
-    }
-    const bool enabled = !in_stage_row || gui::stage_enabled(session_.settings(), stage);
+    // A stage that is off sits at 0 in both places, since that is what it does to the picture; its
+    // row's text still gives the value it will come back with.
+    const gui::EditSettings& shown = session_.settings();
+    const bool enabled = !in_stage_row || gui::stage_enabled(shown, stage);
     const gui::SimpleControls positions = gui::simple_from(shown);
     const gui::SimpleOutOfRange beyond = gui::outside_simple_range(shown);
     float value = 0;
@@ -1172,7 +1169,12 @@ void App::draw_slider(const char* label, gui::SimpleControl control, bool in_sta
     ImGui::PushID(label);
     ImGui::BeginDisabled(!enabled);
     if (in_stage_row) {
-        const std::string text = gui::stage_value_text(shown, stage);
+        gui::EditSettings stored = shown;
+        gui::set_stage_enabled(stored, stage, true);
+        std::string text = gui::stage_value_text(stored, stage);
+        if (!enabled) {
+            text += " when on";
+        }
         ImGui::TextUnformatted(text.c_str());
         if (custom) {
             ImGui::SameLine();
