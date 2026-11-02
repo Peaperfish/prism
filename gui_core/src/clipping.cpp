@@ -262,9 +262,9 @@ void compute_clip_mask(const Image& img, int threads, std::vector<std::uint8_t>&
                 const bool hi = file_ceiling ? (p[0] >= high || p[1] >= high || p[2] >= high)
                                              : (p[0] > high || p[1] > high || p[2] > high);
                 const bool lo = is_low(p);
-                out[x] = static_cast<std::uint8_t>((hi ? clip_mask_high : 0) |
-                                                   (lo ? clip_mask_low : 0) |
-                                                   (is_gamut(p) ? clip_mask_gamut : 0));
+                out[x] =
+                    static_cast<std::uint8_t>((hi ? clip_mask_high : 0) | (lo ? clip_mask_low : 0) |
+                                              (is_gamut(p) ? clip_mask_gamut : 0));
             }
         }
     });

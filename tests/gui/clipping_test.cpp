@@ -349,7 +349,9 @@ EditSettings orange_matrix() {
     s.matrix = prism::gui::MatrixFile{{}, {1, 0, 0, 0, 1, 0, -0.3f, 0, 1}};
     return s;
 }
-Image orange() { return solid(10, 10, 0.9f, 0.4f, 0.05f); }
+Image orange() {
+    return solid(10, 10, 0.9f, 0.4f, 0.05f);
+}
 
 }  // namespace
 
@@ -448,12 +450,12 @@ TEST(ClippingGamut, TheMaskMarksGamutLowsAndHighsIndependently) {
     Image img;
     img.width = 6;
     img.height = 1;
-    img.pixels = {0.5f, 0.5f,  0.5f,                // in range
-                  0.5f, -0.1f, 0.5f,                // light, one channel negative: gamut
-                  0.1f, -0.5f, 0.1f,                // no light: low
-                  1.5f, -0.1f, 0.5f,                // high and gamut
-                  2.0f, -1.0f, 0.5f,                // high and low (Y < 0)
-                  0.5f, 0.5f,  -1e-4f};             // within tolerance: nothing
+    img.pixels = {0.5f, 0.5f,  0.5f,     // in range
+                  0.5f, -0.1f, 0.5f,     // light, one channel negative: gamut
+                  0.1f, -0.5f, 0.1f,     // no light: low
+                  1.5f, -0.1f, 0.5f,     // high and gamut
+                  2.0f, -1.0f, 0.5f,     // high and low (Y < 0)
+                  0.5f, 0.5f,  -1e-4f};  // within tolerance: nothing
     std::vector<std::uint8_t> mask;
     prism::gui::compute_clip_mask(img, 1, mask);
     using prism::gui::clip_mask_gamut;
