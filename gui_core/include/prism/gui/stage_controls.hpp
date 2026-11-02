@@ -72,13 +72,23 @@ void set_curve_parameter(EditSettings& s, float value);
 
 // --- Viewing vs. editing -------------------------------------------------------------------------
 
-// True when `stage` changes the photo but comes after the `viewed` stage, so what is on screen
-// does not show it: the stage is on and not neutral (exposure 0, saturation 1, contrast 1, no
-// matrix or identity matrix, no curve). Stages up to and including `viewed` are never hidden, and
-// Decode and Output encode never are.
-[[nodiscard]] bool hidden_by_view(const EditSettings& s, StageId stage, StageId viewed);
+// The compare stage that counts: none if there is none or it is the viewed stage itself (comparing
+// a stage with itself shows nothing new, so it is the same as Off).
+[[nodiscard]] std::optional<StageId> effective_compare(StageId viewed,
+                                                       std::optional<StageId> compare) noexcept;
 
-// "Not visible here: you're viewing after Exposure."
-[[nodiscard]] std::string view_hint(StageId viewed);
+// The furthest stage that either picture shows: the later of `viewed` and `compare`.
+[[nodiscard]] StageId furthest_shown(StageId viewed, std::optional<StageId> compare = {}) noexcept;
+
+// True when `stage` changes the photo but comes after the furthest stage on screen (`viewed`, or
+// `compare` if that is later), so no picture shows it: the stage is on and not neutral
+// (exposure 0, saturation 1, contrast 1, no matrix or identity matrix, no curve). Stages up to and
+// including that one are never hidden, and Decode and Output encode never are.
+[[nodiscard]] bool hidden_by_view(const EditSettings& s, StageId stage, StageId viewed,
+                                  std::optional<StageId> compare = {});
+
+// "Not visible here: you're viewing after Exposure." While comparing, the same for the furthest
+// stage shown: "Not visible here: the furthest stage shown is after Exposure."
+[[nodiscard]] std::string view_hint(StageId viewed, std::optional<StageId> compare = {});
 
 }  // namespace prism::gui

@@ -268,3 +268,43 @@ TEST(StageHint, Text) {
     EXPECT_EQ(prism::gui::view_hint(StageId::matrix),
               "Not visible here: you're viewing after Colour matrix.");
 }
+
+TEST(StageHint, WhileComparingTheFurthestStageShownDecides) {
+    EditSettings s;
+    s.exposure_stops = 1.0f;
+    s.saturation = 1.3f;
+    s.contrast = 1.2f;
+    // Viewing Exposure, comparing with Output encode: everything is shown, nothing is hidden.
+    for (const auto& info : prism::gui::pipeline_stages()) {
+        EXPECT_FALSE(prism::gui::hidden_by_view(s, info.id, StageId::exposure, StageId::encode));
+    }
+    // Compare with Saturation: Contrast is after both pictures, Saturation is not.
+    EXPECT_FALSE(prism::gui::hidden_by_view(s, StageId::saturation, StageId::exposure,
+                                            StageId::saturation));
+    EXPECT_TRUE(prism::gui::hidden_by_view(s, StageId::contrast, StageId::exposure,
+                                           StageId::saturation));
+    // A compare stage before the viewed one changes nothing: the viewed stage is the furthest.
+    EXPECT_TRUE(prism::gui::hidden_by_view(s, StageId::contrast, StageId::saturation,
+                                           StageId::decode));
+    EXPECT_FALSE(prism::gui::hidden_by_view(s, StageId::saturation, StageId::saturation,
+                                            StageId::decode));
+    // The viewed stage as compare, and Off, are the old rule.
+    EXPECT_TRUE(prism::gui::hidden_by_view(s, StageId::saturation, StageId::exposure,
+                                           StageId::exposure));
+    EXPECT_TRUE(prism::gui::hidden_by_view(s, StageId::saturation, StageId::exposure));
+    EXPECT_EQ(prism::gui::furthest_shown(StageId::exposure, StageId::curve), StageId::curve);
+    EXPECT_EQ(prism::gui::furthest_shown(StageId::curve, StageId::exposure), StageId::curve);
+    EXPECT_EQ(prism::gui::furthest_shown(StageId::matrix), StageId::matrix);
+}
+
+TEST(StageHint, TheViewedStageAsCompareIsOff) {
+    EXPECT_EQ(prism::gui::effective_compare(StageId::matrix, StageId::matrix), std::nullopt);
+    EXPECT_EQ(prism::gui::effective_compare(StageId::matrix, std::nullopt), std::nullopt);
+    EXPECT_EQ(prism::gui::effective_compare(StageId::matrix, StageId::decode), StageId::decode);
+    EXPECT_EQ(prism::gui::view_hint(StageId::exposure, StageId::exposure),
+              prism::gui::view_hint(StageId::exposure));
+    EXPECT_EQ(prism::gui::view_hint(StageId::exposure, StageId::contrast),
+              "Not visible here: the furthest stage shown is after Contrast.");
+    EXPECT_EQ(prism::gui::view_hint(StageId::contrast, StageId::exposure),
+              "Not visible here: the furthest stage shown is after Contrast.");
+}

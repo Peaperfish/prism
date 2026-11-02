@@ -65,4 +65,33 @@ std::string ellipsize_middle(std::string_view text, float max_width,
     return candidate(lo);
 }
 
+float clamp_split_fraction(float fraction) noexcept {
+    if (std::isnan(fraction)) {
+        return split_fraction_default;
+    }
+    return std::clamp(fraction, split_fraction_min, split_fraction_max);
+}
+
+float split_fraction_from_x(float mouse_x, float x, float width) noexcept {
+    if (!(width > 0)) {
+        return split_fraction_default;
+    }
+    return clamp_split_fraction((mouse_x - x) / width);
+}
+
+SplitLayout split_layout(float x, float width, float fraction) noexcept {
+    SplitLayout out;
+    out.left_x0 = x;
+    if (!(width > 0)) {
+        out.divider_x = x;
+        out.right_x1 = x;
+        out.u_divider = 0;
+        return out;
+    }
+    out.right_x1 = x + width;
+    out.divider_x = std::clamp(std::round(x + width * clamp_split_fraction(fraction)), x, x + width);
+    out.u_divider = (out.divider_x - x) / width;
+    return out;
+}
+
 }  // namespace prism::gui

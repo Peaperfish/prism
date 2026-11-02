@@ -125,8 +125,18 @@ void set_curve_parameter(EditSettings& s, float value) {
     s.curve_on = true;
 }
 
-bool hidden_by_view(const EditSettings& s, StageId stage, StageId viewed) {
-    if (static_cast<int>(stage) <= static_cast<int>(viewed) || !stage_enabled(s, stage)) {
+std::optional<StageId> effective_compare(StageId viewed, std::optional<StageId> compare) noexcept {
+    return compare == viewed ? std::nullopt : compare;
+}
+
+StageId furthest_shown(StageId viewed, std::optional<StageId> compare) noexcept {
+    return compare && static_cast<int>(*compare) > static_cast<int>(viewed) ? *compare : viewed;
+}
+
+bool hidden_by_view(const EditSettings& s, StageId stage, StageId viewed,
+                    std::optional<StageId> compare) {
+    if (static_cast<int>(stage) <= static_cast<int>(furthest_shown(viewed, compare)) ||
+        !stage_enabled(s, stage)) {
         return false;
     }
     switch (stage) {
@@ -141,7 +151,11 @@ bool hidden_by_view(const EditSettings& s, StageId stage, StageId viewed) {
     return false;
 }
 
-std::string view_hint(StageId viewed) {
+std::string view_hint(StageId viewed, std::optional<StageId> compare) {
+    if (effective_compare(viewed, compare)) {
+        return "Not visible here: the furthest stage shown is after " +
+               std::string(stage_info(furthest_shown(viewed, compare)).name) + ".";
+    }
     return "Not visible here: you're viewing after " + std::string(stage_info(viewed).name) + ".";
 }
 
