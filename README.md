@@ -300,7 +300,7 @@ v0.1.0 is the first pre-release of the desktop app. What's planned next is track
 
 - [A histogram for any pipeline stage](https://github.com/Peaperfish/prism/issues/1), RGB and luminance *(done)*
 - [Colour scopes](https://github.com/Peaperfish/prism/issues/13): RGB parade/waveform and vectorscope, for any stage *(done)*
-- [A gamut warning](https://github.com/Peaperfish/prism/issues/14): colours outside sRGB, and which stage pushed them out *(in progress)*
+- [A gamut warning](https://github.com/Peaperfish/prism/issues/14): colours outside sRGB, and which stage pushed them out *(done)*
 - [A pipeline view](https://github.com/Peaperfish/prism/issues/2): every stage visible and toggleable; click a stage to preview the photo at that point *(in progress)*
 - [Compare any two stages](https://github.com/Peaperfish/prism/issues/3), including the original, side by side or split
 - [Clipping warnings](https://github.com/Peaperfish/prism/issues/4) that say which stage clipped *(in progress)*
