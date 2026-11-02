@@ -240,6 +240,7 @@ void App::update_preview() {
         return;
     }
     histogram_ = std::move(frame->histogram);
+    histogram_stage_ = frame->stage;  // may differ from viewed_stage_ until the next frame
     last_render_ms_ = frame->total_ms;
 }
 
@@ -687,9 +688,9 @@ void App::draw_histogram() {
         return;
     }
     const std::string title =
-        viewed_stage_ == gui::final_stage
+        histogram_stage_ == gui::final_stage
             ? "Histogram"
-            : "Histogram (" + std::string(gui::stage_info(viewed_stage_).name) + ")";
+            : "Histogram (" + std::string(gui::stage_info(histogram_stage_).name) + ")";
     ImGui::SeparatorText(title.c_str());
 
     const gui::StageHistogram& h = *histogram_;

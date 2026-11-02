@@ -90,6 +90,7 @@ private:
     gui::LivePreview preview_;
     PreviewTexture texture_;
     std::optional<gui::StageHistogram> histogram_;
+    gui::StageId histogram_stage_ = gui::final_stage;  // the stage histogram_ was measured on
     gui::StageId viewed_stage_ = gui::final_stage;
     gui::BackgroundExport exporter_;
     double last_render_ms_ = 0;
