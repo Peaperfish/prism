@@ -226,6 +226,51 @@ TEST(StageCurve, ChoosingACurveKeepsBothParametersAndTurnsTheStageOn) {
     EXPECT_EQ(prism::gui::curve_parameter_value(s), 1.8f);
 }
 
+TEST(StageCurve, ReinhardWhiteStartsAtOneWhereTheCurveIsTheIdentity) {
+    const auto white = prism::gui::curve_parameter(CurveKind::reinhard);
+    ASSERT_TRUE(white);
+    EXPECT_EQ(white->min, 1.0f);
+    EditSettings s;
+    prism::gui::set_curve_kind(s, CurveKind::reinhard);
+    prism::gui::set_curve_parameter(s, 0.5f);
+    EXPECT_EQ(s.reinhard_white, 1.0f);
+    s.reinhard_white = 0.7f;  // stored below the range: shown at its end
+    EXPECT_EQ(prism::gui::curve_parameter_value(s), 1.0f);
+}
+
+TEST(StageCurve, ReinhardSliderRoundTripsItsValues) {
+    const auto white = prism::gui::curve_parameter(CurveKind::reinhard);
+    ASSERT_TRUE(white);
+    ASSERT_TRUE(white->logarithmic);
+    for (const float v : {1.0f, 1.01f, 1.5f, 2.0f, 3.3f, 4.0f, 7.25f, 8.0f, 15.9f, 16.0f}) {
+        const float position = prism::gui::curve_slider_position(*white, v);
+        EXPECT_GE(position, 0.0f);
+        EXPECT_LE(position, 1.0f);
+        EXPECT_NEAR(prism::gui::curve_value_at(*white, position), v, v * 1e-5f) << v;
+    }
+    // The ends are exact, and equal ratios take equal steps.
+    EXPECT_EQ(prism::gui::curve_value_at(*white, 0.0f), 1.0f);
+    EXPECT_EQ(prism::gui::curve_value_at(*white, 1.0f), 16.0f);
+    EXPECT_NEAR(prism::gui::curve_slider_position(*white, 2.0f), 0.25f, 1e-6f);
+    EXPECT_NEAR(prism::gui::curve_slider_position(*white, 4.0f), 0.5f, 1e-6f);
+    EXPECT_NEAR(prism::gui::curve_slider_position(*white, 8.0f), 0.75f, 1e-6f);
+    // Outside the range, and NaN, land where the slider shows them.
+    EXPECT_EQ(prism::gui::curve_slider_position(*white, 0.5f), 0.0f);
+    EXPECT_EQ(prism::gui::curve_slider_position(*white, 100.0f), 1.0f);
+    EXPECT_NEAR(prism::gui::curve_slider_position(
+                    *white, std::numeric_limits<float>::quiet_NaN()), 0.5f, 1e-6f);
+}
+
+TEST(StageCurve, GammaSliderIsLinearAndRoundTrips) {
+    const auto gamma = prism::gui::curve_parameter(CurveKind::gamma);
+    ASSERT_TRUE(gamma);
+    EXPECT_NEAR(prism::gui::curve_slider_position(*gamma, 2.25f), 0.5f, 1e-6f);
+    for (const float v : {0.5f, 1.0f, 1.8f, 2.2f, 4.0f}) {
+        EXPECT_NEAR(prism::gui::curve_value_at(
+                        *gamma, prism::gui::curve_slider_position(*gamma, v)), v, 1e-5f) << v;
+    }
+}
+
 // --- Viewing vs. editing ---------------------------------------------------------------------
 
 TEST(StageHint, OnlyLaterNonNeutralStagesThatAreOnAreHidden) {

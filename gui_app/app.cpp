@@ -1392,15 +1392,26 @@ void App::draw_curve_controls() {
     }
 
     if (const std::optional<gui::CurveParameter> p = gui::curve_parameter(current.curve)) {
-        float value = gui::curve_parameter_value(current);
-        const std::string format = std::string(p->label) + " %.2f";
+        // Label and value on their own line, as for Simple's sliders, not on top of the grab. The
+        // slider moves a position (gui_core maps it to the value, in ratios for Reinhard), so it
+        // takes no typed input: that would be a position, not the value.
+        const float value = gui::curve_parameter_value(current);
+        ImGui::TextUnformatted(std::string(p->label).c_str());
+        char text[16];
+        std::snprintf(text, sizeof text, "%.2f", static_cast<double>(value));
+        ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetCursorPosX() +
+                                                             ImGui::GetContentRegionAvail().x -
+                                                             ImGui::CalcTextSize(text).x));
+        ImGui::TextUnformatted(text);
+        float position = gui::curve_slider_position(*p, value);
         ImGui::SetNextItemWidth(-FLT_MIN);
-        const bool changed = ImGui::SliderFloat(
-            "##curve_parameter", &value, p->min, p->max, format.c_str(),
-            ImGuiSliderFlags_AlwaysClamp | (p->logarithmic ? ImGuiSliderFlags_Logarithmic : 0));
+        const bool changed =
+            ImGui::SliderFloat("##curve_parameter", &position, 0.0f, 1.0f, "",
+                               ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput);
         const gui::SliderFrame frame{ImGui::IsItemActivated(), changed, ImGui::IsItemDeactivated()};
         gui::EditSettings edited = current;
-        gui::set_curve_parameter(edited, value);
+        // Unmoved, the value stays exactly as stored rather than going through the mapping.
+        gui::set_curve_parameter(edited, changed ? gui::curve_value_at(*p, position) : value);
         report(gui::apply_slider_frame(session_, frame, edited));
         if (ImGui::BeginPopupContextItem("reset_parameter")) {
             char neutral[16];

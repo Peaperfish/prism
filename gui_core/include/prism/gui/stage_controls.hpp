@@ -63,6 +63,14 @@ struct CurveParameter {
 // The parameter's current value for s.curve (which has one), clamped to its slider's range.
 [[nodiscard]] float curve_parameter_value(const EditSettings& s);
 
+// Where `value` sits on the parameter's slider, from 0 at min to 1 at max (clamped). A logarithmic
+// slider moves in ratios: for Reinhard's white point 1..16, 2 sits at 0.25 and 4 at the middle.
+[[nodiscard]] float curve_slider_position(const CurveParameter& p, float value) noexcept;
+
+// The value at `position` on the parameter's slider (clamped to [0, 1]): the inverse of
+// curve_slider_position, exact at both ends.
+[[nodiscard]] float curve_value_at(const CurveParameter& p, float position) noexcept;
+
 // Chooses the curve. Both parameters keep their values, so switching back restores them.
 void set_curve_kind(EditSettings& s, CurveKind kind);
 

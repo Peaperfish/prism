@@ -26,7 +26,9 @@ std::string shortest(float v) {
 }
 
 constexpr CurveParameter gamma_parameter{"Gamma", 0.5f, 4.0f, 2.2f, false};
-constexpr CurveParameter reinhard_parameter{"White point", 0.5f, 16.0f, 4.0f, true};
+// Extended Reinhard maps the white point to 1 and is the identity at white 1: below that it would
+// brighten instead of compress, pushing everything above `white` past 1.
+constexpr CurveParameter reinhard_parameter{"White point", 1.0f, 16.0f, 4.0f, true};
 
 }  // namespace
 
@@ -108,6 +110,34 @@ float curve_parameter_value(const EditSettings& s) {
     }
     const float v = s.curve == CurveKind::gamma ? s.gamma : s.reinhard_white;
     return std::isnan(v) ? p->default_value : std::clamp(v, p->min, p->max);
+}
+
+float curve_slider_position(const CurveParameter& p, float value) noexcept {
+    if (std::isnan(value)) {
+        value = p.default_value;
+    }
+    value = std::clamp(value, p.min, p.max);
+    if (value == p.min) {
+        return 0.0f;
+    }
+    if (value == p.max) {
+        return 1.0f;
+    }
+    const float t = p.logarithmic ? std::log(value / p.min) / std::log(p.max / p.min)
+                                  : (value - p.min) / (p.max - p.min);
+    return std::clamp(t, 0.0f, 1.0f);
+}
+
+float curve_value_at(const CurveParameter& p, float position) noexcept {
+    const float t = std::isnan(position) ? 0.0f : std::clamp(position, 0.0f, 1.0f);
+    if (t == 0.0f) {
+        return p.min;
+    }
+    if (t == 1.0f) {
+        return p.max;
+    }
+    const float v = p.logarithmic ? p.min * std::pow(p.max / p.min, t) : p.min + t * (p.max - p.min);
+    return std::clamp(v, p.min, p.max);
 }
 
 void set_curve_kind(EditSettings& s, CurveKind kind) {
