@@ -16,6 +16,7 @@
 #include "prism/gui/layout.hpp"
 #include "prism/gui/presets.hpp"
 #include "prism/gui/slider_gesture.hpp"
+#include "prism/gui/stage_controls.hpp"
 #include "prism/raw.hpp"
 #include "prism/utf8_path.hpp"
 #include "prism/version.hpp"
@@ -1011,8 +1012,24 @@ void App::draw_presets() {
 }
 
 void App::draw_simple_slider(const char* label, gui::SimpleControl control) {
-    const gui::SimpleControls positions = gui::simple_from(session_.settings());
-    const gui::SimpleOutOfRange beyond = gui::outside_simple_range(session_.settings());
+    draw_slider(label, control, false);
+}
+
+// One of Simple's three sliders, or (in_stage_row) the same slider in its stage's row in the
+// pipeline: both edit the same EditSettings field through the same conversions, so they always
+// agree. In a stage row the value is shown in its own units ("+0.70 stops"), and a stage that is
+// off shows its stored value greyed out and cannot be moved.
+void App::draw_slider(const char* label, gui::SimpleControl control, bool in_stage_row) {
+    const gui::StageId stage = gui::stage_of(control);
+    // A stage that is off sits at 0 in Simple; in its row it shows the value it will come back
+    // with.
+    gui::EditSettings shown = session_.settings();
+    if (in_stage_row) {
+        gui::set_stage_enabled(shown, stage, true);
+    }
+    const bool enabled = !in_stage_row || gui::stage_enabled(session_.settings(), stage);
+    const gui::SimpleControls positions = gui::simple_from(shown);
+    const gui::SimpleOutOfRange beyond = gui::outside_simple_range(shown);
     float value = 0;
     bool custom = false;
     switch (control) {
@@ -1031,20 +1048,30 @@ void App::draw_simple_slider(const char* label, gui::SimpleControl control) {
     }
 
     ImGui::PushID(label);
-    ImGui::TextUnformatted(label);
-    if (custom) {
-        // Set beyond the slider's range (e.g. in Advanced mode): shown at its end until moved.
-        ImGui::SameLine();
-        ImGui::TextDisabled("(custom)");
+    ImGui::BeginDisabled(!enabled);
+    if (in_stage_row) {
+        const std::string text = gui::stage_value_text(shown, stage);
+        ImGui::TextUnformatted(text.c_str());
+        if (custom) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("(beyond the slider)");
+        }
+    } else {
+        ImGui::TextUnformatted(label);
+        if (custom) {
+            // Set beyond the slider's range (e.g. in Advanced mode): shown at its end until moved.
+            ImGui::SameLine();
+            ImGui::TextDisabled("(custom)");
+        }
+        // The value at the right end of the label's line rather than on the slider, where it would
+        // sit on top of the grab at 0.
+        char text[16];
+        std::snprintf(text, sizeof text, "%+.0f", static_cast<double>(value));
+        ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetCursorPosX() +
+                                                             ImGui::GetContentRegionAvail().x -
+                                                             ImGui::CalcTextSize(text).x));
+        ImGui::TextUnformatted(text);
     }
-    // The value at the right end of the label's line rather than on the slider, where it would
-    // sit on top of the grab at 0.
-    char shown[16];
-    std::snprintf(shown, sizeof shown, "%+.0f", static_cast<double>(value));
-    ImGui::SameLine(std::max(ImGui::GetCursorPosX(),
-                             ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x -
-                                 ImGui::CalcTextSize(shown).x));
-    ImGui::TextUnformatted(shown);
     ImGui::SetNextItemWidth(-FLT_MIN);
     // An empty format draws no text on the slider; Ctrl/Cmd-click still types a value.
     const bool changed =
@@ -1056,13 +1083,16 @@ void App::draw_simple_slider(const char* label, gui::SimpleControl control) {
     report(gui::apply_slider_frame(session_, frame, edited));
 
     if (ImGui::BeginPopupContextItem("reset")) {
-        if (ImGui::MenuItem("Reset to 0")) {
+        const std::string neutral =
+            in_stage_row ? gui::stage_value_text(gui::EditSettings{}, stage) : "0";
+        if (ImGui::MenuItem(("Reset to " + neutral).c_str())) {
             gui::EditSettings s = session_.settings();
             gui::apply_simple_control(s, control, 0);
             report(session_.set_settings(s));
         }
         ImGui::EndPopup();
     }
+    ImGui::EndDisabled();
     ImGui::PopID();
 }
 
@@ -1239,6 +1269,11 @@ void App::draw_pipeline() {
             clips_ && draw_stage_clip_indicator(clips_->at(stage.id), row_min, row_max);
         if (row_hovered && !over_indicator) {
             ImGui::SetTooltip("%s", std::string(stage.description).c_str());
+        }
+        if (const std::optional<gui::SimpleControl> slider = gui::stage_slider(stage.id)) {
+            ImGui::Indent(row_h + ImGui::GetStyle().ItemSpacing.x);
+            draw_slider(std::string(stage.slug).c_str(), *slider, true);
+            ImGui::Unindent(row_h + ImGui::GetStyle().ItemSpacing.x);
         }
         ImGui::PopID();
     }

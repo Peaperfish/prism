@@ -85,6 +85,7 @@ private:
     void draw_clipping_summary();
     void draw_presets();
     void draw_simple_slider(const char* label, gui::SimpleControl control);
+    void draw_slider(const char* label, gui::SimpleControl control, bool in_stage_row);
     void draw_pipeline();
     void draw_status_bar();
     void draw_saving_popup();
