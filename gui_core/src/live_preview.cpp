@@ -25,14 +25,23 @@ void LivePreview::update(const std::shared_ptr<const Image>& base, const EditSet
         return;
     }
     // Turning an extra on needs a new frame; turning one off does not (the frame is still right).
+    // The viewed stage as compare is no comparison: the same request as with none.
+    if (options.compare_stage == stop_after) {
+        options.compare_stage.reset();
+    }
+    // A compare stage is wanted exactly: another stage than the frame has needs a new render.
     const bool covered = (options_.scopes || !options.scopes) &&
                          (options_.clip_report || !options.clip_report) &&
-                         (options_.clip_mask || !options.clip_mask);
+                         (options_.clip_mask || !options.clip_mask) &&
+                         (!options.compare_stage || options.compare_stage == options_.compare_stage);
     if (base == base_ && settings == settings_ && stop_after == stop_after_ && covered) {
         // Hidden: the next time they show, ask again.
         options_.scopes = options_.scopes && options.scopes;
         options_.clip_report = options_.clip_report && options.clip_report;
         options_.clip_mask = options_.clip_mask && options.clip_mask;
+        if (!options.compare_stage) {
+            options_.compare_stage.reset();
+        }
         return;
     }
     base_ = base;

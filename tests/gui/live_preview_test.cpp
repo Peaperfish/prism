@@ -253,3 +253,67 @@ TEST(LivePreview, ShowingScopesRendersOnceMoreAndHidingThemDoesNot) {
     ASSERT_TRUE(next_frame(preview));
     EXPECT_EQ(calls.load(), 3);
 }
+
+TEST(LivePreview, ComparingRendersOnceMoreAndEachNewCompareStageRendersAgain) {
+    using prism::gui::StageId;
+    LivePreview preview(1);
+    const auto base = make_base();
+    const EditSettings s = with_exposure(1.5f);
+    prism::gui::PreviewOptions options;
+
+    preview.update(base, s, StageId::encode, options);
+    const auto plain = next_frame(preview);
+    ASSERT_TRUE(plain);
+    EXPECT_FALSE(plain->compare);
+
+    options.compare_stage = StageId::decode;  // compare turned on: a new render with the picture
+    preview.update(base, s, StageId::encode, options);
+    EXPECT_TRUE(preview.rendering());
+    const auto with_original = next_frame(preview);
+    ASSERT_TRUE(with_original && with_original->compare);
+    EXPECT_EQ(with_original->compare->stage, StageId::decode);
+    EXPECT_EQ(with_original->rgb8, plain->rgb8);
+
+    preview.update(base, s, StageId::encode, options);  // unchanged: nothing
+    EXPECT_FALSE(preview.rendering());
+
+    options.compare_stage = StageId::exposure;  // another compare stage
+    preview.update(base, s, StageId::encode, options);
+    EXPECT_TRUE(preview.rendering());
+    const auto with_exposure_stage = next_frame(preview);
+    ASSERT_TRUE(with_exposure_stage && with_exposure_stage->compare);
+    EXPECT_EQ(with_exposure_stage->compare->stage, StageId::exposure);
+
+    options.compare_stage.reset();  // off: the frame on screen is still right
+    preview.update(base, s, StageId::encode, options);
+    EXPECT_FALSE(preview.rendering());
+
+    options.compare_stage = StageId::exposure;  // on again: asks again
+    preview.update(base, s, StageId::encode, options);
+    EXPECT_TRUE(preview.rendering());
+    EXPECT_TRUE(next_frame(preview));
+}
+
+TEST(LivePreview, TheViewedStageAsCompareStageIsTheSameAsOff) {
+    using prism::gui::StageId;
+    LivePreview preview(1);
+    const auto base = make_base();
+    const EditSettings s = with_exposure(1.5f);
+    prism::gui::PreviewOptions options;
+
+    preview.update(base, s, StageId::exposure, options);
+    ASSERT_TRUE(next_frame(preview));
+    options.compare_stage = StageId::exposure;
+    preview.update(base, s, StageId::exposure, options);
+    EXPECT_FALSE(preview.rendering());  // nothing to ask for
+
+    options.compare_stage = StageId::decode;
+    preview.update(base, s, StageId::exposure, options);
+    ASSERT_TRUE(next_frame(preview));
+    // Viewing the compare stage moves the viewed stage there: that is a new render anyway.
+    preview.update(base, s, StageId::decode, options);
+    const auto frame = next_frame(preview);
+    ASSERT_TRUE(frame);
+    EXPECT_EQ(frame->stage, StageId::decode);
+    EXPECT_FALSE(frame->compare);
+}

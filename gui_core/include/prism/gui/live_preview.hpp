@@ -32,8 +32,9 @@ public:
 
     // Submits a render if `base`, `settings` or `stop_after` changed since the last one, or if
     // an extra in `options` (scopes, clip report, clip mask: each means it is visible) turned on
-    // and the last request had none. Hiding one submits nothing: the frame on screen is still
-    // right. A null
+    // and the last request had none, or if `options.compare_stage` is a stage the last request
+    // did not ask for. Hiding one submits nothing: the frame on screen is still right. A compare
+    // stage equal to `stop_after` is the same as none. A null
     // base (no file open) submits nothing and forgets the last request, so the next file always
     // renders.
     void update(const std::shared_ptr<const Image>& base, const EditSettings& settings,
