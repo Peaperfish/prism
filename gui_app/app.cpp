@@ -1218,6 +1218,81 @@ void App::draw_clipping_summary() {
     }
 }
 
+// The colour matrix's file name, or "none". Read-only: the matrix is loaded with --matrix.
+void App::draw_matrix_name() {
+    const gui::EditSettings& s = session_.settings();
+    const std::string text = gui::stage_value_text(s, gui::StageId::matrix);
+    const auto measure = [](std::string_view t) {
+        return ImGui::CalcTextSize(t.data(), t.data() + t.size()).x;
+    };
+    const bool dim = !s.matrix || !s.matrix_on;
+    if (dim) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    }
+    ImGui::TextUnformatted(
+        gui::ellipsize_middle(text, ImGui::GetContentRegionAvail().x, measure).c_str());
+    if (dim) {
+        ImGui::PopStyleColor();
+    }
+    if (s.matrix && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
+        ImGui::SetTooltip("%s", utf8(s.matrix->path).c_str());
+    }
+}
+
+// The tone curve's kind and its one number (gamma, or Reinhard's white point). A change of kind is
+// one undo step; the number is a slider like the others. Greyed out and fixed while the stage is
+// off.
+void App::draw_curve_controls() {
+    const gui::EditSettings& current = session_.settings();
+    ImGui::BeginDisabled(!current.curve_on);
+
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    if (ImGui::BeginCombo("##curve", std::string(gui::curve_kind_name(current.curve)).c_str())) {
+        for (const gui::CurveKind kind : gui::curve_kinds) {
+            if (ImGui::Selectable(std::string(gui::curve_kind_name(kind)).c_str(),
+                                  kind == current.curve)) {
+                gui::EditSettings s = current;
+                gui::set_curve_kind(s, kind);
+                report(session_.set_settings(s));
+            }
+        }
+        ImGui::EndCombo();
+    }
+    if (ImGui::BeginPopupContextItem("reset_kind")) {
+        if (ImGui::MenuItem("Reset to None")) {
+            gui::EditSettings s = current;
+            gui::set_curve_kind(s, gui::CurveKind::none);
+            report(session_.set_settings(s));
+        }
+        ImGui::EndPopup();
+    }
+
+    if (const std::optional<gui::CurveParameter> p = gui::curve_parameter(current.curve)) {
+        float value = gui::curve_parameter_value(current);
+        const std::string format = std::string(p->label) + " %.2f";
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        const bool changed = ImGui::SliderFloat(
+            "##curve_parameter", &value, p->min, p->max, format.c_str(),
+            ImGuiSliderFlags_AlwaysClamp | (p->logarithmic ? ImGuiSliderFlags_Logarithmic : 0));
+        const gui::SliderFrame frame{ImGui::IsItemActivated(), changed, ImGui::IsItemDeactivated()};
+        gui::EditSettings edited = current;
+        gui::set_curve_parameter(edited, value);
+        report(gui::apply_slider_frame(session_, frame, edited));
+        if (ImGui::BeginPopupContextItem("reset_parameter")) {
+            char neutral[16];
+            std::snprintf(neutral, sizeof neutral, "Reset to %g",
+                          static_cast<double>(p->default_value));
+            if (ImGui::MenuItem(neutral)) {
+                gui::EditSettings s = session_.settings();
+                gui::set_curve_parameter(s, p->default_value);
+                report(session_.set_settings(s));
+            }
+            ImGui::EndPopup();
+        }
+    }
+    ImGui::EndDisabled();
+}
+
 void App::draw_pipeline() {
     // The per-stage clipping is only worked out while this section is open.
     pipeline_open_ = ImGui::CollapsingHeader("Pipeline", ImGuiTreeNodeFlags_DefaultOpen);
@@ -1273,6 +1348,14 @@ void App::draw_pipeline() {
         if (const std::optional<gui::SimpleControl> slider = gui::stage_slider(stage.id)) {
             ImGui::Indent(row_h + ImGui::GetStyle().ItemSpacing.x);
             draw_slider(std::string(stage.slug).c_str(), *slider, true);
+            ImGui::Unindent(row_h + ImGui::GetStyle().ItemSpacing.x);
+        } else if (stage.id == gui::StageId::matrix || stage.id == gui::StageId::curve) {
+            ImGui::Indent(row_h + ImGui::GetStyle().ItemSpacing.x);
+            if (stage.id == gui::StageId::matrix) {
+                draw_matrix_name();
+            } else {
+                draw_curve_controls();
+            }
             ImGui::Unindent(row_h + ImGui::GetStyle().ItemSpacing.x);
         }
         ImGui::PopID();
