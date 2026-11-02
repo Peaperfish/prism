@@ -455,6 +455,7 @@ void App::frame() {
     draw_status_bar();
     draw_saving_popup();
     ImGui::End();
+    focused_window_this_frame_ = nullptr;
     draw_preferences();
     draw_about();
     draw_notices();
@@ -466,6 +467,7 @@ void App::frame() {
     popup_open_last_frame_ =
         ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
     item_active_last_frame_ = ImGui::IsAnyItemActive();
+    focused_window_last_frame_ = focused_window_this_frame_;
 }
 
 void App::handle_shortcuts() {
@@ -493,7 +495,11 @@ void App::handle_shortcuts() {
         esc.text_editing = ImGui::GetIO().WantTextInput;  // as of the last frame
         esc.popup_open = popup_open_last_frame_;
         esc.item_active = item_active_last_frame_;
+        esc.window_focused = focused_window_last_frame_ != nullptr;
         switch (gui::escape_action(esc)) {
+            case gui::EscapeAction::close_window:
+                *focused_window_last_frame_ = false;  // the window's own open flag
+                break;
             case gui::EscapeAction::clear_compare:
                 compare_stage_.reset();
                 break;
@@ -1585,6 +1591,14 @@ void App::draw_status_bar() {
     }
 }
 
+// Called inside a window's Begin/End: remembers the window's open flag if it, or one of its child
+// windows, has the focus, for next frame's Esc.
+void App::note_if_focused(bool* open_flag) {
+    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
+        focused_window_this_frame_ = open_flag;
+    }
+}
+
 void App::draw_preferences() {
     if (!prefs_open_) {
         return;
@@ -1597,6 +1611,7 @@ void App::draw_preferences() {
         ImGui::End();
         return;
     }
+    note_if_focused(&prefs_open_);
     gui::Preferences p = prefs_;
 
     ImGui::SeparatorText("Appearance");
@@ -1674,6 +1689,7 @@ void App::draw_about() {
         ImGui::End();
         return;
     }
+    note_if_focused(&about_open_);
     // Wrap long lines at a readable width rather than the window's (it sizes itself to them).
     ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 440 * ui_scale());
     ImGui::Text("Prism %.*s", static_cast<int>(version().size()), version().data());
@@ -1717,6 +1733,7 @@ void App::draw_notices() {
         ImGui::End();
         return;
     }
+    note_if_focused(&notices_open_);
     const std::string_view text = third_party_notices();
     ImGui::BeginChild("text", ImVec2(0, 0), ImGuiChildFlags_None,
                       ImGuiWindowFlags_HorizontalScrollbar);

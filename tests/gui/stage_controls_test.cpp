@@ -396,4 +396,31 @@ TEST(Escape, ClosesAPopupOrEndsATextEditOrDragFirst) {
     }
 }
 
+TEST(Escape, AFocusedWindowTakesTheEscAndLeavesThePictureAlone) {
+    EscapeContext c;
+    c.comparing = true;
+    c.viewing_earlier = true;
+    c.window_focused = true;
+    EXPECT_EQ(escape_action(c), EscapeAction::close_window);
+    c.window_focused = false;
+    EXPECT_EQ(escape_action(c), EscapeAction::clear_compare);
+}
+
+TEST(Escape, AWindowWithNothingToBackOutOfStillCloses) {
+    EscapeContext c;
+    c.window_focused = true;
+    EXPECT_EQ(escape_action(c), EscapeAction::close_window);
+}
+
+TEST(Escape, APopupOrATextEditOrDragInTheWindowIsClosedBeforeTheWindow) {
+    for (int which = 0; which < 3; ++which) {
+        EscapeContext c;
+        c.window_focused = true;
+        c.text_editing = which == 0;
+        c.popup_open = which == 1;  // a combo list in Preferences, and the Saving modal
+        c.item_active = which == 2;
+        EXPECT_EQ(escape_action(c), EscapeAction::none) << which;
+    }
+}
+
 }  // namespace

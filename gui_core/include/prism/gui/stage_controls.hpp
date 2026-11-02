@@ -111,16 +111,20 @@ struct EscapeContext {
     bool text_editing = false;   // a text field (or a slider typed into) has the keyboard
     bool popup_open = false;     // a popup, menu or combo list was open
     bool item_active = false;    // a slider was being dragged
+    bool window_focused = false;  // Preferences, About or Third-party notices has the focus
 };
 
 enum class EscapeAction {
     none,           // Esc belongs to something else, or there's nothing to back out of
+    close_window,   // close the focused Preferences / About / Third-party notices window
     clear_compare,  // first Esc: drop the comparison, keep the viewed stage
     show_final,     // second Esc: back to the final picture
 };
 
-// Esc backs out one level, whatever widget was used last, but never while it is closing a popup,
-// ending a text edit or cancelling a drag.
+// Esc backs out one level, whatever widget was used last, but never while it is closing a popup
+// (the Saving modal is one, so Esc can't dismiss it), ending a text edit or cancelling a drag. A
+// focused closable window takes the Esc itself, and then leaves the comparison and the viewed
+// stage alone.
 [[nodiscard]] EscapeAction escape_action(const EscapeContext& c) noexcept;
 
 }  // namespace prism::gui

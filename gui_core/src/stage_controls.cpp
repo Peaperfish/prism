@@ -198,6 +198,9 @@ EscapeAction escape_action(const EscapeContext& c) noexcept {
     if (c.text_editing || c.popup_open || c.item_active) {
         return EscapeAction::none;
     }
+    if (c.window_focused) {
+        return EscapeAction::close_window;
+    }
     if (c.comparing) {
         return EscapeAction::clear_compare;
     }
