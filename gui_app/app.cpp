@@ -1404,13 +1404,24 @@ void App::draw_curve_controls() {
 // split, the chosen one the left half. Choosing the viewed stage itself is the same as Off.
 void App::draw_compare_controls() {
     const std::optional<gui::StageId> shown = gui::effective_compare(viewed_stage_, compare_stage_);
-    const float spacing = ImGui::GetStyle().ItemSpacing.x;
     const float swap_width =
         ImGui::CalcTextSize("Swap").x + ImGui::GetStyle().FramePadding.x * 2;
+    // Swap on the label's row, right-aligned, so the combo below has the whole width and a name
+    // like "after Output encode" fits.
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted("Compare with");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(std::max(1.0f, ImGui::GetContentRegionAvail().x - swap_width - spacing));
+    ImGui::SameLine(ImGui::GetContentRegionMax().x - swap_width);
+    ImGui::BeginDisabled(!shown);
+    if (ImGui::Button("Swap") && shown) {
+        const gui::StageId was_viewed = viewed_stage_;
+        viewed_stage_ = *shown;
+        compare_stage_ = was_viewed;
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled)) {
+        ImGui::SetTooltip("Swap the two halves.");
+    }
+    ImGui::SetNextItemWidth(-FLT_MIN);
     const std::string current = shown ? gui::stage_caption(*shown) : std::string("Off");
     if (ImGui::BeginCombo("##compare_with", current.c_str())) {
         if (ImGui::Selectable("Off", !shown)) {
@@ -1432,17 +1443,6 @@ void App::draw_compare_controls() {
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
         ImGui::SetTooltip("Show another point in the pipeline next to the one you're viewing.\n"
                           "It is the left half; the stage you click below is the right half.");
-    }
-    ImGui::SameLine();
-    ImGui::BeginDisabled(!shown);
-    if (ImGui::Button("Swap") && shown) {
-        const gui::StageId was_viewed = viewed_stage_;
-        viewed_stage_ = *shown;
-        compare_stage_ = was_viewed;
-    }
-    ImGui::EndDisabled();
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled)) {
-        ImGui::SetTooltip("Swap the two halves.");
     }
 }
 
