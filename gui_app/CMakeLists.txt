@@ -39,7 +39,8 @@ add_executable(prism_gui WIN32 MACOSX_BUNDLE
   main.cpp
   preview_texture.cpp
   scope_view.cpp
-  theme.cpp)
+  theme.cpp
+  widgets.cpp)
 target_include_directories(prism_gui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_link_libraries(prism_gui PRIVATE prism_gui_core imgui SDL3::SDL3 prism_warnings)

@@ -77,6 +77,12 @@ void load_fonts(ImGuiIO& io);
 // text colour, over a hairline. Replaces ImGui::SeparatorText.
 void section_text(const char* text);
 
+// The current theme's tokens as apply_style last set them: the colours, the sizes already
+// multiplied by the interface scale, and the type sizes (before the scale, as ImGui wants them).
+[[nodiscard]] const gui::TokenColours& token_colours();
+[[nodiscard]] const gui::TokenMetrics& token_metrics();
+[[nodiscard]] const gui::TokenType& token_type();
+
 // Rebuilds ImGui's style for `theme`, with every size multiplied by `scale` (sizes can't be
 // rescaled in place, so the style is made from scratch each time). Fonts are scaled separately
 // through style.FontScaleDpi, which this sets to `scale` too. Colours, spacing, rounding and the body

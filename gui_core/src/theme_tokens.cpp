@@ -26,6 +26,9 @@ constexpr TokenMetrics darkroom_metrics{
     .frame_border = 0,
     .separator_text_border = 1,
     .separator_text_padding = {0, 8},
+    .slider_track = 4,
+    .slider_knob = 14,
+    .slider_knob_shadow = 3,
 };
 
 // Body text is 16 px at 100%: readable on a Retina laptop without squinting. Headers and small
@@ -56,6 +59,7 @@ constexpr TokenColours darkroom_dark{
     .accent_active = {0.55f, 0.70f, 0.95f, 1},
     .check_mark = {0.55f, 0.70f, 0.95f, 1},
     .scrollbar_grab = grey(0.26f),
+    .knob_shadow = grey(0.0f, 0.45f),
     .modal_dim = grey(0.0f, 0.45f),
     .canvas = grey(46.0f / 255.0f),  // about 19 on the L* scale, darker than the chrome's panels
 };
@@ -84,6 +88,7 @@ constexpr TokenColours darkroom_light{
     .accent_active = {0.10f, 0.32f, 0.66f, 1},
     .check_mark = {0.18f, 0.42f, 0.80f, 1},
     .scrollbar_grab = grey(0.80f),
+    .knob_shadow = grey(0.0f, 0.30f),
     .modal_dim = grey(0.20f, 0.35f),
     .canvas = grey(118.0f / 255.0f),  // about 50 on the L* scale: mid-grey, as photo editors use
 };
@@ -133,6 +138,9 @@ TokenMetrics scaled(const TokenMetrics& m, float s) {
     r.frame_border = m.frame_border * s;
     r.separator_text_border = m.separator_text_border * s;
     r.separator_text_padding = m.separator_text_padding * s;
+    r.slider_track = m.slider_track * s;
+    r.slider_knob = m.slider_knob * s;
+    r.slider_knob_shadow = m.slider_knob_shadow * s;
     return r;
 }
 

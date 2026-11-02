@@ -81,6 +81,8 @@ void apply_metrics(ImGuiStyle& style, const gui::TokenMetrics& m) {
 }
 
 Fonts loaded_fonts;
+const gui::TokenSet* current_set = &gui::token_set(gui::Theme::dark);
+gui::TokenMetrics current_metrics = gui::scaled(gui::token_set(gui::Theme::dark).metrics, 1.0f);
 float section_size = 13.0f;  // the current theme's section header size (before the scale)
 
 }  // namespace
@@ -197,6 +199,20 @@ void apply_style(gui::Theme theme, float scale) {
     style.FontSizeBase = tokens.type.body;  // before the scale; FontScaleDpi applies it
     style.FontScaleDpi = scale;
     section_size = tokens.type.section;
+    current_set = &tokens;
+    current_metrics = gui::scaled(tokens.metrics, scale);
+}
+
+const gui::TokenColours& token_colours() {
+    return current_set->colours;
+}
+
+const gui::TokenMetrics& token_metrics() {
+    return current_metrics;
+}
+
+const gui::TokenType& token_type() {
+    return current_set->type;
 }
 
 void section_text(const char* text) {

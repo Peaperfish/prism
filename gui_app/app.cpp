@@ -12,6 +12,7 @@
 #include "imgui.h"
 #include "macos_menu.hpp"
 #include "theme.hpp"
+#include "widgets.hpp"
 #include "prism/gui/file_types.hpp"
 #include "prism/gui/layout.hpp"
 #include "prism/gui/presets.hpp"
@@ -1249,7 +1250,7 @@ void App::draw_slider(const char* label, gui::SimpleControl control, bool in_sta
     ImGui::SetNextItemWidth(-FLT_MIN);
     // An empty format draws no text on the slider; Ctrl/Cmd-click still types a value.
     const bool changed =
-        ImGui::SliderFloat("##slider", &value, gui::simple_min, gui::simple_max, "");
+        styled_slider("##slider", &value, gui::simple_min, gui::simple_max, 0.0f);
     const gui::SliderFrame frame{ImGui::IsItemActivated(), changed, ImGui::IsItemDeactivated()};
     gui::EditSettings edited = session_.settings();
     gui::apply_simple_control(edited, control, value);
@@ -1456,8 +1457,9 @@ void App::draw_curve_controls() {
         float position = gui::curve_slider_position(*p, value);
         ImGui::SetNextItemWidth(-FLT_MIN);
         const bool changed =
-            ImGui::SliderFloat("##curve_parameter", &position, 0.0f, 1.0f, "",
-                               ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput);
+            styled_slider("##curve_parameter", &position, 0.0f, 1.0f,
+                          gui::curve_slider_position(*p, p->default_value),
+                          ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput);
         const gui::SliderFrame frame{ImGui::IsItemActivated(), changed, ImGui::IsItemDeactivated()};
         gui::EditSettings edited = current;
         // Unmoved, the value stays exactly as stored rather than going through the mapping.
@@ -1691,10 +1693,17 @@ void App::draw_preferences() {
     ImGui::TextDisabled("Auto follows the display.");
 
     section_text("Layout");
-    ImGui::SetNextItemWidth(ImGui::CalcTextSize("Auto (200%)").x * 1.6f);
+    // Label and value on one line over the slider, as for the photo's sliders.
+    const float slider_width = ImGui::CalcTextSize("Auto (200%)").x * 1.6f;
+    char width_text[16];
+    std::snprintf(width_text, sizeof width_text, "%d pt", p.panel_width);
+    ImGui::TextUnformatted("Panel width");
+    ImGui::SameLine(ImGui::GetCursorPosX() + slider_width - ImGui::CalcTextSize(width_text).x);
+    ImGui::TextUnformatted(width_text);
+    ImGui::SetNextItemWidth(slider_width);
     int width = p.panel_width;
-    if (ImGui::SliderInt("Panel width", &width, gui::panel_width_min, 800, "%d pt",
-                         ImGuiSliderFlags_AlwaysClamp)) {
+    if (styled_slider_int("##panel_width", &width, gui::panel_width_min, 800,
+                          gui::panel_width_default, ImGuiSliderFlags_AlwaysClamp)) {
         p.panel_width = gui::clamp_panel_width(width);
     }
     const bool dragging = ImGui::IsItemActive();

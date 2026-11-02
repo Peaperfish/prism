@@ -38,6 +38,7 @@ struct TokenColours {
     Rgba control_border;
     Rgba accent, accent_active, check_mark;
     Rgba scrollbar_grab;
+    Rgba knob_shadow;  // under the slider's knob
     Rgba modal_dim;
     // Behind the photo: always neutral (R = G = B), neither near white nor near black.
     Rgba canvas;
@@ -51,6 +52,9 @@ struct TokenMetrics {
     float window_border, frame_border;
     float separator_text_border;
     Vec2 separator_text_padding;
+    // The custom slider: a thin track and a round knob (diameters), and how far the knob's soft
+    // shadow reaches.
+    float slider_track, slider_knob, slider_knob_shadow;
 };
 
 // Type sizes in points at 100%.
