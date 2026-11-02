@@ -20,6 +20,14 @@ ClipFate fate_of(std::uint64_t any, bool clamps) noexcept {
     return clamps ? ClipFate::lost : ClipFate::recoverable;
 }
 
+// A pixel with no light: luminance at or below 0, because some channel is negative. A pure
+// black pixel (0, 0, 0) is not one: it is exactly black, nothing is out of range. Comparisons are
+// false for NaN, so NaN is neither.
+bool is_low(const float* p) noexcept {
+    const float y = 0.2126f * p[0] + 0.7152f * p[1] + 0.0722f * p[2];
+    return y <= 0.0f && (p[0] < 0.0f || p[1] < 0.0f || p[2] < 0.0f);
+}
+
 }  // namespace
 
 std::optional<StageId> stage_from_name(std::string_view name) noexcept {
@@ -98,7 +106,8 @@ ClipRecorder::Range ClipRecorder::measure(const Image& img, int stride, int firs
             const float* p = row + static_cast<std::size_t>(x) * 3;
             // Comparisons are false for NaN, so NaN counts as neither; +-inf count.
             const bool hi[3] = {p[0] > 1.0f, p[1] > 1.0f, p[2] > 1.0f};
-            const bool lo[3] = {p[0] < 0.0f, p[1] < 0.0f, p[2] < 0.0f};
+            const bool low = is_low(p);
+            const bool lo[3] = {low && p[0] < 0.0f, low && p[1] < 0.0f, low && p[2] < 0.0f};
             // The ceiling band is [1 - epsilon, 1]: an integer source never goes above 1.0, so a
             // value above it can only come from a float image, where it is real highlight data.
             const bool ce[3] = {p[0] >= ceiling && p[0] <= 1.0f, p[1] >= ceiling && p[1] <= 1.0f,
@@ -236,7 +245,7 @@ void compute_clip_mask(const Image& img, int threads, std::vector<std::uint8_t>&
                 const float* p = row + static_cast<std::size_t>(x) * 3;
                 const bool hi = file_ceiling ? (p[0] >= high || p[1] >= high || p[2] >= high)
                                              : (p[0] > high || p[1] > high || p[2] > high);
-                const bool lo = p[0] < 0.0f || p[1] < 0.0f || p[2] < 0.0f;
+                const bool lo = is_low(p);
                 out[x] =
                     static_cast<std::uint8_t>((hi ? clip_mask_high : 0) | (lo ? clip_mask_low : 0));
             }

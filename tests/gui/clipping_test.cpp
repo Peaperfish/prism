@@ -231,11 +231,11 @@ TEST(Clipping, AToneCurveThatBringsHighlightsBackLosesNothing) {
 }
 
 TEST(Clipping, NegativeValuesFromAMatrixAreLostAtSaturation) {
-    // R' = R - G: (0.2, 0.5, 0.1) -> (-0.3, 0.5, 0.1).
+    // R' = R - 20 G: (0.1, 0.5, 0.1) -> (-9.9, 0.5, 0.1), which has Y < 0: no light, a shadow.
     EditSettings s;
-    s.matrix = prism::gui::MatrixFile{{}, {1, -1, 0, 0, 1, 0, 0, 0, 1}};
+    s.matrix = prism::gui::MatrixFile{{}, {1, -20, 0, 0, 1, 0, 0, 0, 1}};
     s.saturation = 1.5f;
-    const ClipReport r = compute_clip_report(solid(10, 10, 0.2f, 0.5f, 0.1f), s);
+    const ClipReport r = compute_clip_report(solid(10, 10, 0.1f, 0.5f, 0.1f), s);
 
     EXPECT_EQ(r.at(StageId::matrix).under.any, 100u);
     EXPECT_EQ(r.at(StageId::matrix).under.red, 100u);
@@ -253,10 +253,10 @@ TEST(Clipping, NegativeValuesFromAMatrixAreLostAtSaturation) {
 
 TEST(Clipping, ContrastKeepsNegativesRecoverableAndTheCurveClampsThem) {
     EditSettings s;
-    s.matrix = prism::gui::MatrixFile{{}, {1, -1, 0, 0, 1, 0, 0, 0, 1}};
+    s.matrix = prism::gui::MatrixFile{{}, {1, -20, 0, 0, 1, 0, 0, 0, 1}};
     s.contrast = 1.3f;
     s.curve = prism::gui::CurveKind::gamma;
-    const ClipReport r = compute_clip_report(solid(10, 10, 0.2f, 0.5f, 0.1f), s);
+    const ClipReport r = compute_clip_report(solid(10, 10, 0.1f, 0.5f, 0.1f), s);
     EXPECT_EQ(r.at(StageId::contrast).under_fate, ClipFate::recoverable);
     EXPECT_EQ(r.at(StageId::curve).under_fate, ClipFate::lost);
     EXPECT_EQ(r.at(StageId::curve).under.any, 100u);
@@ -264,11 +264,11 @@ TEST(Clipping, ContrastKeepsNegativesRecoverableAndTheCurveClampsThem) {
 }
 
 TEST(Clipping, HighlightsAndShadowsAreDescribedTogether) {
-    // Left pixel above white, right pixel below black.
+    // Left pixel above white, right pixel below black (Y < 0).
     Image img;
     img.width = 2;
     img.height = 1;
-    img.pixels = {1.5f, 0.5f, 0.5f, -0.2f, 0.5f, 0.5f};
+    img.pixels = {1.5f, 0.5f, 0.5f, -1.0f, 0.2f, 0.2f};
     const ClipReport r = compute_clip_report(img, EditSettings{});
     EXPECT_EQ(
         describe_clipping(r),
@@ -329,7 +329,7 @@ TEST(Clipping, TheClipMaskMarksPixelsOutOfRange) {
     Image img;
     img.width = 4;
     img.height = 1;
-    img.pixels = {0.5f, 0.5f, 0.5f, 1.5f, 0.5f, 0.5f, 0.5f, -0.1f, 0.5f, 2.0f, -1.0f, 0.5f};
+    img.pixels = {0.5f, 0.5f, 0.5f, 1.5f, 0.5f, 0.5f, 0.1f, -0.5f, 0.1f, 2.0f, -1.0f, 0.5f};
     std::vector<std::uint8_t> mask;
     prism::gui::compute_clip_mask(img, 1, mask);
     EXPECT_EQ(mask,
@@ -506,7 +506,7 @@ TEST(ClippingPreview, RunningTheLaterStagesOnTheSampledGridGivesTheFullImagesNum
     }
     EditSettings s = with_exposure(0.7f);
     s.matrix =
-        prism::gui::MatrixFile{{}, {1.4f, -0.5f, 0.0f, -0.2f, 1.2f, 0.0f, 0.0f, -0.4f, 1.3f}};
+        prism::gui::MatrixFile{{}, {1.4f, -8.0f, 0.0f, -0.2f, 1.2f, 0.0f, 0.0f, -0.4f, 1.3f}};
     s.saturation = 1.4f;
     s.contrast = 1.2f;
     s.curve = prism::gui::CurveKind::filmic;

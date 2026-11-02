@@ -16,6 +16,11 @@ namespace prism::gui {
 
 // Where in the pipeline values leave the range 0..1, and where that costs detail.
 //
+// Highlights are pixels with some channel above 1.0. Shadows are pixels with no light: luminance
+// Y = 0.2126 R + 0.7152 G + 0.0722 B (linear light) at or below 0 because some channel is negative.
+// (A pure black pixel is exactly black, not a shadow that was lost.) A negative channel on a
+// pixel that still has light (Y > 0) is a colour outside sRGB, not a shadow.
+//
 // A value above 1 (brighter than white) or below 0 (darker than black) is not lost by itself: the
 // pipeline works in float, so a later stage may bring it back (a tone curve rolls highlights
 // down, a lower exposure undoes a boost). Detail is lost only where a stage clamps it, because
@@ -69,7 +74,8 @@ struct ClipCounts {
     bool operator==(const ClipCounts&) const = default;
 };
 
-// One row of the pipeline view. `over` counts values above 1.0 and `under` values below 0.0
+// One row of the pipeline view. `over` counts values above 1.0 and `under` the negative channels
+// of pixels with Y <= 0
 // (at Decode, `over` counts values at the file's ceiling, in [1.0 - file_ceiling_epsilon, 1.0]:
 // lost; with none, values above 1.0: recoverable).
 // For a direction the stage does not clamp, the count is of its output (still out of range,
@@ -166,7 +172,7 @@ private:
                                              int threads = 0);
 
 // Marks each pixel of `img` whose float values are out of range: bit 1 = some channel above 1.0,
-// bit 2 = some channel below 0.0 (NaN is neither). One byte per pixel, row-major, so a UI can
+// bit 2 = no light (Y <= 0 with a negative channel). NaN is neither. One byte per pixel, row-major, so a UI can
 // tint those pixels on the picture. Reads every pixel, so only ask for it while it is shown.
 inline constexpr std::uint8_t clip_mask_high = 1;
 inline constexpr std::uint8_t clip_mask_low = 2;
