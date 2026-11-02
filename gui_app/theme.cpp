@@ -91,9 +91,23 @@ const Palette& palette(gui::Theme theme) {
         grey(0.40f),
         IM_COL32(0, 0, 0, 180),
         IM_COL32(255, 255, 255, 255),
+        IM_COL32(24, 24, 24, 255),     // histogram background
+        IM_COL32(76, 76, 76, 255),     // histogram border
+        IM_COL32(195, 195, 195, 85),   // luminance fill
+        IM_COL32(215, 215, 215, 150),  // luminance outline
+        IM_COL32(245, 90, 90, 235),    // red line
+        IM_COL32(85, 215, 105, 235),   // green line
+        IM_COL32(95, 155, 255, 240),   // blue line
+        IM_COL32(44, 44, 44, 255),     // clip indicator (unlit)
+        IM_COL32(82, 82, 82, 255),     // clip indicator border (unlit)
+        IM_COL32(150, 150, 150, 255),  // clip indicator text (unlit)
+        IM_COL32(55, 130, 230, 255),   // shadows clipped fill
+        IM_COL32(225, 85, 45, 255),    // highlights clipped fill
+        IM_COL32(255, 235, 220, 255),  // clip indicator border (lit)
+        IM_COL32(255, 255, 255, 255),  // clip indicator text (lit)
     };
     static const Palette light{
-        IM_COL32(96, 96, 96, 255),    // canvas: a lighter neutral grey, still well below mid-grey
+        IM_COL32(96, 96, 96, 255),     // canvas: a lighter neutral grey, still well below mid-grey
         IM_COL32(245, 245, 245, 255),  // canvas text
         IM_COL32(190, 190, 190, 255),  // drop outline (on the grey canvas)
         IM_COL32(150, 200, 255, 255),  // drop highlight
@@ -105,6 +119,20 @@ const Palette& palette(gui::Theme theme) {
         grey(0.70f),
         IM_COL32(0, 0, 0, 180),
         IM_COL32(255, 255, 255, 255),
+        IM_COL32(250, 250, 250, 255),  // histogram background
+        IM_COL32(180, 180, 180, 255),  // histogram border
+        IM_COL32(115, 115, 115, 75),   // luminance fill
+        IM_COL32(95, 95, 95, 145),     // luminance outline
+        IM_COL32(215, 38, 38, 235),    // red line
+        IM_COL32(22, 150, 52, 235),    // green line
+        IM_COL32(28, 98, 220, 235),    // blue line
+        IM_COL32(226, 226, 226, 255),  // clip indicator (unlit)
+        IM_COL32(178, 178, 178, 255),  // clip indicator border (unlit)
+        IM_COL32(105, 105, 105, 255),  // clip indicator text (unlit)
+        IM_COL32(30, 110, 215, 255),   // shadows clipped fill
+        IM_COL32(215, 65, 30, 255),    // highlights clipped fill
+        IM_COL32(90, 25, 10, 255),     // clip indicator border (lit)
+        IM_COL32(255, 255, 255, 255),  // clip indicator text (lit)
     };
     return theme == gui::Theme::light ? light : dark;
 }

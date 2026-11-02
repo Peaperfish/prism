@@ -1,6 +1,7 @@
 #include "app.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -165,6 +166,7 @@ void App::open_now(const fs::path& path) {
     }
     error_.reset();
     texture_.reset();  // don't show the previous photo under the new name
+    histogram_.reset();
     SDL_SetWindowTitle(window_, ("Prism - " + file_name(path)).c_str());
 }
 
@@ -236,6 +238,7 @@ void App::update_preview() {
         show_error({gui::ErrorKind::out_of_memory, "Couldn't show the preview.", SDL_GetError()});
         return;
     }
+    histogram_ = std::move(frame->histogram);
     last_render_ms_ = frame->total_ms;
 }
 
@@ -626,6 +629,8 @@ void App::draw_panel() {
     }
     ImGui::EndDisabled();
 
+    draw_histogram();
+
     ImGui::SeparatorText("Look");
     draw_presets();
 
@@ -636,6 +641,135 @@ void App::draw_panel() {
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
     ImGui::TextWrapped("Right-click a slider to reset it.");
     ImGui::PopStyleColor();
+}
+
+void App::draw_histogram() {
+    if (!histogram_ || histogram_->pixel_count == 0) {
+        return;
+    }
+    ImGui::SeparatorText("Histogram");
+
+    const gui::StageHistogram& h = *histogram_;
+    const Palette& colours = palette(theme());
+    const float s = ui_scale();
+    const float avail_w = std::max(1.0f, ImGui::GetContentRegionAvail().x);
+    const float graph_h = std::round(84.0f * s);
+    const float rounding = 4.0f * s;
+
+    ImGui::InvisibleButton("##histogram_graph", ImVec2(avail_w, graph_h));
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    const ImVec2 box_min = ImGui::GetItemRectMin();
+    const ImVec2 box_max = ImGui::GetItemRectMax();
+    draw->AddRectFilled(box_min, box_max, colours.histogram_background, rounding);
+
+    // Scale to the tallest interior bin (1..254) so an all-black or all-white border doesn't
+    // flatten the curve; fall back to all 256 bins when only 0 and 255 have any counts.
+    std::uint64_t max_count = 0;
+    std::uint64_t max_all = 0;
+    for (const gui::StageHistogram::Counts* c : {&h.red, &h.green, &h.blue, &h.luminance}) {
+        max_count = std::max(max_count, *std::max_element(c->begin() + 1, c->end() - 1));
+        max_all = std::max(max_all, *std::max_element(c->begin(), c->end()));
+    }
+    if (max_count == 0) {
+        max_count = max_all;
+    }
+
+    const float pad = 4.0f * s;
+    const ImVec2 plot_min(box_min.x + pad, box_min.y + pad);
+    const ImVec2 plot_max(box_max.x - pad, box_max.y - pad);
+    const float plot_w = std::max(1.0f, plot_max.x - plot_min.x);
+    const float plot_h = std::max(1.0f, plot_max.y - plot_min.y);
+
+    const auto build_points = [&](const gui::StageHistogram::Counts& counts) {
+        std::array<ImVec2, gui::StageHistogram::bins> pts{};
+        for (int b = 0; b < gui::StageHistogram::bins; ++b) {
+            const float x = plot_min.x + (static_cast<float>(b) / 255.0f) * plot_w;
+            const double ratio = max_count > 0
+                                     ? std::min(1.0, static_cast<double>(counts[b]) /
+                                                         static_cast<double>(max_count))
+                                     : 0.0;
+            const float y = plot_max.y - static_cast<float>(ratio) * plot_h;
+            pts[static_cast<std::size_t>(b)] = ImVec2(x, y);
+        }
+        return pts;
+    };
+
+    draw->PushClipRect(box_min, box_max, true);
+    const auto luma_pts = build_points(h.luminance);
+    for (int b = 0; b + 1 < gui::StageHistogram::bins; ++b) {
+        const ImVec2 p0 = luma_pts[static_cast<std::size_t>(b)];
+        const ImVec2 p1 = luma_pts[static_cast<std::size_t>(b + 1)];
+        draw->AddQuadFilled(p0, p1, ImVec2(p1.x, plot_max.y), ImVec2(p0.x, plot_max.y),
+                            colours.histogram_luma_fill);
+    }
+    draw->AddPolyline(luma_pts.data(), gui::StageHistogram::bins, colours.histogram_luma_line,
+                      ImDrawFlags_None, 1.0f * s);
+
+    const float line_thickness = 1.5f * s;
+    const auto red_pts = build_points(h.red);
+    const auto green_pts = build_points(h.green);
+    const auto blue_pts = build_points(h.blue);
+    draw->AddPolyline(blue_pts.data(), gui::StageHistogram::bins, colours.histogram_blue,
+                      ImDrawFlags_None, line_thickness);
+    draw->AddPolyline(green_pts.data(), gui::StageHistogram::bins, colours.histogram_green,
+                      ImDrawFlags_None, line_thickness);
+    draw->AddPolyline(red_pts.data(), gui::StageHistogram::bins, colours.histogram_red,
+                      ImDrawFlags_None, line_thickness);
+    draw->PopClipRect();
+    draw->AddRect(box_min, box_max, colours.histogram_border, rounding, 0, 1.0f * s);
+
+    // Two small clip indicators below the graph: shadows on the left, highlights on the right.
+    const bool shadows_clipped = gui::has_shadow_clipping(h);
+    const bool highlights_clipped = gui::has_highlight_clipping(h);
+    const float chip_h = ImGui::GetFontSize() + 6.0f * s;
+    const float gap = 6.0f * s;
+    const float chip_w = std::max(1.0f, (avail_w - gap) * 0.5f);
+
+    const auto draw_clip_chip = [&](const char* id, const char* label, bool left_arrow,
+                                    bool active, ImU32 active_fill, std::uint64_t r_clip,
+                                    std::uint64_t g_clip, std::uint64_t b_clip,
+                                    const char* tooltip_title) {
+        ImGui::InvisibleButton(id, ImVec2(chip_w, chip_h));
+        const ImVec2 cmin = ImGui::GetItemRectMin();
+        const ImVec2 cmax = ImGui::GetItemRectMax();
+        const ImU32 fill = active ? active_fill : colours.clip_inactive_fill;
+        const ImU32 border = active ? colours.clip_active_border : colours.clip_inactive_border;
+        const ImU32 text_col = active ? colours.clip_active_text : colours.clip_inactive_text;
+        draw->AddRectFilled(cmin, cmax, fill, 3.0f * s);
+        draw->AddRect(cmin, cmax, border, 3.0f * s, 0, 1.0f * s);
+
+        const float tri = 4.5f * s;
+        const float cy = (cmin.y + cmax.y) * 0.5f;
+        const float pad_x = 7.0f * s;
+        if (left_arrow) {
+            const float tx = cmin.x + pad_x;
+            draw->AddTriangleFilled(ImVec2(tx, cy), ImVec2(tx + tri, cy - tri * 0.85f),
+                                    ImVec2(tx + tri, cy + tri * 0.85f), text_col);
+            draw->AddText(ImVec2(tx + tri + 5.0f * s, cmin.y + 3.0f * s), text_col, label);
+        } else {
+            const float tx = cmax.x - pad_x;
+            draw->AddTriangleFilled(ImVec2(tx, cy), ImVec2(tx - tri, cy - tri * 0.85f),
+                                    ImVec2(tx - tri, cy + tri * 0.85f), text_col);
+            const ImVec2 tsize = ImGui::CalcTextSize(label);
+            draw->AddText(ImVec2(tx - tri - 5.0f * s - tsize.x, cmin.y + 3.0f * s), text_col,
+                          label);
+        }
+
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("%s\nR %.2f%%   G %.2f%%   B %.2f%%", tooltip_title,
+                              gui::pixel_percent(r_clip, h.pixel_count),
+                              gui::pixel_percent(g_clip, h.pixel_count),
+                              gui::pixel_percent(b_clip, h.pixel_count));
+        }
+    };
+
+    draw_clip_chip("##clip_shadows", "Shadows", true, shadows_clipped, colours.clip_shadows_fill,
+                   h.red_clips.under_black, h.green_clips.under_black, h.blue_clips.under_black,
+                   "Shadows clipped (below black):");
+    ImGui::SameLine(0.0f, gap);
+    draw_clip_chip("##clip_highlights", "Highlights", false, highlights_clipped,
+                   colours.clip_highlights_fill, h.red_clips.over_white, h.green_clips.over_white,
+                   h.blue_clips.over_white, "Highlights clipped (above white):");
 }
 
 void App::draw_presets() {

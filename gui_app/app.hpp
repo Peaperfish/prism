@@ -10,6 +10,7 @@
 #include "file_dialogs.hpp"
 #include "preview_texture.hpp"
 #include "prism/gui/background_export.hpp"
+#include "prism/gui/histogram.hpp"
 #include "prism/gui/live_preview.hpp"
 #include "prism/gui/preferences.hpp"
 #include "prism/gui/session.hpp"
@@ -70,6 +71,7 @@ private:
     void draw_banner();
     void draw_splitter(float canvas_width, float width, float height, float available);
     void draw_panel();
+    void draw_histogram();
     void draw_presets();
     void draw_simple_slider(const char* label, gui::SimpleControl control);
     void draw_status_bar();
@@ -85,6 +87,7 @@ private:
     gui::Session session_;
     gui::LivePreview preview_;
     PreviewTexture texture_;
+    std::optional<gui::StageHistogram> histogram_;
     gui::BackgroundExport exporter_;
     double last_render_ms_ = 0;
 

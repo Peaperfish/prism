@@ -24,6 +24,21 @@ struct Palette {
     // since the box sits on the photo or the grey canvas, not on the theme's background.
     ImU32 overlay_background;
     ImU32 overlay_text;
+    // The stage histogram in the control panel and its shadow/highlight clipping indicators.
+    ImU32 histogram_background;
+    ImU32 histogram_border;
+    ImU32 histogram_luma_fill;
+    ImU32 histogram_luma_line;
+    ImU32 histogram_red;
+    ImU32 histogram_green;
+    ImU32 histogram_blue;
+    ImU32 clip_inactive_fill;
+    ImU32 clip_inactive_border;
+    ImU32 clip_inactive_text;
+    ImU32 clip_shadows_fill;
+    ImU32 clip_highlights_fill;
+    ImU32 clip_active_border;
+    ImU32 clip_active_text;
 };
 
 [[nodiscard]] const Palette& palette(gui::Theme theme);
