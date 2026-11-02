@@ -18,8 +18,10 @@ namespace prism::gui {
 // Only a strided grid of at most `max_samples` pixels is counted: scopes show a distribution, so
 // they don't need every pixel, and the cost stays small however big the preview is.
 //
-// The vectorscope grid is also what a gamut warning needs: out-of-gamut colours are the cells
-// beyond the target colours' radius, so the warning can reuse these counts and vectorscope_cell().
+// Note for a gamut warning (#14): these scopes are of clamped 8-bit values, which are always inside
+// sRGB, so no vectorscope cell means "out of gamut". That needs the stage's float values before
+// clamping (out of gamut = any channel < 0 or > 1 in the output space). The vectorscope could show
+// those pixels if a future version binned the unclamped floats.
 struct Scopes {
     static constexpr int size = 256;
     static constexpr std::uint64_t max_samples = 250'000;

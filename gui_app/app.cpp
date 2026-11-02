@@ -860,8 +860,12 @@ void App::draw_scope_selector() {
     const float s = ui_scale();
     const float avail = std::max(1.0f, ImGui::GetContentRegionAvail().x);
     const float spacing = ImGui::GetStyle().ItemSpacing.x;
-    const float pad = 4.0f * s;  // tighter than a normal button so all four fit in a row
-    float needed = 3 * spacing;
+    // A slightly smaller font, so the full names fit in one row at the default panel width.
+    ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 0.85f);
+    const char* hovered_tip = nullptr;
+    const float pad = 3.0f * s;  // tighter than a normal button so all four fit in a row
+    const float gap = 2.0f * s;  // and closer together
+    float needed = 3 * gap;
     for (const Choice& c : choices) {
         needed += ImGui::CalcTextSize(c.label).x + 2 * pad;
     }
@@ -877,7 +881,7 @@ void App::draw_scope_selector() {
                                       (avail - needed) / static_cast<float>(std::size(choices))
                                 : row_w;
         if (index % (one_row ? 4 : 2) != 0) {
-            ImGui::SameLine();
+            ImGui::SameLine(0.0f, one_row ? gap : spacing);
         }
         if (selected) {
             ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
@@ -891,11 +895,15 @@ void App::draw_scope_selector() {
             ImGui::PopStyleColor();
         }
         if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("%s", c.tip);
+            hovered_tip = c.tip;
         }
         ++index;
     }
     ImGui::PopStyleVar();
+    ImGui::PopFont();
+    if (hovered_tip != nullptr) {
+        ImGui::SetTooltip("%s", hovered_tip);  // in the normal font size
+    }
 }
 
 void App::draw_presets() {
