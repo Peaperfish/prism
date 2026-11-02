@@ -71,9 +71,9 @@ void centred_text(const std::string& text) {
 // Text on a dark rounded box at `pos`, for messages drawn over the image.
 void overlay_text(ImDrawList* draw, const Palette& colours, ImVec2 pos, const std::string& text) {
     const ImVec2 size = ImGui::CalcTextSize(text.c_str());
-    const float pad = 6.0f * ui_scale();
+    const float pad = token_metrics().overlay_padding;
     draw->AddRectFilled(pos, ImVec2(pos.x + size.x + 2 * pad, pos.y + size.y + 2 * pad),
-                        colours.overlay_background, 4.0f * ui_scale());
+                        colours.overlay_background, token_metrics().overlay_rounding);
     draw->AddText(ImVec2(pos.x + pad, pos.y + pad), colours.overlay_text, text.c_str());
 }
 
@@ -628,7 +628,7 @@ void App::draw_canvas() {
     const ImVec2 max(min.x + size.x, min.y + size.y);
     const Palette& colours = palette(theme());
     draw->AddRectFilled(min, max, colours.canvas);  // neutral grey in both themes
-    const float margin = 12.0f * ui_scale();
+    const float margin = token_metrics().canvas_margin;
 
     if (texture_.texture() != nullptr) {
         // Fit the whole image into the canvas, keeping its aspect ratio, centred (letterboxed).
@@ -653,11 +653,11 @@ void App::draw_canvas() {
     } else if (!session_.has_file() && !pending_open_) {
         // Empty state: a dashed drop area with the one thing to do. It lights up while a file is
         // dragged over the window.
-        const float inset = 24.0f * ui_scale();
+        const float inset = token_metrics().drop_inset;
         dashed_rect(draw, ImVec2(min.x + inset, min.y + inset),
                     ImVec2(max.x - inset, max.y - inset),
                     drag_over_ ? colours.drop_highlight : colours.drop_outline,
-                    8.0f * ui_scale(), 2.0f * ui_scale());
+                    token_metrics().drop_dash, token_metrics().drop_line);
         ImGui::SetCursorPosY(size.y / 2 - ImGui::GetFrameHeightWithSpacing() * 1.5f);
         ImGui::PushStyleColor(ImGuiCol_Text, colours.canvas_text);
         centred_text("Drop a photo here");
@@ -682,7 +682,8 @@ void App::draw_canvas() {
                      "Rendering...");
     }
     if (drag_over_ && session_.has_file()) {
-        draw->AddRect(min, max, colours.drop_highlight, 0.0f, 0, 3.0f * ui_scale());
+        draw->AddRect(min, max, colours.drop_highlight, 0.0f, 0,
+                  token_metrics().drop_line_active);
     }
 }
 
@@ -720,17 +721,22 @@ void App::draw_split(ImDrawList* draw, ImVec2 at, ImVec2 shown) {
     }
 
     // The divider: a line with a dark edge so it shows on any picture, and a grip in its middle.
-    const float line = 2.0f * scale;
+    const gui::TokenMetrics& metrics = token_metrics();
+    const gui::TokenColours& tokens = token_colours();
+    const auto rgba = [](const gui::Rgba& c) {
+        return ImGui::ColorConvertFloat4ToU32(ImVec4(c.r, c.g, c.b, c.a));
+    };
+    const float line = metrics.divider_line;
     draw->AddRectFilled(ImVec2(split.divider_x - line, top), ImVec2(split.divider_x + line, bottom),
-                        IM_COL32(0, 0, 0, 90));
+                        rgba(tokens.divider_edge));
     draw->AddRectFilled(ImVec2(split.divider_x - line / 2, top),
-                        ImVec2(split.divider_x + line / 2, bottom), IM_COL32(255, 255, 255, 235));
+                        ImVec2(split.divider_x + line / 2, bottom), rgba(tokens.divider_line));
     const float mid = (top + bottom) / 2;
-    const float grip = 9.0f * scale;
-    draw->AddCircleFilled(ImVec2(split.divider_x, mid), grip, IM_COL32(255, 255, 255, 235));
-    draw->AddCircle(ImVec2(split.divider_x, mid), grip, IM_COL32(0, 0, 0, 110), 0, 1.0f * scale);
-    const float arrow = 4.0f * scale;
-    const ImU32 ink = IM_COL32(40, 40, 40, 255);
+    const float grip = metrics.divider_grip;
+    draw->AddCircleFilled(ImVec2(split.divider_x, mid), grip, rgba(tokens.divider_line));
+    draw->AddCircle(ImVec2(split.divider_x, mid), grip, rgba(tokens.grip_ring), 0, 1.0f * scale);
+    const float arrow = metrics.divider_arrow;
+    const ImU32 ink = rgba(tokens.grip_ink);
     draw->AddTriangleFilled(ImVec2(split.divider_x - arrow - 1 * scale, mid),
                             ImVec2(split.divider_x - 1 * scale, mid - arrow),
                             ImVec2(split.divider_x - 1 * scale, mid + arrow), ink);
@@ -741,7 +747,7 @@ void App::draw_split(ImDrawList* draw, ImVec2 at, ImVec2 shown) {
     // Dragging: a strip around the divider, as tall as the picture. The cursor is put back after,
     // so the banner and badge below this lay out as before.
     const ImVec2 saved = ImGui::GetCursorScreenPos();
-    const float strip = 14.0f * scale;
+    const float strip = metrics.divider_strip;
     ImGui::SetCursorScreenPos(ImVec2(split.divider_x - strip / 2, top));
     ImGui::InvisibleButton("##split_divider", ImVec2(strip, std::max(1.0f, shown.y)));
     if (ImGui::IsItemHovered() || ImGui::IsItemActive()) {
@@ -756,10 +762,10 @@ void App::draw_split(ImDrawList* draw, ImVec2 at, ImVec2 shown) {
     ImGui::SetCursorScreenPos(saved);
 
     // One chip in each half's top corner, named by the stage each picture really shows.
-    const float margin = 10.0f * scale;
+    const float margin = metrics.divider_chip_margin;
     const std::string left_text = gui::stage_caption(texture_.compare_stage());
     const std::string right_text = gui::stage_caption(histogram_stage_);
-    const float pad = 6.0f * scale;
+    const float pad = metrics.overlay_padding;
     draw->PushClipRect(ImVec2(split.left_x0, top), ImVec2(split.divider_x, bottom), true);
     overlay_text(draw, colours, ImVec2(split.left_x0 + margin, top + margin), left_text);
     draw->PopClipRect();
@@ -774,7 +780,7 @@ void App::draw_banner() {
     if (!error_ && notice_.empty()) {
         return;
     }
-    const float margin = 12.0f * ui_scale();
+    const float margin = token_metrics().canvas_margin;
     ImGui::SetCursorPos(ImVec2(margin, margin));
     const bool is_error = error_.has_value();
     const Palette& colours = palette(theme());
@@ -784,7 +790,7 @@ void App::draw_banner() {
     ImGui::PushStyleColor(ImGuiCol_Border, is_error ? colours.error_border : colours.notice_border);
     // Across the canvas, but not wider than a comfortable line length on a big window.
     const float banner_width =
-        std::min(ImGui::GetContentRegionAvail().x - margin, 720.0f * ui_scale());
+        std::min(ImGui::GetContentRegionAvail().x - margin, token_metrics().banner_max_width);
     ImGui::BeginChild("banner", ImVec2(std::max(1.0f, banner_width), 0),
                       ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
     ImGui::PushTextWrapPos(0.0f);
@@ -814,7 +820,7 @@ void App::draw_stage_badge() {
     if (!session_.has_file() || viewed_stage_ == gui::final_stage || splitting()) {
         return;
     }
-    const float margin = 12.0f * ui_scale();
+    const float margin = token_metrics().canvas_margin;
     if (!error_ && notice_.empty()) {
         ImGui::SetCursorPos(ImVec2(margin, margin));
     } else {
@@ -825,7 +831,8 @@ void App::draw_stage_badge() {
     ImGui::PushStyleColor(ImGuiCol_ChildBg, colours.notice_background);
     ImGui::PushStyleColor(ImGuiCol_Text, colours.notice_text);
     ImGui::PushStyleColor(ImGuiCol_Border, colours.notice_border);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f * ui_scale(), 5.0f * ui_scale()));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
+                        ImVec2(token_metrics().badge_padding.x, token_metrics().badge_padding.y));
     ImGui::BeginChild("stage_badge", ImVec2(0, 0),
                       ImGuiChildFlags_AutoResizeX | ImGuiChildFlags_AutoResizeY |
                           ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_Borders);
@@ -939,9 +946,8 @@ void App::draw_histogram() {
 
 void App::draw_histogram_graph(const gui::StageHistogram& h, float avail_w) {
     const Palette& colours = palette(theme());
-    const float s = ui_scale();
-    const float graph_h = std::round(68.0f * s);
-    const float rounding = 4.0f * s;
+    const float graph_h = std::round(token_metrics().plot_height);
+    const float rounding = token_metrics().plot_rounding;
 
     ImGui::InvisibleButton("##histogram_graph", ImVec2(avail_w, graph_h));
     ImDrawList* draw = ImGui::GetWindowDrawList();
@@ -961,7 +967,7 @@ void App::draw_histogram_graph(const gui::StageHistogram& h, float avail_w) {
         max_count = max_all;
     }
 
-    const float pad = 4.0f * s;
+    const float pad = token_metrics().plot_padding;
     const ImVec2 plot_min(box_min.x + pad, box_min.y + pad);
     const ImVec2 plot_max(box_max.x - pad, box_max.y - pad);
     const float plot_w = std::max(1.0f, plot_max.x - plot_min.x);
@@ -990,9 +996,9 @@ void App::draw_histogram_graph(const gui::StageHistogram& h, float avail_w) {
                             colours.histogram_luma_fill);
     }
     draw->AddPolyline(luma_pts.data(), gui::StageHistogram::bins, colours.histogram_luma_line,
-                      ImDrawFlags_None, 1.0f * s);
+                      ImDrawFlags_None, token_metrics().plot_luma_line);
 
-    const float line_thickness = 1.5f * s;
+    const float line_thickness = token_metrics().plot_line;
     const auto red_pts = build_points(h.red);
     const auto green_pts = build_points(h.green);
     const auto blue_pts = build_points(h.blue);
@@ -1003,7 +1009,8 @@ void App::draw_histogram_graph(const gui::StageHistogram& h, float avail_w) {
     draw->AddPolyline(red_pts.data(), gui::StageHistogram::bins, colours.histogram_red,
                       ImDrawFlags_None, line_thickness);
     draw->PopClipRect();
-    draw->AddRect(box_min, box_max, colours.histogram_border, rounding, 0, 1.0f * s);
+    draw->AddRect(box_min, box_max, colours.histogram_border, rounding, 0,
+                  token_metrics().plot_border_width);
 }
 
 void App::draw_clip_chips(const gui::StageHistogram& h, float avail_w) {
@@ -1014,36 +1021,46 @@ void App::draw_clip_chips(const gui::StageHistogram& h, float avail_w) {
     // Two small clip indicators below the graph: shadows on the left, highlights on the right.
     const bool shadows_clipped = gui::has_shadow_clipping(h);
     const bool highlights_clipped = gui::has_highlight_clipping(h);
-    const float chip_h = ImGui::GetFontSize() + 6.0f * s;
-    const float gap = 6.0f * s;
+    const gui::TokenMetrics& metrics = token_metrics();
+    const gui::TokenColours& tokens = token_colours();
+    const auto rgba = [](const gui::Rgba& c, float lighten = 0.0f) {
+        return ImGui::ColorConvertFloat4ToU32(ImVec4(c.r + (1 - c.r) * lighten,
+                                                     c.g + (1 - c.g) * lighten,
+                                                     c.b + (1 - c.b) * lighten, c.a));
+    };
+    const float chip_h = ImGui::GetFontSize() + 2.0f * metrics.chip_pad_y;
+    const float gap = metrics.chip_gap;
     const float chip_w = std::max(1.0f, (avail_w - gap) * 0.5f);
 
     const auto draw_clip_chip = [&](const char* id, const char* label, bool left_arrow, bool active,
-                                    ImU32 active_fill, std::uint64_t r_clip, std::uint64_t g_clip,
+                                    ImU32 active_fill, ImU32 active_border, std::uint64_t r_clip, std::uint64_t g_clip,
                                     std::uint64_t b_clip, const char* tooltip_title) {
         ImGui::InvisibleButton(id, ImVec2(chip_w, chip_h));
         const ImVec2 cmin = ImGui::GetItemRectMin();
         const ImVec2 cmax = ImGui::GetItemRectMax();
         const ImU32 fill = active ? active_fill : colours.clip_inactive_fill;
-        const ImU32 border = active ? colours.clip_active_border : colours.clip_inactive_border;
-        const ImU32 text_col = active ? colours.clip_active_text : colours.clip_inactive_text;
-        draw->AddRectFilled(cmin, cmax, fill, 3.0f * s);
-        draw->AddRect(cmin, cmax, border, 3.0f * s, 0, 1.0f * s);
+        // A lit chip's edge is its own colour, lighter, not a pale outline.
+        const ImU32 border = active ? active_border : colours.clip_inactive_border;
+        const ImU32 text_col = active ? rgba(tokens.chip_text) : colours.clip_inactive_text;
+        draw->AddRectFilled(cmin, cmax, fill, metrics.chip_rounding);
+        draw->AddRect(cmin, cmax, border, metrics.chip_rounding, 0, 1.0f * s);
 
         const float tri = token_metrics().chevron_size;
         const float cy = (cmin.y + cmax.y) * 0.5f;
-        const float pad_x = 7.0f * s;
+        const float pad_x = metrics.chip_pad_x;
         if (left_arrow) {
             const float tx = cmin.x + pad_x;
             draw_chevron(draw, ImVec2(std::round(tx + tri * 0.5f), std::round(cy)), Chevron::left,
                          text_col);
-            draw->AddText(ImVec2(tx + tri + 5.0f * s, cmin.y + 3.0f * s), text_col, label);
+            draw->AddText(ImVec2(tx + tri + metrics.chip_text_gap, cmin.y + metrics.chip_pad_y), text_col,
+                          label);
         } else {
             const float tx = cmax.x - pad_x;
             draw_chevron(draw, ImVec2(std::round(tx - tri * 0.5f), std::round(cy)), Chevron::right,
                          text_col);
             const ImVec2 tsize = ImGui::CalcTextSize(label);
-            draw->AddText(ImVec2(tx - tri - 5.0f * s - tsize.x, cmin.y + 3.0f * s), text_col,
+            draw->AddText(ImVec2(tx - tri - metrics.chip_text_gap - tsize.x, cmin.y + metrics.chip_pad_y),
+                          text_col,
                           label);
         }
 
@@ -1055,12 +1072,12 @@ void App::draw_clip_chips(const gui::StageHistogram& h, float avail_w) {
         }
     };
 
-    draw_clip_chip("##clip_shadows", "Shadows", true, shadows_clipped, colours.clip_shadows_fill,
-                   h.red_clips.under_black, h.green_clips.under_black, h.blue_clips.under_black,
+    draw_clip_chip("##clip_shadows", "Shadows", true, shadows_clipped, rgba(tokens.chip_shadows),
+                   rgba(tokens.chip_shadows, 0.25f), h.red_clips.under_black, h.green_clips.under_black, h.blue_clips.under_black,
                    "Shadows clipped (below black):");
     ImGui::SameLine(0.0f, gap);
     draw_clip_chip("##clip_highlights", "Highlights", false, highlights_clipped,
-                   colours.clip_highlights_fill, h.red_clips.over_white, h.green_clips.over_white,
+                   rgba(tokens.chip_highlights), rgba(tokens.chip_highlights, 0.25f), h.red_clips.over_white, h.green_clips.over_white,
                    h.blue_clips.over_white, "Highlights clipped (above white):");
 }
 
@@ -1083,14 +1100,13 @@ void App::draw_scope_selector() {
          "Shows which colours are in the image and how strong they are; the centre is neutral "
          "grey."},
     };
-    const float s = ui_scale();
     const float avail = std::max(1.0f, ImGui::GetContentRegionAvail().x);
     const float spacing = ImGui::GetStyle().ItemSpacing.x;
     // A slightly smaller font, so the full names fit in one row at the default panel width.
-    ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 0.85f);
+    ImGui::PushFont(nullptr, token_type().small);
     const char* hovered_tip = nullptr;
-    const float pad = 3.0f * s;  // tighter than a normal button so all four fit in a row
-    const float gap = 2.0f * s;  // and closer together
+    const float pad = token_metrics().selector_pad;  // tighter than a button so all four fit a row
+    const float gap = token_metrics().selector_gap;  // and closer together
     float needed = 3 * gap;
     for (const Choice& c : choices) {
         needed += ImGui::CalcTextSize(c.label).x + 2 * pad;
@@ -1134,10 +1150,9 @@ void App::draw_scope_selector() {
 
 void App::draw_clip_overlay_button() {
     const bool on = prefs_.clip_overlay;
-    const float s = ui_scale();
-    ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 0.85f);
+    ImGui::PushFont(nullptr, token_type().small);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
-                        ImVec2(3.0f * s, ImGui::GetStyle().FramePadding.y * 0.7f));
+                        ImVec2(token_metrics().selector_pad, ImGui::GetStyle().FramePadding.y * 0.7f));
     if (on) {
         ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
     }
@@ -1313,12 +1328,13 @@ bool App::draw_stage_clip_indicator(const gui::StageClip& clip, ImVec2 row_min, 
          "their hue can shift."},
     };
 
-    const float radius = 4.0f * s;
-    const float gap = 4.0f * s;
-    const float between = 8.0f * s;
+    const float radius = token_metrics().dot_radius;
+    const float gap = token_metrics().dot_gap;
+    const float between = token_metrics().dot_between;
+    const float inset = token_metrics().dot_inset;
     const float cy = (row_min.y + row_max.y) * 0.5f;
-    ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 0.85f);
-    float right = row_max.x - 6.0f * s;
+    ImGui::PushFont(nullptr, token_type().small);
+    float right = row_max.x - inset;
     float left = right;
     // Drawn right to left (the last in the array is first here), so highlights end up on the left
     // and the percentages line up across rows.
@@ -1342,7 +1358,7 @@ bool App::draw_stage_clip_indicator(const gui::StageClip& clip, ImVec2 row_min, 
         right = left - between;
     }
     ImGui::PopFont();
-    if (left >= row_max.x - 6.0f * s) {
+    if (left >= row_max.x - inset) {
         return false;  // nothing drawn
     }
 
@@ -1366,7 +1382,7 @@ bool App::draw_stage_clip_indicator(const gui::StageClip& clip, ImVec2 row_min, 
                 : clip.stage == gui::StageId::decode
                     ? "Already clipped in the file: no edit can bring them back."
                     : "Clipped here: this stage cut them off, so the detail is gone.";
-            ImGui::PushTextWrapPos(ImGui::GetFontSize() * 24.0f);
+            ImGui::PushTextWrapPos(token_metrics().tooltip_wrap);
             ImGui::TextDisabled("%s", note);
             ImGui::PopTextWrapPos();
         }
@@ -1720,7 +1736,7 @@ void App::draw_preferences() {
     const std::string current = p.interface_size == gui::interface_size_auto
                                     ? automatic
                                     : std::to_string(p.interface_size) + "%";
-    ImGui::SetNextItemWidth(ImGui::CalcTextSize("Auto (200%)").x * 1.6f);
+    ImGui::SetNextItemWidth(token_metrics().prefs_control_width);
     if (styled_begin_combo("##size", current.c_str())) {
         if (ImGui::Selectable(automatic.c_str(), p.interface_size == gui::interface_size_auto)) {
             p.interface_size = gui::interface_size_auto;
@@ -1739,7 +1755,7 @@ void App::draw_preferences() {
 
     section_text("Layout");
     // Label and value on one line over the slider, as for the photo's sliders.
-    const float slider_width = ImGui::CalcTextSize("Auto (200%)").x * 1.6f;
+    const float slider_width = token_metrics().prefs_control_width;
     char width_text[16];
     std::snprintf(width_text, sizeof width_text, "%d pt", p.panel_width);
     ImGui::TextUnformatted("Panel width");
@@ -1789,7 +1805,7 @@ void App::draw_about() {
     }
     note_if_focused(&about_open_);
     // Wrap long lines at a readable width rather than the window's (it sizes itself to them).
-    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 440 * ui_scale());
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + token_metrics().about_wrap);
     ImGui::Text("Prism %.*s", static_cast<int>(version().size()), version().data());
 
     section_text("Licence");
@@ -1825,7 +1841,7 @@ void App::draw_notices() {
     }
     const ImVec2 centre = ImGui::GetMainViewport()->GetCenter();
     ImGui::SetNextWindowPos(centre, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(720 * ui_scale(), 520 * ui_scale()), ImGuiCond_Appearing);
+    ImGui::SetNextWindowSize(ImVec2(token_metrics().notices_window.x, token_metrics().notices_window.y), ImGuiCond_Appearing);
     if (!ImGui::Begin("Third-party notices", &notices_open_,
                       ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings)) {
         ImGui::End();
@@ -1853,7 +1869,7 @@ void App::draw_saving_popup() {
             ImGui::CloseCurrentPopup();
         }
         ImGui::TextUnformatted("Saving...");
-        ImGui::ProgressBar(-1.0f * static_cast<float>(ImGui::GetTime()), ImVec2(240 * ui_scale(), 0),
+        ImGui::ProgressBar(-1.0f * static_cast<float>(ImGui::GetTime()), ImVec2(token_metrics().progress_width, 0),
                            "");
         if (ImGui::Button("Cancel")) {
             exporter_.cancel();

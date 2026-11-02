@@ -121,11 +121,12 @@ void ScopeView::draw(gui::ScopeChoice which, gui::Theme theme, float avail_w, fl
     ImDrawList* draw = ImGui::GetWindowDrawList();
     const ImVec2 box_min = ImGui::GetItemRectMin();
     const ImVec2 box_max = ImGui::GetItemRectMax();
-    const float rounding = 4.0f * s;
+    const gui::TokenMetrics& metrics = token_metrics();
+    const float rounding = metrics.plot_rounding;
     draw->AddRectFilled(box_min, box_max, colours.histogram_background, rounding);
     draw->PushClipRect(box_min, box_max, true);
 
-    const float pad = 4.0f * s;
+    const float pad = metrics.plot_padding;
     const float line = std::max(1.0f, std::round(s));
     const bool have = texture_ != nullptr && scopes_.has_value();
 
@@ -133,7 +134,7 @@ void ScopeView::draw(gui::ScopeChoice which, gui::Theme theme, float avail_w, fl
         const ImVec2 plot_min(box_min.x + pad, box_min.y + pad);
         const ImVec2 plot_max(box_max.x - pad, box_max.y - pad);
         const int panels = which == gui::ScopeChoice::parade ? 3 : 1;
-        const float gap = panels > 1 ? 4.0f * s : 0.0f;
+        const float gap = panels > 1 ? metrics.plot_padding : 0.0f;
         const float panel_w = (plot_max.x - plot_min.x - gap * (panels - 1)) / panels;
         for (int p = 0; p < panels; ++p) {
             const float x0 = plot_min.x + p * (panel_w + gap);
@@ -175,7 +176,7 @@ void ScopeView::draw(gui::ScopeChoice which, gui::Theme theme, float avail_w, fl
         const float angle = 123.0f * pi / 180.0f;
         const ImVec2 skin_end(centre.x + std::cos(angle) * radius,
                               centre.y - std::sin(angle) * radius);
-        draw->AddLine(centre, skin_end, colours.scope_skin, 1.5f * s);
+        draw->AddLine(centre, skin_end, colours.scope_skin, metrics.plot_line);
 
         // Targets at 75% saturation (inside the ring, like colour bars): R, Mg, B, Cy, G, Yl.
         struct Target {
@@ -189,19 +190,19 @@ void ScopeView::draw(gui::ScopeChoice which, gui::Theme theme, float avail_w, fl
                                              {"Cy", 0, 191, 191, colours.scope_cyan},
                                              {"G", 0, 191, 0, colours.histogram_green},
                                              {"Yl", 191, 191, 0, colours.scope_yellow}}};
-        const float half = 4.0f * s;
-        const float label_size = ImGui::GetFontSize() * 0.72f;
+        const float half = metrics.scope_target_half;
+        const float label_size = token_type().tiny * ImGui::GetStyle().FontScaleDpi;
         for (const Target& t : targets) {
             const ImVec2 p = position(gui::vectorscope_cell(t.r, t.g, t.b));
             draw->AddRect(ImVec2(p.x - half, p.y - half), ImVec2(p.x + half, p.y + half), t.colour,
-                          0.0f, 0, 1.5f * s);
+                          0.0f, 0, metrics.plot_line);
             // The label goes on the outer side of the target, away from the centre.
             const ImVec2 size = ImGui::CalcTextSize(t.name);
             const float k = label_size / ImGui::GetFontSize();
             const ImVec2 out(p.x - centre.x, p.y - centre.y);
             const float len = std::max(1.0f, std::sqrt(out.x * out.x + out.y * out.y));
-            const ImVec2 at(p.x + out.x / len * (half + 3.0f * s) - (out.x < 0 ? size.x * k : 0.0f),
-                            p.y + out.y / len * (half + 3.0f * s) - size.y * k * 0.5f);
+            const ImVec2 at(p.x + out.x / len * (half + metrics.scope_label_gap) - (out.x < 0 ? size.x * k : 0.0f),
+                            p.y + out.y / len * (half + metrics.scope_label_gap) - size.y * k * 0.5f);
             draw->AddText(nullptr, label_size, at, t.colour, t.name);
         }
 
@@ -213,13 +214,14 @@ void ScopeView::draw(gui::ScopeChoice which, gui::Theme theme, float avail_w, fl
                                        0.0f, 1.0f);
             const float dx = m.x - (centre.x + d.x * t);
             const float dy = m.y - (centre.y + d.y * t);
-            if (dx * dx + dy * dy <= (6.0f * s) * (6.0f * s)) {
+            if (dx * dx + dy * dy <= metrics.scope_hit * metrics.scope_hit) {
                 ImGui::SetTooltip("Skin tones usually sit near this line.");
             }
         }
     }
     draw->PopClipRect();
-    draw->AddRect(box_min, box_max, colours.histogram_border, rounding, 0, 1.0f * s);
+    draw->AddRect(box_min, box_max, colours.histogram_border, rounding, 0,
+                  metrics.plot_border_width);
 }
 
 }  // namespace prism::gui_app

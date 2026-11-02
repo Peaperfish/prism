@@ -41,6 +41,15 @@ struct TokenColours {
     Rgba check_fill, check_mark;
     Rgba scrollbar_grab;
     Rgba knob_shadow;  // under the slider's knob
+    // The histogram and scope boxes in the control panel: a calm fill a step off the panel's, and
+    // a hairline that doesn't outline it heavily.
+    Rgba plot_bg, plot_border;
+    // The Shadows / Highlights chips when lit: muted fills the white label reads on, still told
+    // apart (blue and orange). The per-stage dots keep the stronger palette colours.
+    Rgba chip_shadows, chip_highlights, chip_text;
+    // The compare divider drawn over the photo: a dark edge, the line, and the grip's ring and
+    // arrows. Theme-independent, as they sit on the photo.
+    Rgba divider_edge, divider_line, grip_ring, grip_ink;
     Rgba modal_dim;
     // Behind the photo: always neutral (R = G = B), neither near white nor near black.
     Rgba canvas;
@@ -61,13 +70,37 @@ struct TokenMetrics {
     float checkbox_size, checkbox_rounding;
     // The thin chevrons that replace ImGui's triangles: half the width, and the stroke.
     float chevron_size, chevron_thickness;
+    // Text on the photo ("Rendering...", the compare chips): padding and corner radius.
+    float overlay_padding, overlay_rounding;
+    // The canvas around the photo: margin for banners and badges, the empty state's drop area.
+    float canvas_margin, drop_inset, drop_dash, drop_line, drop_line_active;
+    // The compare divider: line half-width, grip radius, arrow size, drag strip, corner margin.
+    float divider_line, divider_grip, divider_arrow, divider_strip, divider_chip_margin;
+    float banner_max_width;
+    Vec2 badge_padding;
+    // The histogram and scope boxes.
+    float plot_height, plot_rounding, plot_padding, plot_line, plot_luma_line, plot_border_width;
+    // The Shadows / Highlights chips below the plot.
+    float chip_pad_y, chip_gap, chip_rounding, chip_pad_x, chip_text_gap;
+    // The scope selector's buttons.
+    float selector_pad, selector_gap;
+    // The per-stage clipping dots and percentages in a pipeline row.
+    float dot_radius, dot_gap, dot_between, dot_inset;
+    float tooltip_wrap;
+    float prefs_control_width;
+    float about_wrap;
+    Vec2 notices_window;
+    float progress_width;
+    // The vectorscope's targets: half side, label gap, and how near the skin line shows its tip.
+    float scope_target_half, scope_label_gap, scope_hit;
 };
 
 // Type sizes in points at 100%.
 struct TokenType {
     float body;     // all running text, controls, menus
     float section;  // section headers (semi-bold)
-    float small;    // captions, hints, histogram labels
+    float small;    // captions, hints, small buttons and the dots' percentages
+    float tiny;     // labels inside plots
 };
 
 struct TokenSet {

@@ -101,8 +101,8 @@ const Palette& palette(gui::Theme theme) {
         grey(0.40f),
         IM_COL32(0, 0, 0, 180),
         IM_COL32(255, 255, 255, 255),
-        IM_COL32(24, 24, 24, 255),     // histogram background
-        IM_COL32(76, 76, 76, 255),     // histogram border
+        to_u32(gui::token_set(gui::Theme::dark).colours.plot_bg),      // histogram background
+        to_u32(gui::token_set(gui::Theme::dark).colours.plot_border),  // histogram border
         IM_COL32(195, 195, 195, 85),   // luminance fill
         IM_COL32(215, 215, 215, 150),  // luminance outline
         IM_COL32(245, 90, 90, 235),    // red line
@@ -140,8 +140,8 @@ const Palette& palette(gui::Theme theme) {
         grey(0.70f),
         IM_COL32(0, 0, 0, 180),
         IM_COL32(255, 255, 255, 255),
-        IM_COL32(250, 250, 250, 255),  // histogram background
-        IM_COL32(180, 180, 180, 255),  // histogram border
+        to_u32(gui::token_set(gui::Theme::light).colours.plot_bg),     // histogram background
+        to_u32(gui::token_set(gui::Theme::light).colours.plot_border), // histogram border
         IM_COL32(115, 115, 115, 75),   // luminance fill
         IM_COL32(95, 95, 95, 145),     // luminance outline
         IM_COL32(215, 38, 38, 235),    // red line

@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -68,6 +69,28 @@ TEST(ThemeTokens, TheTickIsSeenOnTheTickedBox) {
     }
 }
 
+TEST(ThemeTokens, LitClipChipsAreReadableAndStillToldApart) {
+    for (const TokenSet& set : token_sets()) {
+        const TokenColours& c = set.colours;
+        EXPECT_GE(contrast_ratio(c.chip_text, c.chip_shadows), 4.5f) << label(set);
+        EXPECT_GE(contrast_ratio(c.chip_text, c.chip_highlights), 4.5f) << label(set);
+        // Blue for shadows, orange for highlights: not two similar muted tones.
+        EXPECT_GT(c.chip_shadows.b, c.chip_shadows.r + 0.25f) << label(set);
+        EXPECT_GT(c.chip_highlights.r, c.chip_highlights.b + 0.25f) << label(set);
+    }
+}
+
+TEST(ThemeTokens, PlotBoxSitsCalmlyInThePanel) {
+    for (const TokenSet& set : token_sets()) {
+        const TokenColours& c = set.colours;
+        // A step off the window colour, not a white (or black) hole in it, and its hairline is
+        // quieter than a control's outline.
+        EXPECT_LT(std::abs(lightness(c.plot_bg) - lightness(c.window_bg)), 12.0f) << label(set);
+        EXPECT_LT(contrast_ratio(c.plot_border, c.plot_bg), 1.6f) << label(set);
+        EXPECT_GE(contrast_ratio(c.text, c.plot_bg), 4.5f) << label(set);
+    }
+}
+
 TEST(ThemeTokens, CanvasIsNeutralAndNeitherBlackNorWhite) {
     for (const TokenSet& set : token_sets()) {
         const Rgba& canvas = set.colours.canvas;
@@ -99,7 +122,7 @@ TEST(ThemeTokens, TypeSizesAreAsDesigned) {
 
 // Every field of TokenMetrics is a float or two; a field added without teaching scaled() about it
 // would not scale, so the size is pinned here.
-static_assert(sizeof(TokenMetrics) == 27 * sizeof(float));
+static_assert(sizeof(TokenMetrics) == 68 * sizeof(float));
 
 TEST(ThemeTokens, EverySizeScalesLinearlyWithTheInterfaceScale) {
     for (const TokenSet& set : token_sets()) {
@@ -115,6 +138,7 @@ TEST(ThemeTokens, EverySizeScalesLinearlyWithTheInterfaceScale) {
             EXPECT_FLOAT_EQ(t.body, set.type.body * scale);
             EXPECT_FLOAT_EQ(t.section, set.type.section * scale);
             EXPECT_FLOAT_EQ(t.small, set.type.small * scale);
+            EXPECT_FLOAT_EQ(t.tiny, set.type.tiny * scale);
         }
     }
 }
