@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "imgui_internal.h"
 #include "theme.hpp"
 
 namespace prism::gui_app {
@@ -93,7 +94,97 @@ float position(float value, float min, float max) {
     return max > min ? (value - min) / (max - min) : 0.0f;
 }
 
+// The shared part of the checkbox and the radio button: lays out the box and label, handles the
+// click, and draws the box (round or not) and the label. `on` is the state to show.
+bool box_control(const char* label, bool on, bool round, bool* pressed_out) {
+    ImGuiWindow* window = ImGui::GetCurrentWindow();
+    if (window->SkipItems) {
+        return false;
+    }
+    const gui::TokenColours& colours = token_colours();
+    const gui::TokenMetrics& m = token_metrics();
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const ImGuiID id = window->GetID(label);
+    const ImVec2 label_size = ImGui::CalcTextSize(label, nullptr, true);
+    const float box = std::round(m.checkbox_size);
+    const float height = ImGui::GetFrameHeight();
+    const ImVec2 pos = window->DC.CursorPos;
+    const float width = box + (label_size.x > 0 ? style.ItemInnerSpacing.x + label_size.x : 0.0f);
+    const ImRect bb(pos, ImVec2(pos.x + width, pos.y + height));
+    ImGui::ItemSize(bb, style.FramePadding.y);
+    if (!ImGui::ItemAdd(bb, id)) {
+        return false;
+    }
+    bool hovered = false;
+    bool held = false;
+    const bool pressed = ImGui::ButtonBehavior(bb, id, &hovered, &held);
+
+    ImDrawList* draw = window->DrawList;
+    const ImVec2 box_min(pos.x, std::round(pos.y + (height - box) * 0.5f));
+    const ImVec2 box_max(box_min.x + box, box_min.y + box);
+    const ImVec2 centre((box_min.x + box_max.x) * 0.5f, (box_min.y + box_max.y) * 0.5f);
+    const float line = std::max(1.0f, std::round(style.FontScaleDpi));
+    if (on) {
+        const ImU32 fill = colour_u32(colours.check_fill);
+        if (round) {
+            draw->AddCircleFilled(centre, box * 0.5f, fill, 0);
+            draw->AddCircleFilled(centre, box * 0.2f, colour_u32(colours.check_mark), 0);
+        } else {
+            draw->AddRectFilled(box_min, box_max, fill, m.checkbox_rounding);
+            const ImU32 tick = colour_u32(colours.check_mark);
+            const auto at = [&](float u, float v) {
+                return ImVec2(box_min.x + u * box, box_min.y + v * box);
+            };
+            const ImVec2 tick_points[] = {at(0.22f, 0.52f), at(0.43f, 0.72f), at(0.78f, 0.30f)};
+            draw->AddPolyline(tick_points, 3, tick, ImDrawFlags_None, std::max(1.5f, box * 0.13f));
+        }
+    } else {
+        const gui::Rgba& frame = held ? colours.frame_bg_active
+                                      : hovered ? colours.frame_bg_hovered : colours.frame_bg;
+        const ImU32 outline = colour_u32(colours.control_border);
+        if (round) {
+            draw->AddCircleFilled(centre, box * 0.5f, colour_u32(frame), 0);
+            draw->AddCircle(centre, box * 0.5f - line * 0.5f, outline, 0, line);
+        } else {
+            draw->AddRectFilled(box_min, box_max, colour_u32(frame), m.checkbox_rounding);
+            draw->AddRect(box_min, box_max, outline, m.checkbox_rounding, 0, line);
+        }
+    }
+    if (label_size.x > 0) {
+        draw->AddText(ImVec2(pos.x + box + style.ItemInnerSpacing.x,
+                             std::round(pos.y + (height - label_size.y) * 0.5f)),
+                      ImGui::GetColorU32(ImGuiCol_Text), label, ImGui::FindRenderedTextEnd(label));
+    }
+    ImGui::RenderNavCursor(bb, id);
+    *pressed_out = pressed;
+    return true;
+}
+
 }  // namespace
+
+bool styled_checkbox(const char* label, bool* value) {
+    bool pressed = false;
+    if (!box_control(label, *value, false, &pressed)) {
+        return false;
+    }
+    if (pressed) {
+        *value = !*value;
+        ImGui::MarkItemEdited(ImGui::GetItemID());
+    }
+    return pressed;
+}
+
+bool styled_radio(const char* label, int* current, int value) {
+    bool pressed = false;
+    if (!box_control(label, *current == value, true, &pressed)) {
+        return false;
+    }
+    if (pressed) {
+        *current = value;
+        ImGui::MarkItemEdited(ImGui::GetItemID());
+    }
+    return pressed;
+}
 
 bool styled_slider(const char* id, float* value, float min, float max, float neutral,
                    ImGuiSliderFlags flags) {

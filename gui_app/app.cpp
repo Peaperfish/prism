@@ -1541,7 +1541,7 @@ void App::draw_pipeline() {
 
         if (stage.can_toggle) {
             bool on = enabled;
-            if (ImGui::Checkbox("##on", &on)) {
+            if (styled_checkbox("##on", &on)) {
                 gui::EditSettings s = session_.settings();
                 gui::set_stage_enabled(s, stage.id, on);
                 report(session_.set_settings(s));  // one undo step in History
@@ -1662,11 +1662,11 @@ void App::draw_preferences() {
 
     section_text("Appearance");
     int theme = static_cast<int>(p.theme);
-    ImGui::RadioButton("System", &theme, static_cast<int>(gui::ThemeChoice::system));
+    styled_radio("System", &theme, static_cast<int>(gui::ThemeChoice::system));
     ImGui::SameLine();
-    ImGui::RadioButton("Light", &theme, static_cast<int>(gui::ThemeChoice::light));
+    styled_radio("Light", &theme, static_cast<int>(gui::ThemeChoice::light));
     ImGui::SameLine();
-    ImGui::RadioButton("Dark", &theme, static_cast<int>(gui::ThemeChoice::dark));
+    styled_radio("Dark", &theme, static_cast<int>(gui::ThemeChoice::dark));
     p.theme = static_cast<gui::ThemeChoice>(theme);
 
     section_text("Interface size");

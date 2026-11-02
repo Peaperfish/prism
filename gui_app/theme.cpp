@@ -55,7 +55,7 @@ void apply_colours(ImGuiStyle& style, const gui::TokenColours& t) {
     c[ImGuiCol_HeaderActive] = to_vec4(t.header_active);
     c[ImGuiCol_SliderGrab] = to_vec4(t.accent);
     c[ImGuiCol_SliderGrabActive] = to_vec4(t.accent_active);
-    c[ImGuiCol_CheckMark] = to_vec4(t.check_mark);
+    c[ImGuiCol_CheckMark] = to_vec4(t.accent);  // ImGui's own (menu ticks); boxes are ours
     c[ImGuiCol_Separator] = to_vec4(t.separator);
     c[ImGuiCol_SeparatorHovered] = to_vec4(t.accent);
     c[ImGuiCol_SeparatorActive] = to_vec4(t.accent);

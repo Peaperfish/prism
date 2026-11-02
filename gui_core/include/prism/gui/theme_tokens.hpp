@@ -36,7 +36,9 @@ struct TokenColours {
     // The outline of a control that has no fill of its own to stand out from its background (a
     // checkbox box, a slider track): meant to be seen, so at least 3:1 against what it sits on.
     Rgba control_border;
-    Rgba accent, accent_active, check_mark;
+    Rgba accent, accent_active;
+    // Checkboxes and radio buttons: the fill when ticked, and the tick drawn on it.
+    Rgba check_fill, check_mark;
     Rgba scrollbar_grab;
     Rgba knob_shadow;  // under the slider's knob
     Rgba modal_dim;
@@ -55,6 +57,8 @@ struct TokenMetrics {
     // The custom slider: a thin track and a round knob (diameters), and how far the knob's soft
     // shadow reaches.
     float slider_track, slider_knob, slider_knob_shadow;
+    // Checkbox and radio button: the box's side, and its corner radius.
+    float checkbox_size, checkbox_rounding;
 };
 
 // Type sizes in points at 100%.

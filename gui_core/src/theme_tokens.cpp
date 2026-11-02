@@ -29,6 +29,8 @@ constexpr TokenMetrics darkroom_metrics{
     .slider_track = 4,
     .slider_knob = 14,
     .slider_knob_shadow = 3,
+    .checkbox_size = 14,
+    .checkbox_rounding = 4,
 };
 
 // Body text is 16 px at 100%: readable on a Retina laptop without squinting. Headers and small
@@ -57,7 +59,8 @@ constexpr TokenColours darkroom_dark{
     .control_border = grey(0.50f),
     .accent = {0.45f, 0.62f, 0.88f, 1},
     .accent_active = {0.55f, 0.70f, 0.95f, 1},
-    .check_mark = {0.55f, 0.70f, 0.95f, 1},
+    .check_fill = {0.30f, 0.50f, 0.82f, 1},  // darker than the accent so a white tick reads
+    .check_mark = grey(1.0f),
     .scrollbar_grab = grey(0.26f),
     .knob_shadow = grey(0.0f, 0.45f),
     .modal_dim = grey(0.0f, 0.45f),
@@ -86,7 +89,8 @@ constexpr TokenColours darkroom_light{
     .control_border = grey(0.45f),
     .accent = {0.18f, 0.42f, 0.80f, 1},
     .accent_active = {0.10f, 0.32f, 0.66f, 1},
-    .check_mark = {0.18f, 0.42f, 0.80f, 1},
+    .check_fill = {0.18f, 0.42f, 0.80f, 1},
+    .check_mark = grey(1.0f),
     .scrollbar_grab = grey(0.80f),
     .knob_shadow = grey(0.0f, 0.30f),
     .modal_dim = grey(0.20f, 0.35f),
@@ -141,6 +145,8 @@ TokenMetrics scaled(const TokenMetrics& m, float s) {
     r.slider_track = m.slider_track * s;
     r.slider_knob = m.slider_knob * s;
     r.slider_knob_shadow = m.slider_knob_shadow * s;
+    r.checkbox_size = m.checkbox_size * s;
+    r.checkbox_rounding = m.checkbox_rounding * s;
     return r;
 }
 

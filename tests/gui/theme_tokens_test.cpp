@@ -57,8 +57,14 @@ TEST(ThemeTokens, BordersAccentAndCheckmarksAreSeenAgainstEveryBackground) {
             EXPECT_GE(contrast_ratio(c.accent, bg), 3.0f) << label(set) << " accent on " << name;
             EXPECT_GE(contrast_ratio(c.accent_active, bg), 3.0f)
                 << label(set) << " active accent on " << name;
-            EXPECT_GE(contrast_ratio(c.check_mark, bg), 3.0f) << label(set) << " checkmark on " << name;
+            EXPECT_GE(contrast_ratio(c.check_fill, bg), 3.0f) << label(set) << " ticked box on " << name;
         }
+    }
+}
+
+TEST(ThemeTokens, TheTickIsSeenOnTheTickedBox) {
+    for (const TokenSet& set : token_sets()) {
+        EXPECT_GE(contrast_ratio(set.colours.check_mark, set.colours.check_fill), 3.0f) << label(set);
     }
 }
 
@@ -93,7 +99,7 @@ TEST(ThemeTokens, TypeSizesAreAsDesigned) {
 
 // Every field of TokenMetrics is a float or two; a field added without teaching scaled() about it
 // would not scale, so the size is pinned here.
-static_assert(sizeof(TokenMetrics) == 23 * sizeof(float));
+static_assert(sizeof(TokenMetrics) == 25 * sizeof(float));
 
 TEST(ThemeTokens, EverySizeScalesLinearlyWithTheInterfaceScale) {
     for (const TokenSet& set : token_sets()) {

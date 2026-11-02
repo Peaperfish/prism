@@ -19,4 +19,12 @@ bool styled_slider(const char* id, float* value, float min, float max, float neu
 bool styled_slider_int(const char* id, int* value, int min, int max, int neutral,
                        ImGuiSliderFlags flags = 0);
 
+// A small rounded box, vertically centred on its label (or alone, for an empty or "##" label):
+// the frame colour with an outline when off, the accent with a white tick when on. Like
+// ImGui::Checkbox otherwise, down to the keyboard and the hit area, which covers the label too.
+bool styled_checkbox(const char* label, bool* value);
+
+// The same, round, with a dot: ImGui::RadioButton.
+bool styled_radio(const char* label, int* current, int value);
+
 }  // namespace prism::gui_app
