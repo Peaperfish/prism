@@ -73,6 +73,10 @@ struct Fonts {
 void load_fonts(ImGuiIO& io);
 [[nodiscard]] const Fonts& fonts();
 
+// A section header: the title in the semi-bold face at the theme's section size, in the muted
+// text colour, over a hairline. Replaces ImGui::SeparatorText.
+void section_text(const char* text);
+
 // Rebuilds ImGui's style for `theme`, with every size multiplied by `scale` (sizes can't be
 // rescaled in place, so the style is made from scratch each time). Fonts are scaled separately
 // through style.FontScaleDpi, which this sets to `scale` too. Colours, spacing, rounding and the body

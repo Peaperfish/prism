@@ -81,6 +81,7 @@ void apply_metrics(ImGuiStyle& style, const gui::TokenMetrics& m) {
 }
 
 Fonts loaded_fonts;
+float section_size = 13.0f;  // the current theme's section header size (before the scale)
 
 }  // namespace
 
@@ -195,6 +196,17 @@ void apply_style(gui::Theme theme, float scale) {
     apply_metrics(style, gui::scaled(tokens.metrics, scale));
     style.FontSizeBase = tokens.type.body;  // before the scale; FontScaleDpi applies it
     style.FontScaleDpi = scale;
+    section_size = tokens.type.section;
+}
+
+void section_text(const char* text) {
+    // A hairline with the title in the semi-bold face, small and quiet: the headers name groups,
+    // the controls beneath them are what the eye should land on.
+    ImGui::PushFont(loaded_fonts.semibold, section_size);
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    ImGui::SeparatorText(text);
+    ImGui::PopStyleColor();
+    ImGui::PopFont();
 }
 
 }  // namespace prism::gui_app

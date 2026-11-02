@@ -858,10 +858,10 @@ void App::draw_panel() {
 
     draw_histogram();
 
-    ImGui::SeparatorText("Look");
+    section_text("Look");
     draw_presets();
 
-    ImGui::SeparatorText("Adjust");
+    section_text("Adjust");
     draw_simple_slider("Brightness", gui::SimpleControl::brightness);
     draw_simple_slider("Contrast", gui::SimpleControl::contrast);
     draw_simple_slider("Colour", gui::SimpleControl::colour);
@@ -882,7 +882,7 @@ void App::draw_histogram() {
         histogram_stage_ == gui::final_stage
             ? base_title
             : base_title + " (" + std::string(gui::stage_info(histogram_stage_).name) + ")";
-    ImGui::SeparatorText(title.c_str());
+    section_text(title.c_str());
 
     const gui::StageHistogram& h = *histogram_;
     const float avail_w = std::max(1.0f, ImGui::GetContentRegionAvail().x);
@@ -1618,7 +1618,7 @@ void App::draw_preferences() {
     note_if_focused(&prefs_open_);
     gui::Preferences p = prefs_;
 
-    ImGui::SeparatorText("Appearance");
+    section_text("Appearance");
     int theme = static_cast<int>(p.theme);
     ImGui::RadioButton("System", &theme, static_cast<int>(gui::ThemeChoice::system));
     ImGui::SameLine();
@@ -1627,7 +1627,7 @@ void App::draw_preferences() {
     ImGui::RadioButton("Dark", &theme, static_cast<int>(gui::ThemeChoice::dark));
     p.theme = static_cast<gui::ThemeChoice>(theme);
 
-    ImGui::SeparatorText("Interface size");
+    section_text("Interface size");
     const std::string automatic =
         "Auto (" + std::to_string(static_cast<int>(std::lround(display_scale_ * 100))) + "%)";
     const std::string current = p.interface_size == gui::interface_size_auto
@@ -1650,7 +1650,7 @@ void App::draw_preferences() {
     ImGui::SameLine();
     ImGui::TextDisabled("Auto follows the display.");
 
-    ImGui::SeparatorText("Layout");
+    section_text("Layout");
     ImGui::SetNextItemWidth(ImGui::CalcTextSize("Auto (200%)").x * 1.6f);
     int width = p.panel_width;
     if (ImGui::SliderInt("Panel width", &width, gui::panel_width_min, 800, "%d pt",
@@ -1698,7 +1698,7 @@ void App::draw_about() {
     ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 440 * ui_scale());
     ImGui::Text("Prism %.*s", static_cast<int>(version().size()), version().data());
 
-    ImGui::SeparatorText("Licence");
+    section_text("Licence");
     ImGui::TextWrapped("PolyForm Noncommercial License 1.0.0");
     const std::string_view notice = required_notice();
     ImGui::TextWrapped("%.*s", static_cast<int>(notice.size()), notice.data());
@@ -1706,7 +1706,7 @@ void App::draw_about() {
         "The full terms are in the LICENSE.md file that comes with Prism, and at "
         "https://polyformproject.org/licenses/noncommercial/1.0.0");
 
-    ImGui::SeparatorText("Third-party components");
+    section_text("Third-party components");
     if (ImGui::BeginTable("components", 2, ImGuiTableFlags_SizingFixedFit)) {
         for (const ThirdPartyComponent& c : third_party_components()) {
             ImGui::TableNextRow();
