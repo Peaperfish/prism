@@ -6,6 +6,24 @@
 
 namespace prism::gui {
 
+namespace {
+
+// Whether process() runs `stage` for these settings (the same conditions as lib/process.cpp).
+bool stage_runs(const ProcessSettings& s, StageId stage) {
+    switch (stage) {
+        case StageId::exposure: return s.exposure_stops && *s.exposure_stops != 0.0f;
+        case StageId::matrix: return s.matrix && *s.matrix != identity_matrix;
+        case StageId::saturation: return s.saturation && *s.saturation != 1.0f;
+        case StageId::contrast: return s.contrast && *s.contrast != 1.0f;
+        case StageId::curve: return s.curve.has_value();
+        case StageId::decode:
+        case StageId::encode: return false;
+    }
+    return false;
+}
+
+}  // namespace
+
 std::optional<Image> render_stage_image(const Image& base, const EditSettings& settings,
                                         StageId stop_after, int threads, std::stop_token stop,
                                         const StageCallback& on_stage) {
@@ -37,6 +55,34 @@ std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings
         recorder.emplace(base.width, base.height);
     }
 
+    // Pixels that a stage before the viewed one clamped away (colours outside the gamut, shadows):
+    // after that stage they look like ordinary pixels, so they are remembered and stay marked on
+    // the mask of every later stage. Only kept while the mask is wanted: `pending` is the negative
+    // marks of the image going into the next stage, and only made when that stage clamps.
+    std::vector<std::uint8_t> lost;
+    std::vector<std::uint8_t> pending;
+    bool have_pending = false;
+    // Once a stage has clamped negatives there are none left, and no later stage makes new ones
+    // (the matrix, which can, comes before them), so nothing more is worth snapshotting.
+    bool negatives_clamped = false;
+    // The stage that runs right after `after` (nullopt: the first one) in this render, if any.
+    const auto next_stage = [&](std::optional<StageId> after) -> std::optional<StageId> {
+        for (int i = after ? static_cast<int>(*after) + 1 : static_cast<int>(StageId::exposure);
+             i <= static_cast<int>(StageId::curve); ++i) {
+            if (stage_runs(process_settings, static_cast<StageId>(i))) {
+                return static_cast<StageId>(i);
+            }
+        }
+        return std::nullopt;
+    };
+    const auto prepare_for_next = [&](std::optional<StageId> after, const Image& img) {
+        const std::optional<StageId> next = next_stage(after);
+        if (!negatives_clamped && next && stage_clamps(*next, ClipDirection::shadows)) {
+            compute_negative_mask(img, threads, pending);
+            have_pending = true;
+        }
+    };
+
     // Everything that reads the image at the viewed stage: the picture and its histogram, then
     // the scopes and the clip mask, which are only made if asked for.
     const auto show = [&](const Image& shown) {
@@ -47,7 +93,8 @@ std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings
             frame.scopes = compute_scopes(frame.rgb8, frame.width, frame.height);
         }
         if (options.clip_mask) {
-            compute_clip_mask(shown, threads, frame.clip_mask, stop_after == StageId::decode);
+            compute_clip_mask(shown, threads, frame.clip_mask, stop_after == StageId::decode,
+                              lost.empty() ? nullptr : &lost);
         }
     };
     const auto finish = [&] {
@@ -99,12 +146,29 @@ std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings
     if (recorder) {
         recorder->decoded(img);
     }
+    if (options.clip_mask) {
+        prepare_for_next(std::nullopt, img);
+    }
     const auto record = [&](const StageTime& t) {
         frame.stages.push_back(t);
-        if (recorder) {
-            if (const std::optional<StageId> id = stage_from_name(t.name)) {
-                recorder->stage_done(*id, img);
+        const std::optional<StageId> id = stage_from_name(t.name);
+        if (recorder && id) {
+            recorder->stage_done(*id, img);
+        }
+        if (options.clip_mask && id) {
+            if (have_pending && stage_clamps(*id, ClipDirection::shadows)) {
+                // This stage clamped what came in: those pixels are lost from here on.
+                negatives_clamped = true;
+                if (lost.empty()) {
+                    lost = std::move(pending);
+                } else {
+                    for (std::size_t i = 0; i < lost.size(); ++i) {
+                        lost[i] |= pending[i];
+                    }
+                }
             }
+            have_pending = false;
+            prepare_for_next(id, img);
         }
         if (on_stage) {
             on_stage(t);

@@ -26,7 +26,7 @@ namespace prism::gui {
 struct PreviewOptions {
     bool scopes = false;       // the colour scopes of the picture
     bool clip_report = false;  // the clipping of every stage (runs the stages after the viewed one)
-    bool clip_mask = false;    // which pixels of the viewed stage are out of range
+    bool clip_mask = false;    // which pixels of the viewed stage are out of range, or were clipped
 
     PreviewOptions() = default;
     // Implicit, so that "scopes on/off" can still be written as a plain bool.
@@ -46,7 +46,8 @@ struct PreviewFrame {
     StageHistogram histogram;        // R, G, B and luminance bins + clip counts for this stage
     std::optional<Scopes> scopes;    // parade, waveform and vectorscope; only if requested
     std::optional<ClipReport> clips;  // clipping at every stage; only if requested
-    // One byte per pixel (clip_mask_high / clip_mask_low bits) of this stage; only if requested.
+    // One byte per pixel (clip_mask_high / _low / _gamut bits) of this stage; only if requested.
+    // A pixel that an earlier stage clamped (colours outside the gamut, shadows) stays marked.
     std::vector<std::uint8_t> clip_mask;
     std::vector<StageTime> stages;   // the pipeline stages that ran, with their times
     double total_ms = 0;             // the whole render: copy, pipeline, histogram and sRGB encode

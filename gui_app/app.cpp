@@ -977,8 +977,9 @@ void App::draw_clip_overlay_button() {
     ImGui::PopFont();
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip(
-            "Marks pixels that are brighter than white or darker than black at this "
-            "stage.\nBrighter than white is orange-red, darker than black is blue.");
+            "Marks pixels that are brighter than white (orange-red), have no light left "
+            "(blue) or are too saturated for sRGB (violet stripes).\nPixels an earlier stage "
+            "already clipped stay marked at the stages after it.");
     }
 }
 

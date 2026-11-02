@@ -198,8 +198,15 @@ inline constexpr std::uint8_t clip_mask_high = 1;
 inline constexpr std::uint8_t clip_mask_low = 2;
 inline constexpr std::uint8_t clip_mask_gamut = 4;  // Y > 0 and a channel below -gamut_tolerance
 // With `file_ceiling` (for Decode), "high" means at the file's ceiling, as counted at Decode.
+// `earlier`, if given and the same size, is OR-ed in: the pixels a previous stage lost (see
+// compute_negative_mask), so they stay marked after the stage that clamped them.
 void compute_clip_mask(const Image& img, int threads, std::vector<std::uint8_t>& mask,
-                       bool file_ceiling = false);
+                       bool file_ceiling = false,
+                       const std::vector<std::uint8_t>* earlier = nullptr);
+
+// Only the low and gamut bits of `img` (no highs): what a stage that clamps negatives is about to
+// lose when `img` is its input.
+void compute_negative_mask(const Image& img, int threads, std::vector<std::uint8_t>& mask);
 
 // The summary line for colours outside the gamut, or "" if there are none. Example:
 //   "4.1% of colours are too saturated for sRGB after Colour matrix; Saturation clips them, so

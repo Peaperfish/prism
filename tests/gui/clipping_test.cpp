@@ -466,6 +466,84 @@ TEST(ClippingGamut, TheMaskMarksGamutLowsAndHighsIndependently) {
                                                clip_mask_high | clip_mask_low, 0}));
 }
 
+// --- Pixels lost at an earlier stage stay marked
+// ---------------------------------------------------
+
+namespace {
+
+// Two pixels wide: an orange the matrix pushes out of gamut, and a grey that never leaves range.
+Image orange_and_grey() {
+    Image img;
+    img.width = 2;
+    img.height = 1;
+    img.pixels = {0.9f, 0.4f, 0.05f, 0.3f, 0.3f, 0.3f};
+    return img;
+}
+
+std::vector<std::uint8_t> mask_at(const Image& img, const EditSettings& s, StageId stage) {
+    prism::gui::PreviewOptions options;
+    options.clip_mask = true;
+    const auto frame = prism::gui::render_preview(img, s, 1, {}, {}, stage, options);
+    EXPECT_TRUE(frame.has_value());
+    return frame ? frame->clip_mask : std::vector<std::uint8_t>{};
+}
+
+}  // namespace
+
+TEST(ClippingMask, GamutPixelsClippedAtSaturationStayMarkedAtOutputEncode) {
+    EditSettings s = orange_matrix();
+    s.saturation = 1.5f;
+    EXPECT_EQ(mask_at(orange_and_grey(), s, prism::gui::final_stage),
+              (std::vector<std::uint8_t>{prism::gui::clip_mask_gamut, 0}));
+    // At the stage itself, and before it, too.
+    EXPECT_EQ(mask_at(orange_and_grey(), s, StageId::saturation),
+              (std::vector<std::uint8_t>{prism::gui::clip_mask_gamut, 0}));
+    EXPECT_EQ(mask_at(orange_and_grey(), s, StageId::matrix),
+              (std::vector<std::uint8_t>{prism::gui::clip_mask_gamut, 0}));
+}
+
+TEST(ClippingMask, WithSaturationOffThePixelsClippedAtTheToneCurveStayMarked) {
+    EditSettings s = orange_matrix();
+    s.curve = prism::gui::CurveKind::gamma;
+    EXPECT_EQ(mask_at(orange_and_grey(), s, prism::gui::final_stage),
+              (std::vector<std::uint8_t>{prism::gui::clip_mask_gamut, 0}));
+    // Before the curve there is nothing to remember: the negatives are still in the picture.
+    EXPECT_EQ(mask_at(orange_and_grey(), s, StageId::matrix),
+              (std::vector<std::uint8_t>{prism::gui::clip_mask_gamut, 0}));
+}
+
+TEST(ClippingMask, ShadowsClippedAtTheToneCurveStayMarkedAtOutputEncode) {
+    // R' = R - 20 G makes (0.1, 0.5, 0.1) negative with Y < 0: no light.
+    EditSettings s;
+    s.matrix = prism::gui::MatrixFile{{}, {1, -20, 0, 0, 1, 0, 0, 0, 1}};
+    s.contrast = 1.2f;
+    s.curve = prism::gui::CurveKind::gamma;
+    // The second pixel has no green, so the matrix leaves it alone.
+    Image img;
+    img.width = 2;
+    img.height = 1;
+    img.pixels = {0.1f, 0.5f, 0.1f, 0.2f, 0.0f, 0.3f};
+    EXPECT_EQ(mask_at(img, s, prism::gui::final_stage),
+              (std::vector<std::uint8_t>{prism::gui::clip_mask_low, 0}));
+}
+
+TEST(ClippingMask, PixelsNeverOutOfRangeStayUnmarked) {
+    EditSettings s = with_exposure(-1.0f);
+    s.saturation = 1.5f;
+    s.curve = prism::gui::CurveKind::filmic;
+    EXPECT_EQ(mask_at(orange_and_grey(), s, prism::gui::final_stage),
+              (std::vector<std::uint8_t>{0, 0}));
+}
+
+TEST(ClippingMask, NothingIsRememberedWhenTheMaskIsNotAsked) {
+    EditSettings s = orange_matrix();
+    s.saturation = 1.5f;
+    const auto frame =
+        prism::gui::render_preview(orange_and_grey(), s, 1, {}, {}, prism::gui::final_stage, {});
+    ASSERT_TRUE(frame.has_value());
+    EXPECT_TRUE(frame->clip_mask.empty());
+}
+
 TEST(Clipping, TheStageClampTable) {
     using prism::gui::ClipDirection;
     using prism::gui::stage_clamps;
