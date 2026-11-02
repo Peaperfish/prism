@@ -16,7 +16,8 @@ add_library(prism_gui_core STATIC
   src/scopes.cpp
   src/session.cpp
   src/settings.cpp
-  src/slider_gesture.cpp)
+  src/slider_gesture.cpp
+  src/stage_controls.cpp)
 
 target_include_directories(prism_gui_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 

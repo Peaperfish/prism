@@ -63,7 +63,8 @@ add_executable(prism_gui_core_tests
   gui/scopes_test.cpp
   gui/session_test.cpp
   gui/settings_test.cpp
-  gui/slider_gesture_test.cpp)
+  gui/slider_gesture_test.cpp
+  gui/stage_controls_test.cpp)
 target_link_libraries(prism_gui_core_tests PRIVATE prism_gui_core prism_warnings GTest::gtest_main)
 # The RAW tests use the synthetic DNG writer (synthetic_dng.hpp, which needs lib/tiff_reader.hpp).
 target_include_directories(prism_gui_core_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
