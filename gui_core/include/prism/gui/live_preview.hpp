@@ -26,10 +26,13 @@ public:
     explicit LivePreview(int threads = 0);
     // With PreviewRenderer's injectable render function, for tests.
     explicit LivePreview(PreviewRenderer::RenderFunction render);
+    explicit LivePreview(PreviewRenderer::StageRenderFunction render);
 
-    // Submits a render if `base` or `settings` changed since the last one. A null base (no file
-    // open) submits nothing and forgets the last request, so the next file always renders.
-    void update(const std::shared_ptr<const Image>& base, const EditSettings& settings);
+    // Submits a render if `base`, `settings` or `stop_after` changed since the last one. A null
+    // base (no file open) submits nothing and forgets the last request, so the next file always
+    // renders.
+    void update(const std::shared_ptr<const Image>& base, const EditSettings& settings,
+                StageId stop_after = final_stage);
 
     // The newest finished frame since the last poll, if any (see PreviewRenderer::poll).
     [[nodiscard]] std::optional<PreviewFrame> poll();
@@ -43,6 +46,7 @@ private:
     PreviewRenderer renderer_;
     std::shared_ptr<const Image> base_;
     EditSettings settings_;
+    StageId stop_after_ = final_stage;
     std::uint64_t submitted_ = 0;  // generation of the latest request
     std::uint64_t shown_ = 0;      // generation of the latest frame poll() returned
 };

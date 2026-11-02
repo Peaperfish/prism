@@ -348,3 +348,112 @@ TEST(SimpleControls, ApplySimpleEqualsTheThreeSlidersOneByOne) {
     prism::gui::apply_simple_control(b, prism::gui::SimpleControl::colour, 70);
     EXPECT_EQ(a, b);
 }
+
+// --- Pipeline stage list and stage tap -------------------------------------------------------
+
+TEST(PipelineStages, ListsEveryStageInOrderWithBookendsUntoggleable) {
+    using prism::gui::StageId;
+    using prism::gui::StageInfo;
+
+    const std::span<const StageInfo> stages = prism::gui::pipeline_stages();
+    ASSERT_EQ(stages.size(), 7u);
+    EXPECT_EQ(stages[0].id, StageId::decode);
+    EXPECT_EQ(stages[1].id, StageId::exposure);
+    EXPECT_EQ(stages[2].id, StageId::matrix);
+    EXPECT_EQ(stages[3].id, StageId::saturation);
+    EXPECT_EQ(stages[4].id, StageId::contrast);
+    EXPECT_EQ(stages[5].id, StageId::curve);
+    EXPECT_EQ(stages[6].id, StageId::encode);
+    EXPECT_EQ(stages.back().id, prism::gui::final_stage);
+
+    EXPECT_FALSE(stages[0].can_toggle);
+    EXPECT_TRUE(stages[1].can_toggle);
+    EXPECT_TRUE(stages[2].can_toggle);
+    EXPECT_TRUE(stages[3].can_toggle);
+    EXPECT_TRUE(stages[4].can_toggle);
+    EXPECT_TRUE(stages[5].can_toggle);
+    EXPECT_FALSE(stages[6].can_toggle);
+
+    for (const StageInfo& s : stages) {
+        EXPECT_FALSE(s.slug.empty());
+        EXPECT_FALSE(s.name.empty());
+        EXPECT_FALSE(s.description.empty());
+        EXPECT_EQ(&prism::gui::stage_info(s.id), &s);
+    }
+}
+
+TEST(PipelineStages, StageEnableFlagsMapToEditSettings) {
+    using prism::gui::StageId;
+
+    EditSettings s;
+    for (const prism::gui::StageInfo& info : prism::gui::pipeline_stages()) {
+        EXPECT_TRUE(prism::gui::stage_enabled(s, info.id));
+    }
+
+    // Bookends cannot be turned off.
+    prism::gui::set_stage_enabled(s, StageId::decode, false);
+    prism::gui::set_stage_enabled(s, StageId::encode, false);
+    EXPECT_TRUE(prism::gui::stage_enabled(s, StageId::decode));
+    EXPECT_TRUE(prism::gui::stage_enabled(s, StageId::encode));
+
+    prism::gui::set_stage_enabled(s, StageId::exposure, false);
+    EXPECT_FALSE(s.exposure_on);
+    EXPECT_FALSE(prism::gui::stage_enabled(s, StageId::exposure));
+
+    prism::gui::set_stage_enabled(s, StageId::matrix, false);
+    EXPECT_FALSE(s.matrix_on);
+    EXPECT_FALSE(prism::gui::stage_enabled(s, StageId::matrix));
+
+    prism::gui::set_stage_enabled(s, StageId::saturation, false);
+    EXPECT_FALSE(s.saturation_on);
+    EXPECT_FALSE(prism::gui::stage_enabled(s, StageId::saturation));
+
+    prism::gui::set_stage_enabled(s, StageId::contrast, false);
+    EXPECT_FALSE(s.contrast_on);
+    EXPECT_FALSE(prism::gui::stage_enabled(s, StageId::contrast));
+
+    prism::gui::set_stage_enabled(s, StageId::curve, false);
+    EXPECT_FALSE(s.curve_on);
+    EXPECT_FALSE(prism::gui::stage_enabled(s, StageId::curve));
+}
+
+TEST(PipelineStages, ToProcessSettingsStopsAfterChosenStage) {
+    using prism::gui::StageId;
+
+    EditSettings s;
+    s.exposure_stops = 0.5f;
+    s.matrix =
+        prism::gui::MatrixFile{"m.txt", {1.05f, 0.03f, -0.01f, 0.01f, 1, 0, -0.02f, -0.02f, 0.94f}};
+    s.saturation = 1.25f;
+    s.contrast = 1.15f;
+    s.curve = CurveKind::filmic;
+
+    const prism::ProcessSettings at_decode = prism::gui::to_process_settings(s, StageId::decode);
+    EXPECT_FALSE(at_decode.exposure_stops || at_decode.matrix || at_decode.saturation ||
+                 at_decode.contrast || at_decode.curve);
+
+    const prism::ProcessSettings at_exposure =
+        prism::gui::to_process_settings(s, StageId::exposure);
+    EXPECT_TRUE(at_exposure.exposure_stops.has_value());
+    EXPECT_FALSE(at_exposure.matrix || at_exposure.saturation || at_exposure.contrast ||
+                 at_exposure.curve);
+
+    const prism::ProcessSettings at_matrix = prism::gui::to_process_settings(s, StageId::matrix);
+    EXPECT_TRUE(at_matrix.exposure_stops && at_matrix.matrix);
+    EXPECT_FALSE(at_matrix.saturation || at_matrix.contrast || at_matrix.curve);
+
+    const prism::ProcessSettings at_saturation =
+        prism::gui::to_process_settings(s, StageId::saturation);
+    EXPECT_TRUE(at_saturation.exposure_stops && at_saturation.matrix && at_saturation.saturation);
+    EXPECT_FALSE(at_saturation.contrast || at_saturation.curve);
+
+    const prism::ProcessSettings at_contrast =
+        prism::gui::to_process_settings(s, StageId::contrast);
+    EXPECT_TRUE(at_contrast.exposure_stops && at_contrast.matrix && at_contrast.saturation &&
+                at_contrast.contrast);
+    EXPECT_FALSE(at_contrast.curve);
+
+    const prism::ProcessSettings at_curve = prism::gui::to_process_settings(s, StageId::curve);
+    EXPECT_TRUE(at_curve.exposure_stops && at_curve.matrix && at_curve.saturation &&
+                at_curve.contrast && at_curve.curve);
+}

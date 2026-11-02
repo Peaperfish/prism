@@ -157,10 +157,9 @@ TEST(LivePreview, RenderingStaysTrueUntilTheLatestFrameArrives) {
 }
 
 TEST(LivePreview, AnErrorFrameStillEndsRendering) {
-    LivePreview preview([](const prism::Image&, const EditSettings&,
-                           std::stop_token) -> std::optional<PreviewFrame> {
-        throw std::runtime_error("broken");
-    });
+    LivePreview preview(
+        [](const prism::Image&, const EditSettings&,
+           std::stop_token) -> std::optional<PreviewFrame> { throw std::runtime_error("broken"); });
     preview.update(make_base(), with_exposure(1));
     const std::optional<PreviewFrame> f = next_frame(preview);
     ASSERT_TRUE(f);
@@ -194,4 +193,24 @@ TEST(LivePreview, ClosingTheFileDropsAFrameInFlight) {
     ASSERT_TRUE(f);
     EXPECT_EQ(f->generation, 2u);
     EXPECT_FALSE(preview.rendering());
+}
+
+TEST(LivePreview, ChangingViewedStageTriggersANewRender) {
+    using prism::gui::StageId;
+
+    LivePreview preview(1);
+    const auto base = make_base();
+    const EditSettings s = with_exposure(1.5f);
+
+    preview.update(base, s, StageId::encode);
+    const std::optional<PreviewFrame> final_frame = next_frame(preview);
+    ASSERT_TRUE(final_frame);
+    EXPECT_EQ(final_frame->stage, StageId::encode);
+
+    preview.update(base, s, StageId::decode);
+    EXPECT_TRUE(preview.rendering());
+    const std::optional<PreviewFrame> decode_frame = next_frame(preview);
+    ASSERT_TRUE(decode_frame);
+    EXPECT_EQ(decode_frame->stage, StageId::decode);
+    EXPECT_NE(decode_frame->rgb8, final_frame->rgb8);
 }

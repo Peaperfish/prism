@@ -8,18 +8,23 @@ LivePreview::LivePreview(int threads) : renderer_(threads) {}
 
 LivePreview::LivePreview(PreviewRenderer::RenderFunction render) : renderer_(std::move(render)) {}
 
-void LivePreview::update(const std::shared_ptr<const Image>& base, const EditSettings& settings) {
+LivePreview::LivePreview(PreviewRenderer::StageRenderFunction render)
+    : renderer_(std::move(render)) {}
+
+void LivePreview::update(const std::shared_ptr<const Image>& base, const EditSettings& settings,
+                         StageId stop_after) {
     if (!base) {
         base_.reset();
         shown_ = submitted_;  // nothing to wait for: a frame still in flight is just ignored
         return;
     }
-    if (base == base_ && settings == settings_) {
+    if (base == base_ && settings == settings_ && stop_after == stop_after_) {
         return;
     }
     base_ = base;
     settings_ = settings;
-    submitted_ = renderer_.submit(base_, settings_);
+    stop_after_ = stop_after;
+    submitted_ = renderer_.submit(base_, settings_, stop_after_);
 }
 
 std::optional<PreviewFrame> LivePreview::poll() {

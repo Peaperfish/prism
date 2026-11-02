@@ -299,3 +299,102 @@ TEST(PreviewRenderer, ARenderErrorArrivesAsAFrameWithAMessage) {
 
     EXPECT_THROW(renderer.submit(nullptr, EditSettings{}), std::invalid_argument);
 }
+
+TEST(PreviewRenderer, StageTapStopsAfterChosenStageAndEncodesForDisplay) {
+    using prism::gui::StageId;
+
+    const auto base = make_base(32, 24);
+    const EditSettings s = every_stage();
+
+    // Decode tap: no pipeline stages run; output is just the display encode of `base`.
+    const std::optional<PreviewFrame> at_decode =
+        prism::gui::render_preview(*base, s, 1, {}, {}, StageId::decode);
+    ASSERT_TRUE(at_decode);
+    EXPECT_EQ(at_decode->stage, StageId::decode);
+    EXPECT_TRUE(at_decode->stages.empty());
+    EXPECT_EQ(at_decode->rgb8, prism::encode_srgb8(*base, 1));
+
+    // Exposure tap: only exposure runs, then display encode.
+    prism::Image exp_img = *base;
+    prism::exposure(exp_img, s.exposure_stops, 1);
+    const std::optional<PreviewFrame> at_exposure =
+        prism::gui::render_preview(*base, s, 1, {}, {}, StageId::exposure);
+    ASSERT_TRUE(at_exposure);
+    EXPECT_EQ(at_exposure->stage, StageId::exposure);
+    ASSERT_EQ(at_exposure->stages.size(), 1u);
+    EXPECT_EQ(at_exposure->stages[0].name, "exposure");
+    EXPECT_EQ(at_exposure->rgb8, prism::encode_srgb8(exp_img, 1));
+
+    // Matrix tap: exposure + matrix run, later stages do not.
+    prism::Image mat_img = exp_img;
+    prism::apply_matrix(mat_img, s.matrix->values, 1);
+    const std::optional<PreviewFrame> at_matrix =
+        prism::gui::render_preview(*base, s, 1, {}, {}, StageId::matrix);
+    ASSERT_TRUE(at_matrix);
+    ASSERT_EQ(at_matrix->stages.size(), 2u);
+    EXPECT_EQ(at_matrix->stages[1].name, "matrix");
+    EXPECT_EQ(at_matrix->rgb8, prism::encode_srgb8(mat_img, 1));
+
+    // Saturation tap: exposure + matrix + saturation.
+    prism::Image sat_img = mat_img;
+    prism::saturation(sat_img, s.saturation, 1);
+    const std::optional<PreviewFrame> at_saturation =
+        prism::gui::render_preview(*base, s, 1, {}, {}, StageId::saturation);
+    ASSERT_TRUE(at_saturation);
+    ASSERT_EQ(at_saturation->stages.size(), 3u);
+    EXPECT_EQ(at_saturation->stages[2].name, "saturation");
+    EXPECT_EQ(at_saturation->rgb8, prism::encode_srgb8(sat_img, 1));
+
+    // Contrast tap: exposure + matrix + saturation + contrast.
+    prism::Image con_img = sat_img;
+    prism::contrast(con_img, s.contrast, 1);
+    const std::optional<PreviewFrame> at_contrast =
+        prism::gui::render_preview(*base, s, 1, {}, {}, StageId::contrast);
+    ASSERT_TRUE(at_contrast);
+    ASSERT_EQ(at_contrast->stages.size(), 4u);
+    EXPECT_EQ(at_contrast->stages[3].name, "contrast");
+    EXPECT_EQ(at_contrast->rgb8, prism::encode_srgb8(con_img, 1));
+}
+
+TEST(PreviewRenderer, TappingLastStageEqualsFinalPreviewExactly) {
+    using prism::gui::StageId;
+
+    const auto base = make_base(64, 48);
+    const EditSettings s = every_stage();
+
+    const std::optional<PreviewFrame> untapped = prism::gui::render_preview(*base, s, 1, {});
+    const std::optional<PreviewFrame> at_curve =
+        prism::gui::render_preview(*base, s, 1, {}, {}, StageId::curve);
+    const std::optional<PreviewFrame> at_encode =
+        prism::gui::render_preview(*base, s, 1, {}, {}, StageId::encode);
+    ASSERT_TRUE(untapped && at_curve && at_encode);
+    EXPECT_EQ(at_encode->stage, prism::gui::final_stage);
+    EXPECT_EQ(at_encode->rgb8, untapped->rgb8);
+    EXPECT_EQ(at_curve->rgb8, untapped->rgb8);
+    EXPECT_EQ(at_encode->stages.size(), untapped->stages.size());
+
+    // Also through the worker thread.
+    PreviewRenderer renderer(1);
+    renderer.submit(base, s, StageId::encode);
+    ASSERT_TRUE(renderer.wait_until_idle(timeout));
+    const std::optional<PreviewFrame> worker_frame = renderer.poll();
+    ASSERT_TRUE(worker_frame);
+    EXPECT_EQ(worker_frame->stage, StageId::encode);
+    EXPECT_EQ(worker_frame->rgb8, untapped->rgb8);
+}
+
+TEST(PreviewRenderer, TappingAnOffStageShowsItPassingImageThroughUnchanged) {
+    using prism::gui::StageId;
+
+    const auto base = make_base(16, 16);
+    EditSettings s = every_stage();
+    s.saturation_on = false;
+
+    const std::optional<PreviewFrame> at_matrix =
+        prism::gui::render_preview(*base, s, 1, {}, {}, StageId::matrix);
+    const std::optional<PreviewFrame> at_saturation =
+        prism::gui::render_preview(*base, s, 1, {}, {}, StageId::saturation);
+    ASSERT_TRUE(at_matrix && at_saturation);
+    EXPECT_EQ(at_saturation->rgb8, at_matrix->rgb8);
+    EXPECT_EQ(at_saturation->stages.size(), 2u);
+}

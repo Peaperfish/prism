@@ -6,14 +6,41 @@
 
 namespace prism::gui {
 
+std::optional<Image> render_stage_image(const Image& base, const EditSettings& settings,
+                                        StageId stop_after, int threads, std::stop_token stop,
+                                        const StageCallback& on_stage) {
+    const ProcessSettings process_settings = to_process_settings(settings, stop_after);
+    if (stop.stop_requested()) {
+        return std::nullopt;
+    }
+    Image img = base;  // the base is shared and never changes; the pipeline works in place
+    if (process(img, process_settings, threads, stop, on_stage) == ProcessResult::cancelled ||
+        stop.stop_requested()) {
+        return std::nullopt;
+    }
+    return img;
+}
+
 std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings& settings,
                                            int threads, std::stop_token stop,
-                                           const StageCallback& on_stage) {
+                                           const StageCallback& on_stage, StageId stop_after) {
     using Clock = std::chrono::steady_clock;
     const auto start = Clock::now();
-    const ProcessSettings process_settings = to_process_settings(settings);
+    const ProcessSettings process_settings = to_process_settings(settings, stop_after);
 
     PreviewFrame frame;
+    frame.stage = stop_after;
+    if (stop_after == StageId::decode) {
+        if (stop.stop_requested()) {
+            return std::nullopt;
+        }
+        frame.width = base.width;
+        frame.height = base.height;
+        frame.rgb8 = encode_srgb8(base, threads);
+        frame.total_ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+        return frame;
+    }
+
     Image img = base;  // the base is shared and never changes; the pipeline works in place
     const auto record = [&](const StageTime& t) {
         frame.stages.push_back(t);
@@ -33,13 +60,18 @@ std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings
 }
 
 PreviewRenderer::PreviewRenderer(int threads)
+    : PreviewRenderer([threads](const Image& base, const EditSettings& settings, StageId stop_after,
+                                std::stop_token stop) {
+          return render_preview(base, settings, threads, stop, {}, stop_after);
+      }) {}
+
+PreviewRenderer::PreviewRenderer(RenderFunction render)
     : PreviewRenderer(
-          [threads](const Image& base, const EditSettings& settings, std::stop_token stop) {
-              return render_preview(base, settings, threads, stop);
-          }) {}
+          [r = std::move(render)](const Image& base, const EditSettings& settings, StageId,
+                                  std::stop_token stop) { return r(base, settings, stop); }) {}
 
 // The worker starts last, in the constructor's body, once render_ is set.
-PreviewRenderer::PreviewRenderer(RenderFunction render) : render_(std::move(render)) {
+PreviewRenderer::PreviewRenderer(StageRenderFunction render) : render_(std::move(render)) {
     worker_ = std::jthread([this](std::stop_token thread_stop) { run(thread_stop); });
 }
 
@@ -53,7 +85,7 @@ PreviewRenderer::~PreviewRenderer() {
 }
 
 std::uint64_t PreviewRenderer::submit(std::shared_ptr<const Image> base,
-                                      const EditSettings& settings) {
+                                      const EditSettings& settings, StageId stop_after) {
     if (!base) {
         throw std::invalid_argument("PreviewRenderer::submit: no image");
     }
@@ -61,8 +93,9 @@ std::uint64_t PreviewRenderer::submit(std::shared_ptr<const Image> base,
     {
         std::lock_guard lock(mutex_);
         generation = ++latest_generation_;
-        pending_ = Request{generation, std::move(base), settings};  // replaces a waiting request
-        render_stop_.request_stop();                                // supersedes a running one
+        // Replaces a waiting request and supersedes a running one.
+        pending_ = Request{generation, std::move(base), settings, stop_after};
+        render_stop_.request_stop();
     }
     wake_.notify_one();
     return generation;
@@ -97,7 +130,7 @@ void PreviewRenderer::run(std::stop_token thread_stop) {
         lock.unlock();  // never hold the lock while rendering, so submit() and poll() don't wait
         std::optional<PreviewFrame> frame;
         try {
-            frame = render_(*request.base, request.settings, render_stop);
+            frame = render_(*request.base, request.settings, request.stop_after, render_stop);
         } catch (const std::exception& e) {
             // An exception must not leave the thread (that would call std::terminate).
             frame = PreviewFrame{};
@@ -109,6 +142,7 @@ void PreviewRenderer::run(std::stop_token thread_stop) {
         // show settings the user has already moved away from.
         if (frame && request.generation == latest_generation_) {
             frame->generation = request.generation;
+            frame->stage = request.stop_after;
             ready_ = std::move(frame);
         }
         busy_ = false;

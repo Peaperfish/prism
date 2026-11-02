@@ -21,6 +21,7 @@ namespace prism::gui {
 // One finished preview, ready to upload as a texture.
 struct PreviewFrame {
     std::uint64_t generation = 0;  // the number submit() returned for its request
+    StageId stage = final_stage;   // the stage whose output this frame shows
     int width = 0;
     int height = 0;
     std::vector<std::uint8_t> rgb8;  // width * height * 3 bytes of 8-bit sRGB, row-major
@@ -29,13 +30,25 @@ struct PreviewFrame {
     std::string error;               // if not empty, rendering failed and rgb8 is empty
 };
 
-// Renders `base` with `settings` on the calling thread: copies it, runs process() and encodes
-// it to 8-bit sRGB with encode_srgb8. Nothing if `stop` was requested before it finished.
-// Throws std::invalid_argument for invalid settings (see to_process_settings).
+// Runs the pipeline on a copy of `base` up to and including `stop_after` (`final_stage` runs
+// every edit stage) and returns the linear float image at that point, before the 8-bit sRGB
+// encode. Nothing if `stop` was requested before it finished. Throws std::invalid_argument for
+// invalid settings (see to_process_settings).
+[[nodiscard]] std::optional<Image> render_stage_image(const Image& base,
+                                                      const EditSettings& settings,
+                                                      StageId stop_after, int threads = 0,
+                                                      std::stop_token stop = {},
+                                                      const StageCallback& on_stage = {});
+
+// Renders `base` with `settings` up to `stop_after` on the calling thread: runs only the stages
+// up to `stop_after` and then encodes that stage's image to 8-bit sRGB with encode_srgb8. Nothing
+// if `stop` was requested before it finished. Throws std::invalid_argument for invalid settings
+// (see to_process_settings).
 [[nodiscard]] std::optional<PreviewFrame> render_preview(const Image& base,
                                                          const EditSettings& settings, int threads,
                                                          std::stop_token stop,
-                                                         const StageCallback& on_stage = {});
+                                                         const StageCallback& on_stage = {},
+                                                         StageId stop_after = final_stage);
 
 // Renders previews on a worker thread, so the UI never waits for one.
 //
@@ -57,21 +70,26 @@ public:
     // the exception's message in `error`.
     using RenderFunction = std::function<std::optional<PreviewFrame>(
         const Image& base, const EditSettings& settings, std::stop_token stop)>;
+    using StageRenderFunction = std::function<std::optional<PreviewFrame>(
+        const Image& base, const EditSettings& settings, StageId stop_after, std::stop_token stop)>;
 
     // `threads` as for the pipeline: 0 = one per hardware thread.
     explicit PreviewRenderer(int threads = 0);
     explicit PreviewRenderer(RenderFunction render);
+    explicit PreviewRenderer(StageRenderFunction render);
     ~PreviewRenderer();
 
     // A running thread can't be copied or moved somewhere else.
     PreviewRenderer(const PreviewRenderer&) = delete;
     PreviewRenderer& operator=(const PreviewRenderer&) = delete;
 
-    // Asks for a preview of `base` with `settings` and returns its generation number (1, 2, 3...
-    // in the order of the calls). Returns at once: it only swaps the request in under a lock that
-    // the worker never holds while rendering. `base` is shared, not copied, so it must not change
-    // (Session's preview base never does). Throws std::invalid_argument if `base` is null.
-    std::uint64_t submit(std::shared_ptr<const Image> base, const EditSettings& settings);
+    // Asks for a preview of `base` with `settings` stopped after `stop_after`, and returns its
+    // generation number (1, 2, 3... in the order of the calls). Returns at once: it only swaps the
+    // request in under a lock that the worker never holds while rendering. `base` is shared, not
+    // copied, so it must not change (Session's preview base never does). Throws
+    // std::invalid_argument if `base` is null.
+    std::uint64_t submit(std::shared_ptr<const Image> base, const EditSettings& settings,
+                         StageId stop_after = final_stage);
 
     // The newest finished frame, if one arrived since the last poll(); otherwise nothing.
     [[nodiscard]] std::optional<PreviewFrame> poll();
@@ -85,11 +103,12 @@ private:
         std::uint64_t generation;
         std::shared_ptr<const Image> base;
         EditSettings settings;
+        StageId stop_after = final_stage;
     };
 
     void run(std::stop_token thread_stop);
 
-    RenderFunction render_;
+    StageRenderFunction render_;
 
     std::mutex mutex_;  // guards everything below except worker_
     // condition_variable_any rather than condition_variable: only it can also wait for a

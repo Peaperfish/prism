@@ -2,13 +2,46 @@
 
 #include <filesystem>
 #include <optional>
+#include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "prism/pipeline.hpp"
 #include "prism/process.hpp"
 
 namespace prism::gui {
+
+// Every stage of the pipeline, in the order light moves through it. `decode` and `encode` are the
+// bookends (turning a file into linear float, and turning the stage's output into 8-bit sRGB);
+// the five stages in between are the edits, each backed by an `*_on` flag on EditSettings.
+enum class StageId {
+    decode,
+    exposure,
+    matrix,
+    saturation,
+    contrast,
+    curve,
+    encode,
+};
+
+inline constexpr StageId final_stage = StageId::encode;
+
+// One row of the UI's pipeline list: its stable id, its display name, a one-sentence explanation
+// in plain words of what the stage does to the light, and whether it has an on/off switch.
+struct StageInfo {
+    StageId id = StageId::decode;
+    std::string_view slug;
+    std::string_view name;
+    std::string_view description;
+    bool can_toggle = false;
+};
+
+// All pipeline stages in execution order, from Decode to Output encode.
+[[nodiscard]] std::span<const StageInfo> pipeline_stages() noexcept;
+
+// The entry for `id` in pipeline_stages().
+[[nodiscard]] const StageInfo& stage_info(StageId id) noexcept;
 
 // A 3x3 matrix loaded from a file, with the file it came from (shown in the UI).
 struct MatrixFile {
@@ -72,11 +105,19 @@ void reset_to_defaults(EditSettings& s);
 // Numbers are written in the shortest form that reads back as exactly the same float.
 [[nodiscard]] std::optional<std::string> curve_spec(const EditSettings& s);
 
-// What prism::process should do: stages that are off (or have nothing to apply) are left empty.
-// The curve is built with prism::parse_curve(curve_spec(s)), so it is exactly the curve the CLI
-// builds from the same spec. Throws std::invalid_argument with validate()'s messages if the
-// settings are invalid. The RAW options are not part of it: they apply when decoding.
-[[nodiscard]] ProcessSettings to_process_settings(const EditSettings& s);
+// Whether `id` is turned on in `s`. Decode and Output encode have no switch and are always on.
+[[nodiscard]] bool stage_enabled(const EditSettings& s, StageId id) noexcept;
+
+// Sets the `*_on` switch for `id` in `s`. Does nothing for Decode and Output encode.
+void set_stage_enabled(EditSettings& s, StageId id, bool enabled) noexcept;
+
+// What prism::process should do up to and including `stop_after`: stages that are off, have
+// nothing to apply, or come after `stop_after` are left empty. The curve is built with
+// prism::parse_curve(curve_spec(s)), so it is exactly the curve the CLI builds from the same
+// spec. Throws std::invalid_argument with validate()'s messages if the settings are invalid.
+// The RAW options are not part of it: they apply when decoding.
+[[nodiscard]] ProcessSettings to_process_settings(const EditSettings& s,
+                                                  StageId stop_after = final_stage);
 
 // --- Simple mode ---------------------------------------------------------------------------------
 //
