@@ -21,6 +21,15 @@ struct Request {
     gui::ExportFormat format = gui::ExportFormat::jpeg;  // save: the format offered first
 };
 
+// The event that wakes the main loop when a dialog is done. It must be a registered type of its
+// own: SDL_EVENT_USER itself is the first type SDL_RegisterEvents hands out, which App uses for
+// the native Preferences menu item, so waking with it opened Preferences after every dialog.
+// First called from the main thread (the show_* functions), so the callback only reads it.
+Uint32 wake_event_type() {
+    static const Uint32 type = SDL_RegisterEvents(1);
+    return type;
+}
+
 void SDLCALL on_dialog_done(void* userdata, const char* const* filelist, int filter) {
     std::unique_ptr<Request> request(static_cast<Request*>(userdata));
     DialogResult result;
@@ -41,9 +50,11 @@ void SDLCALL on_dialog_done(void* userdata, const char* const* filelist, int fil
     request->queue->push(std::move(result));
 
     // Wake the main loop, which may be asleep in SDL_WaitEventTimeout. Thread-safe.
-    SDL_Event wake{};
-    wake.type = SDL_EVENT_USER;
-    SDL_PushEvent(&wake);
+    if (const Uint32 type = wake_event_type(); type != 0) {
+        SDL_Event wake{};
+        wake.type = type;
+        SDL_PushEvent(&wake);
+    }
 }
 
 void finish_filters(Request& request, std::initializer_list<const char*> names) {
@@ -64,6 +75,7 @@ void show_open_dialog(SDL_Window* window, DialogQueue& queue,
     finish_filters(*request, {"Photos"});
     request->default_location = start_folder.empty() ? "" : utf8(start_folder);
 
+    wake_event_type();  // registered here, on the main thread, before the callback can run
     Request* r = request.release();  // the callback owns it now
     SDL_ShowOpenFileDialog(on_dialog_done, r, window, r->filters.data(),
                            static_cast<int>(r->filters.size()),
@@ -81,6 +93,7 @@ void show_save_dialog(SDL_Window* window, DialogQueue& queue,
     finish_filters(*request, {"PNG image", "JPEG image"});
     request->default_location = utf8(suggested);
 
+    wake_event_type();
     Request* r = request.release();  // the callback owns it now
     SDL_ShowSaveFileDialog(on_dialog_done, r, window, r->filters.data(),
                            static_cast<int>(r->filters.size()), r->default_location.c_str());
