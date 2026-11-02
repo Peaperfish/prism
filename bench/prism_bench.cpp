@@ -445,6 +445,9 @@ int main(int argc, char* argv[]) {
     const double preview_f32 = static_cast<double>(preview.pixels.size()) * sizeof(float);
     bench_stage(s, "preview render", 2 * preview_f32, none,
                 [&](int t) { frame = prism::gui::render_preview(preview, look, t, {}); });
+    bench_stage(s, "preview render + scopes", 2 * preview_f32, none, [&](int t) {
+        frame = prism::gui::render_preview(preview, look, t, {}, {}, prism::gui::final_stage, true);
+    });
 
     bench_raw(s);
 
