@@ -28,6 +28,12 @@ bool is_low(const float* p) noexcept {
     return y <= 0.0f && (p[0] < 0.0f || p[1] < 0.0f || p[2] < 0.0f);
 }
 
+// Out of gamut: the pixel has light (Y > 0) but a channel below -gamut_tolerance.
+bool is_gamut(const float* p) noexcept {
+    const float y = 0.2126f * p[0] + 0.7152f * p[1] + 0.0722f * p[2];
+    return y > 0.0f && std::min({p[0], p[1], p[2]}) < -gamut_tolerance;
+}
+
 }  // namespace
 
 std::optional<StageId> stage_from_name(std::string_view name) noexcept {
@@ -120,6 +126,13 @@ ClipRecorder::Range ClipRecorder::measure(const Image& img, int stride, int firs
             r.under.green += lo[1];
             r.under.blue += lo[2];
             r.under.any += lo[0] || lo[1] || lo[2];
+            const bool out = is_gamut(p);
+            const bool go[3] = {out && p[0] < -gamut_tolerance, out && p[1] < -gamut_tolerance,
+                                out && p[2] < -gamut_tolerance};
+            r.gamut.red += go[0];
+            r.gamut.green += go[1];
+            r.gamut.blue += go[2];
+            r.gamut.any += out;
             r.ceiling.red += ce[0];
             r.ceiling.green += ce[1];
             r.ceiling.blue += ce[2];
@@ -172,7 +185,9 @@ void ClipRecorder::record(StageId stage, const Range& output) {
                                                        : output.over;
     row.under = clamps_lo ? previous_.under : output.under;
     row.over_fate = fate_of(row.over.any, at_ceiling || (clamps_hi && stage != StageId::decode));
+    row.gamut = clamps_lo ? previous_.gamut : output.gamut;
     row.under_fate = fate_of(row.under.any, clamps_lo);
+    row.gamut_fate = fate_of(row.gamut.any, clamps_lo);
 
     const auto note = [&](std::optional<StageId>& first, std::optional<StageId>& first_lost,
                           ClipFate fate) {
@@ -185,6 +200,7 @@ void ClipRecorder::record(StageId stage, const Range& output) {
     };
     note(report_.first_over, report_.first_over_lost, row.over_fate);
     note(report_.first_under, report_.first_under_lost, row.under_fate);
+    note(report_.first_gamut, report_.first_gamut_lost, row.gamut_fate);
     previous_ = output;
 }
 
@@ -246,8 +262,9 @@ void compute_clip_mask(const Image& img, int threads, std::vector<std::uint8_t>&
                 const bool hi = file_ceiling ? (p[0] >= high || p[1] >= high || p[2] >= high)
                                              : (p[0] > high || p[1] > high || p[2] > high);
                 const bool lo = is_low(p);
-                out[x] =
-                    static_cast<std::uint8_t>((hi ? clip_mask_high : 0) | (lo ? clip_mask_low : 0));
+                out[x] = static_cast<std::uint8_t>((hi ? clip_mask_high : 0) |
+                                                   (lo ? clip_mask_low : 0) |
+                                                   (is_gamut(p) ? clip_mask_gamut : 0));
             }
         }
     });
@@ -332,6 +349,21 @@ std::string describe_clipping(const ClipReport& report) {
     }
     text += shadows;
     return text.empty() ? "Nothing clips." : text;
+}
+
+std::string describe_gamut(const ClipReport& report) {
+    if (!report.first_gamut) {
+        return {};
+    }
+    const std::uint64_t count = report.at(*report.first_gamut).gamut.any;
+    std::string text = format_clip_percent(count, report.sample_count) +
+                       " of colours are too saturated for sRGB after " +
+                       std::string(stage_info(*report.first_gamut).name) + "; ";
+    if (report.first_gamut_lost) {
+        return text + std::string(stage_info(*report.first_gamut_lost).name) +
+               " clips them, so hues may shift.";
+    }
+    return text + "a later stage brings them back, so nothing is lost.";
 }
 
 }  // namespace prism::gui

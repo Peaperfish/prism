@@ -339,6 +339,131 @@ TEST(Clipping, TheClipMaskMarksPixelsOutOfRange) {
     EXPECT_TRUE(mask.empty());
 }
 
+// --- Gamut ---------------------------------------------------------------------------------------
+
+namespace {
+
+// A saturated orange; the matrix takes 0.3 of red away from blue: B' = 0.05 - 0.27 = -0.22.
+EditSettings orange_matrix() {
+    EditSettings s;
+    s.matrix = prism::gui::MatrixFile{{}, {1, 0, 0, 0, 1, 0, -0.3f, 0, 1}};
+    return s;
+}
+Image orange() { return solid(10, 10, 0.9f, 0.4f, 0.05f); }
+
+}  // namespace
+
+TEST(ClippingGamut, AnImageInGamutHasNoneAtAnyStage) {
+    EditSettings s = with_exposure(0.5f);
+    s.saturation = 3.0f;  // limited to the boundary (a channel at exactly 0): not out of gamut
+    s.contrast = 1.2f;
+    s.curve = prism::gui::CurveKind::filmic;
+    Image img = solid(10, 10, 0.4f, 0.3f, 0.2f);
+    for (std::size_t i = 0; i < 30; ++i) {
+        img.pixels[i] = 0.05f * static_cast<float>(i % 7);
+    }
+    const ClipReport r = compute_clip_report(img, s);
+    for (const prism::gui::StageClip& row : r.stages) {
+        EXPECT_EQ(row.gamut.any, 0u) << static_cast<int>(row.stage);
+        EXPECT_EQ(row.gamut_fate, ClipFate::none);
+    }
+    EXPECT_FALSE(r.first_gamut || r.first_gamut_lost);
+    EXPECT_EQ(prism::gui::describe_gamut(r), "");
+}
+
+TEST(ClippingGamut, ASaturatedOrangeThatTheMatrixPushesOutIsGamutNotAShadow) {
+    EditSettings s = orange_matrix();
+    s.saturation = 1.5f;
+    const ClipReport r = compute_clip_report(orange(), s);
+    const prism::gui::StageClip& matrix = r.at(StageId::matrix);
+    EXPECT_EQ(matrix.gamut.any, 100u);
+    EXPECT_EQ(matrix.gamut.red, 0u);
+    EXPECT_EQ(matrix.gamut.green, 0u);
+    EXPECT_EQ(matrix.gamut.blue, 100u);
+    EXPECT_EQ(matrix.gamut_fate, ClipFate::recoverable);
+    EXPECT_EQ(matrix.under.any, 0u);  // it still has light: not a shadow
+    EXPECT_EQ(r.first_under, std::nullopt);
+    EXPECT_EQ(r.first_gamut, StageId::matrix);
+    EXPECT_EQ(r.first_gamut_lost, StageId::saturation);
+    EXPECT_EQ(r.at(StageId::saturation).gamut.any, 100u);  // what arrived and was clamped
+    EXPECT_EQ(r.at(StageId::saturation).gamut_fate, ClipFate::lost);
+    EXPECT_EQ(r.at(StageId::curve).gamut.any, 0u);
+    EXPECT_EQ(r.at(StageId::encode).gamut.any, 0u);
+    EXPECT_EQ(prism::gui::describe_gamut(r),
+              "100% of colours are too saturated for sRGB after Colour matrix; "
+              "Saturation clips them, so hues may shift.");
+    EXPECT_EQ(describe_clipping(r), "Nothing clips.");  // the first line is unchanged
+}
+
+TEST(ClippingGamut, TheColoursAreClippedAtTheToneCurveWhenSaturationIsOff) {
+    EditSettings s = orange_matrix();
+    s.contrast = 1.2f;  // keeps the negative
+    s.curve = prism::gui::CurveKind::gamma;
+    const ClipReport r = compute_clip_report(orange(), s);
+    EXPECT_EQ(r.first_gamut, StageId::matrix);
+    EXPECT_EQ(r.at(StageId::contrast).gamut_fate, ClipFate::recoverable);
+    EXPECT_EQ(r.first_gamut_lost, StageId::curve);
+    EXPECT_EQ(r.at(StageId::curve).gamut.any, 100u);
+    EXPECT_EQ(r.at(StageId::curve).gamut_fate, ClipFate::lost);
+    EXPECT_EQ(prism::gui::describe_gamut(r),
+              "100% of colours are too saturated for sRGB after Colour matrix; "
+              "Tone curve clips them, so hues may shift.");
+}
+
+TEST(ClippingGamut, TheColoursAreClippedAtOutputEncodeWhenNothingElseDoes) {
+    const ClipReport r = compute_clip_report(orange(), orange_matrix());
+    EXPECT_EQ(r.first_gamut, StageId::matrix);
+    EXPECT_EQ(r.first_gamut_lost, StageId::encode);
+    EXPECT_EQ(r.at(StageId::encode).gamut.any, 100u);
+    EXPECT_EQ(r.at(StageId::encode).gamut_fate, ClipFate::lost);
+}
+
+TEST(ClippingGamut, ANegativeWithinHalfAnEightBitStepIsNeitherGamutNorShadow) {
+    // Y > 0 and min channel -1e-4, above -1.5e-4.
+    const ClipReport r = compute_clip_report(solid(4, 4, 0.5f, 0.5f, -1e-4f), EditSettings{});
+    EXPECT_EQ(r.at(StageId::decode).gamut.any, 0u);
+    EXPECT_EQ(r.at(StageId::decode).under.any, 0u);
+    EXPECT_EQ(r.at(StageId::decode).over.any, 0u);
+    EXPECT_EQ(describe_clipping(r), "Nothing clips.");
+    EXPECT_EQ(prism::gui::describe_gamut(r), "");
+    // Just past the tolerance it counts.
+    EXPECT_EQ(compute_clip_report(solid(4, 4, 0.5f, 0.5f, -2e-4f), EditSettings{})
+                  .at(StageId::decode)
+                  .gamut.any,
+              16u);
+}
+
+TEST(ClippingGamut, NoLightWithAPositiveChannelIsALowNotGamut) {
+    // Y = 0.2126 * -0.5 + 0.7152 * 0.1 = -0.035 <= 0.
+    const ClipReport r = compute_clip_report(solid(4, 4, -0.5f, 0.1f, 0.0f), EditSettings{});
+    const prism::gui::StageClip& decode = r.at(StageId::decode);
+    EXPECT_EQ(decode.under.any, 16u);
+    EXPECT_EQ(decode.under.red, 16u);
+    EXPECT_EQ(decode.under.green, 0u);
+    EXPECT_EQ(decode.gamut.any, 0u);
+    EXPECT_EQ(r.first_gamut, std::nullopt);
+}
+
+TEST(ClippingGamut, TheMaskMarksGamutLowsAndHighsIndependently) {
+    Image img;
+    img.width = 6;
+    img.height = 1;
+    img.pixels = {0.5f, 0.5f,  0.5f,                // in range
+                  0.5f, -0.1f, 0.5f,                // light, one channel negative: gamut
+                  0.1f, -0.5f, 0.1f,                // no light: low
+                  1.5f, -0.1f, 0.5f,                // high and gamut
+                  2.0f, -1.0f, 0.5f,                // high and low (Y < 0)
+                  0.5f, 0.5f,  -1e-4f};             // within tolerance: nothing
+    std::vector<std::uint8_t> mask;
+    prism::gui::compute_clip_mask(img, 1, mask);
+    using prism::gui::clip_mask_gamut;
+    using prism::gui::clip_mask_high;
+    using prism::gui::clip_mask_low;
+    EXPECT_EQ(mask, (std::vector<std::uint8_t>{0, clip_mask_gamut, clip_mask_low,
+                                               clip_mask_high | clip_mask_gamut,
+                                               clip_mask_high | clip_mask_low, 0}));
+}
+
 TEST(Clipping, TheStageClampTable) {
     using prism::gui::ClipDirection;
     using prism::gui::stage_clamps;
@@ -513,6 +638,8 @@ TEST(ClippingPreview, RunningTheLaterStagesOnTheSampledGridGivesTheFullImagesNum
     const ClipReport expected = compute_clip_report(img, s, 1);
     EXPECT_EQ(expected.stride, 2);
     EXPECT_TRUE(expected.first_over && expected.first_under);
+    EXPECT_TRUE(expected.first_gamut && expected.first_gamut_lost);
+    EXPECT_NE(expected.at(StageId::matrix).gamut.any, 0u);
 
     prism::gui::PreviewOptions options;
     options.clip_report = true;

@@ -46,13 +46,25 @@ namespace prism::gui {
 // not changed: both kinds of source give values in 0..1 (an 8-bit 0 is 0.0; LibRaw's 16-bit output
 // has the black level subtracted and floored at 0), so black in the file looks like true black.
 //
-// Note for a gamut warning (#14): after Colour matrix, a value below 0 is a colour outside sRGB.
-// That is the `under` count of that stage's row, so a gamut warning can share this pass.
+// Gamut (#14). A colour outside the output gamut is a pixel that still has light (Y > 0) but a
+// channel below -gamut_tolerance: sRGB cannot show it, and clamping that channel to 0 changes the
+// pixel's hue. It is counted the same way at every stage, in the same pass as the rest, and
+// independently of highs and lows (a pixel can be in more than one). Negatives between
+// -gamut_tolerance and 0 are neither gamut nor lows. The stage that first has a non-zero gamut
+// count "pushed the colours out" (usually Colour matrix); the first later stage that clamps
+// negatives (Saturation if it runs, else Tone curve, else Output encode) "clips" them, and that
+// is where their fate is lost. Saturation's own limiting of a colour to the gamut boundary is not
+// a loss: only negatives that arrive at Saturation and are clamped there count. The gamut count
+// of a clamping stage is therefore of what came in, like the shadows count.
 enum class ClipDirection { highlights, shadows };
 
 // How close to 1.0 counts as at the file's ceiling when counting Decode's clipped pixels. It only
 // absorbs float rounding (e.g. an average of 1.0s in the downscaled preview).
 inline constexpr float file_ceiling_epsilon = 1e-6f;
+
+// How far below 0 a channel must be, on a pixel with Y > 0, to count as out of gamut: half an
+// 8-bit step at the sRGB toe (0.5 / 255 / 12.92), below which the encoded value rounds to 0 anyway.
+inline constexpr float gamut_tolerance = 1.5e-4f;
 
 // Whether `stage`, when it runs, clamps values in `direction`.
 [[nodiscard]] bool stage_clamps(StageId stage, ClipDirection direction) noexcept;
@@ -86,8 +98,10 @@ struct StageClip {
     bool ran = false;  // false: the stage was off or neutral, so it did nothing (and counts are 0)
     ClipCounts over;
     ClipCounts under;
+    ClipCounts gamut;  // channels below -gamut_tolerance on pixels with Y > 0 (see above)
     ClipFate over_fate = ClipFate::none;
     ClipFate under_fate = ClipFate::none;
+    ClipFate gamut_fate = ClipFate::none;
 
     bool operator==(const StageClip&) const = default;
 };
@@ -106,6 +120,10 @@ struct ClipReport {
     std::optional<StageId> first_over_lost;
     std::optional<StageId> first_under;
     std::optional<StageId> first_under_lost;
+    // The first stage with colours outside the gamut ("pushed out by"), and the first that clamps
+    // them (where the hue shift happens).
+    std::optional<StageId> first_gamut;
+    std::optional<StageId> first_gamut_lost;
 
     [[nodiscard]] const StageClip& at(StageId id) const noexcept {
         return stages[static_cast<std::size_t>(id)];
@@ -151,6 +169,7 @@ private:
     struct Range {
         ClipCounts over;
         ClipCounts under;
+        ClipCounts gamut;
         ClipCounts ceiling;  // channels in [1.0 - file_ceiling_epsilon, 1.0] (used for Decode)
     };
     // Counts the pixels of `img` on the grid `stride` apart from `first` (stride 1: all of them).
@@ -172,13 +191,20 @@ private:
                                              int threads = 0);
 
 // Marks each pixel of `img` whose float values are out of range: bit 1 = some channel above 1.0,
-// bit 2 = no light (Y <= 0 with a negative channel). NaN is neither. One byte per pixel, row-major, so a UI can
-// tint those pixels on the picture. Reads every pixel, so only ask for it while it is shown.
+// bit 2 = no light (Y <= 0 with a negative channel), bit 4 = outside the gamut. NaN is none. One
+// byte per pixel, row-major, so a UI can tint those pixels on the picture. Reads every pixel, so
+// only ask for it while it is shown.
 inline constexpr std::uint8_t clip_mask_high = 1;
 inline constexpr std::uint8_t clip_mask_low = 2;
+inline constexpr std::uint8_t clip_mask_gamut = 4;  // Y > 0 and a channel below -gamut_tolerance
 // With `file_ceiling` (for Decode), "high" means at the file's ceiling, as counted at Decode.
 void compute_clip_mask(const Image& img, int threads, std::vector<std::uint8_t>& mask,
                        bool file_ceiling = false);
+
+// The summary line for colours outside the gamut, or "" if there are none. Example:
+//   "4.1% of colours are too saturated for sRGB after Colour matrix; Saturation clips them, so
+//   hues may shift."
+[[nodiscard]] std::string describe_gamut(const ClipReport& report);
 
 // "12%", "0.4%", or "<0.1%" for anything above 0 but under 0.1% (0 is "0%").
 [[nodiscard]] std::string format_clip_percent(std::uint64_t count, std::uint64_t total);
