@@ -32,6 +32,25 @@ std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings
 
     PreviewFrame frame;
     frame.stage = stop_after;
+    // The viewed stage as compare is no comparison. `compare_early`: the compare stage comes
+    // first, so its picture is taken on the way to the viewed one; otherwise the render goes on
+    // from the viewed stage to it.
+    std::optional<StageId> compare = options.compare_stage;
+    if (compare == stop_after) {
+        compare.reset();
+    }
+    const bool compare_early = compare && static_cast<int>(*compare) < static_cast<int>(stop_after);
+    const bool compare_late = compare && !compare_early;
+    bool compare_taken = false;
+    const auto take_compare = [&](const Image& at) {
+        CompareFrame c;
+        c.stage = *compare;
+        c.width = at.width;
+        c.height = at.height;
+        c.rgb8 = encode_srgb8(at, threads);
+        frame.compare = std::move(c);
+        compare_taken = true;
+    };
     // Decided once here; the per-stage callback below checks the recorder, never a pixel loop.
     std::optional<ClipRecorder> recorder;
     if (options.clip_report) {
@@ -48,6 +67,12 @@ std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings
     bool negatives_clamped = false;
     const auto before_stage = [&](std::string_view name, const Image& input) {
         const std::optional<StageId> id = stage_from_name(name);
+        // The first stage that runs after the compare stage receives the compare stage's picture
+        // (a stage that is off never runs, and the picture passes through it unchanged).
+        if (compare_early && !compare_taken && id &&
+            static_cast<int>(*id) > static_cast<int>(*compare)) {
+            take_compare(input);
+        }
         if (options.clip_mask && id && !negatives_clamped &&
             stage_clamps(*id, ClipDirection::shadows)) {
             mark_lost_negatives(input, threads, lost);
@@ -68,6 +93,22 @@ std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings
             compute_clip_mask(shown, threads, frame.clip_mask, stop_after == StageId::decode,
                               lost.empty() ? nullptr : &lost);
         }
+    };
+    // The compare stage after the viewed one: carries on from the viewed picture, on the same
+    // buffer, once everything that reads the viewed stage is done. No recorder: the clip report
+    // describes the viewed stage and was made without this.
+    const auto run_compare_late = [&](Image& current) {
+        if (!compare_late) {
+            return true;
+        }
+        const ProcessSettings more =
+            process_settings_after(to_process_settings(settings, *compare), stop_after);
+        if (process(current, more, threads, stop) == ProcessResult::cancelled ||
+            stop.stop_requested()) {
+            return false;
+        }
+        take_compare(current);
+        return true;
     };
     const auto finish = [&] {
         frame.total_ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
@@ -111,6 +152,12 @@ std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings
                 return std::nullopt;
             }
         }
+        if (compare_late) {
+            Image img = base;
+            if (!run_compare_late(img)) {
+                return std::nullopt;
+            }
+        }
         return finish();
     }
 
@@ -131,13 +178,17 @@ std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings
     };
     // Only a mask render looks at the stages' input; a report-only one does no extra pass.
     if (process(img, process_settings, threads, stop, record,
-                options.clip_mask ? BeforeStageCallback(before_stage) : BeforeStageCallback{}) ==
-            ProcessResult::cancelled ||
+                options.clip_mask || compare_early
+                    ? BeforeStageCallback(before_stage)
+                    : BeforeStageCallback{}) == ProcessResult::cancelled ||
         stop.stop_requested()) {
         return std::nullopt;
     }
+    if (compare_early && !compare_taken) {
+        take_compare(img);  // no stage after the compare stage ran: the viewed picture is it
+    }
     show(img);
-    if (!run_rest(img)) {
+    if (!run_rest(img) || !run_compare_late(img)) {
         return std::nullopt;
     }
     return finish();

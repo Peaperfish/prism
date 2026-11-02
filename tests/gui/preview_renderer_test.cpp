@@ -398,3 +398,141 @@ TEST(PreviewRenderer, TappingAnOffStageShowsItPassingImageThroughUnchanged) {
     EXPECT_EQ(at_saturation->rgb8, at_matrix->rgb8);
     EXPECT_EQ(at_saturation->stages.size(), 2u);
 }
+
+// --- Compare stage ---------------------------------------------------------------------------
+
+namespace {
+
+constexpr prism::gui::StageId all_stages[] = {
+    prism::gui::StageId::decode,     prism::gui::StageId::exposure, prism::gui::StageId::matrix,
+    prism::gui::StageId::saturation, prism::gui::StageId::contrast, prism::gui::StageId::curve,
+    prism::gui::StageId::encode};
+
+std::vector<std::uint8_t> stage_bytes(const prism::Image& base, const EditSettings& s,
+                                      prism::gui::StageId stage) {
+    const std::optional<prism::Image> img = prism::gui::render_stage_image(base, s, stage, 1);
+    EXPECT_TRUE(img);
+    return img ? prism::encode_srgb8(*img, 1) : std::vector<std::uint8_t>{};
+}
+
+prism::gui::PreviewOptions everything_on() {
+    prism::gui::PreviewOptions o;
+    o.scopes = true;
+    o.clip_report = true;
+    o.clip_mask = true;
+    return o;
+}
+
+}  // namespace
+
+TEST(PreviewCompare, TheComparePictureIsExactForEveryPairOfStages) {
+    const auto base = make_base(40, 30);
+    const EditSettings s = every_stage();
+    for (const auto viewed : all_stages) {
+        for (const auto compare : all_stages) {
+            prism::gui::PreviewOptions options;
+            options.compare_stage = compare;
+            const auto frame = prism::gui::render_preview(*base, s, 1, {}, {}, viewed, options);
+            ASSERT_TRUE(frame);
+            EXPECT_EQ(frame->rgb8, stage_bytes(*base, s, viewed));
+            if (compare == viewed) {
+                EXPECT_FALSE(frame->compare);  // the viewed stage as compare is no comparison
+                continue;
+            }
+            ASSERT_TRUE(frame->compare) << int(viewed) << " vs " << int(compare);
+            EXPECT_EQ(frame->compare->stage, compare);
+            EXPECT_EQ(frame->compare->width, 40);
+            EXPECT_EQ(frame->compare->height, 30);
+            EXPECT_EQ(frame->compare->rgb8, stage_bytes(*base, s, compare))
+                << int(viewed) << " vs " << int(compare);
+        }
+    }
+}
+
+TEST(PreviewCompare, ASwitchedOffStageIsComparedAsThePictureBeforeIt) {
+    using prism::gui::StageId;
+    const auto base = make_base(24, 18);
+    EditSettings s = every_stage();
+    s.saturation_on = false;
+    s.contrast_on = false;
+    for (const StageId viewed : {StageId::decode, StageId::exposure, StageId::encode}) {
+        for (const StageId compare : {StageId::saturation, StageId::contrast}) {
+            prism::gui::PreviewOptions options;
+            options.compare_stage = compare;
+            const auto frame = prism::gui::render_preview(*base, s, 1, {}, {}, viewed, options);
+            ASSERT_TRUE(frame && frame->compare);
+            EXPECT_EQ(frame->compare->rgb8, stage_bytes(*base, s, StageId::matrix));
+            EXPECT_EQ(frame->compare->rgb8, stage_bytes(*base, s, compare));
+        }
+    }
+}
+
+TEST(PreviewCompare, TheViewedFrameIsEqualWithCompareOffOrOn) {
+    const auto base = make_base(48, 36);
+    const EditSettings s = every_stage();
+    for (const auto viewed : all_stages) {
+        const auto off = prism::gui::render_preview(*base, s, 1, {}, {}, viewed, everything_on());
+        ASSERT_TRUE(off);
+        EXPECT_FALSE(off->compare);
+        for (const auto compare : all_stages) {
+            prism::gui::PreviewOptions options = everything_on();
+            options.compare_stage = compare;
+            const auto on = prism::gui::render_preview(*base, s, 1, {}, {}, viewed, options);
+            ASSERT_TRUE(on);
+            EXPECT_EQ(on->stage, off->stage);
+            EXPECT_EQ(on->width, off->width);
+            EXPECT_EQ(on->height, off->height);
+            EXPECT_EQ(on->rgb8, off->rgb8);
+            EXPECT_EQ(on->histogram, off->histogram);
+            EXPECT_EQ(on->scopes, off->scopes);
+            EXPECT_EQ(on->clips, off->clips) << int(viewed) << " vs " << int(compare);
+            EXPECT_EQ(on->clip_mask, off->clip_mask) << int(viewed) << " vs " << int(compare);
+            ASSERT_EQ(on->stages.size(), off->stages.size());
+            EXPECT_EQ(on->error, off->error);
+        }
+    }
+}
+
+TEST(PreviewCompare, OffCostsNothingAndLeavesNoCompare) {
+    const auto base = make_base(16, 16);
+    const EditSettings s = every_stage();
+    const auto plain = prism::gui::render_preview(*base, s, 1, {});
+    prism::gui::PreviewOptions same;  // compare_stage = the viewed stage: also off
+    same.compare_stage = prism::gui::final_stage;
+    const auto as_off =
+        prism::gui::render_preview(*base, s, 1, {}, {}, prism::gui::final_stage, same);
+    ASSERT_TRUE(plain && as_off);
+    EXPECT_FALSE(plain->compare);
+    EXPECT_FALSE(as_off->compare);
+    EXPECT_EQ(as_off->rgb8, plain->rgb8);
+    EXPECT_EQ(as_off->stages.size(), plain->stages.size());
+}
+
+TEST(PreviewCompare, BothHalvesComeFromTheSameSettingsThroughTheWorker) {
+    using prism::gui::StageId;
+    const auto base = make_base(32, 32);
+    PreviewRenderer renderer(1);
+    prism::gui::PreviewOptions options;
+    options.compare_stage = StageId::decode;
+    const EditSettings a = with_exposure(1.0f);
+    const EditSettings b = with_exposure(-1.0f);
+    renderer.submit(base, a, StageId::exposure, options);
+    renderer.submit(base, b, StageId::exposure, options);
+    ASSERT_TRUE(renderer.wait_until_idle(timeout));
+    const auto frame = renderer.poll();
+    ASSERT_TRUE(frame && frame->compare);
+    EXPECT_EQ(frame->rgb8, stage_bytes(*base, b, StageId::exposure));
+    EXPECT_EQ(frame->compare->rgb8, stage_bytes(*base, b, StageId::decode));
+    EXPECT_NE(frame->rgb8, frame->compare->rgb8);
+}
+
+TEST(PreviewCompare, ACancelledRenderGivesNoFrame) {
+    using prism::gui::StageId;
+    const auto base = make_base(16, 16);
+    std::stop_source source;
+    source.request_stop();
+    prism::gui::PreviewOptions options;
+    options.compare_stage = StageId::encode;
+    EXPECT_FALSE(prism::gui::render_preview(*base, every_stage(), 1, source.get_token(), {},
+                                            StageId::exposure, options));
+}

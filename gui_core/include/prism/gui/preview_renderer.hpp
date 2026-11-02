@@ -27,12 +27,24 @@ struct PreviewOptions {
     bool scopes = false;       // the colour scopes of the picture
     bool clip_report = false;  // the clipping of every stage (runs the stages after the viewed one)
     bool clip_mask = false;    // which pixels of the viewed stage are out of range, or were clipped
+    // A second picture, of this stage, to compare with the viewed one (PreviewFrame::compare). It
+    // carries no histogram, scopes or clip data: those always describe the viewed stage. The
+    // viewed stage itself as compare means no comparison, the same as nothing.
+    std::optional<StageId> compare_stage;
 
     PreviewOptions() = default;
     // Implicit, so that "scopes on/off" can still be written as a plain bool.
     PreviewOptions(bool scopes_on) : scopes(scopes_on) {}  // NOLINT(google-explicit-constructor)
 
     bool operator==(const PreviewOptions&) const = default;
+};
+
+// The picture of the compare stage: 8-bit sRGB only, with nothing computed from it.
+struct CompareFrame {
+    StageId stage = StageId::decode;
+    int width = 0;
+    int height = 0;
+    std::vector<std::uint8_t> rgb8;  // width * height * 3 bytes, as PreviewFrame::rgb8
 };
 
 // One finished preview, ready to upload as a texture, together with the histogram of the stage
@@ -49,6 +61,9 @@ struct PreviewFrame {
     // One byte per pixel (clip_mask_high / _low / _gamut bits) of this stage; only if requested.
     // A pixel that an earlier stage clamped (colours outside the gamut, shadows) stays marked.
     std::vector<std::uint8_t> clip_mask;
+    // The compare stage's picture, from the same render as `rgb8` (so the same settings); only if
+    // options.compare_stage was set to a stage other than the viewed one.
+    std::optional<CompareFrame> compare;
     std::vector<StageTime> stages;   // the pipeline stages that ran, with their times
     double total_ms = 0;             // the whole render: copy, pipeline, histogram and sRGB encode
     std::string error;               // if not empty, rendering failed and rgb8 is empty
@@ -70,8 +85,11 @@ struct PreviewFrame {
 // `clip_report`, the stages after `stop_after` also run (on the same buffer, after the picture is
 // encoded) so that every stage's clipping is measured; the frame still shows `stop_after`. With
 // `clip_mask`, the frame carries the out-of-range pixels of `stop_after`. With none of them,
-// nothing extra is computed. Nothing if `stop` was requested before it finished. Throws
-// std::invalid_argument for invalid settings (see to_process_settings).
+// nothing extra is computed. With `compare_stage` (other than `stop_after`), the same render also
+// encodes that stage's picture into `compare`: one pass through the pipeline up to the later of the
+// two, not two renders. Everything else in the frame is exactly what it is without it. Nothing if
+// `stop` was requested before it finished. Throws std::invalid_argument for invalid settings (see
+// to_process_settings).
 [[nodiscard]] std::optional<PreviewFrame> render_preview(const Image& base,
                                                          const EditSettings& settings, int threads,
                                                          std::stop_token stop,
