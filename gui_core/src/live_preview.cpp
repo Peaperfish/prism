@@ -14,23 +14,32 @@ LivePreview::LivePreview(PreviewRenderer::StageRenderFunction render)
 LivePreview::LivePreview(PreviewRenderer::ScopeRenderFunction render)
     : renderer_(std::move(render)) {}
 
+LivePreview::LivePreview(PreviewRenderer::OptionsRenderFunction render)
+    : renderer_(std::move(render)) {}
+
 void LivePreview::update(const std::shared_ptr<const Image>& base, const EditSettings& settings,
-                         StageId stop_after, bool scopes) {
+                         StageId stop_after, PreviewOptions options) {
     if (!base) {
         base_.reset();
         shown_ = submitted_;  // nothing to wait for: a frame still in flight is just ignored
         return;
     }
-    if (base == base_ && settings == settings_ && stop_after == stop_after_ &&
-        (scopes_ || !scopes)) {
-        scopes_ = scopes_ && scopes;  // hidden: the next time they show, ask again
+    // Turning an extra on needs a new frame; turning one off does not (the frame is still right).
+    const bool covered = (options_.scopes || !options.scopes) &&
+                         (options_.clip_report || !options.clip_report) &&
+                         (options_.clip_mask || !options.clip_mask);
+    if (base == base_ && settings == settings_ && stop_after == stop_after_ && covered) {
+        // Hidden: the next time they show, ask again.
+        options_.scopes = options_.scopes && options.scopes;
+        options_.clip_report = options_.clip_report && options.clip_report;
+        options_.clip_mask = options_.clip_mask && options.clip_mask;
         return;
     }
     base_ = base;
     settings_ = settings;
     stop_after_ = stop_after;
-    scopes_ = scopes;
-    submitted_ = renderer_.submit(base_, settings_, stop_after_, scopes);
+    options_ = options;
+    submitted_ = renderer_.submit(base_, settings_, stop_after_, options);
 }
 
 std::optional<PreviewFrame> LivePreview::poll() {

@@ -1,0 +1,373 @@
+#include <gtest/gtest.h>
+
+#include <atomic>
+#include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <limits>
+#include <memory>
+#include <optional>
+#include <thread>
+#include <vector>
+
+#include "prism/gui/clipping.hpp"
+#include "prism/gui/live_preview.hpp"
+#include "prism/gui/preview_renderer.hpp"
+#include "prism/gui/settings.hpp"
+#include "prism/image.hpp"
+
+using prism::Image;
+using prism::gui::ClipFate;
+using prism::gui::ClipReport;
+using prism::gui::compute_clip_report;
+using prism::gui::describe_clipping;
+using prism::gui::EditSettings;
+using prism::gui::StageId;
+
+namespace {
+
+Image solid(int w, int h, float r, float g, float b) {
+    Image img;
+    img.width = w;
+    img.height = h;
+    for (int i = 0; i < w * h; ++i) {
+        img.pixels.insert(img.pixels.end(), {r, g, b});
+    }
+    return img;
+}
+
+// Top half 0.5 grey, bottom half 0.1 grey.
+Image half_and_half(int w, int h) {
+    Image img = solid(w, h, 0.1f, 0.1f, 0.1f);
+    for (std::size_t i = 0; i < img.pixels.size() / 2; ++i) {
+        img.pixels[i] = 0.5f;
+    }
+    return img;
+}
+
+EditSettings with_exposure(float stops) {
+    EditSettings s;
+    s.exposure_stops = stops;
+    return s;
+}
+
+}  // namespace
+
+TEST(Clipping, ImageFullyInRangeClipsNowhere) {
+    EditSettings s;
+    s.exposure_stops = -1.0f;
+    s.saturation = 0.5f;
+    s.contrast = 1.2f;
+    s.curve = prism::gui::CurveKind::gamma;
+    const Image img = half_and_half(40, 40);
+    const ClipReport r = compute_clip_report(img, s);
+
+    EXPECT_EQ(r.sample_count, 1600u);
+    for (const prism::gui::StageClip& row : r.stages) {
+        EXPECT_EQ(row.over.any, 0u);
+        EXPECT_EQ(row.under.any, 0u);
+        EXPECT_EQ(row.over_fate, ClipFate::none);
+        EXPECT_EQ(row.under_fate, ClipFate::none);
+    }
+    EXPECT_FALSE(r.first_over || r.first_over_lost || r.first_under || r.first_under_lost);
+    EXPECT_EQ(describe_clipping(r), "Nothing clips.");
+}
+
+TEST(Clipping, StagesThatDidNotRunAreMarked) {
+    EditSettings s = with_exposure(1.0f);
+    s.contrast = 1.5f;
+    s.contrast_on = false;
+    const ClipReport r = compute_clip_report(half_and_half(8, 8), s);
+    EXPECT_TRUE(r.at(StageId::decode).ran);
+    EXPECT_TRUE(r.at(StageId::exposure).ran);
+    EXPECT_FALSE(r.at(StageId::matrix).ran);      // no matrix
+    EXPECT_FALSE(r.at(StageId::saturation).ran);  // 1.0 is neutral
+    EXPECT_FALSE(r.at(StageId::contrast).ran);    // off
+    EXPECT_FALSE(r.at(StageId::curve).ran);       // none
+    EXPECT_TRUE(r.at(StageId::encode).ran);
+}
+
+TEST(Clipping, ExposureBoostGoesOverWhiteAndIsRecoverableUntilEncode) {
+    // +2 stops: 0.5 -> 2.0 (half of the pixels), 0.1 -> 0.4.
+    const ClipReport r = compute_clip_report(half_and_half(40, 40), with_exposure(2.0f));
+
+    const prism::gui::StageClip& decode = r.at(StageId::decode);
+    EXPECT_EQ(decode.over.any, 0u);
+    EXPECT_EQ(decode.over_fate, ClipFate::none);
+
+    const prism::gui::StageClip& exposure = r.at(StageId::exposure);
+    EXPECT_EQ(exposure.over.any, 800u);
+    EXPECT_EQ(exposure.over.red, 800u);
+    EXPECT_EQ(exposure.over.green, 800u);
+    EXPECT_EQ(exposure.over.blue, 800u);
+    EXPECT_EQ(exposure.over_fate, ClipFate::recoverable);
+    EXPECT_EQ(exposure.under.any, 0u);
+
+    const prism::gui::StageClip& encode = r.at(StageId::encode);
+    EXPECT_EQ(encode.over.any, 800u);
+    EXPECT_EQ(encode.over_fate, ClipFate::lost);
+
+    EXPECT_EQ(r.first_over, StageId::exposure);
+    EXPECT_EQ(r.first_over_lost, StageId::encode);
+    EXPECT_FALSE(r.first_under || r.first_under_lost);
+    EXPECT_EQ(describe_clipping(r),
+              "Highlights first clip at Exposure (50% of pixels); "
+              "still recoverable until Output encode.");
+}
+
+TEST(Clipping, ValuesClampedOnlyAtOutputEncodeAreLostThere) {
+    // Decoded values above white (a float source) and nothing else in the pipeline.
+    const ClipReport r = compute_clip_report(solid(10, 10, 1.5f, 0.5f, 0.5f), EditSettings{});
+    EXPECT_EQ(r.at(StageId::decode).over.any, 100u);
+    EXPECT_EQ(r.at(StageId::decode).over.red, 100u);
+    EXPECT_EQ(r.at(StageId::decode).over.green, 0u);
+    EXPECT_EQ(r.at(StageId::decode).over_fate, ClipFate::recoverable);
+    EXPECT_EQ(r.at(StageId::encode).over.any, 100u);
+    EXPECT_EQ(r.at(StageId::encode).over_fate, ClipFate::lost);
+    EXPECT_EQ(r.first_over_lost, StageId::encode);
+}
+
+TEST(Clipping, AToneCurveThatBringsHighlightsBackLosesNothing) {
+    // 2.0 through Reinhard (white 4) is 0.75: in range again before the encode.
+    EditSettings s = with_exposure(2.0f);
+    s.curve = prism::gui::CurveKind::reinhard;
+    const ClipReport r = compute_clip_report(half_and_half(40, 40), s);
+    EXPECT_EQ(r.at(StageId::exposure).over_fate, ClipFate::recoverable);
+    EXPECT_EQ(r.at(StageId::curve).over.any, 0u);
+    EXPECT_EQ(r.at(StageId::encode).over.any, 0u);
+    EXPECT_EQ(r.first_over, StageId::exposure);
+    EXPECT_FALSE(r.first_over_lost);
+    EXPECT_EQ(describe_clipping(r),
+              "Highlights first clip at Exposure (50% of pixels); "
+              "a later stage brings them back, so nothing is lost.");
+}
+
+TEST(Clipping, NegativeValuesFromAMatrixAreLostAtSaturation) {
+    // R' = R - G: (0.2, 0.5, 0.1) -> (-0.3, 0.5, 0.1).
+    EditSettings s;
+    s.matrix = prism::gui::MatrixFile{{}, {1, -1, 0, 0, 1, 0, 0, 0, 1}};
+    s.saturation = 1.5f;
+    const ClipReport r = compute_clip_report(solid(10, 10, 0.2f, 0.5f, 0.1f), s);
+
+    EXPECT_EQ(r.at(StageId::matrix).under.any, 100u);
+    EXPECT_EQ(r.at(StageId::matrix).under.red, 100u);
+    EXPECT_EQ(r.at(StageId::matrix).under.blue, 0u);
+    EXPECT_EQ(r.at(StageId::matrix).under_fate, ClipFate::recoverable);
+    EXPECT_EQ(r.at(StageId::saturation).under.any, 100u);
+    EXPECT_EQ(r.at(StageId::saturation).under_fate, ClipFate::lost);
+    EXPECT_EQ(r.at(StageId::contrast).under_fate, ClipFate::none);  // clamped away already
+    EXPECT_EQ(r.first_under, StageId::matrix);
+    EXPECT_EQ(r.first_under_lost, StageId::saturation);
+    EXPECT_EQ(describe_clipping(r),
+              "Shadows first clip at Colour matrix (100% of pixels); "
+              "still recoverable until Saturation.");
+}
+
+TEST(Clipping, ContrastKeepsNegativesRecoverableAndTheCurveClampsThem) {
+    EditSettings s;
+    s.matrix = prism::gui::MatrixFile{{}, {1, -1, 0, 0, 1, 0, 0, 0, 1}};
+    s.contrast = 1.3f;
+    s.curve = prism::gui::CurveKind::gamma;
+    const ClipReport r = compute_clip_report(solid(10, 10, 0.2f, 0.5f, 0.1f), s);
+    EXPECT_EQ(r.at(StageId::contrast).under_fate, ClipFate::recoverable);
+    EXPECT_EQ(r.at(StageId::curve).under_fate, ClipFate::lost);
+    EXPECT_EQ(r.at(StageId::curve).under.any, 100u);
+    EXPECT_EQ(r.first_under_lost, StageId::curve);
+}
+
+TEST(Clipping, HighlightsAndShadowsAreDescribedTogether) {
+    // Left pixel above white, right pixel below black.
+    Image img;
+    img.width = 2;
+    img.height = 1;
+    img.pixels = {1.5f, 0.5f, 0.5f, -0.2f, 0.5f, 0.5f};
+    const ClipReport r = compute_clip_report(img, EditSettings{});
+    EXPECT_EQ(
+        describe_clipping(r),
+        "Highlights first clip at Decode (50% of pixels); still recoverable until Output encode. "
+        "Shadows first clip at Decode (50% of pixels); still recoverable until Output encode.");
+}
+
+TEST(Clipping, NaNCountsAsNeitherAndInfinityAsOutOfRange) {
+    Image img;
+    img.width = 3;
+    img.height = 1;
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const float inf = std::numeric_limits<float>::infinity();
+    img.pixels = {nan, nan, nan, inf, 0.5f, 0.5f, -inf, 0.5f, 0.5f};
+    const ClipReport r = compute_clip_report(img, EditSettings{});
+    EXPECT_EQ(r.at(StageId::decode).over.any, 1u);
+    EXPECT_EQ(r.at(StageId::decode).under.any, 1u);
+}
+
+TEST(Clipping, AnEmptyOrTinyImageDoesNotCrash) {
+    const ClipReport empty = compute_clip_report(Image{}, with_exposure(2.0f));
+    EXPECT_EQ(empty.sample_count, 0u);
+    EXPECT_EQ(describe_clipping(empty), "Nothing clips.");
+
+    const ClipReport one = compute_clip_report(solid(1, 1, 3.0f, 3.0f, 3.0f), with_exposure(1.0f));
+    EXPECT_EQ(one.sample_count, 1u);
+    EXPECT_EQ(one.at(StageId::exposure).over.any, 1u);
+
+    const ClipReport thin = compute_clip_report(solid(1, 5, 0.5f, 0.5f, 0.5f), with_exposure(2.0f));
+    EXPECT_EQ(thin.sample_count, 5u);
+    EXPECT_EQ(thin.at(StageId::exposure).over.any, 5u);
+
+    // Mismatched buffer: the stages reject it as ever.
+    Image broken = solid(2, 2, 0.5f, 0.5f, 0.5f);
+    broken.pixels.pop_back();
+    EXPECT_THROW((void)compute_clip_report(broken, with_exposure(1.0f)), std::invalid_argument);
+}
+
+TEST(Clipping, ABigImageIsSampledOnAGrid) {
+    // 1000 x 1000 = 1M pixels: stride 2, 500 x 500 samples.
+    const ClipReport r =
+        compute_clip_report(solid(1000, 1000, 0.5f, 0.5f, 0.5f), with_exposure(2.0f));
+    EXPECT_EQ(r.stride, 2);
+    EXPECT_EQ(r.sample_count, 250'000u);
+    EXPECT_EQ(r.at(StageId::exposure).over.any, 250'000u);
+}
+
+TEST(Clipping, PercentsAreShortAndNeverRoundDownToNothing) {
+    using prism::gui::format_clip_percent;
+    EXPECT_EQ(format_clip_percent(0, 100), "0%");
+    EXPECT_EQ(format_clip_percent(1, 100000), "<0.1%");
+    EXPECT_EQ(format_clip_percent(21, 1000), "2.1%");
+    EXPECT_EQ(format_clip_percent(1, 2), "50%");
+    EXPECT_EQ(format_clip_percent(5, 0), "0%");
+}
+
+TEST(Clipping, TheClipMaskMarksPixelsOutOfRange) {
+    Image img;
+    img.width = 4;
+    img.height = 1;
+    img.pixels = {0.5f, 0.5f, 0.5f, 1.5f, 0.5f, 0.5f, 0.5f, -0.1f, 0.5f, 2.0f, -1.0f, 0.5f};
+    std::vector<std::uint8_t> mask;
+    prism::gui::compute_clip_mask(img, 1, mask);
+    EXPECT_EQ(mask,
+              (std::vector<std::uint8_t>{0, prism::gui::clip_mask_high, prism::gui::clip_mask_low,
+                                         prism::gui::clip_mask_high | prism::gui::clip_mask_low}));
+    prism::gui::compute_clip_mask(Image{}, 1, mask);
+    EXPECT_TRUE(mask.empty());
+}
+
+TEST(Clipping, TheStageClampTable) {
+    using prism::gui::ClipDirection;
+    using prism::gui::stage_clamps;
+    for (const prism::gui::StageInfo& info : prism::gui::pipeline_stages()) {
+        const bool lows = info.id == StageId::saturation || info.id == StageId::curve ||
+                          info.id == StageId::encode;
+        EXPECT_EQ(stage_clamps(info.id, ClipDirection::shadows), lows) << info.name;
+        EXPECT_EQ(stage_clamps(info.id, ClipDirection::highlights), info.id == StageId::encode)
+            << info.name;
+    }
+}
+
+// --- In a preview frame ------------------------------------------------------------------------
+
+TEST(ClippingPreview, TheFrameCarriesTheReportOnlyWhenAskedAndMatchesThePicture) {
+    const Image base = half_and_half(32, 32);
+    const EditSettings s = with_exposure(2.0f);
+
+    const auto plain = prism::gui::render_preview(base, s, 1, {});
+    ASSERT_TRUE(plain);
+    EXPECT_FALSE(plain->clips);
+    EXPECT_TRUE(plain->clip_mask.empty());
+
+    prism::gui::PreviewOptions options;
+    options.clip_report = true;
+    options.clip_mask = true;
+    const auto with =
+        prism::gui::render_preview(base, s, 1, {}, {}, prism::gui::final_stage, options);
+    ASSERT_TRUE(with);
+    ASSERT_TRUE(with->clips);
+    EXPECT_EQ(*with->clips, compute_clip_report(base, s, 1));
+    EXPECT_EQ(with->rgb8, plain->rgb8);
+    EXPECT_EQ(with->histogram, plain->histogram);
+    ASSERT_EQ(with->clip_mask.size(), 32u * 32u);
+    EXPECT_EQ(with->clip_mask.front(), prism::gui::clip_mask_high);
+    EXPECT_EQ(with->clip_mask.back(), 0);
+}
+
+TEST(ClippingPreview, ViewingAnEarlierStageStillReportsEveryStage) {
+    const Image base = half_and_half(32, 32);
+    EditSettings s = with_exposure(2.0f);
+    s.saturation = 1.2f;
+    s.curve = prism::gui::CurveKind::filmic;
+    const ClipReport expected = compute_clip_report(base, s, 1);
+
+    prism::gui::PreviewOptions options;
+    options.clip_report = true;
+    options.clip_mask = true;
+    for (const prism::gui::StageInfo& info : prism::gui::pipeline_stages()) {
+        const auto plain = prism::gui::render_preview(base, s, 1, {}, {}, info.id, {});
+        const auto with = prism::gui::render_preview(base, s, 1, {}, {}, info.id, options);
+        ASSERT_TRUE(plain && with) << info.name;
+        ASSERT_TRUE(with->clips) << info.name;
+        EXPECT_EQ(*with->clips, expected) << info.name;
+        EXPECT_EQ(with->rgb8, plain->rgb8) << info.name;  // the picture is still the viewed stage
+        EXPECT_EQ(with->stage, info.id);
+        // The mask is of the viewed stage: above white after exposure, back in range after the
+        // curve.
+        const std::uint8_t first = with->clip_mask.front();
+        if (info.id == StageId::exposure || info.id == StageId::saturation) {
+            EXPECT_EQ(first, prism::gui::clip_mask_high) << info.name;
+        }
+        if (info.id == StageId::curve || info.id == StageId::encode) {
+            EXPECT_EQ(first, 0) << info.name;
+        }
+    }
+}
+
+TEST(ClippingPreview, ARequestedStopCancelsTheReportToo) {
+    std::stop_source source;
+    source.request_stop();
+    prism::gui::PreviewOptions options;
+    options.clip_report = true;
+    EXPECT_FALSE(prism::gui::render_preview(half_and_half(8, 8), with_exposure(1.0f), 1,
+                                            source.get_token(), {}, prism::gui::final_stage,
+                                            options));
+}
+
+TEST(ClippingPreview, LivePreviewAsksAgainOnlyWhenClippingTurnsOn) {
+    std::atomic<int> calls{0};
+    std::atomic<bool> last_report{false};
+    prism::gui::LivePreview preview(prism::gui::PreviewRenderer::OptionsRenderFunction(
+        [&](const Image&, const EditSettings&, StageId, const prism::gui::PreviewOptions& o,
+            std::stop_token) {
+            ++calls;
+            last_report = o.clip_report;
+            prism::gui::PreviewFrame f;
+            f.width = 1;
+            f.height = 1;
+            f.rgb8 = {0, 0, 0};
+            return std::optional<prism::gui::PreviewFrame>(f);
+        }));
+    const auto base = std::make_shared<const Image>(solid(2, 2, 0.5f, 0.5f, 0.5f));
+    const EditSettings s = with_exposure(1.0f);
+    const auto next = [&] {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (auto f = preview.poll()) {
+                return true;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return false;
+    };
+
+    prism::gui::PreviewOptions off;
+    prism::gui::PreviewOptions on;
+    on.clip_report = true;
+    preview.update(base, s, prism::gui::final_stage, off);
+    ASSERT_TRUE(next());
+    EXPECT_FALSE(last_report.load());
+    preview.update(base, s, prism::gui::final_stage, on);
+    EXPECT_TRUE(preview.rendering());
+    ASSERT_TRUE(next());
+    EXPECT_TRUE(last_report.load());
+    EXPECT_EQ(calls.load(), 2);
+    preview.update(base, s, prism::gui::final_stage, off);  // hidden: the frame is still right
+    EXPECT_FALSE(preview.rendering());
+    EXPECT_EQ(calls.load(), 2);
+}

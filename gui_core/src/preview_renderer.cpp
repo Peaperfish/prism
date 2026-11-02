@@ -24,30 +24,84 @@ std::optional<Image> render_stage_image(const Image& base, const EditSettings& s
 std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings& settings,
                                            int threads, std::stop_token stop,
                                            const StageCallback& on_stage, StageId stop_after,
-                                           bool scopes) {
+                                           PreviewOptions options) {
     using Clock = std::chrono::steady_clock;
     const auto start = Clock::now();
     const ProcessSettings process_settings = to_process_settings(settings, stop_after);
 
     PreviewFrame frame;
     frame.stage = stop_after;
+    // Decided once here; the per-stage callback below checks the recorder, never a pixel loop.
+    std::optional<ClipRecorder> recorder;
+    if (options.clip_report) {
+        recorder.emplace(base.width, base.height);
+    }
+
+    // Everything that reads the image at the viewed stage: the picture and its histogram, then
+    // the scopes and the clip mask, which are only made if asked for.
+    const auto show = [&](const Image& shown) {
+        frame.width = shown.width;
+        frame.height = shown.height;
+        encode_srgb8_with_histogram(shown, threads, frame.rgb8, frame.histogram);
+        if (options.scopes) {
+            frame.scopes = compute_scopes(frame.rgb8, frame.width, frame.height);
+        }
+        if (options.clip_mask) {
+            compute_clip_mask(shown, threads, frame.clip_mask);
+        }
+    };
+    const auto finish = [&] {
+        frame.total_ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+        return std::move(frame);
+    };
+
+    // The stages after `stop_after` only run to measure their clipping.
+    const auto run_rest = [&](Image& img) {
+        if (!recorder) {
+            return true;
+        }
+        const auto record_stage = [&](const StageTime& t) {
+            if (const std::optional<StageId> id = stage_from_name(t.name)) {
+                recorder->stage_done(*id, img);
+            }
+        };
+        const ProcessSettings rest =
+            process_settings_after(to_process_settings(settings), stop_after);
+        if (process(img, rest, threads, stop, record_stage) == ProcessResult::cancelled ||
+            stop.stop_requested()) {
+            return false;
+        }
+        recorder->finish();
+        frame.clips = recorder->report();
+        return true;
+    };
+
     if (stop_after == StageId::decode) {
         if (stop.stop_requested()) {
             return std::nullopt;
         }
-        frame.width = base.width;
-        frame.height = base.height;
-        encode_srgb8_with_histogram(base, threads, frame.rgb8, frame.histogram);
-        if (scopes) {
-            frame.scopes = compute_scopes(frame.rgb8, frame.width, frame.height);
+        show(base);
+        if (recorder) {
+            Image img = base;  // the rest of the pipeline works in place on a copy
+            recorder->decoded(img);
+            if (!run_rest(img)) {
+                return std::nullopt;
+            }
         }
-        frame.total_ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
-        return frame;
+        return finish();
     }
 
     Image img = base;  // the base is shared and never changes; the pipeline works in place
+    if (recorder) {
+        recorder->decoded(img);
+    }
     const auto record = [&](const StageTime& t) {
         frame.stages.push_back(t);
+        if (recorder) {
+            if (const std::optional<StageId> id = stage_from_name(t.name)) {
+                recorder->stage_done(*id, img);
+            }
+        }
         if (on_stage) {
             on_stage(t);
         }
@@ -56,21 +110,19 @@ std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings
         stop.stop_requested()) {
         return std::nullopt;
     }
-    frame.width = img.width;
-    frame.height = img.height;
-    encode_srgb8_with_histogram(img, threads, frame.rgb8, frame.histogram);
-    if (scopes) {
-        frame.scopes = compute_scopes(frame.rgb8, frame.width, frame.height);
+    show(img);
+    if (!run_rest(img)) {
+        return std::nullopt;
     }
-    frame.total_ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
-    return frame;
+    return finish();
 }
 
 PreviewRenderer::PreviewRenderer(int threads)
-    : PreviewRenderer([threads](const Image& base, const EditSettings& settings, StageId stop_after,
-                                bool scopes, std::stop_token stop) {
-          return render_preview(base, settings, threads, stop, {}, stop_after, scopes);
-      }) {}
+    : PreviewRenderer(OptionsRenderFunction(
+          [threads](const Image& base, const EditSettings& settings, StageId stop_after,
+                    const PreviewOptions& options, std::stop_token stop) {
+              return render_preview(base, settings, threads, stop, {}, stop_after, options);
+          })) {}
 
 PreviewRenderer::PreviewRenderer(RenderFunction render)
     : PreviewRenderer(
@@ -78,13 +130,22 @@ PreviewRenderer::PreviewRenderer(RenderFunction render)
                                   std::stop_token stop) { return r(base, settings, stop); }) {}
 
 PreviewRenderer::PreviewRenderer(StageRenderFunction render)
-    : PreviewRenderer([r = std::move(render)](const Image& base, const EditSettings& settings,
-                                              StageId stop_after, bool, std::stop_token stop) {
-          return r(base, settings, stop_after, stop);
-      }) {}
+    : PreviewRenderer(ScopeRenderFunction(
+          [r = std::move(render)](const Image& base, const EditSettings& settings,
+                                  StageId stop_after, bool, std::stop_token stop) {
+              return r(base, settings, stop_after, stop);
+          })) {}
+
+PreviewRenderer::PreviewRenderer(ScopeRenderFunction render)
+    : PreviewRenderer(OptionsRenderFunction(
+          [r = std::move(render)](const Image& base, const EditSettings& settings,
+                                  StageId stop_after, const PreviewOptions& options,
+                                  std::stop_token stop) {
+              return r(base, settings, stop_after, options.scopes, stop);
+          })) {}
 
 // The worker starts last, in the constructor's body, once render_ is set.
-PreviewRenderer::PreviewRenderer(ScopeRenderFunction render) : render_(std::move(render)) {
+PreviewRenderer::PreviewRenderer(OptionsRenderFunction render) : render_(std::move(render)) {
     worker_ = std::jthread([this](std::stop_token thread_stop) { run(thread_stop); });
 }
 
@@ -99,7 +160,7 @@ PreviewRenderer::~PreviewRenderer() {
 
 std::uint64_t PreviewRenderer::submit(std::shared_ptr<const Image> base,
                                       const EditSettings& settings, StageId stop_after,
-                                      bool scopes) {
+                                      PreviewOptions options) {
     if (!base) {
         throw std::invalid_argument("PreviewRenderer::submit: no image");
     }
@@ -108,7 +169,7 @@ std::uint64_t PreviewRenderer::submit(std::shared_ptr<const Image> base,
         std::lock_guard lock(mutex_);
         generation = ++latest_generation_;
         // Replaces a waiting request and supersedes a running one.
-        pending_ = Request{generation, std::move(base), settings, stop_after, scopes};
+        pending_ = Request{generation, std::move(base), settings, stop_after, options};
         render_stop_.request_stop();
     }
     wake_.notify_one();
@@ -144,8 +205,8 @@ void PreviewRenderer::run(std::stop_token thread_stop) {
         lock.unlock();  // never hold the lock while rendering, so submit() and poll() don't wait
         std::optional<PreviewFrame> frame;
         try {
-            frame = render_(*request.base, request.settings, request.stop_after, request.scopes,
-                             render_stop);
+            frame = render_(*request.base, request.settings, request.stop_after, request.options,
+                            render_stop);
         } catch (const std::exception& e) {
             // An exception must not leave the thread (that would call std::terminate).
             frame = PreviewFrame{};
