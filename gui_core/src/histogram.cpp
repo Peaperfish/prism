@@ -32,6 +32,10 @@ void record_sample(float v, StageHistogram::Counts& bins, ChannelClips& clips) n
         ++clips.under_black;
     } else if (v > 1.0f) {
         ++clips.over_white;
+    } else {
+        // NaN: linear_to_srgb8 shows it as black, so count it as black rather than losing it
+        // (every pixel is counted once per channel, in a bin or as a clip).
+        ++bins[0];
     }
 }
 

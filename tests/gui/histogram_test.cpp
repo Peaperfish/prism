@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <numeric>
 #include <stdexcept>
 #include <vector>
@@ -199,4 +200,41 @@ TEST(StageHistogram, RejectsInconsistentImageAndHandlesEmptyImage) {
     bad.height = 2;
     bad.pixels = {0.1f, 0.2f, 0.3f};
     EXPECT_THROW((void)prism::gui::compute_stage_histogram(bad), std::invalid_argument);
+}
+
+TEST(StageHistogram, NaNCountsAsBlackLikeTheEncodeAndInfinitiesAsClips) {
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const float inf = std::numeric_limits<float>::infinity();
+    // 3 pixels: (NaN, 0.5, 0.5), (+inf, +inf, +inf), (-inf, 0.0, 1.0)
+    prism::Image img;
+    img.width = 3;
+    img.height = 1;
+    img.pixels = {nan, 0.5f, 0.5f, inf, inf, inf, -inf, 0.0f, 1.0f};
+
+    // The display encode turns NaN into 0, so the histogram must show it as black too.
+    EXPECT_EQ(prism::encode_srgb8(img, 1)[0], 0);
+
+    const StageHistogram h = prism::gui::compute_stage_histogram(img, 1);
+    EXPECT_EQ(h.pixel_count, 3u);
+    EXPECT_EQ(h.red[0], 1u);  // the NaN
+    EXPECT_EQ(h.red_clips, (ChannelClips{1, 1}));
+    EXPECT_EQ(sum_bins(h.red), 1u);
+    EXPECT_EQ(h.green[128], 1u);
+    EXPECT_EQ(h.green[0], 1u);
+    EXPECT_EQ(h.green_clips, (ChannelClips{0, 1}));
+    EXPECT_EQ(h.blue[128], 1u);
+    EXPECT_EQ(h.blue[255], 1u);
+    EXPECT_EQ(h.blue_clips, (ChannelClips{0, 1}));
+    // Every channel accounts for every pixel exactly once, bins plus clips.
+    EXPECT_EQ(sum_bins(h.red) + h.red_clips.under_black + h.red_clips.over_white, h.pixel_count);
+    EXPECT_EQ(sum_bins(h.green) + h.green_clips.under_black + h.green_clips.over_white,
+              h.pixel_count);
+    EXPECT_EQ(sum_bins(h.blue) + h.blue_clips.under_black + h.blue_clips.over_white,
+              h.pixel_count);
+    // Luminance: pixel 0 = NaN-bearing -> NaN -> black bin; pixel 1 = +inf -> over; pixel 2 mixes
+    // -inf and +0 and 1 -> -inf -> under.
+    EXPECT_EQ(h.luminance[0], 1u);
+    EXPECT_EQ(h.luminance_clips, (ChannelClips{1, 1}));
+    EXPECT_EQ(sum_bins(h.luminance) + h.luminance_clips.under_black + h.luminance_clips.over_white,
+              h.pixel_count);
 }

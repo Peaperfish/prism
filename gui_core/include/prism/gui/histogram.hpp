@@ -11,6 +11,7 @@ namespace prism::gui {
 // Out-of-range sample counts for one channel, measured on the stage's float values before the
 // 8-bit sRGB encode clamps [0, 1] to 0..255. Kept separate from the 256 in-range bins so clipped
 // pixels are distinguished from in-range black (0) and white (1) and do not spike the end bins.
+// +inf and -inf count as over-white and under-black; NaN counts in bin 0, as the encode shows it.
 struct ChannelClips {
     std::uint64_t under_black = 0;  // values < 0
     std::uint64_t over_white = 0;   // values > 1
