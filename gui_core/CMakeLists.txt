@@ -18,6 +18,7 @@ add_library(prism_gui_core STATIC
   src/settings.cpp
   src/slider_gesture.cpp
   src/stage_controls.cpp
+  src/theme_tokens.cpp
   src/wheel_scaling.cpp)
 
 target_include_directories(prism_gui_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
