@@ -17,11 +17,24 @@ string(REPLACE "\"" "\\\"" prism_notice "${prism_notice}")
 set(PRISM_ABOUT_REQUIRED_NOTICE "\"${prism_notice}\"")
 configure_file(about_info.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/about_info.cpp @ONLY)
 
+# The interface font (Inter), compiled in as byte arrays (fonts.hpp): the app is one file that
+# works wherever it is copied to, with no font path to resolve. Re-run when a font file changes.
+set(prism_inter_dir ${PROJECT_SOURCE_DIR}/third_party/fonts/inter)
+foreach(face Regular SemiBold)
+  string(TOUPPER ${face} var)
+  set(file ${prism_inter_dir}/Inter-${face}.ttf)
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${file})
+  file(READ ${file} PRISM_FONT_INTER_${var} HEX)
+  string(REGEX REPLACE "(..)" "0x\\1," PRISM_FONT_INTER_${var} "${PRISM_FONT_INTER_${var}}")
+endforeach()
+configure_file(fonts.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/fonts.cpp @ONLY)
+
 # WIN32: a Windows GUI program, started without a console window. SDL_main.h still gives main()
 # UTF-8 arguments (main.cpp). MACOSX_BUNDLE: on macOS it is Prism.app (see below).
 add_executable(prism_gui WIN32 MACOSX_BUNDLE
   app.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/about_info.cpp
+  ${CMAKE_CURRENT_BINARY_DIR}/fonts.cpp
   file_dialogs.cpp
   main.cpp
   preview_texture.cpp

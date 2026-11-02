@@ -58,7 +58,7 @@ codesign --verify --strict --verbose=2 "$stage/prism"
 "$stage/prism" --version
 
 # Prism's licence, with its Required Notice, and the README that points to it.
-for f in LICENSE.md THIRD_PARTY_NOTICES.txt README.txt; do
+for f in LICENSE.md THIRD_PARTY_NOTICES.txt README.txt licenses/Inter/OFL.txt; do
   if [[ ! -f "$stage/$f" ]]; then
     echo "error: the download has no $f" >&2
     exit 1

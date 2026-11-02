@@ -12,7 +12,7 @@ What's in here
 @PRISM_README_FILES@
   LICENSE.md                Prism's licence (PolyForm Noncommercial 1.0.0)
   THIRD_PARTY_NOTICES.txt   the third-party components in Prism and their licences
-  licenses/LibRaw/          LibRaw's LICENSE.CDDL and COPYRIGHT, unchanged
+  licenses/LibRaw/          LibRaw's LICENSE.CDDL and COPYRIGHT, unchanged@PRISM_README_LICENCES_INTER@
 
 Opening Prism the first time
 ----------------------------

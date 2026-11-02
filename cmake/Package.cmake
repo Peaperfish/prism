@@ -5,16 +5,25 @@
 #   Windows: prism_gui.exe, prism.exe
 #   both:    LICENSE.md, THIRD_PARTY_NOTICES.txt, README.txt,
 #            licenses/LibRaw/LICENSE.CDDL and COPYRIGHT
+#   GUI:     licenses/Inter/OFL.txt
 #
-# LibRaw's two files are installed from the source tree the build compiled, byte for byte.
+# LibRaw's two files are installed from the source tree the build compiled, byte for byte, and
+# Inter's licence from third_party/fonts/inter/ (the font itself is inside the app).
 
 install(TARGETS prism RUNTIME DESTINATION .)
 if(PRISM_BUILD_GUI)
   install(TARGETS prism_gui RUNTIME DESTINATION . BUNDLE DESTINATION .)
+  install(FILES ${PROJECT_SOURCE_DIR}/third_party/fonts/inter/OFL.txt DESTINATION licenses/Inter)
 endif()
 install(FILES ${PROJECT_SOURCE_DIR}/LICENSE.md ${PRISM_THIRD_PARTY_NOTICES} DESTINATION .)
 install(FILES ${libraw_SOURCE_DIR}/LICENSE.CDDL ${libraw_SOURCE_DIR}/COPYRIGHT
         DESTINATION licenses/LibRaw)
+
+set(PRISM_README_LICENCES_INTER "")
+if(PRISM_BUILD_GUI)
+  set(PRISM_README_LICENCES_INTER
+"\n  licenses/Inter/           the licence of Inter, the interface font built into the app")
+endif()
 
 string(LENGTH "Prism ${PROJECT_VERSION}" prism_length)
 string(REPEAT "=" ${prism_length} PRISM_README_UNDERLINE)

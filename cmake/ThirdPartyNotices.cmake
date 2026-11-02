@@ -1,5 +1,5 @@
-# Writes THIRD_PARTY_NOTICES.txt for what this configuration actually links: stb always, SDL3 and
-# Dear ImGui with PRISM_BUILD_GUI, LibRaw with PRISM_WITH_LIBRAW. Licence texts are read from the
+# Writes THIRD_PARTY_NOTICES.txt for what this configuration actually links: stb always, SDL3,
+# Dear ImGui and Inter with PRISM_BUILD_GUI, LibRaw with PRISM_WITH_LIBRAW. Licence texts are read from the
 # downloaded sources being built (and SDL's notices only for the files SDL compiles here), never
 # typed in by hand. LibRaw's own licence files are not copied into it: the release ships them
 # unchanged in licenses/LibRaw/ and this file points there.
@@ -149,6 +149,19 @@ Dear ImGui embeds the fonts Prism's interface uses, both under the MIT licence:
 It also contains stb_truetype, stb_rect_pack and stb_textedit by Sean Barrett (MIT or
 public domain), and a list of Japanese kanji under CC BY 4.0
 (https://creativecommons.org/licenses/by/4.0/), which Prism doesn't use.")
+endif()
+
+# --- Inter (the interface font) -----------------------------------------------------------------
+if(PRISM_BUILD_GUI)
+  file(READ ${PROJECT_SOURCE_DIR}/third_party/fonts/inter/OFL.txt prism_inter_licence)
+  string(STRIP "${prism_inter_licence}" prism_inter_licence)
+  list(APPEND PRISM_THIRD_PARTY_COMPONENTS "Inter 4.1|SIL OFL 1.1")
+  prism_notice_section(prism_notices "Inter 4.1" "\
+https://github.com/rsms/inter
+Licence: SIL Open Font License 1.1. The Regular and SemiBold fonts are unmodified and compiled
+into the app as its interface font.
+
+${prism_inter_licence}")
 endif()
 
 # --- stb (image files) --------------------------------------------------------------------------

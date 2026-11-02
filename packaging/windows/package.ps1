@@ -46,7 +46,7 @@ foreach ($exe in 'prism_gui.exe', 'prism.exe') {
 if ($LASTEXITCODE -ne 0) { throw 'prism.exe --version failed' }
 
 # Prism's licence, with its Required Notice, and the README that points to it.
-foreach ($f in 'LICENSE.md', 'THIRD_PARTY_NOTICES.txt', 'README.txt') {
+foreach ($f in 'LICENSE.md', 'THIRD_PARTY_NOTICES.txt', 'README.txt', 'licenses\Inter\OFL.txt') {
     if (-not (Test-Path (Join-Path $stage $f) -PathType Leaf)) { throw "the download has no $f" }
 }
 if (-not (Select-String -Quiet -Pattern '^Required Notice: ' -Path (Join-Path $stage 'LICENSE.md'))) {
