@@ -1345,6 +1345,14 @@ void App::draw_pipeline() {
         if (row_hovered && !over_indicator) {
             ImGui::SetTooltip("%s", std::string(stage.description).c_str());
         }
+        if (gui::hidden_by_view(session_.settings(), stage.id, viewed_stage_)) {
+            // An edit after the viewed stage changes the photo but not what is on screen.
+            ImGui::Indent(row_h + ImGui::GetStyle().ItemSpacing.x);
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextDisabled("%s", gui::view_hint(viewed_stage_).c_str());
+            ImGui::PopTextWrapPos();
+            ImGui::Unindent(row_h + ImGui::GetStyle().ItemSpacing.x);
+        }
         if (const std::optional<gui::SimpleControl> slider = gui::stage_slider(stage.id)) {
             ImGui::Indent(row_h + ImGui::GetStyle().ItemSpacing.x);
             draw_slider(std::string(stage.slug).c_str(), *slider, true);
