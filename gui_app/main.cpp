@@ -10,6 +10,7 @@
 #include <string>
 
 #include "app.hpp"
+#include "theme.hpp"
 #include "prism/gui/wheel_scaling.hpp"
 #include "prism/utf8_path.hpp"
 #include "imgui.h"
@@ -70,11 +71,10 @@ int main(int argc, char** argv) {
         io.IniFilename = nullptr;
     }
 
-    // ImGui's scalable font (ProggyForever) rather than its 13 px bitmap font, which would be
-    // blurry when scaled up (interface size above 100%, or a display at 150% on Windows). ImGui
-    // rasterises it at the size and pixel density in use, so text is crisp on a Retina screen
-    // too, and stays so when the window moves between displays.
-    io.Fonts->AddFontDefaultVector();
+    // Inter, compiled into the executable. ImGui rasterises the vector font at the size and pixel
+    // density in use, so text is crisp when scaled up (interface size above 100%, or a display at
+    // 150% on Windows), on a Retina screen, and when the window moves between displays.
+    prism::gui_app::load_fonts(io);
 
     ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);
     ImGui_ImplSDLRenderer3_Init(renderer);
@@ -129,7 +129,8 @@ int main(int argc, char** argv) {
 
             SDL_SetRenderScale(renderer, io.DisplayFramebufferScale.x,
                                io.DisplayFramebufferScale.y);
-            SDL_SetRenderDrawColorFloat(renderer, 0.1f, 0.1f, 0.1f, 1.0f);
+            const ImVec4 clear = app.clear_colour();
+            SDL_SetRenderDrawColorFloat(renderer, clear.x, clear.y, clear.z, 1.0f);
             SDL_RenderClear(renderer);
             ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), renderer);
             SDL_RenderPresent(renderer);

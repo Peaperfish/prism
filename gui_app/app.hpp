@@ -48,6 +48,9 @@ public:
     // flight); otherwise the main loop sleeps until the next event.
     [[nodiscard]] bool animating() const;
 
+    // What the window is cleared to before ImGui draws (the current theme's window colour).
+    [[nodiscard]] ImVec4 clear_colour() const;
+
 private:
     // Asks for `path` to be opened. The open itself happens a frame later, so the window can
     // first show "Opening ..." (decoding a large RAW file takes about a second).

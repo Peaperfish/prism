@@ -2,6 +2,7 @@
 
 #include "imgui.h"
 #include "prism/gui/preferences.hpp"
+#include "prism/gui/theme_tokens.hpp"
 
 namespace prism::gui_app {
 
@@ -57,13 +58,25 @@ struct Palette {
     ImU32 clip_overlay_under;
     // Colours outside sRGB, drawn as diagonal stripes so the colour underneath stays visible.
     ImU32 clip_overlay_gamut;
+    // What the window is cleared to behind everything ImGui draws: the theme's window colour, so
+    // the edge of a resize never flashes a different grey.
+    ImVec4 window_clear;
 };
 
 [[nodiscard]] const Palette& palette(gui::Theme theme);
 
+// The interface fonts, loaded once at start-up from the copies compiled into the executable.
+struct Fonts {
+    ImFont* regular = nullptr;
+    ImFont* semibold = nullptr;  // section headers
+};
+void load_fonts(ImGuiIO& io);
+[[nodiscard]] const Fonts& fonts();
+
 // Rebuilds ImGui's style for `theme`, with every size multiplied by `scale` (sizes can't be
 // rescaled in place, so the style is made from scratch each time). Fonts are scaled separately
-// through style.FontScaleDpi, which this sets to `scale` too.
+// through style.FontScaleDpi, which this sets to `scale` too. Colours, spacing, rounding and the body
+// font size come from the theme's tokens (prism/gui/theme_tokens.hpp).
 void apply_style(gui::Theme theme, float scale);
 
 }  // namespace prism::gui_app

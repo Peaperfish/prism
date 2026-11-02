@@ -1,5 +1,9 @@
 #include "theme.hpp"
 
+#include <span>
+
+#include "fonts.hpp"
+
 namespace prism::gui_app {
 
 namespace {
@@ -8,78 +12,81 @@ ImVec4 grey(float v, float alpha = 1.0f) {
     return ImVec4(v, v, v, alpha);
 }
 
-// ImGui's dark style, with neutral greys instead of its blue-tinted frames and title bars: the
-// chrome around a photo shouldn't carry a colour cast. The accent stays blue, used only for what
-// is hovered, active or chosen.
-void dark_colours(ImGuiStyle& style) {
-    ImGui::StyleColorsDark(&style);
-    ImVec4* c = style.Colors;
-    const ImVec4 accent(0.28f, 0.52f, 0.86f, 1.0f);
-    c[ImGuiCol_Text] = grey(0.92f);
-    c[ImGuiCol_TextDisabled] = grey(0.60f);  // about 5:1 against the background
-    c[ImGuiCol_WindowBg] = grey(0.145f);
-    c[ImGuiCol_ChildBg] = grey(0.0f, 0.0f);
-    c[ImGuiCol_PopupBg] = grey(0.17f, 0.98f);
-    c[ImGuiCol_MenuBarBg] = grey(0.11f);
-    c[ImGuiCol_Border] = grey(0.30f);
-    c[ImGuiCol_FrameBg] = grey(0.22f);
-    c[ImGuiCol_FrameBgHovered] = grey(0.28f);
-    c[ImGuiCol_FrameBgActive] = grey(0.32f);
-    c[ImGuiCol_TitleBg] = grey(0.11f);
-    c[ImGuiCol_TitleBgActive] = grey(0.18f);
-    c[ImGuiCol_Button] = grey(0.27f);
-    c[ImGuiCol_ButtonHovered] = grey(0.34f);
-    c[ImGuiCol_ButtonActive] = accent;
-    c[ImGuiCol_Header] = grey(0.27f);
-    c[ImGuiCol_HeaderHovered] = grey(0.34f);
-    c[ImGuiCol_HeaderActive] = accent;
-    c[ImGuiCol_SliderGrab] = accent;
-    c[ImGuiCol_SliderGrabActive] = ImVec4(0.42f, 0.64f, 0.95f, 1.0f);
-    c[ImGuiCol_CheckMark] = ImVec4(0.42f, 0.64f, 0.95f, 1.0f);
-    c[ImGuiCol_Separator] = grey(0.30f);
-    c[ImGuiCol_SeparatorHovered] = accent;
-    c[ImGuiCol_SeparatorActive] = accent;
-    c[ImGuiCol_ModalWindowDimBg] = grey(0.0f, 0.45f);
+ImVec4 to_vec4(const gui::Rgba& c) {
+    return ImVec4(c.r, c.g, c.b, c.a);
 }
 
-// ImGui's light style, likewise neutral, with white fields and visible borders so controls stand
-// out from the light grey background.
-void light_colours(ImGuiStyle& style) {
-    ImGui::StyleColorsLight(&style);
-    ImVec4* c = style.Colors;
-    const ImVec4 accent(0.16f, 0.42f, 0.78f, 1.0f);
-    c[ImGuiCol_Text] = grey(0.08f);
-    c[ImGuiCol_TextDisabled] = grey(0.40f);  // about 6:1 against the background
-    c[ImGuiCol_WindowBg] = grey(0.93f);
-    c[ImGuiCol_ChildBg] = grey(0.0f, 0.0f);
-    c[ImGuiCol_PopupBg] = grey(0.98f, 0.98f);
-    c[ImGuiCol_MenuBarBg] = grey(0.88f);
-    c[ImGuiCol_Border] = grey(0.70f);
-    c[ImGuiCol_FrameBg] = grey(1.0f);
-    c[ImGuiCol_FrameBgHovered] = grey(0.96f);
-    c[ImGuiCol_FrameBgActive] = grey(0.90f);
-    c[ImGuiCol_TitleBg] = grey(0.86f);
-    c[ImGuiCol_TitleBgActive] = grey(0.80f);
-    c[ImGuiCol_Button] = grey(0.84f);
-    c[ImGuiCol_ButtonHovered] = grey(0.78f);
-    c[ImGuiCol_ButtonActive] = ImVec4(0.62f, 0.76f, 0.95f, 1.0f);
-    c[ImGuiCol_Header] = grey(0.84f);
-    c[ImGuiCol_HeaderHovered] = grey(0.78f);
-    c[ImGuiCol_HeaderActive] = ImVec4(0.62f, 0.76f, 0.95f, 1.0f);
-    c[ImGuiCol_SliderGrab] = accent;
-    c[ImGuiCol_SliderGrabActive] = ImVec4(0.10f, 0.32f, 0.64f, 1.0f);
-    c[ImGuiCol_CheckMark] = accent;
-    c[ImGuiCol_Separator] = grey(0.72f);
-    c[ImGuiCol_SeparatorHovered] = accent;
-    c[ImGuiCol_SeparatorActive] = accent;
-    c[ImGuiCol_ModalWindowDimBg] = grey(0.20f, 0.35f);
+ImU32 to_u32(const gui::Rgba& c) {
+    return ImGui::ColorConvertFloat4ToU32(to_vec4(c));
 }
+
+ImVec2 to_vec2(const gui::Vec2& v) {
+    return ImVec2(v.x, v.y);
+}
+
+// The tokens' colours on top of ImGui's own style (which supplies the ones the tokens don't name,
+// e.g. the tab and plot colours): neutral greys, so the chrome around a photo carries no colour
+// cast, and a blue accent used only for what is hovered, active or chosen.
+void apply_colours(ImGuiStyle& style, const gui::TokenColours& t) {
+    ImVec4* c = style.Colors;
+    c[ImGuiCol_Text] = to_vec4(t.text);
+    c[ImGuiCol_TextDisabled] = to_vec4(t.text_muted);
+    c[ImGuiCol_WindowBg] = to_vec4(t.window_bg);
+    c[ImGuiCol_ChildBg] = grey(0.0f, 0.0f);
+    c[ImGuiCol_PopupBg] = to_vec4(t.popup_bg);
+    c[ImGuiCol_MenuBarBg] = to_vec4(t.menubar_bg);
+    c[ImGuiCol_Border] = to_vec4(t.edge);
+    c[ImGuiCol_BorderShadow] = grey(0.0f, 0.0f);
+    c[ImGuiCol_FrameBg] = to_vec4(t.frame_bg);
+    c[ImGuiCol_FrameBgHovered] = to_vec4(t.frame_bg_hovered);
+    c[ImGuiCol_FrameBgActive] = to_vec4(t.frame_bg_active);
+    c[ImGuiCol_TitleBg] = to_vec4(t.title_bg);
+    c[ImGuiCol_TitleBgActive] = to_vec4(t.title_bg_active);
+    c[ImGuiCol_TitleBgCollapsed] = to_vec4(t.title_bg);
+    c[ImGuiCol_ScrollbarBg] = grey(0.0f, 0.0f);
+    c[ImGuiCol_ScrollbarGrab] = to_vec4(t.scrollbar_grab);
+    c[ImGuiCol_ScrollbarGrabHovered] = to_vec4(t.control_border);
+    c[ImGuiCol_ScrollbarGrabActive] = to_vec4(t.accent);
+    c[ImGuiCol_Button] = to_vec4(t.button);
+    c[ImGuiCol_ButtonHovered] = to_vec4(t.button_hovered);
+    c[ImGuiCol_ButtonActive] = to_vec4(t.button_active);
+    c[ImGuiCol_Header] = to_vec4(t.header);
+    c[ImGuiCol_HeaderHovered] = to_vec4(t.header_hovered);
+    c[ImGuiCol_HeaderActive] = to_vec4(t.header_active);
+    c[ImGuiCol_SliderGrab] = to_vec4(t.accent);
+    c[ImGuiCol_SliderGrabActive] = to_vec4(t.accent_active);
+    c[ImGuiCol_CheckMark] = to_vec4(t.check_mark);
+    c[ImGuiCol_Separator] = to_vec4(t.separator);
+    c[ImGuiCol_SeparatorHovered] = to_vec4(t.accent);
+    c[ImGuiCol_SeparatorActive] = to_vec4(t.accent);
+    c[ImGuiCol_ModalWindowDimBg] = to_vec4(t.modal_dim);
+}
+
+void apply_metrics(ImGuiStyle& style, const gui::TokenMetrics& m) {
+    style.WindowPadding = to_vec2(m.window_padding);
+    style.FramePadding = to_vec2(m.frame_padding);
+    style.ItemSpacing = to_vec2(m.item_spacing);
+    style.ItemInnerSpacing = to_vec2(m.item_inner_spacing);
+    style.WindowRounding = m.window_rounding;
+    style.PopupRounding = m.popup_rounding;
+    style.ChildRounding = m.child_rounding;
+    style.FrameRounding = m.frame_rounding;
+    style.GrabRounding = m.grab_rounding;
+    style.ScrollbarSize = m.scrollbar_size;
+    style.ScrollbarRounding = m.scrollbar_rounding;
+    style.WindowBorderSize = m.window_border;
+    style.FrameBorderSize = m.frame_border;
+    style.SeparatorTextBorderSize = m.separator_text_border;
+    style.SeparatorTextPadding = to_vec2(m.separator_text_padding);
+}
+
+Fonts loaded_fonts;
 
 }  // namespace
 
 const Palette& palette(gui::Theme theme) {
     static const Palette dark{
-        IM_COL32(60, 60, 60, 255),     // canvas: neutral 24% grey
+        to_u32(gui::token_set(gui::Theme::dark).colours.canvas),  // canvas: neutral, near 18% grey
         IM_COL32(235, 235, 235, 255),  // canvas text
         IM_COL32(150, 150, 150, 255),  // drop outline
         IM_COL32(120, 180, 255, 255),  // drop highlight
@@ -115,9 +122,10 @@ const Palette& palette(gui::Theme theme) {
         IM_COL32(255, 70, 30, 215),    // clipping overlay: above white
         IM_COL32(30, 140, 255, 215),   // clipping overlay: below black
         IM_COL32(235, 60, 245, 235),   // clipping overlay: outside sRGB (stripes)
+        to_vec4(gui::token_set(gui::Theme::dark).colours.window_bg),
     };
     static const Palette light{
-        IM_COL32(96, 96, 96, 255),     // canvas: a lighter neutral grey, still well below mid-grey
+        to_u32(gui::token_set(gui::Theme::light).colours.canvas),  // canvas: neutral mid-grey
         IM_COL32(245, 245, 245, 255),  // canvas text
         IM_COL32(190, 190, 190, 255),  // drop outline (on the grey canvas)
         IM_COL32(150, 200, 255, 255),  // drop highlight
@@ -153,28 +161,39 @@ const Palette& palette(gui::Theme theme) {
         IM_COL32(255, 60, 20, 225),    // clipping overlay: above white
         IM_COL32(10, 110, 245, 225),   // clipping overlay: below black
         IM_COL32(190, 20, 200, 240),   // clipping overlay: outside sRGB (stripes)
+        to_vec4(gui::token_set(gui::Theme::light).colours.window_bg),
     };
     return theme == gui::Theme::light ? light : dark;
 }
 
+const Fonts& fonts() {
+    return loaded_fonts;
+}
+
+void load_fonts(ImGuiIO& io) {
+    // The data lives in the executable for the whole run, which is what ImGui needs of a font it
+    // doesn't own.
+    ImFontConfig config;
+    config.FontDataOwnedByAtlas = false;
+    const std::span<const unsigned char> regular = inter_regular();
+    const std::span<const unsigned char> semibold = inter_semibold();
+    const float body = gui::token_set(gui::Theme::dark).type.body;
+    loaded_fonts.regular = io.Fonts->AddFontFromMemoryTTF(
+        const_cast<unsigned char*>(regular.data()), static_cast<int>(regular.size()), body,
+        &config);
+    loaded_fonts.semibold = io.Fonts->AddFontFromMemoryTTF(
+        const_cast<unsigned char*>(semibold.data()), static_cast<int>(semibold.size()), body,
+        &config);
+}
+
 void apply_style(gui::Theme theme, float scale) {
+    const gui::TokenSet& tokens = gui::token_set(theme);
     ImGuiStyle& style = ImGui::GetStyle();
     style = ImGuiStyle();
-    if (theme == gui::Theme::light) {
-        light_colours(style);
-    } else {
-        dark_colours(style);
-    }
-    style.WindowRounding = 0.0f;
-    style.ChildRounding = 4.0f;
-    style.PopupRounding = 4.0f;
-    style.FrameRounding = 4.0f;
-    style.GrabRounding = 4.0f;
-    style.FramePadding = ImVec2(8.0f, 5.0f);
-    style.ItemSpacing = ImVec2(8.0f, 6.0f);
-    style.FrameBorderSize = theme == gui::Theme::light ? 1.0f : 0.0f;
-    style.FontSizeBase = 15.0f;  // ImGui's vector font reads best from 15 px
-    style.ScaleAllSizes(scale);
+    style.ScaleAllSizes(scale);  // what the tokens don't name keeps ImGui's defaults, scaled
+    apply_colours(style, tokens.colours);
+    apply_metrics(style, gui::scaled(tokens.metrics, scale));
+    style.FontSizeBase = tokens.type.body;  // before the scale; FontScaleDpi applies it
     style.FontScaleDpi = scale;
 }
 

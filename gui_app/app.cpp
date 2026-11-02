@@ -339,6 +339,10 @@ gui::Theme App::theme() const {
     return gui::resolve_theme(prefs_.theme, system);
 }
 
+ImVec4 App::clear_colour() const {
+    return palette(theme()).window_clear;
+}
+
 void App::before_frame() {
     if (style_dirty_) {
         apply_style(theme(), scale());
