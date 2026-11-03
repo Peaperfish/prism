@@ -10,6 +10,7 @@
 
 #include "about_info.hpp"
 #include "imgui.h"
+#include "imgui_internal.h"  // ClearActiveID: Esc leaves a text field without undoing the typing
 #include "macos_menu.hpp"
 #include "theme.hpp"
 #include "widgets.hpp"
@@ -17,6 +18,7 @@
 #include "prism/gui/file_types.hpp"
 #include "prism/gui/layout.hpp"
 #include "prism/gui/presets.hpp"
+#include "prism/gui/recipe_settings.hpp"
 #include "prism/gui/slider_gesture.hpp"
 #include "prism/gui/stage_controls.hpp"
 #include "prism/gui/test_strip.hpp"
@@ -100,6 +102,35 @@ bool details_toggle(const char* label, bool* open) {
 
 std::string file_name(const fs::path& path) {
     return utf8(path.filename());
+}
+
+// `text` into one of ImGui's fixed text buffers, cut short (on a whole UTF-8 character) if it
+// doesn't fit.
+template <std::size_t N>
+void copy_to_buffer(std::array<char, N>& buffer, std::string_view text) {
+    std::size_t n = std::min(text.size(), N - 1);
+    while (n > 0 && n < text.size() && (static_cast<unsigned char>(text[n]) & 0xC0) == 0x80) {
+        --n;
+    }
+    text.copy(buffer.data(), n);
+    buffer[n] = '\0';
+}
+
+// What was typed in a one-line field, without the spaces around it; nothing if that leaves none.
+std::optional<std::string> typed_text(const char* buffer) {
+    std::string_view text(buffer);
+    while (!text.empty() && text.front() == ' ') {
+        text.remove_prefix(1);
+    }
+    while (!text.empty() && text.back() == ' ') {
+        text.remove_suffix(1);
+    }
+    return text.empty() ? std::nullopt : std::optional<std::string>(text);
+}
+
+bool folder_exists(const fs::path& path) {
+    std::error_code ec;
+    return fs::is_directory(path, ec);
 }
 
 }  // namespace
@@ -285,7 +316,7 @@ void App::open_now(const fs::path& path) {
 }
 
 void App::show_open_dialog() {
-    if (dialog_open_) {
+    if (dialog_open_ || recipe_sheet_) {
         return;
     }
     dialog_open_ = true;
@@ -294,7 +325,7 @@ void App::show_open_dialog() {
 }
 
 void App::show_save_dialog() {
-    if (dialog_open_ || !session_.has_file() || exporter_.busy()) {
+    if (dialog_open_ || recipe_sheet_ || !session_.has_file() || exporter_.busy()) {
         return;
     }
     dialog_open_ = true;
@@ -319,8 +350,10 @@ void App::take_dialog_results() {
                 take_export_dialog(result);
                 break;
             case DialogResult::Kind::recipe_load:
+                break;  // nothing asks for this yet
             case DialogResult::Kind::recipe_save:
-                break;  // nothing asks for these yet
+                take_recipe_save_dialog(result);
+                break;
         }
     }
 }
@@ -346,6 +379,148 @@ void App::take_export_dialog(DialogResult& result) {
     exporter_.start(session_.export_job(), output);
     if (for_close) {
         apply_close_step(gui::save_dialog_closed(true));
+    }
+}
+
+bool App::recipes_available() const {
+    return session_.has_file() && !dialog_open_ && !recipe_sheet_ && !exporter_.busy() &&
+           !close_pending_;
+}
+
+// Save Recipe...: the sheet first, with the name and description Prism suggests.
+void App::begin_save_recipe() {
+    if (!recipes_available()) {
+        return;
+    }
+    const gui::RecipeNameDefault suggested =
+        gui::suggest_recipe_name(recipes_.current(), session_.kind(), session_.settings());
+    RecipeSheet sheet;
+    copy_to_buffer(sheet.name, suggested.name);
+    copy_to_buffer(sheet.description, suggested.description);
+    sheet.hint = std::string(suggested.hint);
+    recipe_sheet_ = std::move(sheet);
+}
+
+// The save sheet: Name, Description, what is saved, Save... and Cancel. Modal. Esc cancels when no
+// text field has the keyboard; inside a field the first Esc only leaves the field. Enter in a
+// field is Save....
+void App::draw_recipe_sheet() {
+    constexpr const char* popup = "Save Recipe";
+    if (recipe_sheet_ && !ImGui::IsPopupOpen(popup)) {
+        ImGui::OpenPopup(popup);
+    }
+    const ImVec2 centre = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(centre, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    if (!ImGui::BeginPopupModal(popup, nullptr,
+                                ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
+        return;
+    }
+    if (!recipe_sheet_) {
+        ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+        return;
+    }
+    RecipeSheet& sheet = *recipe_sheet_;
+    // As of the last frame, before the fields below see the keys. ImGui would undo what was typed
+    // when Esc leaves a field, so the field is let go of here first and keeps its text.
+    const bool field_active = ImGui::IsAnyItemActive();
+    const bool escape = ImGui::IsKeyPressed(ImGuiKey_Escape, false);
+    const bool enter = field_active && (ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
+                                        ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false));
+    if (escape && field_active) {
+        ImGui::ClearActiveID();
+    }
+
+    const float width = token_metrics().prompt_wrap;
+    ImGui::TextUnformatted("Name");
+    ImGui::SetNextItemWidth(width);
+    if (sheet.appearing) {
+        ImGui::SetKeyboardFocusHere();
+        sheet.appearing = false;
+    }
+    ImGui::InputTextWithHint("##recipe_name", sheet.hint.c_str(), sheet.name.data(),
+                             sheet.name.size());
+    explain(gui::explain::recipe_name);  // no tooltip: it would cover the field below
+    ImGui::TextUnformatted("Description (optional)");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##recipe_description", sheet.description.data(), sheet.description.size());
+    explain(gui::explain::recipe_description);  // no tooltip: it would cover the field below
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + width);
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    ImGui::TextUnformatted(
+        "Saves all five stages. The photo and RAW decoding options aren't included.");
+    ImGui::PopStyleColor();
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+    const bool save = ImGui::Button("Save...") || enter;
+    ImGui::SameLine();
+    const bool cancel = ImGui::Button("Cancel") || (escape && !field_active);
+    if (save || cancel) {
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+
+    if (save) {
+        // The recipe is made now, from what is on screen as Save... is pressed.
+        saving_recipe_settings_ = session_.settings();
+        saving_recipe_ = gui::recipe_from(saving_recipe_settings_);
+        saving_recipe_.name = typed_text(sheet.name.data());
+        saving_recipe_.description = typed_text(sheet.description.data());
+        recipe_sheet_.reset();
+        show_recipe_save_dialog();
+    } else if (cancel) {
+        recipe_sheet_.reset();
+    }
+}
+
+void App::show_recipe_save_dialog() {
+    if (dialog_open_ || !session_.has_file()) {
+        return;
+    }
+    dialog_open_ = true;
+    const fs::path folder =
+        gui::recipe_start_folder(prefs_.recipe_folder, session_.path(), folder_exists);
+    const std::string name = gui::suggested_recipe_file_name(saving_recipe_.name.value_or(""));
+    gui_app::show_recipe_save_dialog(window_, dialogs_, folder / path_from_utf8(name));
+}
+
+gui::RecipeEnd App::take_recipe_save_dialog(const DialogResult& result) {
+    if (!result.error.empty()) {
+        show_error({gui::ErrorKind::unreadable, "Couldn't show the file dialog.", result.error});
+        return gui::RecipeEnd::failed;
+    }
+    if (!result.path) {
+        return gui::RecipeEnd::cancelled;
+    }
+    // Written here and now: a recipe is a few hundred bytes.
+    const fs::path path = gui::with_recipe_extension(*result.path);
+    try {
+        prism::save_recipe(path, saving_recipe_);
+    } catch (const std::exception& e) {
+        show_error({gui::ErrorKind::save_failed,
+                    "Couldn't save the recipe " + file_name(path) + ".", e.what()});
+        return gui::RecipeEnd::failed;
+    }
+    baseline_.recipe_saved(saving_recipe_settings_, file_name(path));
+    error_.reset();
+    notice_ = "Saved recipe " + file_name(path) + ".";
+    remember_recipe_folder(path);
+    return gui::RecipeEnd::saved;
+}
+
+void App::remember_recipe_folder(const fs::path& file) {
+    gui::Preferences p = prefs_;
+    p.recipe_folder = file.parent_path();
+    set_preferences(std::move(p));
+}
+
+void App::draw_recipe_buttons() {
+    ImGui::BeginDisabled(!recipes_available());
+    const bool save = ImGui::SmallButton("Save recipe...");
+    describe(gui::explain::recipe_save);
+    ImGui::EndDisabled();
+    if (save) {
+        begin_save_recipe();
     }
 }
 
@@ -628,6 +803,7 @@ void App::frame() {
     draw_status_bar();
     draw_saving_popup();
     draw_close_prompt();
+    draw_recipe_sheet();
     ImGui::End();
     focused_window_this_frame_ = nullptr;
     draw_preferences();
@@ -694,6 +870,9 @@ void App::handle_shortcuts() {
         ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S, ImGuiInputFlags_RouteGlobal)) {
         show_save_dialog();
     }
+    if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S, ImGuiInputFlags_RouteGlobal)) {
+        begin_save_recipe();
+    }
     // Esc backs out one level: first the comparison, then the viewed stage. Read as a plain key
     // press, not a Shortcut(): a Shortcut route loses to the panel once a slider or combo there
     // has the keyboard focus, so Esc did nothing until the picture was clicked.
@@ -755,6 +934,11 @@ void App::draw_menu() {
         if (ImGui::MenuItem("Export...", shortcut_label("E").c_str(), false,
                             session_.has_file() && !dialog_open_ && !exporter_.busy())) {
             show_save_dialog();
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Save Recipe...", shortcut_label("Shift+S").c_str(), false,
+                            recipes_available())) {
+            begin_save_recipe();
         }
         ImGui::Separator();
         // On macOS, Cmd+Q belongs to the app menu's own Quit item.
@@ -1487,6 +1671,7 @@ void App::draw_panel() {
 
     section_text("Look");
     draw_presets();
+    draw_recipe_buttons();
 
     section_text("Adjust");
     draw_simple_slider("Brightness", gui::SimpleControl::brightness);

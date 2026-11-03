@@ -66,13 +66,17 @@ struct Explanation {
 [[nodiscard]] std::string_view explain_id(ScopeChoice scope) noexcept;       // "scope.parade"
 [[nodiscard]] std::string explain_id(const Preset& preset);                  // "look.vivid"
 
-// ... and the others (the look menu itself, chips, clipping, compare, the strip, Preferences).
+// ... and the others (the look menu itself, recipes, chips, clipping, compare, the strip,
+// Preferences).
 [[nodiscard]] std::span<const std::string_view> other_explain_ids() noexcept;
 
 // Named ids the window uses, so a typo is a compile error rather than a missing explanation.
 namespace explain {
 inline constexpr std::string_view look = "look";
 inline constexpr std::string_view look_reset = "look.reset";
+inline constexpr std::string_view recipe_save = "recipe.save";
+inline constexpr std::string_view recipe_name = "recipe.name";
+inline constexpr std::string_view recipe_description = "recipe.description";
 inline constexpr std::string_view curve_white = "curve.white";
 inline constexpr std::string_view curve_gamma_value = "curve.gamma_value";
 inline constexpr std::string_view scope_skin = "scope.skin";

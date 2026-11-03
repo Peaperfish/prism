@@ -2,6 +2,7 @@
 
 #include <SDL3/SDL.h>
 
+#include <array>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -20,6 +21,7 @@
 #include "prism/gui/layout.hpp"
 #include "prism/gui/live_preview.hpp"
 #include "prism/gui/preferences.hpp"
+#include "prism/gui/recipe_ui.hpp"
 #include "prism/gui/session.hpp"
 #include "prism/gui/settings.hpp"
 #include "prism/gui/test_strip.hpp"
@@ -77,6 +79,19 @@ private:
     void show_open_dialog();
     void show_save_dialog();
     void take_export_result();
+    // Recipes (#18). Saving: the sheet asks for a name and a description, the system's dialog for
+    // the file, and the recipe is written at once. recipes_available() says whether a recipe can
+    // be saved or loaded now: a photo is open and no dialog, sheet, export or close question is
+    // in progress.
+    [[nodiscard]] bool recipes_available() const;
+    void begin_save_recipe();
+    void draw_recipe_sheet();
+    void show_recipe_save_dialog();
+    // Writes the recipe to the chosen file; says how it ended.
+    gui::RecipeEnd take_recipe_save_dialog(const DialogResult& result);
+    void remember_recipe_folder(const std::filesystem::path& file);
+    // The panel's Load recipe... / Save recipe... row, in the Look section.
+    void draw_recipe_buttons();
     void take_dialog_results();
     void take_export_dialog(DialogResult& result);
     void update_preview();
@@ -212,6 +227,21 @@ private:
     // none.
     gui::SavedBaseline baseline_;
     gui::EditSettings exporting_settings_;  // the settings of the export in flight
+    // The save sheet while it is up: what is typed in its two fields, and the hint for an empty
+    // name. Plain buffers, as ImGui's text fields want.
+    struct RecipeSheet {
+        std::array<char, 256> name{};
+        std::array<char, 512> description{};
+        std::string hint;
+        bool appearing = true;  // the first frame: put the keyboard in the Name field
+    };
+    std::optional<RecipeSheet> recipe_sheet_;
+    // The recipe the save dialog will write, and the settings it was made from (those on screen
+    // when the sheet's Save... was pressed).
+    Recipe saving_recipe_;
+    gui::EditSettings saving_recipe_settings_;
+    // The recipe loaded onto the open photo, if any.
+    gui::RecipeTracker recipes_;
     bool quit_ = false;
     // The quit or open being held back, where it is, and (for an open) which file.
     enum class ClosePhase { none, waiting, asking, saving_dialog, exporting };

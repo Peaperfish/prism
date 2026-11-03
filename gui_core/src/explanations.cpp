@@ -38,6 +38,17 @@ constexpr Explanation table[] = {
     {"look.reset", "Go back to the starting look.",
      "Sets the same four values as the first look in the list. One undo step."},
 
+    // --- Recipes -----------------------------------------------------------------------------
+    {"recipe.save", "Write these settings to a recipe you can read and reuse.",
+     "Saves all five stages, with their switches, as a small .prism text file. The photo and the "
+     "RAW decoding options are not in it. Load it on any photo, or read it in a text editor."},
+    {"recipe.name", "The recipe's name, shown when it is loaded.",
+     "Written as name in the file, and used for the file name. Prism suggests the recipe you "
+     "loaded or the look you picked."},
+    {"recipe.description", "One optional line on what the recipe is for.",
+     "Written as description in the file, and shown when you point at the recipe's name after "
+     "loading it. Leave it empty to write none."},
+
     // --- Simple sliders ----------------------------------------------------------------------
     {"simple.brightness", "Lets in more or less light, in stops.",
      "Every pixel is multiplied by the same amount, in linear light, like opening or closing the "
@@ -184,8 +195,10 @@ constexpr Explanation table[] = {
 
 // Ids that have no enum of their own: the controls the window shows beyond the stages, Simple's
 // sliders, the curve kinds, the scopes and the presets.
-constexpr std::array<std::string_view, 20> other_ids{
-    explain::look,         explain::look_reset,   explain::curve_white, explain::curve_gamma_value,
+constexpr std::array<std::string_view, 23> other_ids{
+    explain::look,         explain::look_reset,   explain::recipe_save, explain::recipe_name,
+    explain::recipe_description,
+    explain::curve_white,  explain::curve_gamma_value,
     explain::scope_skin,   explain::chip_over,    explain::chip_under,  explain::clip_overlay,
     explain::clip_dot,     explain::clip_summary, explain::clip_note,   explain::compare,
     explain::compare_swap, explain::viewing,      explain::strip,       explain::strip_line,
