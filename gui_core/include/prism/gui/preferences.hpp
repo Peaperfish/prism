@@ -19,6 +19,7 @@ namespace prism::gui {
 //   scope=histogram
 //   clip_overlay=off
 //   show_explanations=on
+//   recipe_folder=/Users/me/Looks
 //
 // Reading never fails: a missing or unreadable file gives the defaults, and a key whose value is
 // missing, malformed or out of range falls back to its default (or is clamped) on its own, without
@@ -56,6 +57,10 @@ struct Preferences {
     bool clip_overlay = false;  // mark pixels above white / below black on the preview
     // The Explain area at the foot of the control panel (#16). On unless the file says "off".
     bool show_explanations = true;
+    // Where Save Recipe... and Load Recipe... start (#18): the folder of the last recipe saved or
+    // loaded through them. Empty until then; kept apart from the photos' folders. Written only
+    // when set, as UTF-8.
+    std::filesystem::path recipe_folder;
     // Lines with keys this version doesn't know, as key/value pairs in file order.
     std::vector<std::pair<std::string, std::string>> unknown;
 

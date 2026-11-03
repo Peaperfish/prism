@@ -168,6 +168,31 @@ TEST(Preferences, ExplanationsAreOnByDefaultAndTheChoiceIsRemembered) {
               std::string::npos);
 }
 
+TEST(Preferences, TheRecipeFolderIsRememberedAfterTheOtherKeys) {
+    Preferences p = customised();
+    p.recipe_folder = prism::path_from_utf8("/Users/me/Looks");
+    const std::string text = prism::gui::serialize_preferences(p);
+    EXPECT_NE(text.find("show_explanations=off\nrecipe_folder=/Users/me/Looks\n"),
+              std::string::npos);
+    EXPECT_EQ(prism::gui::parse_preferences(text), p);
+}
+
+TEST(Preferences, ANonAsciiRecipeFolderRoundTrips) {
+    Preferences p;
+    p.recipe_folder = prism::path_from_utf8("/Users/me/Rezepte für Fotos/色");
+    const Preferences back = prism::gui::parse_preferences(prism::gui::serialize_preferences(p));
+    EXPECT_EQ(back.recipe_folder, p.recipe_folder);
+    EXPECT_EQ(prism::utf8(back.recipe_folder), "/Users/me/Rezepte für Fotos/色");
+}
+
+TEST(Preferences, NoRecipeFolderIsWrittenOrReadWhenThereIsNone) {
+    EXPECT_TRUE(Preferences{}.recipe_folder.empty());
+    EXPECT_EQ(prism::gui::serialize_preferences(Preferences{}).find("recipe_folder"),
+              std::string::npos);
+    EXPECT_TRUE(prism::gui::parse_preferences("theme=dark\n").recipe_folder.empty());
+    EXPECT_TRUE(prism::gui::parse_preferences("recipe_folder=\n").recipe_folder.empty());
+}
+
 TEST(Preferences, SaveAndLoadRoundTripThroughANonAsciiPath) {
     fs::path utf8_path = temp_file("prefs");
     utf8_path += prism::path_from_utf8("_préférences_写真.txt");

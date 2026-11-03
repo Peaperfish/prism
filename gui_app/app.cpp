@@ -2448,6 +2448,7 @@ void App::draw_preferences() {
     if (ImGui::Button("Restore defaults")) {
         gui::Preferences defaults;
         defaults.unknown = p.unknown;  // keep what a newer version of Prism wrote
+        defaults.recipe_folder = p.recipe_folder;  // not shown here: where recipes are kept
         p = defaults;
     }
 

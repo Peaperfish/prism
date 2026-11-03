@@ -175,6 +175,8 @@ Preferences parse_preferences(std::string_view text) {
             prefs.clip_overlay = value == "on";
         } else if (key == "show_explanations") {
             prefs.show_explanations = value != "off";  // on unless it says off
+        } else if (key == "recipe_folder") {
+            prefs.recipe_folder = path_from_utf8(value);
         } else if (!key.empty()) {
             prefs.unknown.emplace_back(std::string(key), std::string(value));
         }
@@ -192,6 +194,9 @@ std::string serialize_preferences(const Preferences& prefs) {
     text += "scope=" + std::string(scope_name(prefs.scope)) + "\n";
     text += std::string("clip_overlay=") + (prefs.clip_overlay ? "on" : "off") + "\n";
     text += std::string("show_explanations=") + (prefs.show_explanations ? "on" : "off") + "\n";
+    if (!prefs.recipe_folder.empty()) {
+        text += "recipe_folder=" + utf8(prefs.recipe_folder) + "\n";
+    }
     for (const auto& [key, value] : prefs.unknown) {
         text += key + "=" + value + "\n";
     }
