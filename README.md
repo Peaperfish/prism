@@ -312,7 +312,7 @@ v0.1.0 is the first pre-release of the desktop app. What's planned next is track
 - [Clipping warnings](https://github.com/Peaperfish/prism/issues/4) that say which stage clipped *(done)*
 - [A test strip](https://github.com/Peaperfish/prism/issues/15): one image in bands at −1, −½, 0, +½ and +1 stop, to choose exposure by eye
 - [A plain-language explanation](https://github.com/Peaperfish/prism/issues/16) for every control: what it does to the light
-- [Smoother preview while dragging](https://github.com/Peaperfish/prism/issues/5): let a running render finish and replace only the waiting request
+- [Smoother preview while dragging](https://github.com/Peaperfish/prism/issues/5): let a running render finish and replace only the waiting request *(done)*
 
 [**0.3.0 – Recipes**](https://github.com/Peaperfish/prism/milestone/3): readable, shareable recipes instead of black-box presets.
 
