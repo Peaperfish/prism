@@ -14,6 +14,7 @@ FetchContent_MakeAvailable(googletest)
 
 add_executable(prism_tests
   camera_profile_test.cpp
+  cli_docs_test.cpp
   cli_test.cpp
   color_test.cpp
   dng_profile_test.cpp
@@ -36,7 +37,8 @@ target_include_directories(prism_tests PRIVATE ${PROJECT_SOURCE_DIR}/lib)
 # cli_test.cpp runs the real prism executable: tell it where the build put it, and make sure
 # building the tests also (re)builds prism so the tests never run a stale binary.
 target_compile_definitions(prism_tests PRIVATE PRISM_EXE="$<TARGET_FILE:prism>"
-                                              PRISM_PROFILE_EXE="$<TARGET_FILE:prism_profile>")
+                                              PRISM_PROFILE_EXE="$<TARGET_FILE:prism_profile>"
+                                              PRISM_CLI_DOC="${PROJECT_SOURCE_DIR}/docs/CLI.md")
 add_dependencies(prism_tests prism prism_profile)
 
 # The test executable needs libraw_r.dll next to it too (Windows source build), and already when
