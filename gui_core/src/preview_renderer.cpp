@@ -1,10 +1,16 @@
 #include "prism/gui/preview_renderer.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <exception>
+#include <mutex>
 #include <stdexcept>
 #include <string_view>
+#include <thread>
 #include <utility>
+#include <vector>
+
+#include "prism/parallel.hpp"
 
 namespace prism::gui {
 
@@ -27,6 +33,15 @@ namespace {
 
 // The test strip: every band is the same render_preview of its crop of `base` at its own exposure,
 // so a band is bit-identical to rendering that crop alone, and the pipeline itself is untouched.
+//
+// The bands render at the same time, one thread each: a band (a fifth of a preview) is below
+// parallel_min_pixels, so on its own it runs on one thread and the bands one after another would
+// leave the other cores idle. At most min(bands, threads) run at once (threads 1: one at a time).
+// A band big enough to use threads itself gets an equal share of `threads`, so the total never
+// goes over what was asked. The calling thread renders the middle band (the one on_stage reports,
+// live, as before), then helps with the rest; the other bands only ever run on the workers.
+// A stop request, or an exception in any band, stops every band at its next stage; all workers
+// are joined before this returns or rethrows the first exception.
 std::optional<PreviewFrame> render_strip(const Image& base, const EditSettings& settings,
                                          int threads, std::stop_token stop,
                                          const StageCallback& on_stage, StageId stop_after,
@@ -35,7 +50,7 @@ std::optional<PreviewFrame> render_strip(const Image& base, const EditSettings& 
     const auto start = Clock::now();
     const TestStrip strip = *options.test_strip;
     const std::vector<StripRect> bands = strip_bands(base.width, base.height, strip.count);
-    const int middle = strip_middle(strip.count);
+    const auto middle = static_cast<std::size_t>(strip_middle(strip.count));
     constexpr std::size_t ch = Image::channels;
     const auto width = static_cast<std::size_t>(base.width);
 
@@ -53,15 +68,30 @@ std::optional<PreviewFrame> render_strip(const Image& base, const EditSettings& 
     }
     frame.strip.resize(bands.size());
 
+    // The bands with pixels, the middle one first (the calling thread takes it).
+    std::vector<std::size_t> order;
     for (std::size_t i = 0; i < bands.size(); ++i) {
+        frame.strip[i].rect = bands[i];
+        if (bands[i].width > 0 && bands[i].height > 0) {
+            order.push_back(i);
+        }
+    }
+    if (const auto m = std::find(order.begin(), order.end(), middle); m != order.end()) {
+        std::rotate(order.begin(), m, m + 1);
+    }
+    const int asked = threads <= 0 ? hardware_threads() : threads;
+    const int concurrent = std::max(1, std::min(static_cast<int>(order.size()), asked));
+    const int share = std::max(1, asked / concurrent);
+
+    // Stops every band: the caller's stop, a band that gave up, or an exception.
+    std::stop_source band_stop;
+    const std::stop_callback forward_stop(stop, [&band_stop] { band_stop.request_stop(); });
+    std::mutex error_mutex;
+    std::exception_ptr error;
+
+    // Each band writes only its own pixels of rgb8 and clip_mask and its own entry of strip.
+    const auto render_band = [&](std::size_t i, const StageCallback& report) {
         const StripRect& r = bands[i];
-        frame.strip[i].rect = r;
-        if (r.width <= 0 || r.height <= 0) {
-            continue;
-        }
-        if (stop.stop_requested()) {
-            return std::nullopt;
-        }
         Image crop;
         crop.width = r.width;
         crop.height = r.height;
@@ -71,14 +101,17 @@ std::optional<PreviewFrame> render_strip(const Image& base, const EditSettings& 
             std::copy(from, from + static_cast<std::size_t>(r.width) * ch,
                       crop.pixels.begin() + static_cast<std::ptrdiff_t>(static_cast<std::size_t>(y) * r.width * ch));
         }
+        // The thread count this band would have alone, capped at its share of `threads`.
+        const int alone = threads_for_pixels(crop.pixels.size() / ch, threads);
+        const int band_threads = alone > 1 ? std::min(alone, share) : 1;
         const EditSettings band_settings =
             strip_band_settings(settings, strip.step, strip.count, static_cast<int>(i));
-        const bool is_middle = static_cast<int>(i) == middle;
-        std::optional<PreviewFrame> part =
-            render_preview(crop, band_settings, threads, stop, is_middle ? on_stage : StageCallback{},
-                           stop_after, band_options);
+        std::optional<PreviewFrame> part = render_preview(crop, band_settings, band_threads,
+                                                          band_stop.get_token(), report, stop_after,
+                                                          band_options);
         if (!part) {
-            return std::nullopt;
+            band_stop.request_stop();
+            return;
         }
         for (int y = 0; y < r.height; ++y) {
             const auto src = static_cast<std::size_t>(y) * r.width;
@@ -94,13 +127,56 @@ std::optional<PreviewFrame> render_strip(const Image& base, const EditSettings& 
         }
         frame.strip[i].histogram = part->histogram;
         frame.strip[i].scopes = std::move(part->scopes);
-        if (is_middle) {
+        if (i == middle) {
             frame.stages = std::move(part->stages);
         }
+    };
+    const auto keep_error = [&] {
+        {
+            std::lock_guard lock(error_mutex);
+            if (!error) {
+                error = std::current_exception();
+            }
+        }
+        band_stop.request_stop();
+    };
+    // The calling thread takes order[0] itself; everyone then takes the next band left.
+    std::atomic<std::size_t> next{1};
+    const auto take_bands = [&] {
+        try {
+            for (std::size_t k = next++; k < order.size() && !band_stop.stop_requested(); k = next++) {
+                render_band(order[k], {});
+            }
+        } catch (...) {
+            keep_error();
+        }
+    };
+
+    {
+        // Joined on every way out of this block, so no worker outlives the call.
+        std::vector<std::jthread> workers;
+        try {
+            workers.reserve(static_cast<std::size_t>(concurrent - 1));
+            for (int w = 1; w < concurrent; ++w) {
+                workers.emplace_back(take_bands);
+            }
+            if (!order.empty() && !band_stop.stop_requested()) {
+                render_band(order[0], order[0] == middle ? on_stage : StageCallback{});
+            }
+        } catch (...) {
+            keep_error();  // a worker that could not start, or the middle band
+        }
+        take_bands();
     }
-    if (middle < static_cast<int>(frame.strip.size())) {
-        frame.histogram = frame.strip[static_cast<std::size_t>(middle)].histogram;
-        frame.scopes = frame.strip[static_cast<std::size_t>(middle)].scopes;
+    if (error) {
+        std::rethrow_exception(error);
+    }
+    if (band_stop.stop_requested() || stop.stop_requested()) {
+        return std::nullopt;
+    }
+    frame.histogram = middle < frame.strip.size() ? frame.strip[middle].histogram : StageHistogram{};
+    if (middle < frame.strip.size()) {
+        frame.scopes = frame.strip[middle].scopes;
     }
     frame.total_ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
     return frame;

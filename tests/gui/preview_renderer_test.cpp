@@ -933,3 +933,226 @@ TEST(PreviewStrip, WorksThroughTheWorker) {
     EXPECT_TRUE(frame->error.empty());
     EXPECT_EQ(frame->strip.size(), 5u);
 }
+
+// --- Test strip: bands rendered at the same time --------------------------------------------------
+
+#if defined(__APPLE__)
+#include <mach/mach.h>
+#endif
+#include <dirent.h>
+
+namespace {
+
+// The threads this process has now, where the platform can tell (-1 otherwise).
+int thread_count() {
+#if defined(__APPLE__)
+    thread_act_array_t list = nullptr;
+    mach_msg_type_number_t count = 0;
+    if (task_threads(mach_task_self(), &list, &count) != KERN_SUCCESS) {
+        return -1;
+    }
+    for (mach_msg_type_number_t i = 0; i < count; ++i) {
+        mach_port_deallocate(mach_task_self(), list[i]);
+    }
+    vm_deallocate(mach_task_self(), reinterpret_cast<vm_address_t>(list), count * sizeof(*list));
+    return static_cast<int>(count);
+#elif defined(__linux__)
+    DIR* dir = opendir("/proc/self/task");
+    if (!dir) {
+        return -1;
+    }
+    int count = 0;
+    while (const dirent* e = readdir(dir)) {
+        count += e->d_name[0] != '.' ? 1 : 0;
+    }
+    closedir(dir);
+    return count;
+#else
+    return -1;
+#endif
+}
+
+// No thread started by the render is still there (where the platform can count them). A joined
+// thread has finished running the moment join() returns, but the kernel may list it for a short
+// while longer as it tears it down, so this waits (up to the timeout) for the count to drop.
+void expect_no_thread_left(int before) {
+    if (before < 0) {
+        return;
+    }
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    int now = thread_count();
+    while (now > before && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::yield();
+        now = thread_count();
+    }
+    EXPECT_LE(now, before);
+}
+
+}  // namespace
+
+TEST(PreviewStripConcurrent, BandsAreBitIdenticalForEveryThreadCount) {
+    // As EachBandIsItsCropRenderedAloneAtItsOwnExposure and the middle-band tests, at 1, 4 and
+    // max threads.
+    for (const auto& size : {std::pair{67, 41}, std::pair{41, 67}}) {
+        const auto base = make_base(size.first, size.second);
+        const EditSettings s = every_stage();
+        prism::gui::PreviewOptions plain;
+        plain.clip_mask = true;
+        const auto normal = prism::gui::render_preview(*base, s, 1, {}, {}, StageId::contrast, plain);
+        ASSERT_TRUE(normal);
+        const auto bands = prism::gui::strip_bands(size.first, size.second, 5);
+        for (const int threads : {1, 4, 0}) {
+            const auto frame = prism::gui::render_preview(
+                *base, s, threads, {}, {}, StageId::contrast,
+                strip_options(prism::gui::StripStep::half, true, true));
+            ASSERT_TRUE(frame);
+            for (int i = 0; i < 5; ++i) {
+                const StripRect& r = bands[static_cast<std::size_t>(i)];
+                prism::gui::PreviewOptions alone;
+                alone.scopes = true;
+                alone.clip_mask = true;
+                const auto expected = prism::gui::render_preview(
+                    crop_of(*base, r), prism::gui::strip_band_settings(s, prism::gui::StripStep::half, 5, i),
+                    1, {}, {}, StageId::contrast, alone);
+                ASSERT_TRUE(expected);
+                EXPECT_EQ(bytes_of(frame->rgb8, size.first, r, 3), expected->rgb8) << threads;
+                EXPECT_EQ(bytes_of(frame->clip_mask, size.first, r, 1), expected->clip_mask) << threads;
+                EXPECT_EQ(frame->strip[static_cast<std::size_t>(i)].histogram, expected->histogram);
+                EXPECT_EQ(frame->strip[static_cast<std::size_t>(i)].scopes, expected->scopes);
+            }
+            const StripRect m = frame->strip[2].rect;
+            EXPECT_EQ(bytes_of(frame->rgb8, size.first, m, 3), bytes_of(normal->rgb8, size.first, m, 3));
+        }
+    }
+}
+
+TEST(PreviewStripConcurrent, BandsBigEnoughForThreadsGiveTheSameResult) {
+    // Bands of 1060x1000 pixels, above parallel_min_pixels: each band also splits its own work.
+    auto base = std::make_shared<prism::Image>();
+    base->width = 5300;
+    base->height = 1000;
+    base->pixels.resize(static_cast<std::size_t>(base->width) * base->height * 3);
+    for (std::size_t i = 0; i < base->pixels.size(); ++i) {
+        base->pixels[i] = static_cast<float>(i % 1013) / 700.0f;
+    }
+    EditSettings s;
+    s.exposure_stops = 0.25f;
+    s.contrast = 1.3f;
+    const auto opts = strip_options(prism::gui::StripStep::third, false, true);
+    const auto one = prism::gui::render_preview(*base, s, 1, {}, {}, StageId::contrast, opts);
+    ASSERT_TRUE(one);
+    for (const int threads : {4, 0, 7}) {
+        const auto many = prism::gui::render_preview(*base, s, threads, {}, {}, StageId::contrast, opts);
+        ASSERT_TRUE(many);
+        EXPECT_EQ(many->rgb8, one->rgb8) << threads;
+        EXPECT_EQ(many->clip_mask, one->clip_mask) << threads;
+        for (std::size_t i = 0; i < 5; ++i) {
+            EXPECT_EQ(many->strip[i].histogram, one->strip[i].histogram) << threads;
+        }
+    }
+}
+
+TEST(PreviewStripConcurrent, TheStageCallbackRunsOnTheCallingThreadForTheMiddleBand) {
+    const auto base = make_base(80, 40);
+    for (const int threads : {1, 4, 0}) {
+        const std::thread::id caller = std::this_thread::get_id();
+        std::vector<std::string> names;
+        bool elsewhere = false;
+        const auto frame = prism::gui::render_preview(
+            *base, every_stage(), threads, {},
+            [&](const prism::StageTime& t) {
+                elsewhere = elsewhere || std::this_thread::get_id() != caller;
+                names.emplace_back(t.name);
+            },
+            StageId::encode, strip_options(prism::gui::StripStep::half, false, false));
+        ASSERT_TRUE(frame);
+        EXPECT_FALSE(elsewhere) << threads;
+        EXPECT_EQ(names.size(), 5u) << "once per stage of the middle band only";
+        ASSERT_EQ(frame->stages.size(), names.size());
+        for (std::size_t i = 0; i < names.size(); ++i) {
+            EXPECT_EQ(std::string(frame->stages[i].name), names[i]);
+        }
+    }
+}
+
+TEST(PreviewStripConcurrent, AStopBeforeTheRenderGivesNoFrame) {
+    const auto base = make_base(64, 32);
+    for (const int threads : {1, 4, 0}) {
+        const int before = thread_count();
+        std::stop_source source;
+        source.request_stop();
+        EXPECT_FALSE(prism::gui::render_preview(*base, every_stage(), threads, source.get_token(), {},
+                                                StageId::encode,
+                                                strip_options(prism::gui::StripStep::half, true, true)));
+        expect_no_thread_left(before);
+    }
+}
+
+TEST(PreviewStripConcurrent, AStopDuringTheRenderStopsEveryBand) {
+    // The stop arrives while the middle band runs (from its first stage), with the other bands
+    // running or waiting on the workers: no frame, and every worker is gone when the call returns.
+    const auto base = make_base(400, 200);
+    for (const int threads : {1, 4, 0}) {
+        const int before = thread_count();
+        std::stop_source source;
+        int stages_after_stop = 0;
+        const auto frame = prism::gui::render_preview(
+            *base, every_stage(), threads, source.get_token(),
+            [&](const prism::StageTime&) {
+                if (source.stop_requested()) {
+                    ++stages_after_stop;
+                }
+                source.request_stop();
+            },
+            StageId::encode, strip_options(prism::gui::StripStep::half, true, true));
+        EXPECT_FALSE(frame) << threads;
+        EXPECT_EQ(stages_after_stop, 0) << "the middle band stops at its next stage";
+        expect_no_thread_left(before);
+    }
+}
+
+TEST(PreviewStripConcurrent, AnExceptionInEveryBandReachesTheCaller) {
+    // Invalid settings: every band throws, on the workers and on the calling thread.
+    const auto base = make_base(64, 32);
+    EditSettings bad = every_stage();
+    bad.saturation = 12.0f;
+    for (const int threads : {1, 4, 0}) {
+        const int before = thread_count();
+        EXPECT_THROW((void)prism::gui::render_preview(*base, bad, threads, {}, {}, StageId::encode,
+                                                      strip_options(prism::gui::StripStep::half, true, true)),
+                     std::invalid_argument)
+            << threads;
+        expect_no_thread_left(before);
+    }
+}
+
+TEST(PreviewStripConcurrent, AnExceptionInOneBandStopsTheOthersAndReachesTheCaller) {
+    // The middle band throws (from its stage callback) while the other bands run on the workers.
+    const auto base = make_base(400, 200);
+    for (const int threads : {1, 4, 0}) {
+        const int before = thread_count();
+        EXPECT_THROW((void)prism::gui::render_preview(
+                         *base, every_stage(), threads, {},
+                         [](const prism::StageTime&) { throw std::runtime_error("band failed"); },
+                         StageId::encode, strip_options(prism::gui::StripStep::half, true, true)),
+                     std::runtime_error)
+            << threads;
+        expect_no_thread_left(before);
+        // The renderer is still usable afterwards.
+        EXPECT_TRUE(prism::gui::render_preview(*base, every_stage(), threads, {}, {}, StageId::encode,
+                                               strip_options(prism::gui::StripStep::half, false, false)));
+    }
+}
+
+TEST(PreviewStripConcurrent, AnExceptionThroughTheWorkerBecomesTheFrameError) {
+    const auto base = make_base(64, 32);
+    EditSettings bad = every_stage();
+    bad.saturation = 12.0f;
+    PreviewRenderer renderer(0);
+    renderer.submit(base, bad, StageId::encode, strip_options(prism::gui::StripStep::half, false, false));
+    ASSERT_TRUE(renderer.wait_until_idle(timeout));
+    const auto frame = renderer.poll();
+    ASSERT_TRUE(frame);
+    EXPECT_FALSE(frame->error.empty());
+    EXPECT_TRUE(frame->rgb8.empty());
+}
