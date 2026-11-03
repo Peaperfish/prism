@@ -91,8 +91,8 @@ struct Preferences {
 // Reads `path`; the defaults if it is missing or can't be read.
 [[nodiscard]] Preferences load_preferences(const std::filesystem::path& path);
 
-// Writes `path` atomically: to a temporary file next to it, then renamed over it, so a crash or a
-// full disk never leaves a half-written file behind. Nothing on success, otherwise a message.
+// Writes `path` atomically with prism::write_file_atomically (prism/atomic_file.hpp), so a crash
+// or a full disk never leaves a half-written file behind. Nothing on success, otherwise a message.
 [[nodiscard]] std::optional<std::string> save_preferences(const std::filesystem::path& path,
                                                           const Preferences& prefs);
 

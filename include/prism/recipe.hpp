@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <filesystem>
 #include <optional>
 #include <span>
 #include <stdexcept>
@@ -185,5 +186,16 @@ struct RecipeFormat {
 // reads; only tests pass another. Throws RecipeError.
 [[nodiscard]] Recipe parse_recipe(std::string_view text, std::string_view source = {},
                                   const RecipeFormat& format = recipe_format());
+
+// --- Files ---------------------------------------------------------------------------------------
+
+// Reads the recipe file at `path`. Throws RecipeError, whose messages name the file as given
+// ("recipe 'looks/warm.prism' line 4: ..."), also when it is missing or cannot be read.
+[[nodiscard]] Recipe load_recipe(const std::filesystem::path& path);
+
+// Writes write_recipe(recipe) to `path`, atomically (prism/atomic_file.hpp): a crash or a full
+// disk never leaves half a recipe behind, and an existing file is replaced in one step. Throws
+// std::runtime_error naming the file if it cannot be written.
+void save_recipe(const std::filesystem::path& path, const Recipe& recipe);
 
 }  // namespace prism

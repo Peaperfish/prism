@@ -11,7 +11,15 @@
 #include <string>
 #include <vector>
 
+#ifdef _WIN32
+#include <process.h>  // _getpid
+#else
+#include <unistd.h>  // getpid
+#endif
+
+#include "prism/atomic_file.hpp"
 #include "prism/recipe.hpp"
+#include "prism/utf8_path.hpp"
 
 // The .prism recipe format (prism/recipe.hpp, docs/RECIPES.md).
 
@@ -28,6 +36,18 @@ namespace {
 
 using prism::CurveShape;
 using prism::Recipe;
+
+// A file name for this test only, in GoogleTest's temporary folder.
+fs::path temp_file(const std::string& name) {
+    const testing::TestInfo* test = testing::UnitTest::GetInstance()->current_test_info();
+#ifdef _WIN32
+    const int pid = _getpid();
+#else
+    const int pid = static_cast<int>(getpid());
+#endif
+    return fs::path(testing::TempDir()) /
+           ("prism_recipe_" + std::string(test->name()) + "_" + std::to_string(pid) + "_" + name);
+}
 
 std::string read_text(const fs::path& path) {
     std::ifstream file(path, std::ios::binary);
@@ -796,4 +816,103 @@ TEST(RecipeVersions, ANewerFileIsRefusedAsAWhole) {
          "this recipe needs recipe format 3, but this Prism reads up to format 1: update Prism "
          "to read it"}};
     EXPECT_EQ(issues_in(text, prism::recipe_format()), v1_expected);
+}
+
+// --- Files ---------------------------------------------------------------------------------------
+
+TEST(RecipeFile, SaveAndLoadRoundTripThroughANonAsciiPath) {
+    fs::path path = temp_file("x");
+    path += prism::path_from_utf8("_chaud_写真.prism");
+    prism::save_recipe(path, complete_recipe());
+    EXPECT_EQ(read_text(path), prism::write_recipe(complete_recipe()));
+    expect_same_bits(complete_recipe(), prism::load_recipe(path));
+    EXPECT_FALSE(fs::exists(fs::path(path) += ".tmp")) << "the temporary file is renamed";
+
+    // Saving again replaces the file in one step.
+    prism::save_recipe(path, Recipe{});
+    EXPECT_EQ(prism::load_recipe(path), Recipe{});
+    EXPECT_FALSE(fs::exists(fs::path(path) += ".tmp"));
+    fs::remove(path);
+}
+
+TEST(RecipeFile, AMissingFileIsAnErrorNamingIt) {
+    const fs::path path = temp_file("never_written.prism");
+    try {
+        (void)prism::load_recipe(path);
+        FAIL() << "should not load";
+    } catch (const prism::RecipeError& e) {
+        EXPECT_EQ(e.what(), "recipe '" + prism::utf8(path) + "': the file does not exist");
+        ASSERT_EQ(e.issues().size(), 1u);
+        EXPECT_EQ(e.issues()[0].line, 0);
+    }
+}
+
+TEST(RecipeFile, AFolderIsNotARecipe) {
+    EXPECT_THROW((void)prism::load_recipe(fs::path(testing::TempDir())), prism::RecipeError);
+}
+
+TEST(RecipeFile, MistakesNameTheFileAndLine) {
+    const fs::path path = temp_file("bad.prism");
+    {
+        std::ofstream out(path, std::ios::binary);
+        out << "prism_recipe = 1\n[contrast]\namount = 15\n";
+    }
+    try {
+        (void)prism::load_recipe(path);
+        FAIL() << "should not load";
+    } catch (const prism::RecipeError& e) {
+        EXPECT_EQ(e.source(), prism::utf8(path));
+        EXPECT_EQ(e.what(), "recipe '" + prism::utf8(path) +
+                                "' line 3: [contrast] amount must be from 0.1 to 10 (it is 15)");
+    }
+    fs::remove(path);
+}
+
+TEST(RecipeFile, AHugeFileIsRefusedWithoutReadingItAll) {
+    const fs::path path = temp_file("huge.prism");
+    {
+        std::ofstream out(path, std::ios::binary);
+        out << "prism_recipe = 1\n" << std::string(1024 * 1024, '#');
+    }
+    try {
+        (void)prism::load_recipe(path);
+        FAIL() << "should not load";
+    } catch (const prism::RecipeError& e) {
+        ASSERT_EQ(e.issues().size(), 1u);
+        EXPECT_EQ(e.issues()[0].message, "the file is larger than 64 KB, too large to be a recipe");
+    }
+    fs::remove(path);
+}
+
+TEST(RecipeFile, SavingIntoAMissingFolderFailsAndLeavesNothing) {
+    const fs::path folder = temp_file("no_such_folder");
+    const fs::path path = folder / "warm.prism";
+    try {
+        prism::save_recipe(path, complete_recipe());
+        FAIL() << "should not save";
+    } catch (const std::runtime_error& e) {
+        const std::string message = e.what();
+        EXPECT_EQ(message.rfind("cannot save recipe '" + prism::utf8(path) + "': ", 0), 0u)
+            << message;
+    }
+    EXPECT_FALSE(fs::exists(folder));
+}
+
+TEST(AtomicFile, WritesTheBytesExactlyAndReplacesTheOldFile) {
+    const fs::path path = temp_file("atomic.bin");
+    const std::string bytes("a\r\nb\0c\xFF", 8);
+    ASSERT_EQ(prism::write_file_atomically(path, "old contents, longer than the new"),
+              std::nullopt);
+    ASSERT_EQ(prism::write_file_atomically(path, bytes), std::nullopt);
+    EXPECT_EQ(read_text(path), bytes);
+    EXPECT_FALSE(fs::exists(fs::path(path) += ".tmp"));
+    fs::remove(path);
+}
+
+TEST(AtomicFile, AFailedWriteSaysWhichFileAndStep) {
+    const fs::path path = temp_file("missing_folder") / "file.txt";
+    const std::optional<prism::AtomicWriteError> error = prism::write_file_atomically(path, "x");
+    ASSERT_TRUE(error);
+    EXPECT_EQ(error->step, prism::AtomicWriteError::Step::write);
+    EXPECT_EQ(error->file, fs::path(path) += ".tmp");
 }

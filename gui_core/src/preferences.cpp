@@ -7,6 +7,7 @@
 #include <iterator>
 #include <system_error>
 
+#include "prism/atomic_file.hpp"
 #include "prism/utf8_path.hpp"
 
 namespace prism::gui {
@@ -207,29 +208,15 @@ Preferences load_preferences(const fs::path& path) {
 }
 
 std::optional<std::string> save_preferences(const fs::path& path, const Preferences& prefs) {
-    fs::path temp = path;
-    temp += ".tmp";
-    {
-        std::ofstream out(temp, std::ios::binary | std::ios::trunc);
-        const std::string text = serialize_preferences(prefs);
-        out.write(text.data(), static_cast<std::streamsize>(text.size()));
-        out.close();
-        if (!out) {
-            std::error_code ignored;
-            fs::remove(temp, ignored);
-            return "Couldn't write " + utf8(temp) + ".";
-        }
+    const std::optional<AtomicWriteError> error =
+        write_file_atomically(path, serialize_preferences(prefs));
+    if (!error) {
+        return std::nullopt;
     }
-    // rename replaces an existing file in one step (on Windows too: MoveFileEx with
-    // MOVEFILE_REPLACE_EXISTING), so readers see either the old file or the new one.
-    std::error_code ec;
-    fs::rename(temp, path, ec);
-    if (ec) {
-        std::error_code ignored;
-        fs::remove(temp, ignored);
-        return "Couldn't save " + utf8(path) + ": " + ec.message();
+    if (error->step == AtomicWriteError::Step::write) {
+        return "Couldn't write " + utf8(error->file) + ".";
     }
-    return std::nullopt;
+    return "Couldn't save " + utf8(path) + ": " + error->reason;
 }
 
 }  // namespace prism::gui

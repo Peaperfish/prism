@@ -1,5 +1,8 @@
 #include "prism/recipe.hpp"
 
+#include "prism/atomic_file.hpp"
+#include "prism/utf8_path.hpp"
+
 #include <algorithm>
 #include <cerrno>
 #include <charconv>
@@ -7,6 +10,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
@@ -1300,6 +1304,43 @@ Recipe parse_recipe(std::string_view text, std::string_view source, const Recipe
         throw RecipeError(std::string(source), std::move(issues));
     }
     return recipe;
+}
+
+Recipe load_recipe(const std::filesystem::path& path) {
+    const std::string source = utf8(path);
+    std::error_code ec;
+    if (std::filesystem::is_directory(path, ec)) {
+        throw RecipeError(source, {{0, "this is a folder, not a recipe file"}});
+    }
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        const bool missing = !std::filesystem::exists(path, ec);
+        throw RecipeError(source,
+                          {{0, missing ? "the file does not exist" : "the file cannot be opened"}});
+    }
+    // One byte more than a recipe may have is enough to tell that a file is too large, without
+    // reading all of a large file that was opened by mistake.
+    std::string text(recipe_max_bytes + 1, '\0');
+    in.read(text.data(), static_cast<std::streamsize>(text.size()));
+    if (in.bad()) {
+        throw RecipeError(source, {{0, "the file cannot be read"}});
+    }
+    text.resize(static_cast<std::size_t>(in.gcount()));
+    return parse_recipe(text, source);
+}
+
+void save_recipe(const std::filesystem::path& path, const Recipe& recipe) {
+    const std::optional<AtomicWriteError> error = write_file_atomically(path, write_recipe(recipe));
+    if (!error) {
+        return;
+    }
+    std::string message = "cannot save recipe '" + utf8(path) + "': ";
+    if (error->step == AtomicWriteError::Step::write) {
+        message += "cannot write '" + utf8(error->file) + "'";
+    } else {
+        message += error->reason;
+    }
+    throw std::runtime_error(message);
 }
 
 }  // namespace prism
