@@ -217,7 +217,9 @@ void ScopeView::draw(gui::ScopeChoice which, gui::Theme theme, float avail_w, fl
             const float dy = m.y - (centre.y + d.y * t);
             if (dx * dx + dy * dy <= metrics.scope_hit * metrics.scope_hit) {
                 skin_hovered_ = true;
-                ImGui::SetTooltip("Skin tones usually sit near this line.");
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
+                    ImGui::SetTooltip("Skin tones usually sit near this line.");
+                }
             }
         }
     }

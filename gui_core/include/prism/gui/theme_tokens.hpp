@@ -53,13 +53,19 @@ struct TokenColours {
     Rgba modal_dim;
     // Behind the photo: always neutral (R = G = B), neither near white nor near black.
     Rgba canvas;
-    // The test strip, drawn over the photo (so theme-independent): the thin line between bands, the
-    // hovered band's wash and edge, the label chip in a band's corner, and the chosen step's pill
-    // in the strip bar (drawn on the overlay background).
+    // The test strip's bands, drawn over the photo (so the same in both themes): the thin line
+    // between bands, the hovered band's wash and edge, and the label chip in a band's corner.
     Rgba strip_divider, strip_hover_fill, strip_hover_edge;
     Rgba strip_chip_bg, strip_chip_text;
-    Rgba strip_pill_active;
+    // The strip's bar above the photo follows the theme: its background, its text, the chosen
+    // step's pill (a wash over the background) and the wash under a hovered pill or the close
+    // button.
+    Rgba strip_bar_bg, strip_bar_text, strip_bar_pill, strip_bar_hover;
 };
+
+// How many lines of Small text the Explain area shows before it scrolls inside itself. A count,
+// not a size, so it does not scale with the interface size (the line height does).
+inline constexpr int explain_max_lines = 5;
 
 // Sizes in points at an interface size of 100%.
 struct TokenMetrics {

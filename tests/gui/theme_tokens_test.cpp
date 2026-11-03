@@ -112,15 +112,29 @@ TEST(ThemeTokens, StripLinesAreSeenOnTheirOwnColours) {
     }
 }
 
-TEST(ThemeTokens, StripPillTextIsReadableOnTheBar) {
+TEST(ThemeTokens, StripBarFollowsTheThemeAndItsTextIsReadable) {
+    const TokenColours& dark = token_set(Theme::dark).colours;
+    const TokenColours& light = token_set(Theme::light).colours;
+    // Dark text on a light bar in Light, light text on a dark bar in Dark.
+    EXPECT_LT(lightness(dark.strip_bar_bg), 30.0f);
+    EXPECT_GT(lightness(light.strip_bar_bg), 70.0f);
     for (const TokenSet& set : token_sets()) {
         const TokenColours& c = set.colours;
-        // The bar is the overlay box (black at 180/255) over the window; the chosen pill adds a
-        // light wash, and the bar's text is white.
-        const Rgba bar = composite(grey(0.0f, 180.0f / 255.0f), c.window_bg);
-        EXPECT_GE(contrast_ratio(grey(1.0f), composite(c.strip_pill_active, bar)), 4.5f)
-            << label(set);
+        EXPECT_GE(contrast_ratio(c.strip_bar_text, c.strip_bar_bg), 4.5f) << label(set);
+        // The chosen step's pill and the hovered one sit on the bar; the text is read on them.
+        const Rgba pill = composite(c.strip_bar_pill, c.strip_bar_bg);
+        const Rgba hover = composite(c.strip_bar_hover, c.strip_bar_bg);
+        EXPECT_GE(contrast_ratio(c.strip_bar_text, pill), 4.5f) << label(set) << " pill";
+        EXPECT_GE(contrast_ratio(c.strip_bar_text, hover), 4.5f) << label(set) << " hover";
+        // ... and the pill can be seen against the bar without being a hole in it.
+        EXPECT_GT(contrast_ratio(pill, c.strip_bar_bg), 1.1f) << label(set);
+        // The bar sits on the window: not a different world from it.
+        EXPECT_LT(std::abs(lightness(c.strip_bar_bg) - lightness(c.window_bg)), 20.0f) << label(set);
     }
+}
+
+TEST(ThemeTokens, ExplainAreaShowsAboutFiveLines) {
+    EXPECT_EQ(explain_max_lines, 5);
 }
 
 TEST(ThemeTokens, PlotBoxSitsCalmlyInThePanel) {

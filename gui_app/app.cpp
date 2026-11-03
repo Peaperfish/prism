@@ -774,7 +774,7 @@ void App::draw_menu() {
             toggle_test_strip();
         }
         if (session_.has_file() && !strip_ && !gui::strip_available(viewed_stage_) &&
-            ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+            ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled)) {
             ImGui::SetTooltip("%s", gui::strip_unavailable_hint());
         }
         ImGui::EndMenu();
@@ -895,14 +895,13 @@ void App::show_strip_band(int band) {
 // The strip's bar, above the canvas: its name, the step choice, a close button, and a line that
 // says what the steps mean. On the overlay's dark box, like the other text over the photo.
 void App::draw_strip_bar(float width) {
-    const Palette& colours = palette(theme());
     const gui::TokenColours& tokens = token_colours();
     const gui::TokenMetrics& metrics = token_metrics();
     const auto rgba = [](const gui::Rgba& c) {
         return ImGui::ColorConvertFloat4ToU32(ImVec4(c.r, c.g, c.b, c.a));
     };
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::ColorConvertU32ToFloat4(colours.overlay_background));
-    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(colours.overlay_text));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::ColorConvertU32ToFloat4(rgba(tokens.strip_bar_bg)));
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(rgba(tokens.strip_bar_text)));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
                         ImVec2(metrics.badge_padding.x, metrics.badge_padding.y));
     ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, metrics.overlay_rounding);
@@ -937,12 +936,12 @@ void App::draw_strip_bar(float width) {
         const ImVec2 min = ImGui::GetItemRectMin();
         const ImVec2 max = ImGui::GetItemRectMax();
         if (choice.step == current) {
-            draw->AddRectFilled(min, max, rgba(tokens.strip_pill_active), metrics.chip_rounding);
+            draw->AddRectFilled(min, max, rgba(tokens.strip_bar_pill), metrics.chip_rounding);
         } else if (ImGui::IsItemHovered()) {
-            draw->AddRectFilled(min, max, rgba(tokens.strip_hover_fill), metrics.chip_rounding);
+            draw->AddRectFilled(min, max, rgba(tokens.strip_bar_hover), metrics.chip_rounding);
         }
         draw->AddText(ImVec2(min.x + metrics.strip_pill_pad_x, min.y + metrics.strip_pill_pad_y),
-                      colours.overlay_text, choice.text);
+                      rgba(tokens.strip_bar_text), choice.text);
         if (picked) {
             set_strip_step(choice.step);
         }
@@ -957,15 +956,17 @@ void App::draw_strip_bar(float width) {
     const ImVec2 cmin = ImGui::GetItemRectMin();
     const ImVec2 cmax = ImGui::GetItemRectMax();
     if (ImGui::IsItemHovered()) {
-        draw->AddRectFilled(cmin, cmax, rgba(tokens.strip_hover_fill), metrics.chip_rounding);
+        draw->AddRectFilled(cmin, cmax, rgba(tokens.strip_bar_hover), metrics.chip_rounding);
+    }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
         ImGui::SetTooltip("Close the test strip (Esc)");
     }
     const ImVec2 mid((cmin.x + cmax.x) / 2, (cmin.y + cmax.y) / 2);
     const float arm = metrics.chevron_size * 0.8f;
     draw->AddLine(ImVec2(mid.x - arm, mid.y - arm), ImVec2(mid.x + arm, mid.y + arm),
-                  colours.overlay_text, metrics.chevron_thickness);
+                  rgba(tokens.strip_bar_text), metrics.chevron_thickness);
     draw->AddLine(ImVec2(mid.x - arm, mid.y + arm), ImVec2(mid.x + arm, mid.y - arm),
-                  colours.overlay_text, metrics.chevron_thickness);
+                  rgba(tokens.strip_bar_text), metrics.chevron_thickness);
 
     ImGui::PushTextWrapPos(0.0f);
     ImGui::TextUnformatted(gui::strip_teaching_line(current).c_str());
@@ -1386,8 +1387,18 @@ void App::draw_panel_column(float height) {
     const float width = ImGui::GetContentRegionAvail().x;
     const bool explaining = prefs_.show_explanations && session_.has_file();
     const float spacing = ImGui::GetStyle().ItemSpacing.y;
-    // At most 45% of the panel's height, so the controls keep room; a longer text scrolls.
-    const float explain_h = explaining ? explain_height(width, height * 0.45f) : 0.0f;
+    // About five lines of Small text (and never more than 45% of a very short panel); a longer
+    // text scrolls inside the area.
+    float cap = height * 0.45f;
+    if (explaining) {
+        const gui::TokenMetrics& m = token_metrics();
+        ImGui::PushFont(nullptr, token_type().small);
+        const float line = ImGui::GetTextLineHeight();
+        ImGui::PopFont();
+        cap = std::min(cap, 2 * m.explain_pad.y + 2 * m.window_border + gui::explain_max_lines * line +
+                                (gui::explain_max_lines - 1) * m.explain_gap);
+    }
+    const float explain_h = explaining ? explain_height(width, cap) : 0.0f;
     ImGui::BeginGroup();
     ImGui::BeginChild("panel",
                       ImVec2(width, std::max(1.0f, height - (explaining ? explain_h + spacing : 0.0f))),
@@ -1615,7 +1626,7 @@ void App::draw_clip_chips(const gui::StageHistogram& h, float avail_w) {
         }
 
         explain(explain_id);
-        if (ImGui::IsItemHovered()) {
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
             ImGui::SetTooltip("%s\nR %.2f%%   G %.2f%%   B %.2f%%", tooltip_title,
                               gui::pixel_percent(r_clip, h.pixel_count),
                               gui::pixel_percent(g_clip, h.pixel_count),
@@ -1681,7 +1692,7 @@ void App::draw_scope_selector() {
             ImGui::PopStyleColor();
         }
         explain(gui::explain_id(c.scope));
-        if (ImGui::IsItemHovered()) {
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
             hovered_id = gui::explain_id(c.scope);
         }
         ++index;
@@ -1709,7 +1720,7 @@ void App::draw_clip_overlay_button() {
     }
     ImGui::PopStyleVar();
     ImGui::PopFont();
-    describe(gui::explain::clip_overlay, false, ImGuiHoveredFlags_None);
+    describe(gui::explain::clip_overlay);
 }
 
 void App::draw_presets() {
@@ -1724,11 +1735,11 @@ void App::draw_presets() {
                 gui::apply_preset(s, preset);
                 report(session_.set_settings(s));  // one undo step
             }
-            describe(gui::explain_id(preset), false, ImGuiHoveredFlags_None);
+            describe(gui::explain_id(preset));
         }
         ImGui::EndCombo();
     }
-    describe(gui::explain::look, false, ImGuiHoveredFlags_None);
+    describe(gui::explain::look);
     const gui::Preset& start = gui::default_preset(kind);
     if (&start != current) {
         const bool reset = ImGui::Button(("Reset to " + std::string(start.name)).c_str());
@@ -1923,7 +1934,15 @@ bool App::draw_stage_clip_indicator(const gui::StageClip& clip, ImVec2 row_min, 
     const bool hovered = ImGui::IsMouseHoveringRect(ImVec2(left - 4.0f * s, row_min.y),
                                                     ImVec2(row_max.x, row_max.y)) &&
                          ImGui::IsWindowHovered();
-    if (hovered) {
+    // The same delay as every tooltip: the mouse must rest on this row's dots. (They are not an
+    // item of their own, so ImGui's own hover timer can't be used.)
+    if (!hovered && dot_hover_stage_ == clip.stage) {
+        dot_hover_stage_.reset();
+    } else if (hovered && dot_hover_stage_ != clip.stage) {
+        dot_hover_stage_ = clip.stage;
+        dot_hover_since_ = ImGui::GetTime();
+    }
+    if (hovered && ImGui::GetTime() - dot_hover_since_ >= ImGui::GetStyle().HoverDelayNormal) {
         ImGui::BeginTooltip();
         for (const Mark& m : marks) {
             if (m.fate == gui::ClipFate::none) {

@@ -195,6 +195,9 @@ private:
     std::optional<gui::ClipNote> clip_note_;
     std::optional<gui::ClipReport> note_report_;
     bool last_frame_had_clips_ = false;
+    // Which row's clipping dots the mouse is on, and since when (for their tooltip's delay).
+    std::optional<gui::StageId> dot_hover_stage_;
+    double dot_hover_since_ = 0;
     bool pipeline_open_ = true;
     // The clip mask of the frame on screen (empty: none), and what the overlay texture was made
     // from, to rebuild it when the mask or the theme changes.
