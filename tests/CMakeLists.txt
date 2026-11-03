@@ -52,6 +52,7 @@ add_executable(prism_gui_core_tests
   gui/background_export_test.cpp
   gui/clip_note_test.cpp
   gui/clipping_test.cpp
+  gui/close_guard_test.cpp
   gui/explanations_test.cpp
   gui/file_types_test.cpp
   gui/histogram_test.cpp

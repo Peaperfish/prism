@@ -1,0 +1,43 @@
+#include "prism/gui/close_guard.hpp"
+
+namespace prism::gui {
+
+CloseStep close_requested(const CloseState& state) noexcept {
+    if (!state.has_file) {
+        return state.export_running ? CloseStep::wait_for_export : CloseStep::proceed;
+    }
+    if (state.export_running) {
+        return CloseStep::wait_for_export;
+    }
+    return state.dirty ? CloseStep::ask : CloseStep::proceed;
+}
+
+CloseStep prompt_choice(PromptChoice choice) noexcept {
+    switch (choice) {
+        case PromptChoice::export_first: return CloseStep::choose_file;
+        case PromptChoice::discard: return CloseStep::proceed;
+        case PromptChoice::cancel: return CloseStep::cancel;
+    }
+    return CloseStep::cancel;
+}
+
+CloseStep save_dialog_closed(bool file_chosen) noexcept {
+    return file_chosen ? CloseStep::await_export : CloseStep::cancel;
+}
+
+CloseStep export_finished(ExportEnd end) noexcept {
+    return end == ExportEnd::saved ? CloseStep::proceed : CloseStep::cancel;
+}
+
+PromptText prompt_text(Pending pending) noexcept {
+    return {"You have edits that haven't been exported.", "Export...",
+            pending == Pending::quit ? "Quit Without Exporting" : "Open Without Exporting",
+            "Cancel"};
+}
+
+std::string_view waiting_text(Pending pending) noexcept {
+    return pending == Pending::quit ? "Finishing the export before quitting..."
+                                    : "Finishing the export before opening the other photo...";
+}
+
+}  // namespace prism::gui
