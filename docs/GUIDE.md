@@ -151,7 +151,7 @@ At the foot of the panel, a box says in plain words what the control under the m
 
 ### Unexported edits
 
-If you quit (`Cmd+Q`, the close button or **File → Quit**) or open or drop another photo while your settings differ from the last export (or from when you opened the photo), Prism asks: "You have edits that haven't been exported." with three buttons:
+If you quit (`Cmd+Q` on macOS, `Ctrl+Q` on Windows and Linux, the close button or **File → Quit**) or open or drop another photo while your settings differ from the last export (or from when you opened the photo), Prism asks: "You have edits that haven't been exported." with three buttons:
 
 - **Export…** goes on with the quit or open only after the export succeeds.
 - **Quit Without Exporting** (or **Open Without Exporting**).
@@ -176,7 +176,7 @@ On macOS the main key is `Cmd`; on Windows and Linux it is `Ctrl`. This is every
 | Mark clipping on the photo | `J` | `J` |
 | Test strip on or off | `T` | `T` |
 | Step back: close the Preferences, About or notices window if it has the focus; otherwise the test strip, then the comparison, then the viewed stage | `Esc` | `Esc` |
-| Quit | `Cmd+Q` | no shortcut: **File → Quit** or the close button |
+| Quit | `Cmd+Q` | `Ctrl+Q` |
 
 Notes:
 
@@ -184,7 +184,7 @@ Notes:
 - Undo, Redo, `J` and `T` do nothing while you are dragging a slider.
 - `J` and `T` give way to a text field that has the keyboard, so typing a value never triggers them.
 - `Esc` is also Cancel in the "unexported edits" window, and in the "Saving…" window while a quit or open is waiting for the export.
-- In the menus: **File** has Open…, Export… and Quit. **Edit** has Undo, Redo and (on Windows and Linux) Preferences…. **View** has Bigger Interface, Smaller Interface, Interface Size: Auto and Test Strip. **Help → About Prism** is on Windows and Linux; on macOS, About and Preferences are in the **Prism** menu (**Prism → About Prism**, **Prism → Preferences…**).
+- In the menus: **File** has Open…, Export… and Quit (on Windows and Linux the menu shows `Ctrl+Q`; on macOS, Quit is in the **Prism** menu too). **Edit** has Undo, Redo and (on Windows and Linux) Preferences…. **View** has Bigger Interface, Smaller Interface, Interface Size: Auto and Test Strip. **Help → About Prism** is on Windows and Linux; on macOS, About and Preferences are in the **Prism** menu (**Prism → About Prism**, **Prism → Preferences…**).
 
 Mouse and trackpad: click a stage row to view it; right-click a slider, or the Tone curve menu, to reset it; Ctrl-click (Cmd-click) a slider to type a value; drag the divider in a comparison; click a band in the test strip; drag the panel's left edge to resize the panel.
 

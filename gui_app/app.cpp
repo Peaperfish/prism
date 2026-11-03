@@ -662,6 +662,14 @@ void App::handle_shortcuts() {
     if (global(ImGuiMod_Ctrl | ImGuiKey_0) || global(ImGuiMod_Ctrl | ImGuiKey_Keypad0)) {
         step_interface_size(0);
     }
+    // Quit. On macOS the app menu's Quit item takes Cmd+Q itself. Elsewhere this is the same
+    // event as File > Quit and the close button, so the unexported-edits question comes first.
+    if (!ImGui::GetIO().ConfigMacOSXBehaviors &&
+        ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Q, ImGuiInputFlags_RouteGlobal)) {
+        SDL_Event quit{};
+        quit.type = SDL_EVENT_QUIT;
+        SDL_PushEvent(&quit);
+    }
     if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_E, ImGuiInputFlags_RouteGlobal) ||
         ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S, ImGuiInputFlags_RouteGlobal)) {
         show_save_dialog();
@@ -729,7 +737,10 @@ void App::draw_menu() {
             show_save_dialog();
         }
         ImGui::Separator();
-        if (ImGui::MenuItem("Quit")) {
+        // On macOS, Cmd+Q belongs to the app menu's own Quit item.
+        const std::string quit_keys =
+            ImGui::GetIO().ConfigMacOSXBehaviors ? std::string() : shortcut_label("Q");
+        if (ImGui::MenuItem("Quit", quit_keys.empty() ? nullptr : quit_keys.c_str())) {
             SDL_Event quit{};
             quit.type = SDL_EVENT_QUIT;
             SDL_PushEvent(&quit);
