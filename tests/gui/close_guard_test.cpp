@@ -159,6 +159,7 @@ TEST(CloseGuard, AfterWaitingTheRequestIsDecidedAgainFromTheNewState) {
 
 TEST(CloseGuard, EachButtonDoesWhatItSays) {
     EXPECT_EQ(prompt_choice(PromptChoice::export_first), CloseStep::choose_file);
+    EXPECT_EQ(prompt_choice(PromptChoice::save_recipe), CloseStep::name_recipe);
     EXPECT_EQ(prompt_choice(PromptChoice::discard), CloseStep::proceed);
     EXPECT_EQ(prompt_choice(PromptChoice::cancel), CloseStep::cancel);
 }
@@ -174,14 +175,71 @@ TEST(CloseGuard, OnlyASuccessfulExportGoesOn) {
     EXPECT_EQ(export_finished(ExportEnd::failed), CloseStep::cancel);
 }
 
+TEST(CloseGuard, SaveRecipeGoesFromTheSheetToTheDialog) {
+    EXPECT_EQ(recipe_sheet_closed(true), CloseStep::choose_recipe_file);
+}
+
+TEST(CloseGuard, CancellingTheRecipeSheetCancelsTheRequest) {
+    EXPECT_EQ(recipe_sheet_closed(false), CloseStep::cancel);
+}
+
+TEST(CloseGuard, OnlyAWrittenRecipeGoesOn) {
+    EXPECT_EQ(recipe_save_finished(RecipeEnd::saved), CloseStep::proceed);
+    EXPECT_EQ(recipe_save_finished(RecipeEnd::cancelled), CloseStep::cancel);
+    EXPECT_EQ(recipe_save_finished(RecipeEnd::failed), CloseStep::cancel);
+}
+
+TEST(CloseGuard, AFailedRecipeWriteLeavesTheBaselineAlone) {
+    // The window calls recipe_saved only after a successful write; a failure goes straight to
+    // recipe_save_finished(failed), so the edits are still unsaved when the prompt comes back.
+    EditSettings start;
+    SavedBaseline b;
+    b.opened(start);
+    EditSettings edited = start;
+    edited.exposure_stops = 0.4f;
+    EXPECT_EQ(recipe_save_finished(RecipeEnd::failed), CloseStep::cancel);
+    EXPECT_TRUE(b.dirty(edited));
+    EXPECT_EQ(close_requested({true, b.dirty(edited), false}), CloseStep::ask);
+}
+
 TEST(CloseGuard, TheTextsFollowWhatIsBeingAskedFor) {
     const PromptText quit = prompt_text(Pending::quit);
-    EXPECT_EQ(quit.message, "You have edits that haven't been exported.");
+    EXPECT_EQ(quit.message, "You have edits that haven't been exported or saved as a recipe.");
     EXPECT_EQ(quit.export_button, "Export...");
-    EXPECT_EQ(quit.discard_button, "Quit Without Exporting");
+    EXPECT_EQ(quit.recipe_button, "Save Recipe...");
     EXPECT_EQ(quit.cancel_button, "Cancel");
-    EXPECT_EQ(prompt_text(Pending::open_photo).discard_button, "Open Without Exporting");
     EXPECT_NE(waiting_text(Pending::quit), waiting_text(Pending::open_photo));
+}
+
+TEST(CloseGuard, TheDiscardButtonSaysSavingNotExporting) {
+    EXPECT_EQ(prompt_text(Pending::quit).discard_button, "Quit Without Saving");
+    EXPECT_EQ(prompt_text(Pending::open_photo).discard_button, "Open Without Saving");
+}
+
+TEST(CloseGuard, TheDetailLineNamesTheLastSave) {
+    EXPECT_EQ(prompt_detail(std::nullopt), "");
+    EXPECT_EQ(prompt_detail(LastSave{SaveKind::export_image, "IMG_1_prism.jpg"}),
+              "Last saved: exported as IMG_1_prism.jpg");
+    EXPECT_EQ(prompt_detail(LastSave{SaveKind::recipe, "warm.prism"}),
+              "Last saved: recipe warm.prism");
+}
+
+TEST(CloseGuard, ButtonsOnMacPutDiscardAloneOnTheLeftAndExportLast) {
+    const PromptButtons b = prompt_buttons(true);
+    EXPECT_EQ(b.order[0], PromptChoice::discard);
+    EXPECT_EQ(b.order[1], PromptChoice::cancel);
+    EXPECT_EQ(b.order[2], PromptChoice::save_recipe);
+    EXPECT_EQ(b.order[3], PromptChoice::export_first);
+    EXPECT_EQ(b.gap_after, 1);
+}
+
+TEST(CloseGuard, ButtonsOnWindowsAndLinuxPutExportFirst) {
+    const PromptButtons b = prompt_buttons(false);
+    EXPECT_EQ(b.order[0], PromptChoice::export_first);
+    EXPECT_EQ(b.order[1], PromptChoice::save_recipe);
+    EXPECT_EQ(b.order[2], PromptChoice::discard);
+    EXPECT_EQ(b.order[3], PromptChoice::cancel);
+    EXPECT_EQ(b.gap_after, 0);
 }
 
 }  // namespace

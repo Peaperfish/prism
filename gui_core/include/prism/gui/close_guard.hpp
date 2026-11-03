@@ -62,20 +62,27 @@ struct CloseState {
 
 // What the window does next.
 enum class CloseStep {
-    proceed,          // go ahead: quit, or open the other photo
-    ask,              // show the prompt
-    wait_for_export,  // show "waiting for the export", and ask again when it has finished
-    choose_file,      // the prompt's Export...: open the save dialog
-    await_export,     // the export has started: wait for its result
-    cancel,           // drop the request; nothing quits or opens
+    proceed,             // go ahead: quit, or open the other photo
+    ask,                 // show the prompt
+    wait_for_export,     // show "waiting for the export", and ask again when it has finished
+    choose_file,         // the prompt's Export...: open the save dialog
+    await_export,        // the export has started: wait for its result
+    name_recipe,         // the prompt's Save Recipe...: show the save sheet
+    choose_recipe_file,  // the sheet's Save...: open the recipe's save dialog
+    cancel,              // drop the request; nothing quits or opens
 };
 
-enum class PromptChoice { export_first, discard, cancel };  // Export..., Quit/Open Without, Cancel
+// Export..., Save Recipe..., Quit/Open Without Saving, Cancel.
+enum class PromptChoice { export_first, save_recipe, discard, cancel };
 
 enum class ExportEnd { saved, cancelled, failed };
 
+// How the recipe save that the prompt started ended: written, cancelled (in the sheet or the
+// dialog), or the write failed.
+enum class RecipeEnd { saved, cancelled, failed };
+
 // A request to quit or to open another photo arrived.
-//  - no photo, or nothing unexported: proceed (a running export of a clean photo still finishes
+//  - no photo, or nothing unsaved: proceed (a running export of a clean photo still finishes
 //    first, so a quit never kills a write half-way);
 //  - an export is running: wait for it, then ask again with the new state;
 //  - otherwise: ask.
@@ -92,14 +99,40 @@ enum class ExportEnd { saved, cancelled, failed };
 // on; cancelling or a failure cancels the request.
 [[nodiscard]] CloseStep export_finished(ExportEnd end) noexcept;
 
+// The save sheet opened by the prompt's Save Recipe... closed: Save... goes on to the dialog,
+// Cancel cancels the whole request.
+[[nodiscard]] CloseStep recipe_sheet_closed(bool confirmed) noexcept;
+
+// The recipe save the prompt started ended. The write is synchronous, so this comes straight
+// after the dialog: only a written recipe goes on; a cancelled dialog or a failed write cancels
+// the request (and a failure leaves the baseline as it was).
+[[nodiscard]] CloseStep recipe_save_finished(RecipeEnd end) noexcept;
+
 // The text of the prompt for `pending`.
 struct PromptText {
     std::string_view message;
     std::string_view export_button;
+    std::string_view recipe_button;
     std::string_view discard_button;
     std::string_view cancel_button;
 };
 [[nodiscard]] PromptText prompt_text(Pending pending) noexcept;
+
+// The prompt's second line: what was saved last, "Last saved: exported as photo_prism.jpg" or
+// "Last saved: recipe warm.prism"; empty when nothing was saved since the photo was opened.
+[[nodiscard]] std::string prompt_detail(const std::optional<LastSave>& last);
+
+// The prompt's buttons in the order they are drawn, left to right, as each platform orders them.
+// On macOS the destructive button stands alone on the left and the rest are on the right, the
+// default last: [Quit Without Saving] ... [Cancel] [Save Recipe...] [Export...]. On Windows and
+// Linux the default comes first: [Export...] [Save Recipe...] [Quit Without Saving] [Cancel].
+// Export... is the default (Enter) everywhere, and Esc is Cancel.
+struct PromptButtons {
+    PromptChoice order[4];
+    // A flexible gap goes after this many buttons (0: none, the row is packed).
+    int gap_after = 0;
+};
+[[nodiscard]] PromptButtons prompt_buttons(bool mac) noexcept;
 
 // The text of the waiting dialog and its button.
 [[nodiscard]] std::string_view waiting_text(Pending pending) noexcept;

@@ -239,6 +239,11 @@ void App::apply_close_step(gui::CloseStep step) {
         case gui::CloseStep::await_export:
             close_phase_ = ClosePhase::exporting;
             break;
+        case gui::CloseStep::name_recipe:
+        case gui::CloseStep::choose_recipe_file:
+            // The prompt has no Save Recipe... button yet.
+            apply_close_step(gui::CloseStep::cancel);
+            break;
         case gui::CloseStep::cancel:
             close_pending_.reset();
             close_phase_ = ClosePhase::none;
