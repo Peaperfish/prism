@@ -6,7 +6,7 @@ name: Release
 # - Run it by hand (Actions > Release > Run workflow) for a dry run: the zips and the LibRaw
 #   source tarball are uploaded as workflow artifacts only.
 # - Push a tag v<version> (the version in CMakeLists.txt's project()) for a release: the same
-#   files go into a draft pre-release, which is published by hand.
+#   files go into a draft release, which is published by hand.
 on:
   push:
     tags: ['v*']
@@ -122,7 +122,7 @@ jobs:
           path: dist/prism-*.zip
           if-no-files-found: error
 
-  # Tags only: a draft pre-release with both zips, LibRaw's source and SHA256SUMS.txt. Nothing
+  # Tags only: a draft release with both zips, LibRaw's source and SHA256SUMS.txt. Nothing
   # is published until someone presses Publish on GitHub.
   release:
     name: Draft release
@@ -159,7 +159,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: >
           gh release create "$GITHUB_REF_NAME"
-          --draft --prerelease --verify-tag
+          --draft --verify-tag
           --title "Prism ${GITHUB_REF_NAME#v}"
           --notes-file notes.md
           dist/prism-*.zip dist/LibRaw-*-source.tar.gz dist/SHA256SUMS.txt
