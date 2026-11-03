@@ -14,6 +14,7 @@ FetchContent_MakeAvailable(googletest)
 
 add_executable(prism_tests
   camera_profile_test.cpp
+  cli_batch_test.cpp
   cli_docs_test.cpp
   cli_test.cpp
   color_test.cpp

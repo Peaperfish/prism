@@ -21,6 +21,7 @@
 #include "prism/process.hpp"
 #include "prism/ranges.hpp"
 #include "prism/raw.hpp"
+#include "prism/recipe.hpp"
 #include "prism/utf8_path.hpp"
 #include "prism/version.hpp"
 
@@ -41,6 +42,8 @@ void print_usage(const char* program) {
               << "                              matrix instead of LibRaw's built-in one\n"
               << "\n"
               << "Options (always applied in this order, whatever order you type them):\n"
+              << "  --recipe <file>     apply a recipe (.prism file); each option below that you\n"
+              << "                      also give replaces that stage of the recipe\n"
               << "  --exposure <stops>  brighten (+) or darken (-) by this many stops\n"
               << "  --matrix <file>     apply a 3x3 colour matrix (9 numbers, row-major)\n"
               << "  --saturation <s>    scale colourfulness around each pixel's luminance\n"
@@ -71,6 +74,7 @@ struct UsageError : std::runtime_error {
 struct Options {
     std::string input;
     std::optional<std::string> output;
+    std::optional<std::string> recipe_path;
     std::optional<float> exposure_stops;
     std::optional<std::string> matrix_path;
     std::optional<float> saturation;
@@ -151,6 +155,8 @@ Options parse_args(int argc, char* argv[]) {
             std::exit(0);
         } else if (arg == "-o") {
             set_once(opts.output, arg, next_value());
+        } else if (arg == "--recipe") {
+            set_once(opts.recipe_path, arg, next_value());
         } else if (arg == "--exposure") {
             set_once(opts.exposure_stops, arg, parse_stops(next_value()));
         } else if (arg == "--matrix") {
@@ -258,15 +264,19 @@ int main(int argc, char* argv[]) {
     try {
         const Options opts = parse_args(argc, argv);
 
-        // Read the matrix and curve before the image: they are quick to check, so a typo
+        // Read the recipe, matrix and curve before the image: they are quick to check, so a typo
         // fails immediately instead of after decoding a large photo.
-        prism::ProcessSettings settings;
-        settings.exposure_stops = opts.exposure_stops;
-        if (opts.matrix_path) {
-            settings.matrix = prism::load_matrix(prism::path_from_utf8(*opts.matrix_path));
+        prism::Recipe recipe;
+        if (opts.recipe_path) {
+            recipe = prism::load_recipe(prism::path_from_utf8(*opts.recipe_path));
         }
-        settings.saturation = opts.saturation;
-        settings.contrast = opts.contrast;
+        prism::ProcessSettings flags;
+        flags.exposure_stops = opts.exposure_stops;
+        if (opts.matrix_path) {
+            flags.matrix = prism::load_matrix(prism::path_from_utf8(*opts.matrix_path));
+        }
+        flags.saturation = opts.saturation;
+        flags.contrast = opts.contrast;
         prism::RawOptions raw;
         raw.half_size = opts.raw_half;
         if (opts.raw_camera_matrix_path) {
@@ -274,8 +284,10 @@ int main(int argc, char* argv[]) {
                 prism::load_matrix(prism::path_from_utf8(*opts.raw_camera_matrix_path));
         }
         if (opts.curve_spec) {
-            settings.curve = prism::parse_curve(*opts.curve_spec);
+            flags.curve = prism::parse_curve(*opts.curve_spec);
         }
+        // Without --recipe the recipe is empty and this is exactly `flags`.
+        const prism::ProcessSettings settings = prism::merge_recipe_and_flags(recipe, flags);
 
         // 0 asks the library for one thread per hardware thread.
         const int threads = opts.threads.value_or(0);
@@ -333,6 +345,12 @@ int main(int argc, char* argv[]) {
         std::cerr << "error: " << e.what() << "\n\n";
         print_usage(program);
         return 2;
+    } catch (const prism::RecipeError& e) {
+        // One line per mistake, each with the same "error: " as any other error.
+        for (const prism::RecipeIssue& issue : e.issues()) {
+            std::cerr << "error: " << prism::format_recipe_issue(e.source(), issue) << '\n';
+        }
+        return 1;
     } catch (const std::exception& e) {
         std::cerr << "error: " << e.what() << '\n';
         return 1;

@@ -30,6 +30,10 @@ After a successful run, `prism` prints `wrote <file> (<width>x<height>)` for the
 
 The output image. The extension (`.png`, `.jpg` or `.jpeg`, in any case) picks the format; any other extension fails with "unsupported extension" when the file is saved, after the processing has run. No default.
 
+### `--recipe <file>`
+
+Apply the edit in a recipe file (`.prism`, described in [RECIPES.md](RECIPES.md)). The recipe is read and checked before any photo is opened: if it has mistakes, `prism` prints one `error:` line for each, with its line number, writes nothing and exits with code 1. A missing or unreadable recipe file is reported the same way. Any of `--exposure`, `--matrix`, `--saturation`, `--contrast` and `--curve` that you give as well replaces that stage of the recipe. No default.
+
 ### `--exposure <stops>`
 
 Brighten (`+`) or darken (`-`) by this many stops. Every value is multiplied by 2 to the power of the stops, in linear light: `+1` doubles the light, `-1` halves it, `+0.5` is about 1.4×. Any finite number is accepted. Default: not applied.
@@ -167,7 +171,7 @@ foreach ($f in Get-ChildItem *.jpg) {
 | Code | Meaning |
 |---|---|
 | 0 | Success. Also `--help` and `--version` |
-| 1 | The run failed: a file couldn't be read or written, an input can't be decoded, a matrix file or a `--curve` spec is wrong, or a RAW file was given to a build without RAW support. The message after `error:` says which |
+| 1 | The run failed: a file couldn't be read or written, an input can't be decoded, a recipe has mistakes or can't be read, a matrix file or a `--curve` spec is wrong, or a RAW file was given to a build without RAW support. The message after `error:` says which |
 | 2 | The command line is wrong: no input, a missing value, an unknown option, an option given twice, a number outside its range, neither `-o` nor `--histogram`, or `--raw-half` or `--raw-camera-matrix` on a PNG or JPEG. Prism prints `error: <reason>` and then the usage text |
 
 Errors go to stderr.
