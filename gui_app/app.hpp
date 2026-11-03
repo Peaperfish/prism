@@ -135,6 +135,9 @@ private:
     void draw_compare_controls();
     void draw_pipeline();
     void draw_status_bar();
+    // The clipping note at the right end of the status bar (#31); `width` is the room it may use.
+    void draw_clip_note(float width);
+    [[nodiscard]] float clip_note_width(const gui::ClipNote& note) const;
     void draw_saving_popup();
     void note_if_focused(bool* open_flag);
     void draw_preferences();
@@ -171,6 +174,13 @@ private:
     // Clipping at every stage, of the frame on screen. Only asked for (and so only present) while
     // the pipeline view is open: pipeline_open_ is what the last frame's draw_pipeline saw.
     std::optional<gui::ClipReport> clips_;
+    // The status bar's clipping note, from the newest frame that carried a clip report. While the
+    // pipeline view is closed the report is only asked for when nothing is being dragged, so a
+    // drag costs what it always did; the note keeps its last text meanwhile, shown muted until a
+    // frame that has a report for the current settings arrives (note_fresh_).
+    std::optional<gui::ClipNote> clip_note_;
+    std::optional<gui::ClipReport> note_report_;
+    bool last_frame_had_clips_ = false;
     bool pipeline_open_ = true;
     // The clip mask of the frame on screen (empty: none), and what the overlay texture was made
     // from, to rebuild it when the mask or the theme changes.

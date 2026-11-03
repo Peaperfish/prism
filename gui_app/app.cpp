@@ -192,6 +192,9 @@ void App::open_now(const fs::path& path) {
     texture_.reset();  // don't show the previous photo under the new name
     histogram_.reset();
     clips_.reset();
+    clip_note_.reset();
+    note_report_.reset();
+    last_frame_had_clips_ = false;
     clip_mask_.clear();
     texture_.reset_overlay();
     scope_view_.set(std::nullopt);
@@ -264,7 +267,10 @@ void App::update_preview() {
     }
     gui::PreviewOptions options;
     options.scopes = prefs_.scope != gui::ScopeChoice::histogram;
-    options.clip_report = pipeline_open_ && !strip_;  // not computed while a strip is on
+    // The pipeline view needs the report every frame. For the status bar's note it is enough once
+    // the picture settles: not while a control is being dragged (that is what made the report
+    // too dear for every drag frame), but at once for any other change and when a photo opens.
+    options.clip_report = (pipeline_open_ || !ImGui::IsAnyItemActive()) && !strip_;  // not with a strip
     options.clip_mask = prefs_.clip_overlay;
     options.compare_stage = strip_ ? std::nullopt : gui::effective_compare(viewed_stage_, compare_stage_);
     options.test_strip = strip_;
@@ -292,6 +298,11 @@ void App::update_preview() {
         texture_.reset_compare();
     }
     histogram_ = std::move(frame->histogram);
+    last_frame_had_clips_ = frame->clips.has_value();
+    if (frame->clips) {
+        clip_note_ = gui::make_clip_note(*frame->clips);
+        note_report_ = *frame->clips;
+    }
     clips_ = std::move(frame->clips);
     clip_mask_ = std::move(frame->clip_mask);
     clip_mask_width_ = frame->width;
@@ -1212,7 +1223,7 @@ App::ExplainText App::explain_text() const {
     context.viewed = viewed_stage_;
     context.compare = gui::effective_compare(viewed_stage_, compare_stage_);
     context.histogram = histogram_ ? &*histogram_ : nullptr;
-    context.clips = clips_ ? &*clips_ : nullptr;
+    context.clips = note_report_ ? &*note_report_ : nullptr;
     context.strip_step = strip_ ? strip_->step : strip_step_;
     return {std::string(e->summary), std::string(e->detail),
             gui::live_line(explain_shown_, session_.settings(), context)};
@@ -2145,7 +2156,11 @@ void App::draw_status_bar() {
     const auto measure = [](std::string_view s) {
         return ImGui::CalcTextSize(s.data(), s.data() + s.size()).x;
     };
-    const float width = ImGui::GetContentRegionAvail().x;
+    const float total = ImGui::GetContentRegionAvail().x;
+    const float note_room =
+        clip_note_ ? std::min(clip_note_width(*clip_note_), total * 0.5f) + ImGui::GetStyle().ItemSpacing.x
+                   : 0.0f;
+    const float width = std::max(1.0f, total - note_room);
     const float name_width = std::max(width - measure(details), width * 0.3f);
     const std::string status =
         gui::ellipsize_middle(gui::ellipsize_middle(file_name(session_.path()), name_width,
@@ -2155,6 +2170,58 @@ void App::draw_status_bar() {
     ImGui::TextDisabled("%s", status.c_str());
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
         ImGui::SetTooltip("%s", utf8(session_.path()).c_str());
+    }
+    if (clip_note_) {
+        draw_clip_note(note_room);
+    }
+}
+
+float App::clip_note_width(const gui::ClipNote& note) const {
+    const float dot = note.kind == gui::ClipNoteKind::none
+                          ? 0.0f
+                          : 2 * token_metrics().dot_radius + token_metrics().dot_gap;
+    return dot + ImGui::CalcTextSize(note.text.c_str()).x;
+}
+
+// Right-aligned on the status bar's line: a dot in the colour of what clipped (as in the pipeline
+// rows), then the short text; hover for the full sentence. Muted while it is not for the settings
+// on screen yet.
+void App::draw_clip_note(float room) {
+    const gui::ClipNote& note = *clip_note_;
+    const Palette& colours = palette(theme());
+    const gui::TokenMetrics& m = token_metrics();
+    const bool fresh = last_frame_had_clips_ && !preview_.rendering();
+    const float natural = clip_note_width(note);
+    const float width = std::min(natural, std::max(1.0f, room - ImGui::GetStyle().ItemSpacing.x));
+    ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetContentRegionMax().x - width));
+    const ImVec2 at = ImGui::GetCursorScreenPos();
+    ImGui::InvisibleButton("##clip_note", ImVec2(width, ImGui::GetTextLineHeight()));
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    float text_x = at.x;
+    if (note.kind != gui::ClipNoteKind::none) {
+        const ImU32 dot = note.kind == gui::ClipNoteKind::highlights ? colours.clip_highlights_fill
+                          : note.kind == gui::ClipNoteKind::shadows  ? colours.clip_shadows_fill
+                                                                     : colours.clip_gamut_fill;
+        draw->AddCircleFilled(ImVec2(at.x + m.dot_radius, at.y + ImGui::GetTextLineHeight() * 0.5f),
+                              m.dot_radius, dot);
+        text_x += 2 * m.dot_radius + m.dot_gap;
+    }
+    const auto measure = [](std::string_view s) {
+        return ImGui::CalcTextSize(s.data(), s.data() + s.size()).x;
+    };
+    const std::string text = gui::ellipsize_middle(note.text, std::max(1.0f, at.x + width - text_x), measure);
+    // Quiet until it matters: muted text for "No clipping" and while stale, the body colour when
+    // something clipped and the note is current.
+    const bool loud = fresh && note.kind != gui::ClipNoteKind::none;
+    draw->AddText(ImVec2(text_x, at.y),
+                  ImGui::GetColorU32(loud ? ImGuiCol_Text : ImGuiCol_TextDisabled), text.c_str());
+    explain(gui::explain::clip_note);
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
+        ImGui::BeginTooltip();
+        ImGui::PushTextWrapPos(m.tooltip_wrap);
+        ImGui::TextUnformatted(note.full.c_str());
+        ImGui::PopTextWrapPos();
+        ImGui::EndTooltip();
     }
 }
 
