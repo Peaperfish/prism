@@ -54,4 +54,21 @@ fs::path suggested_export_path(const fs::path& source, ExportFormat format) {
     return source.parent_path() / name;
 }
 
+std::string recipe_filter_pattern() {
+    return "prism";
+}
+
+bool is_recipe_file(const fs::path& path) {
+    return lowercase_extension(path) == ".prism";
+}
+
+fs::path with_recipe_extension(const fs::path& chosen) {
+    if (is_recipe_file(chosen)) {
+        return chosen;
+    }
+    fs::path result = chosen;
+    result += ".prism";
+    return result;
+}
+
 }  // namespace prism::gui

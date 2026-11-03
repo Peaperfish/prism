@@ -30,4 +30,17 @@ enum class ExportFormat { png, jpeg };
 [[nodiscard]] std::filesystem::path suggested_export_path(const std::filesystem::path& source,
                                                           ExportFormat format);
 
+// --- Recipes (.prism) -----------------------------------------------------------------------------
+
+// The recipe dialogs' filter: "prism".
+[[nodiscard]] std::string recipe_filter_pattern();
+
+// True if `path` ends in .prism, in any case.
+[[nodiscard]] bool is_recipe_file(const std::filesystem::path& path);
+
+// The recipe save dialog's answer as a file name to write: kept as it is when it already ends in
+// .prism (any case), otherwise with ".prism" added, as with_export_extension does
+// ("warm" -> "warm.prism"; "warm.v2" -> "warm.v2.prism").
+[[nodiscard]] std::filesystem::path with_recipe_extension(const std::filesystem::path& chosen);
+
 }  // namespace prism::gui
