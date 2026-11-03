@@ -1,7 +1,11 @@
 #pragma once
 
+#include <cstddef>
 #include <optional>
+#include <stdexcept>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include "prism/pipeline.hpp"
 #include "prism/ranges.hpp"
@@ -80,5 +84,47 @@ struct Recipe {
 // with ".0" added to whole numbers; exposure always has a sign, and -0 is written as 0. `on =
 // false` is written only for a stage that is off. UTF-8 without a byte-order mark, LF line ends.
 [[nodiscard]] std::string write_recipe(const Recipe& recipe);
+
+// --- Reading -------------------------------------------------------------------------------------
+//
+// Reading is strict, so that a typing mistake is reported instead of quietly ignored: an unknown
+// key or section (with a suggestion when one is close), a key given twice, a value of the wrong
+// kind or out of its range (refused, never clamped), units, decimal commas and the like are all
+// errors. Up to recipe_max_errors are collected, each with its line, and if there is any error the
+// whole recipe is refused: nothing of it is applied.
+
+inline constexpr std::size_t recipe_max_errors = 10;
+inline constexpr std::size_t recipe_max_bytes = 64 * 1024;
+
+// One mistake in a recipe: the line it is on (1 = the first; 0 = the file as a whole) and what is
+// wrong, in plain words, e.g. "unknown setting 'amout' in [saturation]. Did you mean 'amount'?"
+struct RecipeIssue {
+    int line = 0;
+    std::string message;
+    bool operator==(const RecipeIssue&) const = default;
+};
+
+// "recipe 'warm.prism' line 4: <message>", or "recipe 'warm.prism': <message>" for line 0. With
+// an empty `source`, "recipe line 4: <message>".
+[[nodiscard]] std::string format_recipe_issue(std::string_view source, const RecipeIssue& issue);
+
+// Why a recipe was refused. what() is every issue formatted as above, one per line.
+class RecipeError : public std::runtime_error {
+public:
+    RecipeError(std::string source, std::vector<RecipeIssue> issues);
+
+    // The file name (or other source) the messages name.
+    [[nodiscard]] const std::string& source() const noexcept { return source_; }
+    // In line order; never empty.
+    [[nodiscard]] const std::vector<RecipeIssue>& issues() const noexcept { return issues_; }
+
+private:
+    std::string source_;
+    std::vector<RecipeIssue> issues_;
+};
+
+// Reads a recipe from its text. `source` names it in messages (usually the file's name). A
+// byte-order mark at the start and CRLF line ends are accepted. Throws RecipeError.
+[[nodiscard]] Recipe parse_recipe(std::string_view text, std::string_view source = {});
 
 }  // namespace prism
