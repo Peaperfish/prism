@@ -107,6 +107,8 @@ struct TokenMetrics {
     // summary, detail and live line.
     Vec2 explain_pad;
     float explain_gap;
+    // The wrap width of the text in the "unexported edits" prompt.
+    float prompt_wrap;
 };
 
 // Type sizes in points at 100%.

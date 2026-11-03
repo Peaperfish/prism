@@ -80,6 +80,7 @@ constexpr TokenMetrics darkroom_metrics{
     .strip_bar_wrap = 520,
     .explain_pad = {10, 8},
     .explain_gap = 4,
+    .prompt_wrap = 360,
 };
 
 // Body text is 16 px at 100%: readable on a Retina laptop without squinting. Headers and small
@@ -275,6 +276,7 @@ TokenMetrics scaled(const TokenMetrics& m, float s) {
     r.strip_bar_wrap = m.strip_bar_wrap * s;
     r.explain_pad = m.explain_pad * s;
     r.explain_gap = m.explain_gap * s;
+    r.prompt_wrap = m.prompt_wrap * s;
     return r;
 }
 

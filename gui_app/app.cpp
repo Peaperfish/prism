@@ -171,8 +171,80 @@ void App::open_utf8(const char* path_utf8) {
 }
 
 void App::request_open(fs::path path) {
+    if (close_pending_) {
+        return;  // a quit or an open is already being decided
+    }
+    close_open_path_ = std::move(path);
+    begin_close(gui::Pending::open_photo);
+}
+
+void App::start_open(fs::path path) {
     pending_open_ = std::move(path);
     pending_open_shown_ = false;
+}
+
+void App::request_quit() {
+    if (close_pending_ == gui::Pending::quit) {
+        return;
+    }
+    close_open_path_.reset();  // a quit wins over an open that is still being decided
+    close_pending_.reset();
+    close_phase_ = ClosePhase::none;
+    begin_close(gui::Pending::quit);
+    if (close_pending_) {
+        SDL_RestoreWindow(window_);  // so the question can be seen
+    }
+}
+
+gui::CloseState App::close_state() const {
+    gui::CloseState state;
+    state.has_file = session_.has_file();
+    state.dirty = state.has_file && baseline_.dirty(session_.settings());
+    state.export_running = exporter_.busy();
+    return state;
+}
+
+void App::begin_close(gui::Pending pending) {
+    close_pending_ = pending;
+    apply_close_step(gui::close_requested(close_state()));
+}
+
+void App::apply_close_step(gui::CloseStep step) {
+    switch (step) {
+        case gui::CloseStep::proceed: {
+            const gui::Pending pending = *close_pending_;
+            close_pending_.reset();
+            close_phase_ = ClosePhase::none;
+            if (pending == gui::Pending::quit) {
+                quit_ = true;
+            } else if (close_open_path_) {
+                start_open(std::move(*close_open_path_));
+            }
+            close_open_path_.reset();
+            break;
+        }
+        case gui::CloseStep::ask:
+            close_phase_ = ClosePhase::asking;
+            break;
+        case gui::CloseStep::wait_for_export:
+            close_phase_ = ClosePhase::waiting;
+            break;
+        case gui::CloseStep::choose_file:
+            close_phase_ = ClosePhase::saving_dialog;
+            show_save_dialog();
+            if (!dialog_open_) {
+                apply_close_step(gui::CloseStep::cancel);  // the dialog could not open
+            }
+            break;
+        case gui::CloseStep::await_export:
+            close_phase_ = ClosePhase::exporting;
+            break;
+        case gui::CloseStep::cancel:
+            close_pending_.reset();
+            close_phase_ = ClosePhase::none;
+            close_open_path_.reset();
+            break;
+    }
 }
 
 void App::open_now(const fs::path& path) {
@@ -189,6 +261,7 @@ void App::open_now(const fs::path& path) {
         return;
     }
     error_.reset();
+    baseline_.opened(session_.settings());
     texture_.reset();  // don't show the previous photo under the new name
     histogram_.reset();
     clips_.reset();
@@ -228,11 +301,19 @@ void App::show_save_dialog() {
 void App::take_dialog_results() {
     for (DialogResult& result : dialogs_.take_all()) {
         dialog_open_ = false;
+        const bool for_close = close_phase_ == ClosePhase::saving_dialog &&
+                               result.kind != DialogResult::Kind::open;
         if (!result.error.empty()) {
             show_error({gui::ErrorKind::unreadable, "Couldn't show the file dialog.",
                         result.error});
+            if (for_close) {
+                apply_close_step(gui::save_dialog_closed(false));
+            }
         } else if (!result.path) {
-            // Cancelled.
+            // Cancelled: so is the quit or open that asked for it.
+            if (for_close) {
+                apply_close_step(gui::save_dialog_closed(false));
+            }
         } else if (result.kind == DialogResult::Kind::open) {
             request_open(std::move(*result.path));
         } else if (session_.has_file()) {
@@ -240,7 +321,11 @@ void App::take_dialog_results() {
             const fs::path output = gui::with_export_extension(*result.path, result.format);
             error_.reset();
             notice_.clear();
+            exporting_settings_ = session_.settings();
             exporter_.start(session_.export_job(), output);
+            if (for_close) {
+                apply_close_step(gui::save_dialog_closed(true));
+            }
         }
     }
 }
@@ -250,12 +335,21 @@ void App::take_export_result() {
     if (!result) {
         return;
     }
+    gui::ExportEnd end = gui::ExportEnd::saved;
     if (result->error && result->error->kind == gui::ErrorKind::cancelled) {
         notice_ = "Export cancelled. Nothing was written.";
+        end = gui::ExportEnd::cancelled;
     } else if (result->error) {
         show_error(std::move(*result->error));
+        end = gui::ExportEnd::failed;
     } else {
         notice_ = "Saved " + file_name(result->output) + ".";
+        baseline_.exported(exporting_settings_);  // what was exported, not what is on screen now
+    }
+    if (close_pending_ && close_phase_ == ClosePhase::exporting) {
+        apply_close_step(gui::export_finished(end));
+    } else if (close_pending_ && close_phase_ == ClosePhase::waiting) {
+        apply_close_step(gui::close_requested(close_state()));  // decide again with the new state
     }
 }
 
@@ -450,7 +544,7 @@ void App::handle_event(const SDL_Event& event) {
 
 bool App::animating() const {
     return quiet_frames_ < settle_frames || preview_.rendering() || pending_open_.has_value() ||
-           exporter_.busy();
+           exporter_.busy() || close_pending_.has_value();
 }
 
 void App::frame() {
@@ -513,6 +607,7 @@ void App::frame() {
 
     draw_status_bar();
     draw_saving_popup();
+    draw_close_prompt();
     ImGui::End();
     focused_window_this_frame_ = nullptr;
     draw_preferences();
@@ -2407,13 +2502,71 @@ void App::draw_saving_popup() {
         if (!exporter_.busy()) {
             ImGui::CloseCurrentPopup();
         }
-        ImGui::TextUnformatted("Saving...");
+        // A quit or an open waiting for this export: say so. Cancel then drops the quit or open
+        // and lets the export finish; otherwise it cancels the export.
+        const bool waiting = close_pending_ && close_phase_ == ClosePhase::waiting;
+        const std::string_view text =
+            waiting ? gui::waiting_text(*close_pending_) : std::string_view("Saving...");
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + token_metrics().prompt_wrap);
+        ImGui::TextUnformatted(text.data(), text.data() + text.size());
+        ImGui::PopTextWrapPos();
         ImGui::ProgressBar(-1.0f * static_cast<float>(ImGui::GetTime()), ImVec2(token_metrics().progress_width, 0),
                            "");
-        if (ImGui::Button("Cancel")) {
-            exporter_.cancel();
+        if (ImGui::Button("Cancel") || (waiting && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
+            if (waiting) {
+                apply_close_step(gui::CloseStep::cancel);
+            } else {
+                exporter_.cancel();
+            }
         }
         ImGui::EndPopup();
+    }
+}
+
+// "You have edits that haven't been exported." with Export..., Quit/Open Without Exporting and
+// Cancel. Modal; Esc is Cancel; Export... is the default (Enter).
+void App::draw_close_prompt() {
+    const bool asking = close_pending_ && close_phase_ == ClosePhase::asking;
+    if (asking && !ImGui::IsPopupOpen("close_prompt")) {
+        ImGui::OpenPopup("close_prompt");
+    }
+    const ImVec2 centre = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(centre, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    if (!ImGui::BeginPopupModal("close_prompt", nullptr,
+                                ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) {
+        return;
+    }
+    if (!asking) {
+        ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+        return;
+    }
+    const gui::PromptText text = gui::prompt_text(*close_pending_);
+    const auto label = [](std::string_view s) { return std::string(s); };
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + token_metrics().prompt_wrap);
+    ImGui::TextUnformatted(text.message.data(), text.message.data() + text.message.size());
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+    std::optional<gui::PromptChoice> choice;
+    if (ImGui::Button(label(text.export_button).c_str())) {
+        choice = gui::PromptChoice::export_first;
+    }
+    ImGui::SetItemDefaultFocus();
+    ImGui::SameLine();
+    if (ImGui::Button(label(text.discard_button).c_str())) {
+        choice = gui::PromptChoice::discard;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(label(text.cancel_button).c_str()) ||
+        ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        choice = gui::PromptChoice::cancel;
+    }
+    if (choice) {
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+    if (choice) {
+        apply_close_step(gui::prompt_choice(*choice));
     }
 }
 

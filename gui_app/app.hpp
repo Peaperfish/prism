@@ -13,6 +13,7 @@
 #include "scope_view.hpp"
 #include "prism/gui/background_export.hpp"
 #include "prism/gui/clip_note.hpp"
+#include "prism/gui/close_guard.hpp"
 #include "prism/gui/clipping.hpp"
 #include "prism/gui/explanations.hpp"
 #include "prism/gui/histogram.hpp"
@@ -39,6 +40,12 @@ public:
     // Opens `path_utf8` (e.g. from the command line) on the next frames.
     void open_utf8(const char* path_utf8);
 
+    // The window was asked to close (Cmd+Q, the close button, File > Quit). It only quits now if
+    // nothing unexported is at stake; otherwise it asks first (see close_guard.hpp). The main loop
+    // ends when quit_wanted() turns true.
+    void request_quit();
+    [[nodiscard]] bool quit_wanted() const noexcept { return quit_; }
+
     // Call before ImGui::NewFrame(): rebuilds the style when the theme or the scale changed.
     void before_frame();
 
@@ -59,6 +66,13 @@ private:
     // Asks for `path` to be opened. The open itself happens a frame later, so the window can
     // first show "Opening ..." (decoding a large RAW file takes about a second).
     void request_open(std::filesystem::path path);
+    // The part of request_open that really starts it (after the unexported-edits question).
+    void start_open(std::filesystem::path path);
+    // Unexported edits (#32): a quit or an open is held while the guard decides what happens.
+    [[nodiscard]] gui::CloseState close_state() const;
+    void begin_close(gui::Pending pending);
+    void apply_close_step(gui::CloseStep step);
+    void draw_close_prompt();
     void open_now(const std::filesystem::path& path);
     void show_open_dialog();
     void show_save_dialog();
@@ -190,6 +204,15 @@ private:
     bool overlay_dirty_ = false;
     std::optional<gui::Theme> overlay_theme_;
     gui::BackgroundExport exporter_;
+    // What the photo was last saved with, to tell unexported edits from none.
+    gui::ExportBaseline baseline_;
+    gui::EditSettings exporting_settings_;  // the settings of the export in flight
+    bool quit_ = false;
+    // The quit or open being held back, where it is, and (for an open) which file.
+    enum class ClosePhase { none, waiting, asking, saving_dialog, exporting };
+    std::optional<gui::Pending> close_pending_;
+    ClosePhase close_phase_ = ClosePhase::none;
+    std::optional<std::filesystem::path> close_open_path_;
     double last_render_ms_ = 0;
 
     std::optional<std::filesystem::path> pending_open_;

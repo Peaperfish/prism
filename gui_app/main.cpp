@@ -108,12 +108,16 @@ int main(int argc, char** argv) {
                     event.wheel.y = wheel.y;
                 }
                 ImGui_ImplSDL3_ProcessEvent(&event);
+                // Quitting may first ask about unexported edits: the App says when it is time.
                 if (event.type == SDL_EVENT_QUIT ||
                     (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED &&
                      event.window.windowID == SDL_GetWindowID(window))) {
-                    done = true;
+                    app.request_quit();
                 }
                 app.handle_event(event);
+            }
+            if (app.quit_wanted()) {
+                done = true;
             }
             if (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED) {
                 SDL_Delay(10);
