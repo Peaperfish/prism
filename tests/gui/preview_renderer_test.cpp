@@ -972,14 +972,29 @@ int thread_count() {
 #endif
 }
 
+// The threads this process has before a strip render under test. A sanitizer or the runtime may
+// start a thread of its own lazily the first time the process creates one (ThreadSanitizer on
+// Linux spawns its background thread then), which would count as a leak if the baseline were taken
+// before it. So a strip render that starts workers runs once first, and the baseline comes after.
+int baseline_thread_count(const EditSettings& settings, const prism::Image& base) {
+    static const bool warmed = [&] {
+        (void)prism::gui::render_preview(base, settings, 4, {}, {}, StageId::encode,
+                                         strip_options(prism::gui::StripStep::half, false, false));
+        return true;
+    }();
+    (void)warmed;
+    return thread_count();
+}
+
 // No thread started by the render is still there (where the platform can count them). A joined
 // thread has finished running the moment join() returns, but the kernel may list it for a short
-// while longer as it tears it down, so this waits (up to the timeout) for the count to drop.
+// while longer as it tears it down, so this waits briefly for the count to drop. A real leak fails
+// after the few seconds, not the generous `timeout` the blocking waits use.
 void expect_no_thread_left(int before) {
     if (before < 0) {
         return;
     }
-    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    const auto deadline = std::chrono::steady_clock::now() + 3s;
     int now = thread_count();
     while (now > before && std::chrono::steady_clock::now() < deadline) {
         std::this_thread::yield();
@@ -1078,7 +1093,7 @@ TEST(PreviewStripConcurrent, TheStageCallbackRunsOnTheCallingThreadForTheMiddleB
 TEST(PreviewStripConcurrent, AStopBeforeTheRenderGivesNoFrame) {
     const auto base = make_base(64, 32);
     for (const int threads : {1, 4, 0}) {
-        const int before = thread_count();
+        const int before = baseline_thread_count(every_stage(), *base);
         std::stop_source source;
         source.request_stop();
         EXPECT_FALSE(prism::gui::render_preview(*base, every_stage(), threads, source.get_token(), {},
@@ -1093,7 +1108,7 @@ TEST(PreviewStripConcurrent, AStopDuringTheRenderStopsEveryBand) {
     // running or waiting on the workers: no frame, and every worker is gone when the call returns.
     const auto base = make_base(400, 200);
     for (const int threads : {1, 4, 0}) {
-        const int before = thread_count();
+        const int before = baseline_thread_count(every_stage(), *base);
         std::stop_source source;
         int stages_after_stop = 0;
         const auto frame = prism::gui::render_preview(
@@ -1117,7 +1132,7 @@ TEST(PreviewStripConcurrent, AnExceptionInEveryBandReachesTheCaller) {
     EditSettings bad = every_stage();
     bad.saturation = 12.0f;
     for (const int threads : {1, 4, 0}) {
-        const int before = thread_count();
+        const int before = baseline_thread_count(every_stage(), *base);
         EXPECT_THROW((void)prism::gui::render_preview(*base, bad, threads, {}, {}, StageId::encode,
                                                       strip_options(prism::gui::StripStep::half, true, true)),
                      std::invalid_argument)
@@ -1130,7 +1145,7 @@ TEST(PreviewStripConcurrent, AnExceptionInOneBandStopsTheOthersAndReachesTheCall
     // The middle band throws (from its stage callback) while the other bands run on the workers.
     const auto base = make_base(400, 200);
     for (const int threads : {1, 4, 0}) {
-        const int before = thread_count();
+        const int before = baseline_thread_count(every_stage(), *base);
         EXPECT_THROW((void)prism::gui::render_preview(
                          *base, every_stage(), threads, {},
                          [](const prism::StageTime&) { throw std::runtime_error("band failed"); },
