@@ -264,6 +264,14 @@ Each band has a chip with its offset from the current exposure and how much more
 
 `Esc` turns the strip off first (before the comparison and the viewed stage), and so does the × button or `T` again. The strip needs the Exposure stage or a later one in view: on Decode, where no edit shows, the controls are greyed out with a tooltip saying why. Turning it on clears a comparison. The strip is only a view: it is not saved with the settings, is not part of undo, goes away when you open another photo, and **export is never affected** (it always renders the whole photo at the chosen settings).
 
+### Explanations, the clipping note and closing safely
+
+**Explain area.** At the foot of the control panel, a box says in plain words what the control under the mouse does to the light: a one-line summary, a short detail, and a live line worked out with the engine's own maths (Brightness +35 reads "+35: +0.70 stops, 1.62× the light"). It follows the hovered control, else the focused one, else the last one you dragged or changed. Tooltips show just the summary. The texts live in `gui_core/src/explanations.cpp`, and a test checks that every stage, slider, curve, scope and look has one and that the live numbers match the engine.
+
+**Clipping note.** Once a photo is open, the right end of the status bar says what clipped, with the pipeline's dot colours (orange above white, blue below black, violet too saturated for sRGB): "2.7% clipped in the file", "3% highlights clipped at Output encode" or "No clipping". Hover it for the full sentence. The per-stage report is asked for whenever no control is being dragged, so dragging costs what it did before and the note settles when you let go.
+
+**Unexported edits.** Quitting (Cmd/Ctrl+Q, the close button, File → Quit) or opening or dropping another photo, when the settings differ from those at the last export (or at open), asks "You have edits that haven't been exported." with **Export…**, **Quit Without Exporting** (**Open Without Exporting**) and **Cancel**. Export… goes on only after a successful export; undoing back to the exported state counts as clean. If an export is running, Prism waits for it first.
+
 ### Themes and Preferences
 
 Preferences (on macOS: Prism → Preferences…, Cmd+,; on Windows and Linux: Edit → Preferences…, Ctrl+,) is an ordinary window whose changes apply at once:
@@ -271,6 +279,8 @@ Preferences (on macOS: Prism → Preferences…, Cmd+,; on Windows and Linux: Ed
 - **Appearance:** System (the default: follows the operating system's light or dark mode, also when it switches while Prism is open), Light or Dark. Whatever the theme, the canvas behind the photo stays a neutral grey (slightly lighter in Light), never white, black or tinted, so it doesn't sway how bright or colourful the photo looks.
 - **Interface size:** Auto (the display's scale, e.g. 150% on a Windows laptop set to 150%) or 75–200% in steps of 25. Cmd+= (or Cmd++) makes it one step bigger, Cmd+- one step smaller and Cmd+0 returns to Auto, also from the View menu (Ctrl instead of Cmd on Windows and Linux); the choice is kept like the others.
 - **Panel width:** the control panel's width; it can also be dragged at its left edge. It never takes more than 40% of the window (or less than 240 points where there is room). "Reset layout" goes back to 320 points, "Restore defaults" resets everything.
+
+- **Show explanations** (on by default): the Explain area, see below. Tooltips keep their one-line summary either way.
 
 They are kept in `preferences.txt`, key=value lines next to ImGui's `imgui.ini` in the folder SDL picks for the app: `~/Library/Application Support/Prism/Prism/` on macOS, `%APPDATA%\Prism\Prism\` on Windows, `~/.local/share/Prism/Prism/` on Linux. The file is written atomically (a temporary file renamed over it). A missing or damaged file, or a bad value, falls back to the default for that setting alone, and settings Prism doesn't know (from a newer version) are kept.
 
@@ -300,7 +310,8 @@ prism_core (lib/)                            the pipeline, shared with the CLI
 | `slider_gesture.hpp` | Turns a slider's per-frame state (pressed, moved, released) into History gestures, so a whole drag is one undo step, made on release |
 | `background_export.hpp` | Runs `export_image()` on its own thread with a stop token, so the window keeps drawing while a full-resolution export runs; the UI polls for the result |
 | `main_thread_queue.hpp` | A small locked queue that hands values from any thread to the UI thread, e.g. the answer of a file dialog whose callback runs on another thread |
-| `preferences.hpp` | The app's own settings (theme, interface size, panel width, which scope is shown): defaults, reading and writing the key=value file, clamping, and resolving "System" to light or dark |
+| `explanations.hpp`, `clip_note.hpp`, `close_guard.hpp` | The Explain area's texts and live lines; the status bar's clipping note; and when unexported edits matter and what each answer to the quit/open prompt does |
+| `preferences.hpp` | The app's own settings (theme, interface size, panel width, which scope is shown, whether explanations show): defaults, reading and writing the key=value file, clamping, and resolving "System" to light or dark |
 | `layout.hpp` | Window layout as pure functions: the panel's width for a given window and scale, and shortening a file name in the middle to fit the status bar |
 | `file_types.hpp` | The file dialogs' filters (RAW only in a build with LibRaw), and the export file name: the suggested name next to the source, and the extension added if the user left it out |
 
@@ -319,7 +330,8 @@ v0.1.0 is the first pre-release of the desktop app. What's planned next is track
 - [Compare any two stages](https://github.com/Peaperfish/prism/issues/3), including the original, side by side or split *(done)*
 - [Clipping warnings](https://github.com/Peaperfish/prism/issues/4) that say which stage clipped *(done)*
 - [A test strip](https://github.com/Peaperfish/prism/issues/15): one image in bands at −1, −½, 0, +½ and +1 stop, to choose exposure by eye *(done)*
-- [A plain-language explanation](https://github.com/Peaperfish/prism/issues/16) for every control: what it does to the light
+- [A plain-language explanation](https://github.com/Peaperfish/prism/issues/16) for every control: what it does to the light *(done)*
+- [An always-visible clipping note](https://github.com/Peaperfish/prism/issues/31) at the right end of the status bar *(done)*
 - [Smoother preview while dragging](https://github.com/Peaperfish/prism/issues/5): let a running render finish and replace only the waiting request *(done)*
 
 [**0.3.0 – Recipes**](https://github.com/Peaperfish/prism/milestone/3): readable, shareable recipes instead of black-box presets.
@@ -339,7 +351,7 @@ v0.1.0 is the first pre-release of the desktop app. What's planned next is track
 
 - [Open files in the background](https://github.com/Peaperfish/prism/issues/6) with a Cancel button, instead of freezing on large RAW files
 - [Show CJK and other non-Latin file names](https://github.com/Peaperfish/prism/issues/7) correctly
-- [A "Discard edits?" prompt](https://github.com/Peaperfish/prism/issues/8) when opening another photo or quitting
+- [A "Discard edits?" prompt](https://github.com/Peaperfish/prism/issues/8) when opening another photo or quitting *(done, as [#32](https://github.com/Peaperfish/prism/issues/32))*
 - [zlib support](https://github.com/Peaperfish/prism/issues/9) for compressed DNGs
 - [A Linux download](https://github.com/Peaperfish/prism/issues/10), starting with a tarball of the command-line tool
 - [Signed apps](https://github.com/Peaperfish/prism/issues/11): a signed and notarized macOS app, a signed Windows app
