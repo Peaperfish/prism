@@ -12,6 +12,7 @@
 #include <sstream>
 #include <stdexcept>
 
+#include "prism/ranges.hpp"
 #include "prism/utf8_path.hpp"
 #include "sample_ranges.hpp"
 
@@ -44,7 +45,7 @@ std::optional<float> parse_float(std::string_view text) {
 
 float require_positive_param(std::string_view curve, std::string_view param) {
     const std::optional<float> value = parse_float(param);
-    if (!value || *value <= 0.0f) {
+    if (!value || !is_positive(*value)) {
         throw std::runtime_error("curve '" + std::string(curve) +
                                  "' needs a positive number, got '" + std::string(param) + "'");
     }
@@ -58,9 +59,9 @@ ToneCurve make_gamma(std::string_view param) {
     return {"gamma", GammaCurve{1.0f / require_positive_param("gamma", param)}};
 }
 
-// Default white 4, i.e. 2 stops of highlight headroom above 1.0.
 ToneCurve make_reinhard(std::string_view param) {
-    const float white = param.empty() ? 4.0f : require_positive_param("reinhard", param);
+    const float white =
+        param.empty() ? reinhard_white_default : require_positive_param("reinhard", param);
     return {"reinhard", ReinhardCurve{1.0f / (white * white)}};
 }
 

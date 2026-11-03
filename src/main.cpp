@@ -19,6 +19,7 @@
 #include "prism/parallel.hpp"
 #include "prism/pipeline.hpp"
 #include "prism/process.hpp"
+#include "prism/ranges.hpp"
 #include "prism/raw.hpp"
 #include "prism/utf8_path.hpp"
 #include "prism/version.hpp"
@@ -155,9 +156,13 @@ Options parse_args(int argc, char* argv[]) {
         } else if (arg == "--matrix") {
             set_once(opts.matrix_path, arg, next_value());
         } else if (arg == "--saturation") {
-            set_once(opts.saturation, arg, parse_ranged(next_value(), arg, 0.0, 10.0));
+            set_once(opts.saturation, arg,
+                     parse_ranged(next_value(), arg, prism::saturation_range.min,
+                                  prism::saturation_range.max));
         } else if (arg == "--contrast") {
-            set_once(opts.contrast, arg, parse_ranged(next_value(), arg, 0.1, 10.0));
+            set_once(opts.contrast, arg,
+                     parse_ranged(next_value(), arg, prism::contrast_range.min,
+                                  prism::contrast_range.max));
         } else if (arg == "--curve") {
             set_once(opts.curve_spec, arg, next_value());
         } else if (arg == "--histogram") {

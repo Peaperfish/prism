@@ -23,6 +23,7 @@ add_executable(prism_tests
   parallel_test.cpp
   pipeline_test.cpp
   process_test.cpp
+  ranges_test.cpp
   prism_profile_test.cpp
   raw_test.cpp
   resize_test.cpp

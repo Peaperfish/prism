@@ -9,6 +9,7 @@
 
 #include "prism/pipeline.hpp"
 #include "prism/process.hpp"
+#include "prism/ranges.hpp"
 
 namespace prism::gui {
 
@@ -72,15 +73,15 @@ struct EditSettings {
     std::optional<MatrixFile> matrix;  // the colour matrix (--matrix); none = skipped
     bool matrix_on = true;
 
-    float saturation = 1.0f;  // 0 to 10, as --saturation
+    float saturation = 1.0f;  // saturation_range (0 to 10), as --saturation
     bool saturation_on = true;
 
-    float contrast = 1.0f;  // 0.1 to 10, as --contrast
+    float contrast = 1.0f;  // contrast_range (0.1 to 10), as --contrast
     bool contrast_on = true;
 
     CurveKind curve = CurveKind::none;
-    float gamma = 2.2f;           // used when curve == gamma; > 0
-    float reinhard_white = 4.0f;  // used when curve == reinhard; > 0
+    float gamma = gamma_default;                    // used when curve == gamma; > 0
+    float reinhard_white = reinhard_white_default;  // used when curve == reinhard; > 0
     bool curve_on = true;
 
     // RAW input only. The preview is always decoded at half size; `raw_half_size` makes the

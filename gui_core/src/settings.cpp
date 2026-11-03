@@ -3,9 +3,10 @@
 #include <algorithm>
 #include <charconv>
 #include <cmath>
-#include <sstream>
 #include <stdexcept>
 #include <system_error>
+
+#include "prism/ranges.hpp"
 
 namespace prism::gui {
 
@@ -24,20 +25,15 @@ std::string shortest(float v) {
     return std::string(buffer, r.ptr);
 }
 
-void check_range(std::vector<std::string>& problems, const char* name, float v, float min,
-                 float max) {
-    if (!std::isfinite(v) || v < min || v > max) {
-        std::ostringstream message;
-        message << name << " must be from " << min << " to " << max << " (it is " << v << ")";
-        problems.push_back(message.str());
+void check_range(std::vector<std::string>& problems, const char* name, float v, ValueRange range) {
+    if (!in_range(v, range)) {
+        problems.push_back(range_message(name, v, range));
     }
 }
 
 void check_positive(std::vector<std::string>& problems, const char* name, float v) {
-    if (!std::isfinite(v) || v <= 0.0f) {
-        std::ostringstream message;
-        message << name << " must be a number above 0 (it is " << v << ")";
-        problems.push_back(message.str());
+    if (!is_positive(v)) {
+        problems.push_back(positive_message(name, v));
     }
 }
 
@@ -141,8 +137,8 @@ std::vector<std::string> validate(const EditSettings& s) {
     if (!std::isfinite(s.exposure_stops)) {
         problems.push_back("Exposure must be a finite number of stops");
     }
-    check_range(problems, "Saturation", s.saturation, 0.0f, 10.0f);
-    check_range(problems, "Contrast", s.contrast, 0.1f, 10.0f);
+    check_range(problems, "Saturation", s.saturation, saturation_range);
+    check_range(problems, "Contrast", s.contrast, contrast_range);
     check_positive(problems, "Gamma", s.gamma);
     check_positive(problems, "Reinhard white point", s.reinhard_white);
     return problems;
