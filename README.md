@@ -256,6 +256,14 @@ Some colours can't be shown in sRGB, the space of the screen preview and of expo
 
 Each row shows a third, violet dot and percentage, hollow while a later stage may still change those colours and filled where a stage clamps them. The line under the list gets a second sentence, only when there is something to say, for example "4.1% of colours are too saturated for sRGB after Colour matrix; Saturation clips them, so hues may shift." *Pushed out* is the first stage with such colours (usually Colour matrix); *clips* is the first later stage that clamps negatives: Saturation if it runs, otherwise Tone curve, otherwise Output encode. Saturation limits its own result to the gamut boundary rather than cutting it off, so that is not counted as a loss; only colours that arrive at Saturation already negative are. The `J` overlay shares the clipping toggle and draws these pixels as violet diagonal stripes (about 4 px wide), so the colour underneath stays visible. A pixel that a stage clipped (colours cut at Saturation or the Tone curve, shadows cut at the Tone curve) stays marked on every later stage up to the one you are viewing, so the final image still shows where hues shifted; where a pixel is in several categories, highlights win over gamut, and gamut over shadows.
 
+### Test strip
+
+A darkroom test strip for exposure: **Test strip** (next to Brightness, in Adjust and in the Exposure row), **View → Test Strip**, or the `T` key cuts the preview into five bands along its long side (side by side for a landscape photo, stacked for a portrait one), each shown at a different exposure around the current one, darkest first. A bar above the canvas picks the step, **⅓**, **½** (the default) or **1 stop**, and says in one line what it means ("A full stop doubles the light; each half stop is about 1.4×."); its × button closes the strip.
+
+Each band has a chip with its offset from the current exposure and how much more or less light that is: **−1 stop · ½× light**, **−½ · 0.71×**, **0 · now**, **+½ · 1.41×**, **+1 · 2×**. The middle band is exactly the normal picture. The band under the cursor is outlined, and the histogram and scopes show that band (the histogram's title says which, for example *Histogram (−½ stop band)*), or the middle one when the cursor is elsewhere. `J` marks clipping per band, so you can see which exposure starts to blow the highlights. **Click a band** to use its exposure: it is one undo step, the strip stays on and is centred on the new value, and clicking the middle band does nothing. While the strip is on the pipeline list hides its clipping dots and says so.
+
+`Esc` turns the strip off first (before the comparison and the viewed stage), and so does the × button or `T` again. The strip needs the Exposure stage or a later one in view: on Decode, where no edit shows, the controls are greyed out with a tooltip saying why. Turning it on clears a comparison. The strip is only a view: it is not saved with the settings, is not part of undo, goes away when you open another photo, and **export is never affected** (it always renders the whole photo at the chosen settings).
+
 ### Themes and Preferences
 
 Preferences (on macOS: Prism → Preferences…, Cmd+,; on Windows and Linux: Edit → Preferences…, Ctrl+,) is an ordinary window whose changes apply at once:
@@ -310,7 +318,7 @@ v0.1.0 is the first pre-release of the desktop app. What's planned next is track
 - [A pipeline view](https://github.com/Peaperfish/prism/issues/2): every stage visible and toggleable; click a stage to preview the photo at that point *(done)*
 - [Compare any two stages](https://github.com/Peaperfish/prism/issues/3), including the original, side by side or split *(done)*
 - [Clipping warnings](https://github.com/Peaperfish/prism/issues/4) that say which stage clipped *(done)*
-- [A test strip](https://github.com/Peaperfish/prism/issues/15): one image in bands at −1, −½, 0, +½ and +1 stop, to choose exposure by eye
+- [A test strip](https://github.com/Peaperfish/prism/issues/15): one image in bands at −1, −½, 0, +½ and +1 stop, to choose exposure by eye *(done)*
 - [A plain-language explanation](https://github.com/Peaperfish/prism/issues/16) for every control: what it does to the light
 - [Smoother preview while dragging](https://github.com/Peaperfish/prism/issues/5): let a running render finish and replace only the waiting request *(done)*
 
