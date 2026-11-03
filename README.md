@@ -6,7 +6,7 @@
 
 A small, fast command-line photo tool written in modern C++.
 
-**Documentation:** the [user guide](docs/GUIDE.md) covers the desktop app, from first launch to export, with every keyboard shortcut and a page on how Prism thinks about light. The [command-line reference](docs/CLI.md) covers every option of `prism` and `prism_profile`.
+**Documentation:** the [user guide](docs/GUIDE.md) covers the desktop app, from first launch to export, with every keyboard shortcut and a page on how Prism thinks about light. The [command-line reference](docs/CLI.md) covers every option of `prism` and `prism_profile`. [Recipes](docs/RECIPES.md) describes the `.prism` recipe file: an edit written down as plain text.
 
 Prism loads an image (PNG, JPEG or camera RAW), runs it through a simple colour pipeline (exposure, a 3×3 colour matrix and a tone curve), and writes the result back out. It's a learning project for working directly with pixel buffers, colour maths and performance in C++20.
 
@@ -20,7 +20,7 @@ Mainstream photo editors often come with a subscription and a cloud catalog, hid
 
 1. **Free for personal use.** No subscription, no cloud, no catalog: open a file, edit it, export it. (See [Licences](#licences).)
 2. **It teaches as you go.** Every control should say in plain words what it does to the light, and you should be able to see each step happen. Since [0.2.0](https://github.com/Peaperfish/prism/milestone/1): a pipeline view, colour scopes and a test strip.
-3. **No black-box presets.** A look should be a readable recipe you can see and adjust. Planned for [0.3.0](https://github.com/Peaperfish/prism/milestone/3): a plain-text recipe format, with the built-in presets rewritten as recipes.
+3. **No black-box presets.** A look should be a readable recipe you can see and adjust. The plain-text [recipe format](docs/RECIPES.md) is defined; saving and loading recipes in the app and on the command line, and the built-in presets rewritten as recipes, are planned for [0.3.0](https://github.com/Peaperfish/prism/milestone/3).
 4. **Physical controls.** You adjust light rather than apply effects. Exposure is already in stops; white balance in Kelvin, contrast as paper grades, and dodge and burn are planned for [0.4.0](https://github.com/Peaperfish/prism/milestone/4).
 
 ## Downloading and running Prism

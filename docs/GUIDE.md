@@ -4,7 +4,7 @@ Prism is a photo editor for PNG, JPEG and camera RAW files. It shows what each s
 
 ![The Prism window: a photo with the control panel beside it, in the dark theme](images/prism-window.jpg)
 
-Contents: [First launch](#first-launch) · [A walkthrough](#a-walkthrough) · [Keyboard shortcuts](#keyboard-shortcuts) · [How Prism thinks about light](#how-prism-thinks-about-light) · [Preferences](#preferences) · [Reference details](#reference-details)
+Contents: [First launch](#first-launch) · [A walkthrough](#a-walkthrough) · [Keyboard shortcuts](#keyboard-shortcuts) · [How Prism thinks about light](#how-prism-thinks-about-light) · [Preferences](#preferences) · [Reference details](#reference-details) · Recipe files: [RECIPES.md](RECIPES.md)
 
 ## First launch
 

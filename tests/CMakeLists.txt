@@ -24,6 +24,7 @@ add_executable(prism_tests
   pipeline_test.cpp
   process_test.cpp
   ranges_test.cpp
+  recipe_docs_test.cpp
   recipe_process_test.cpp
   recipe_test.cpp
   prism_profile_test.cpp
@@ -42,6 +43,7 @@ target_include_directories(prism_tests PRIVATE ${PROJECT_SOURCE_DIR}/lib)
 target_compile_definitions(prism_tests PRIVATE PRISM_EXE="$<TARGET_FILE:prism>"
                                               PRISM_PROFILE_EXE="$<TARGET_FILE:prism_profile>"
                                               PRISM_CLI_DOC="${PROJECT_SOURCE_DIR}/docs/CLI.md"
+                                              PRISM_RECIPE_DOC="${PROJECT_SOURCE_DIR}/docs/RECIPES.md"
                                               PRISM_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data"
                                               PRISM_GRADE_SAMPLE="${PROJECT_SOURCE_DIR}/samples/grade.txt")
 add_dependencies(prism_tests prism prism_profile)
