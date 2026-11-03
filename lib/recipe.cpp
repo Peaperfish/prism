@@ -1447,6 +1447,26 @@ ProcessSettings to_process_settings(const Recipe& recipe) {
     return p;
 }
 
+ProcessSettings merge_recipe_and_flags(const Recipe& recipe, const ProcessSettings& flags) {
+    ProcessSettings p = to_process_settings(recipe);
+    if (flags.exposure_stops) {
+        p.exposure_stops = flags.exposure_stops;
+    }
+    if (flags.matrix) {
+        p.matrix = flags.matrix;
+    }
+    if (flags.saturation) {
+        p.saturation = flags.saturation;
+    }
+    if (flags.contrast) {
+        p.contrast = flags.contrast;
+    }
+    if (flags.curve) {
+        p.curve = flags.curve;
+    }
+    return p;
+}
+
 Recipe load_recipe(const std::filesystem::path& path) {
     const std::string source = utf8(path);
     std::error_code ec;

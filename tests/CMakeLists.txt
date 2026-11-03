@@ -25,6 +25,7 @@ add_executable(prism_tests
   process_test.cpp
   ranges_test.cpp
   recipe_docs_test.cpp
+  recipe_flags_test.cpp
   recipe_process_test.cpp
   recipe_test.cpp
   prism_profile_test.cpp
