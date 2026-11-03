@@ -84,7 +84,8 @@ private:
     // be saved or loaded now: a photo is open and no dialog, sheet, export or close question is
     // in progress.
     [[nodiscard]] bool recipes_available() const;
-    void begin_save_recipe();
+    // for_close: the close prompt's Save Recipe... asks, while a quit or open waits on it.
+    void begin_save_recipe(bool for_close = false);
     void draw_recipe_sheet();
     void show_recipe_save_dialog();
     // Writes the recipe to the chosen file; says how it ended.
@@ -242,6 +243,7 @@ private:
         std::array<char, 512> description{};
         std::string hint;
         bool appearing = true;  // the first frame: put the keyboard in the Name field
+        bool for_close = false;  // opened by the close prompt's Save Recipe...
     };
     std::optional<RecipeSheet> recipe_sheet_;
     // The recipe the save dialog will write, and the settings it was made from (those on screen
@@ -258,7 +260,15 @@ private:
     int recipe_error_centring_ = 0;  // frames left to keep it centred
     bool quit_ = false;
     // The quit or open being held back, where it is, and (for an open) which file.
-    enum class ClosePhase { none, waiting, asking, saving_dialog, exporting };
+    enum class ClosePhase {
+        none,
+        waiting,
+        asking,
+        saving_dialog,
+        exporting,
+        naming_recipe,         // the prompt's Save Recipe...: the sheet is up
+        saving_recipe_dialog,  // ... and then its save dialog
+    };
     std::optional<gui::Pending> close_pending_;
     ClosePhase close_phase_ = ClosePhase::none;
     std::optional<std::filesystem::path> close_open_path_;

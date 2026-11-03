@@ -219,6 +219,7 @@ void App::request_quit() {
         return;
     }
     close_open_path_.reset();  // a quit wins over an open that is still being decided
+    recipe_sheet_.reset();     // and over a save sheet: it closes before the question
     close_pending_.reset();
     close_phase_ = ClosePhase::none;
     begin_close(gui::Pending::quit);
@@ -271,9 +272,18 @@ void App::apply_close_step(gui::CloseStep step) {
             close_phase_ = ClosePhase::exporting;
             break;
         case gui::CloseStep::name_recipe:
+            close_phase_ = ClosePhase::naming_recipe;
+            begin_save_recipe(true);
+            if (!recipe_sheet_) {
+                apply_close_step(gui::CloseStep::cancel);
+            }
+            break;
         case gui::CloseStep::choose_recipe_file:
-            // The prompt has no Save Recipe... button yet.
-            apply_close_step(gui::CloseStep::cancel);
+            close_phase_ = ClosePhase::saving_recipe_dialog;
+            show_recipe_save_dialog();
+            if (!dialog_open_) {
+                apply_close_step(gui::CloseStep::cancel);  // the dialog could not open
+            }
             break;
         case gui::CloseStep::cancel:
             close_pending_.reset();
@@ -358,9 +368,13 @@ void App::take_dialog_results() {
                     load_recipe_file(*result.path, true);
                 }
                 break;
-            case DialogResult::Kind::recipe_save:
-                take_recipe_save_dialog(result);
+            case DialogResult::Kind::recipe_save: {
+                const gui::RecipeEnd end = take_recipe_save_dialog(result);
+                if (close_pending_ && close_phase_ == ClosePhase::saving_recipe_dialog) {
+                    apply_close_step(gui::recipe_save_finished(end));
+                }
                 break;
+            }
         }
     }
 }
@@ -395,8 +409,11 @@ bool App::recipes_available() const {
 }
 
 // Save Recipe...: the sheet first, with the name and description Prism suggests.
-void App::begin_save_recipe() {
-    if (!recipes_available()) {
+void App::begin_save_recipe(bool for_close) {
+    // The close prompt's Save Recipe... comes while a quit or open is pending, which otherwise
+    // keeps recipes unavailable.
+    if (for_close ? (!session_.has_file() || dialog_open_ || recipe_sheet_ || exporter_.busy())
+                  : !recipes_available()) {
         return;
     }
     const gui::RecipeNameDefault suggested =
@@ -405,6 +422,7 @@ void App::begin_save_recipe() {
     copy_to_buffer(sheet.name, suggested.name);
     copy_to_buffer(sheet.description, suggested.description);
     sheet.hint = std::string(suggested.hint);
+    sheet.for_close = for_close;
     recipe_sheet_ = std::move(sheet);
 }
 
@@ -473,10 +491,19 @@ void App::draw_recipe_sheet() {
         saving_recipe_ = gui::recipe_from(saving_recipe_settings_);
         saving_recipe_.name = typed_text(sheet.name.data());
         saving_recipe_.description = typed_text(sheet.description.data());
+        const bool for_close = sheet.for_close;
         recipe_sheet_.reset();
-        show_recipe_save_dialog();
+        if (for_close) {
+            apply_close_step(gui::recipe_sheet_closed(true));  // shows the dialog
+        } else {
+            show_recipe_save_dialog();
+        }
     } else if (cancel) {
+        const bool for_close = sheet.for_close;
         recipe_sheet_.reset();
+        if (for_close) {
+            apply_close_step(gui::recipe_sheet_closed(false));
+        }
     }
 }
 
@@ -2909,8 +2936,9 @@ void App::draw_saving_popup() {
     }
 }
 
-// "You have edits that haven't been exported." with Export..., Quit/Open Without Exporting and
-// Cancel. Modal; Esc is Cancel; Export... is the default (Enter).
+// "You have edits that haven't been exported or saved as a recipe.", what was saved last, and
+// Export..., Save Recipe..., Quit/Open Without Saving and Cancel in the platform's order. Modal;
+// Esc is Cancel; Export... is the default (Enter).
 void App::draw_close_prompt() {
     const bool asking = close_pending_ && close_phase_ == ClosePhase::asking;
     if (asking && !ImGui::IsPopupOpen("close_prompt")) {
@@ -2928,23 +2956,59 @@ void App::draw_close_prompt() {
         return;
     }
     const gui::PromptText text = gui::prompt_text(*close_pending_);
-    const auto label = [](std::string_view s) { return std::string(s); };
-    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + token_metrics().prompt_wrap);
+    const std::string detail = gui::prompt_detail(baseline_.last_save());
+    const float wrap = token_metrics().prompt_wrap;
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + wrap);
     ImGui::TextUnformatted(text.message.data(), text.message.data() + text.message.size());
+    if (!detail.empty()) {
+        ImGui::TextDisabled("%s", detail.c_str());
+    }
     ImGui::PopTextWrapPos();
     ImGui::Spacing();
+
+    const auto label = [&](gui::PromptChoice c) {
+        switch (c) {
+            case gui::PromptChoice::export_first: return std::string(text.export_button);
+            case gui::PromptChoice::save_recipe: return std::string(text.recipe_button);
+            case gui::PromptChoice::discard: return std::string(text.discard_button);
+            case gui::PromptChoice::cancel: return std::string(text.cancel_button);
+        }
+        return std::string();
+    };
+    const gui::PromptButtons buttons = gui::prompt_buttons(ImGui::GetIO().ConfigMacOSXBehaviors);
+    const ImGuiStyle& style = ImGui::GetStyle();
+    float widths[4];
+    float packed = 0;
+    for (int i = 0; i < 4; ++i) {
+        widths[i] = ImGui::CalcTextSize(label(buttons.order[i]).c_str()).x + 2 * style.FramePadding.x;
+        packed += widths[i] + (i > 0 ? style.ItemSpacing.x : 0.0f);
+    }
+    // With a gap, the row is as wide as the text above it (or the buttons and a clear gap), and
+    // the buttons after the gap sit at its right end.
+    const float row = std::max(wrap, packed + 3 * style.ItemSpacing.x);
+    float right_group = 0;
+    for (int i = buttons.gap_after; i < 4 && buttons.gap_after > 0; ++i) {
+        right_group += widths[i] + (i > buttons.gap_after ? style.ItemSpacing.x : 0.0f);
+    }
+    const float row_x = ImGui::GetCursorPosX();
     std::optional<gui::PromptChoice> choice;
-    if (ImGui::Button(label(text.export_button).c_str())) {
-        choice = gui::PromptChoice::export_first;
+    for (int i = 0; i < 4; ++i) {
+        if (i > 0) {
+            if (buttons.gap_after > 0 && i == buttons.gap_after) {
+                ImGui::SameLine(row_x + row - right_group);
+            } else {
+                ImGui::SameLine();
+            }
+        }
+        const gui::PromptChoice c = buttons.order[i];
+        if (ImGui::Button(label(c).c_str())) {
+            choice = c;
+        }
+        if (c == gui::PromptChoice::export_first) {
+            ImGui::SetItemDefaultFocus();
+        }
     }
-    ImGui::SetItemDefaultFocus();
-    ImGui::SameLine();
-    if (ImGui::Button(label(text.discard_button).c_str())) {
-        choice = gui::PromptChoice::discard;
-    }
-    ImGui::SameLine();
-    if (ImGui::Button(label(text.cancel_button).c_str()) ||
-        ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
         choice = gui::PromptChoice::cancel;
     }
     if (choice) {
