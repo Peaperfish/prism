@@ -938,8 +938,9 @@ TEST(PreviewStrip, WorksThroughTheWorker) {
 
 #if defined(__APPLE__)
 #include <mach/mach.h>
-#endif
+#elif defined(__linux__)
 #include <dirent.h>
+#endif
 
 namespace {
 
