@@ -6,6 +6,11 @@ processing. @PRISM_README_PLATFORM@.
 
 https://github.com/Peaperfish/prism
 
+User guide: how to use the app, step by step, with every keyboard shortcut and a page on how
+Prism thinks about light:
+
+  https://github.com/Peaperfish/prism/blob/main/docs/GUIDE.md
+
 What's in here
 --------------
 
@@ -27,6 +32,10 @@ The command-line tool
 prints how to use it, for example:
 
   @PRISM_README_CLI@ photo.arw -o photo.jpg --exposure 0.5
+
+Every option, with examples and exit codes, is in the command-line reference:
+
+  https://github.com/Peaperfish/prism/blob/main/docs/CLI.md
 
 Licences
 --------

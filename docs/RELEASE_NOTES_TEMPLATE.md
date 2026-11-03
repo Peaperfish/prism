@@ -1,7 +1,7 @@
 <!-- The release workflow fills in {{VERSION}} and {{LIBRAW_VERSION}} and uses this as the
      draft release's notes. Edit the draft on GitHub before publishing if needed. -->
 
-Prism's desktop app, for macOS and Windows. It is a pre-release: expect rough edges.
+Prism's desktop app, for macOS and Windows.
 
 ## What it does
 
@@ -54,27 +54,13 @@ says "Windows protected your PC", click **More info → Run anyway**. If Smart A
 
 ## Coming next
 
-Planned for [0.2.0 – See the light](https://github.com/Peaperfish/prism/milestone/1):
+What is planned is tracked as [milestones on GitHub](https://github.com/Peaperfish/prism/milestones)
+and summarised in the README's [Roadmap](https://github.com/Peaperfish/prism#roadmap).
 
-- A histogram for any pipeline stage (RGB and luminance)
-- Colour scopes: RGB parade/waveform and vectorscope, for any stage
-- A gamut warning showing colours outside sRGB and which stage pushed them out
-- A pipeline view: every stage visible and toggleable, with a preview at any stage
-- Comparing any two stages, including the original, side by side or split
-- Clipping warnings that say which stage clipped
-- A test strip: one image in bands from −1 to +1 stop, to choose exposure by eye
-- A plain-language explanation of what every control does to the light
-- A smoother preview while dragging sliders
+## Guide
 
-[Later](https://github.com/Peaperfish/prism/milestone/2), not scheduled yet:
-
-- Opening files in the background, with Cancel, instead of freezing on large RAW files
-- Showing CJK and other non-Latin file names correctly
-- A "Discard edits?" prompt when opening another photo or quitting
-- zlib support for compressed DNGs
-- A Linux download, starting with the command-line tool
-- Signed apps on macOS and Windows
-- Export progress per stage
+How to use the app: the [user guide](https://github.com/Peaperfish/prism/blob/main/docs/GUIDE.md).
+The command-line tool: the [command-line reference](https://github.com/Peaperfish/prism/blob/main/docs/CLI.md).
 
 ## Licences
 

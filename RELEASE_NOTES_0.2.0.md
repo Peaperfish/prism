@@ -1,6 +1,6 @@
 # Prism 0.2.0 – See the light
 
-This release is about seeing what each step of the pipeline does to your photo. It is still a pre-release.
+This release is about seeing what each step of the pipeline does to your photo.
 
 ## New
 
