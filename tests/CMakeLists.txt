@@ -65,6 +65,7 @@ add_executable(prism_gui_core_tests
   gui/settings_test.cpp
   gui/slider_gesture_test.cpp
   gui/stage_controls_test.cpp
+  gui/test_strip_test.cpp
   gui/theme_tokens_test.cpp
   gui/wheel_scaling_test.cpp)
 target_link_libraries(prism_gui_core_tests PRIVATE prism_gui_core prism_warnings GTest::gtest_main)

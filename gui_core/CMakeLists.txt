@@ -18,6 +18,7 @@ add_library(prism_gui_core STATIC
   src/settings.cpp
   src/slider_gesture.cpp
   src/stage_controls.cpp
+  src/test_strip.cpp
   src/theme_tokens.cpp
   src/wheel_scaling.cpp)
 
