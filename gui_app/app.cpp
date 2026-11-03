@@ -1779,7 +1779,10 @@ void App::draw_preferences() {
 
     section_text("Layout");
     // Label and value on one line over the slider, as for the photo's sliders.
-    const float slider_width = token_metrics().prefs_control_width;
+    // As wide as the window's widest row (the size combo and its hint), not just the combo.
+    const float slider_width =
+        token_metrics().prefs_control_width + ImGui::GetStyle().ItemSpacing.x +
+        ImGui::CalcTextSize("Auto follows the display.").x;
     char width_text[16];
     std::snprintf(width_text, sizeof width_text, "%d pt", p.panel_width);
     ImGui::TextUnformatted("Panel width");
