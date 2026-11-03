@@ -146,6 +146,7 @@ private:
     std::vector<std::filesystem::path> dropped_;  // the files of the current drop
 
     std::optional<gui::Error> error_;  // shown as a banner until dismissed
+    bool error_details_open_ = false;  // the banner's Details are unfolded
     std::string notice_;               // a short note that isn't an error, e.g. "Saved ..."
 
     std::filesystem::path prefs_file_;

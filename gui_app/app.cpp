@@ -77,6 +77,25 @@ void overlay_text(ImDrawList* draw, const Palette& colours, ImVec2 pos, const st
     draw->AddText(ImVec2(pos.x + pad, pos.y + pad), colours.overlay_text, text.c_str());
 }
 
+// A "Details" line with a thin chevron (right when closed, down when open) instead of ImGui's
+// filled tree arrow. The whole line is the click area. True while open.
+bool details_toggle(const char* label, bool* open) {
+    const ImVec2 text = ImGui::CalcTextSize(label);
+    const float chevron = token_metrics().chevron_size;
+    const float gap = ImGui::GetStyle().ItemInnerSpacing.x;
+    const float width = 2 * chevron + gap + text.x;
+    if (ImGui::InvisibleButton(label, ImVec2(width, ImGui::GetTextLineHeightWithSpacing()))) {
+        *open = !*open;
+    }
+    const ImVec2 min = ImGui::GetItemRectMin();
+    const float cy = std::round(min.y + ImGui::GetTextLineHeight() * 0.5f);
+    draw_chevron(ImGui::GetWindowDrawList(), ImVec2(std::round(min.x + chevron), cy),
+                 *open ? Chevron::down : Chevron::right, ImGui::GetColorU32(ImGuiCol_Text));
+    ImGui::GetWindowDrawList()->AddText(ImVec2(min.x + 2 * chevron + gap, min.y),
+                                        ImGui::GetColorU32(ImGuiCol_Text), label);
+    return *open;
+}
+
 std::string file_name(const fs::path& path) {
     return utf8(path.filename());
 }
@@ -737,14 +756,11 @@ void App::draw_split(ImDrawList* draw, ImVec2 at, ImVec2 shown) {
     const float grip = metrics.divider_grip;
     draw->AddCircleFilled(ImVec2(split.divider_x, mid), grip, rgba(tokens.divider_line));
     draw->AddCircle(ImVec2(split.divider_x, mid), grip, rgba(tokens.grip_ring), 0, 1.0f * scale);
-    const float arrow = metrics.divider_arrow;
+    const float arrow = metrics.chevron_size;
     const ImU32 ink = rgba(tokens.grip_ink);
-    draw->AddTriangleFilled(ImVec2(split.divider_x - arrow - 1 * scale, mid),
-                            ImVec2(split.divider_x - 1 * scale, mid - arrow),
-                            ImVec2(split.divider_x - 1 * scale, mid + arrow), ink);
-    draw->AddTriangleFilled(ImVec2(split.divider_x + arrow + 1 * scale, mid),
-                            ImVec2(split.divider_x + 1 * scale, mid - arrow),
-                            ImVec2(split.divider_x + 1 * scale, mid + arrow), ink);
+    draw_chevron(draw, ImVec2(split.divider_x - arrow * 0.5f - 1 * scale, mid), Chevron::left, ink);
+    draw_chevron(draw, ImVec2(split.divider_x + arrow * 0.5f + 1 * scale, mid), Chevron::right,
+                 ink);
 
     // Dragging: a strip around the divider, as tall as the picture. The cursor is put back after,
     // so the banner and badge below this lay out as before.
@@ -799,19 +815,19 @@ void App::draw_banner() {
     ImGui::TextUnformatted(is_error ? error_->message.c_str() : notice_.c_str());
     ImGui::PopTextWrapPos();
     if (is_error && !error_->details.empty()) {
-        if (ImGui::TreeNode("Details")) {
+        if (details_toggle("Details", &error_details_open_)) {
             ImGui::PushTextWrapPos(0.0f);
             ImGui::TextUnformatted(error_->details.c_str());
             ImGui::PopTextWrapPos();
             if (ImGui::SmallButton("Copy")) {
                 ImGui::SetClipboardText((error_->message + "\n" + error_->details).c_str());
             }
-            ImGui::TreePop();
         }
     }
     if (ImGui::SmallButton("Dismiss")) {
         error_.reset();
         notice_.clear();
+        error_details_open_ = false;
     }
     ImGui::EndChild();
     ImGui::PopStyleColor(3);
