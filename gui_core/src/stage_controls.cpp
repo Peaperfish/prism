@@ -70,7 +70,12 @@ std::string stage_value_text(const EditSettings& s, StageId stage) {
         case StageId::saturation: return format_saturation(s.saturation);
         case StageId::contrast: return format_multiplier(s.contrast);
         case StageId::matrix:
-            return s.matrix ? utf8(s.matrix->path.filename()) : std::string("none");
+            if (!s.matrix) {
+                return "none";
+            }
+            // A matrix from a recipe without a `from` label has no file to name.
+            return s.matrix->path.empty() ? std::string("recipe matrix")
+                                          : utf8(s.matrix->path.filename());
         case StageId::curve:
             switch (s.curve) {
                 case CurveKind::none: return "none";

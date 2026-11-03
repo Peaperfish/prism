@@ -9,6 +9,7 @@
 #include "prism/gui/histogram.hpp"
 #include "prism/gui/preferences.hpp"
 #include "prism/gui/presets.hpp"
+#include "prism/gui/recipe_ui.hpp"
 #include "prism/gui/settings.hpp"
 #include "prism/gui/test_strip.hpp"
 
@@ -44,6 +45,7 @@ enum class LiveKind {
     clip_note,    // the whole clipping sentence (needs the clip report)
     compare,      // the two halves' captions
     strip,        // how much light one band step is
+    recipe,       // which stages the loaded recipe sets (needs the loaded recipe)
 };
 
 struct Explanation {
@@ -74,7 +76,9 @@ struct Explanation {
 namespace explain {
 inline constexpr std::string_view look = "look";
 inline constexpr std::string_view look_reset = "look.reset";
+inline constexpr std::string_view recipe_load = "recipe.load";
 inline constexpr std::string_view recipe_save = "recipe.save";
+inline constexpr std::string_view recipe_loaded = "recipe.loaded";
 inline constexpr std::string_view recipe_name = "recipe.name";
 inline constexpr std::string_view recipe_description = "recipe.description";
 inline constexpr std::string_view curve_white = "curve.white";
@@ -106,6 +110,7 @@ struct LiveContext {
     const StageHistogram* histogram = nullptr;
     const ClipReport* clips = nullptr;
     StripStep strip_step = strip_default_step;
+    const LoadedRecipe* recipe = nullptr;  // the recipe loaded onto the photo, if any
 };
 
 // The live line for `id` with these settings: numbers worked out with the engine's own maths

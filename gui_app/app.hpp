@@ -90,8 +90,16 @@ private:
     // Writes the recipe to the chosen file; says how it ended.
     gui::RecipeEnd take_recipe_save_dialog(const DialogResult& result);
     void remember_recipe_folder(const std::filesystem::path& file);
+    // Loading: the dialog, then the file is read and applied as one undo step. A recipe that
+    // can't be read changes nothing and opens the "Recipe not loaded" window. remember_folder:
+    // it came through the dialog, whose folder is then remembered.
+    void show_recipe_load_dialog();
+    void load_recipe_file(const std::filesystem::path& path, bool remember_folder);
+    void draw_recipe_error();
     // The panel's Load recipe... / Save recipe... row, in the Look section.
     void draw_recipe_buttons();
+    // "Recipe: <name>" under the Look menu, and what it sets, while the settings are still its.
+    void draw_recipe_line();
     void take_dialog_results();
     void take_export_dialog(DialogResult& result);
     void update_preview();
@@ -242,6 +250,12 @@ private:
     gui::EditSettings saving_recipe_settings_;
     // The recipe loaded onto the open photo, if any.
     gui::RecipeTracker recipes_;
+    // The "Recipe not loaded" window: what it shows, whether it is open, and whether it should
+    // take the focus (the frame it appears).
+    gui::RecipeErrorView recipe_error_;
+    bool recipe_error_open_ = false;
+    bool recipe_error_focus_ = false;
+    int recipe_error_centring_ = 0;  // frames left to keep it centred
     bool quit_ = false;
     // The quit or open being held back, where it is, and (for an open) which file.
     enum class ClosePhase { none, waiting, asking, saving_dialog, exporting };

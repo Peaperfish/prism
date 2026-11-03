@@ -39,6 +39,13 @@ constexpr Explanation table[] = {
      "Sets the same four values as the first look in the list. One undo step."},
 
     // --- Recipes -----------------------------------------------------------------------------
+    {"recipe.load", "Apply a .prism recipe to this photo.",
+     "Sets each stage the recipe has, with its switch, and leaves the others as they are. One "
+     "undo step. The photo is not decoded again."},
+    {"recipe.loaded", "The recipe last loaded onto this photo.",
+     "Reads (modified) once you change a setting, and goes away if you undo past loading it. The "
+     "Look menu names a built-in look only when the numbers match one.",
+     LiveKind::recipe},
     {"recipe.save", "Write these settings to a recipe you can read and reuse.",
      "Saves all five stages, with their switches, as a small .prism text file. The photo and the "
      "RAW decoding options are not in it. Load it on any photo, or read it in a text editor."},
@@ -74,7 +81,7 @@ constexpr Explanation table[] = {
      LiveKind::exposure},
     {"stage.matrix", "Mixes red, green and blue, before saturation and tone.",
      "A 3×3 table: each output channel is a weighted sum of the input red, green and blue, in "
-     "linear light. Used to calibrate camera colour or apply a grade. Load one with --matrix.",
+     "linear light. Used to calibrate camera colour or apply a grade. Load one with a recipe.",
      LiveKind::matrix},
     {"stage.saturation", "Colourfulness, brightness unchanged.",
      "Each channel moves away from the pixel's luminance (0.2126 R + 0.7152 G + 0.0722 B). A "
@@ -195,9 +202,9 @@ constexpr Explanation table[] = {
 
 // Ids that have no enum of their own: the controls the window shows beyond the stages, Simple's
 // sliders, the curve kinds, the scopes and the presets.
-constexpr std::array<std::string_view, 23> other_ids{
-    explain::look,         explain::look_reset,   explain::recipe_save, explain::recipe_name,
-    explain::recipe_description,
+constexpr std::array<std::string_view, 25> other_ids{
+    explain::look,         explain::look_reset,   explain::recipe_load, explain::recipe_save,
+    explain::recipe_loaded, explain::recipe_name, explain::recipe_description,
     explain::curve_white,  explain::curve_gamma_value,
     explain::scope_skin,   explain::chip_over,    explain::chip_under,  explain::clip_overlay,
     explain::clip_dot,     explain::clip_summary, explain::clip_note,   explain::compare,
@@ -420,6 +427,8 @@ std::string live_line(std::string_view id, const EditSettings& s, const LiveCont
             }
             return "Left: " + stage_caption(*context.compare) +
                    ". Right: " + stage_caption(context.viewed) + ".";
+        case LiveKind::recipe:
+            return context.recipe == nullptr ? std::string() : stages_line(context.recipe->stages);
         case LiveKind::strip: {
             const int divisor = strip_step_divisor(context.strip_step);
             const char* name = divisor == 3 ? "1/3 stop" : divisor == 2 ? "1/2 stop" : "1 stop";

@@ -298,6 +298,7 @@ void App::open_now(const fs::path& path) {
     }
     error_.reset();
     baseline_.opened(session_.settings());
+    recipes_.photo_opened();
     texture_.reset();  // don't show the previous photo under the new name
     histogram_.reset();
     clips_.reset();
@@ -350,7 +351,13 @@ void App::take_dialog_results() {
                 take_export_dialog(result);
                 break;
             case DialogResult::Kind::recipe_load:
-                break;  // nothing asks for this yet
+                if (!result.error.empty()) {
+                    show_error({gui::ErrorKind::unreadable, "Couldn't show the file dialog.",
+                                result.error});
+                } else if (result.path && session_.has_file()) {
+                    load_recipe_file(*result.path, true);
+                }
+                break;
             case DialogResult::Kind::recipe_save:
                 take_recipe_save_dialog(result);
                 break;
@@ -514,14 +521,145 @@ void App::remember_recipe_folder(const fs::path& file) {
     set_preferences(std::move(p));
 }
 
+void App::show_recipe_load_dialog() {
+    if (!recipes_available()) {
+        return;
+    }
+    dialog_open_ = true;
+    gui_app::show_recipe_load_dialog(
+        window_, dialogs_,
+        gui::recipe_start_folder(prefs_.recipe_folder, session_.path(), folder_exists));
+}
+
+void App::load_recipe_file(const fs::path& path, bool remember_folder) {
+    const std::string name = file_name(path);
+    Recipe recipe;
+    try {
+        recipe = prism::load_recipe(path);
+    } catch (const RecipeError& e) {
+        recipe_error_ = gui::recipe_error_view(e, name);
+        recipe_error_open_ = true;
+        recipe_error_focus_ = true;
+        return;
+    } catch (const std::exception& e) {
+        // Not expected (load_recipe reports everything as a RecipeError), but shown the same way.
+        recipe_error_ = gui::recipe_error_view(RecipeError(name, {{0, e.what()}}), name);
+        recipe_error_open_ = true;
+        recipe_error_focus_ = true;
+        return;
+    }
+    // Its own undo step, never merged into a gesture; a recipe never re-decodes the file.
+    session_.end_gesture();
+    const gui::EditSettings before = session_.settings();
+    if (gui::MaybeError error = session_.apply_recipe(recipe)) {
+        show_error(std::move(*error));
+        return;
+    }
+    recipes_.loaded(gui::make_loaded_recipe(recipe, name, before, session_.settings()));
+    recipe_error_open_ = false;  // an earlier recipe's mistakes no longer apply
+    error_.reset();
+    if (remember_folder) {
+        remember_recipe_folder(path);
+    }
+}
+
+// "Recipe not loaded": a normal window, not modal, that takes the focus as it appears. Esc closes
+// it while it has the focus (note_if_focused).
+void App::draw_recipe_error() {
+    if (!recipe_error_open_) {
+        return;
+    }
+    // Centred for its first few frames, while its size settles (the table's wrapped rows are
+    // measured over a frame or two); after that it can be moved.
+    if (recipe_error_focus_) {
+        ImGui::SetNextWindowFocus();
+        recipe_error_focus_ = false;
+        recipe_error_centring_ = 3;
+    }
+    if (recipe_error_centring_ > 0) {
+        --recipe_error_centring_;
+        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always,
+                                ImVec2(0.5f, 0.5f));
+    }
+    if (!ImGui::Begin("Recipe not loaded", &recipe_error_open_,
+                      ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse |
+                          ImGuiWindowFlags_NoSavedSettings)) {
+        ImGui::End();
+        return;
+    }
+    note_if_focused(&recipe_error_open_);
+    const float wrap = token_metrics().about_wrap;
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + wrap);
+    ImGui::TextUnformatted(recipe_error_.header.c_str());
+    ImGui::PopTextWrapPos();
+    const float line_width = ImGui::CalcTextSize("Line").x;
+    const float message_width = wrap - line_width - ImGui::GetStyle().CellPadding.x * 4;
+    if (ImGui::BeginTable("mistakes", 2, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg)) {
+        ImGui::TableSetupColumn("Line", ImGuiTableColumnFlags_WidthFixed, line_width);
+        ImGui::TableSetupColumn("Mistake", ImGuiTableColumnFlags_WidthFixed, message_width);
+        // A plain muted header, not ImGui's header row, whose background the theme doesn't set.
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::TextDisabled("Line");
+        ImGui::TableNextColumn();
+        ImGui::TextDisabled("Mistake");
+        for (const gui::RecipeErrorRow& row : recipe_error_.rows) {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::TextDisabled("%s", row.line.c_str());
+            ImGui::TableNextColumn();
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextUnformatted(row.message.c_str());
+            ImGui::PopTextWrapPos();
+        }
+        ImGui::EndTable();
+    }
+    if (!recipe_error_.note.empty()) {
+        ImGui::TextDisabled("%s", recipe_error_.note.c_str());
+    }
+    ImGui::Spacing();
+    if (ImGui::Button("Copy")) {
+        ImGui::SetClipboardText(recipe_error_.copy_text.c_str());
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Close")) {
+        recipe_error_open_ = false;
+    }
+    ImGui::End();
+}
+
 void App::draw_recipe_buttons() {
     ImGui::BeginDisabled(!recipes_available());
+    const bool load = ImGui::SmallButton("Load recipe...");
+    describe(gui::explain::recipe_load);
+    ImGui::SameLine();
     const bool save = ImGui::SmallButton("Save recipe...");
     describe(gui::explain::recipe_save);
     ImGui::EndDisabled();
-    if (save) {
+    if (load) {
+        show_recipe_load_dialog();
+    } else if (save) {
         begin_save_recipe();
     }
+}
+
+void App::draw_recipe_line() {
+    const std::optional<std::string> line = recipes_.line(session_.settings());
+    if (!line) {
+        return;
+    }
+    const gui::LoadedRecipe& loaded = *recipes_.current();
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextUnformatted(("Recipe: " + *line).c_str());
+    explain(gui::explain::recipe_loaded);
+    if (!loaded.description.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
+        ImGui::SetTooltip("%s", loaded.description.c_str());
+    }
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    ImGui::TextUnformatted(gui::stages_line(loaded.stages).c_str());
+    ImGui::PopStyleColor();
+    explain(gui::explain::recipe_loaded);
+    ImGui::PopTextWrapPos();
 }
 
 void App::take_export_result() {
@@ -809,6 +947,7 @@ void App::frame() {
     draw_preferences();
     draw_about();
     draw_notices();
+    draw_recipe_error();
 
     if (pending_open_) {
         pending_open_shown_ = true;
@@ -869,6 +1008,9 @@ void App::handle_shortcuts() {
     if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_E, ImGuiInputFlags_RouteGlobal) ||
         ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S, ImGuiInputFlags_RouteGlobal)) {
         show_save_dialog();
+    }
+    if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_O, ImGuiInputFlags_RouteGlobal)) {
+        show_recipe_load_dialog();
     }
     if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S, ImGuiInputFlags_RouteGlobal)) {
         begin_save_recipe();
@@ -936,6 +1078,10 @@ void App::draw_menu() {
             show_save_dialog();
         }
         ImGui::Separator();
+        if (ImGui::MenuItem("Load Recipe...", shortcut_label("Shift+O").c_str(), false,
+                            recipes_available())) {
+            show_recipe_load_dialog();
+        }
         if (ImGui::MenuItem("Save Recipe...", shortcut_label("Shift+S").c_str(), false,
                             recipes_available())) {
             begin_save_recipe();
@@ -1536,6 +1682,7 @@ App::ExplainText App::explain_text() const {
     context.histogram = histogram_ ? &*histogram_ : nullptr;
     context.clips = note_report_ ? &*note_report_ : nullptr;
     context.strip_step = strip_ ? strip_->step : strip_step_;
+    context.recipe = recipes_.current();
     return {std::string(e->summary), std::string(e->detail),
             gui::live_line(explain_shown_, session_.settings(), context)};
 }
@@ -1956,6 +2103,7 @@ void App::draw_presets() {
         ImGui::EndCombo();
     }
     describe(gui::explain::look);
+    draw_recipe_line();
     const gui::Preset& start = gui::default_preset(kind);
     if (&start != current) {
         const bool reset = ImGui::Button(("Reset to " + std::string(start.name)).c_str());
@@ -2209,7 +2357,8 @@ void App::draw_clipping_summary() {
     }
 }
 
-// The colour matrix's file name, or "none". Read-only: the matrix is loaded with --matrix.
+// The colour matrix's file name, "recipe matrix", or "none". Read-only: a matrix comes from a
+// recipe.
 void App::draw_matrix_name() {
     const gui::EditSettings& s = session_.settings();
     const std::string text = gui::stage_value_text(s, gui::StageId::matrix);
@@ -2226,7 +2375,8 @@ void App::draw_matrix_name() {
         ImGui::PopStyleColor();
     }
     if (s.matrix && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
-        ImGui::SetTooltip("%s", utf8(s.matrix->path).c_str());
+        ImGui::SetTooltip("%s", s.matrix->path.empty() ? "From a recipe that names no file."
+                                                       : utf8(s.matrix->path).c_str());
     }
 }
 

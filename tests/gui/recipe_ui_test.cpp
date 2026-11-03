@@ -9,6 +9,7 @@
 #include "prism/gui/file_types.hpp"
 #include "prism/gui/history.hpp"
 #include "prism/gui/recipe_settings.hpp"
+#include "prism/gui/stage_controls.hpp"
 
 namespace prism::gui {
 namespace {
@@ -153,6 +154,28 @@ TEST(RecipeLine, ARecipeWithoutANameIsShownByItsFileName) {
     EXPECT_EQ(loaded.name, "Warm low contrast");
     EXPECT_EQ(loaded.description, "Softer contrast and a warm grade");
     EXPECT_EQ(loaded.file_name, "w.prism");
+}
+
+// --- The recipe matrix label ---------------------------------------------------------------------
+
+TEST(RecipeMatrixLabel, IsOnlyALabelAndAReSaveWritesNoFrom) {
+    Recipe r;
+    r.matrix = RecipeMatrix{};
+    r.matrix->values[0] = 1.05f;  // a grade, with no `from`
+    EditSettings s;
+    apply_recipe(s, r);
+    ASSERT_TRUE(s.matrix.has_value());
+    EXPECT_EQ(stage_value_text(s, StageId::matrix), "recipe matrix");
+    EXPECT_TRUE(s.matrix->path.empty());  // the label is not stored anywhere
+    const Recipe again = recipe_from(s);
+    ASSERT_TRUE(again.matrix.has_value());
+    EXPECT_FALSE(again.matrix->from.has_value());
+    EXPECT_EQ(write_recipe(again).find("from ="), std::string::npos);
+    EXPECT_EQ(again.matrix->values, r.matrix->values);
+    // A matrix with a `from` still shows that name.
+    r.matrix->from = "grade.txt";
+    apply_recipe(s, r);
+    EXPECT_EQ(stage_value_text(s, StageId::matrix), "grade.txt");
 }
 
 // --- Name defaults for the save sheet ------------------------------------------------------------

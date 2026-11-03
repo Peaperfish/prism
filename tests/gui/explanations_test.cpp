@@ -290,6 +290,31 @@ TEST(LiveLines, MatrixShowsTheFileNameOrNone) {
     EXPECT_EQ(live_line("stage.matrix", s), "none");
 }
 
+TEST(LiveLines, ARecipeMatrixIsLabelledAsOne) {
+    EditSettings s;
+    s.matrix = MatrixFile{{}, identity_matrix};
+    s.matrix->values[0] = 1.05f;
+    EXPECT_EQ(live_line("stage.matrix", s), "recipe matrix");
+}
+
+TEST(LiveLines, TheLoadedRecipeLineNamesTheStagesItSets) {
+    Recipe recipe;
+    recipe.matrix = RecipeMatrix{};
+    recipe.saturation = RecipeSaturation{0.9f, true};
+    recipe.contrast = RecipeContrast{0.85f, false};
+    const LoadedRecipe loaded = make_loaded_recipe(recipe, "grade.prism", {}, {});
+    LiveContext context;
+    context.recipe = &loaded;
+    EXPECT_EQ(live_line("recipe.loaded", EditSettings{}, context),
+              "Sets only Colour matrix, Saturation and Contrast, and switches Contrast off; the "
+              "other stages are unchanged.");
+}
+
+TEST(LiveLines, WithoutALoadedRecipeTheRecipeLineIsEmpty) {
+    EXPECT_EQ(live_line("recipe.loaded", EditSettings{}), "");
+    EXPECT_EQ(live_line("recipe.save", EditSettings{}), "");
+}
+
 TEST(LiveLines, ViewingNamesTheStage) {
     LiveContext context;
     context.viewed = StageId::exposure;
@@ -350,6 +375,10 @@ TEST(LiveLines, LiveLinesHaveNoPlaceholdersAndUseTheTimesSign) {
     context.histogram = &h;
     context.clips = &report;
     context.compare = StageId::decode;
+    Recipe recipe;
+    recipe.saturation = RecipeSaturation{0.9f, true};
+    const LoadedRecipe loaded = make_loaded_recipe(recipe, "r.prism", s, s);
+    context.recipe = &loaded;
     for (const Explanation& e : explanations()) {
         const std::string line = live_line(e.id, s, context);
         EXPECT_EQ(line.find('{'), std::string::npos) << e.id;

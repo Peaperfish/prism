@@ -35,8 +35,9 @@ namespace prism::gui {
 [[nodiscard]] std::string format_saturation(float value);
 
 // The value to show in `stage`'s row: format_exposure / format_saturation / format_multiplier for
-// the three sliders, the matrix file's name (or "none"), and "none", "gamma 2.2", "Reinhard, white
-// 4" or "filmic" for the curve. Empty for Decode and Output encode, which have nothing to edit.
+// the three sliders, the matrix file's name ("none" without a matrix, "recipe matrix" for one a
+// recipe gave without naming a file: only a label, the path stays empty), and "none", "gamma 2.2",
+// "Reinhard, white 4" or "filmic" for the curve. Empty for Decode and Output encode, which have nothing to edit.
 // Shows the stored value even when the stage is off (the row greys it out).
 [[nodiscard]] std::string stage_value_text(const EditSettings& s, StageId stage);
 
