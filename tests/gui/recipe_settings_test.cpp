@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <random>
+#include <regex>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -14,6 +15,7 @@
 #include <unistd.h>  // getpid
 #endif
 
+#include "prism/gui/explanations.hpp"
 #include "prism/gui/presets.hpp"
 #include "prism/gui/recipe_settings.hpp"
 #include "prism/gui/session.hpp"
@@ -502,6 +504,96 @@ TEST(RecipeSettings, EveryFieldIsEitherInARecipeOrLeftOutForAReason) {
                 << f.name;
         } else {
             EXPECT_EQ(back, defaults) << f.name;
+        }
+    }
+}
+
+// --- The comments' numbers -----------------------------------------------------------------------
+
+namespace {
+
+// The part of a saved recipe from [section] to the next section.
+std::string section_text(const std::string& text, const std::string& section) {
+    const std::size_t start = text.find("[" + section + "]");
+    if (start == std::string::npos) {
+        return {};
+    }
+    const std::size_t end = text.find("\n[", start + 1);
+    return text.substr(start, end == std::string::npos ? std::string::npos : end - start);
+}
+
+// The first group of `pattern` in `text`, or "(none)" if it does not match.
+std::string first_match(const std::string& text, const std::string& pattern) {
+    std::smatch m;
+    if (std::regex_search(text, m, std::regex(pattern))) {
+        return m[1].str();
+    }
+    return "(none)";
+}
+
+const std::string times = "\xC3\x97";  // ×, as the Explain area writes it
+
+// A stage's live line without "Off, so no change. When on: " in front: the file's comment says
+// what the value does, and its `on = false` line says that the stage is off.
+std::string live_when_on(std::string_view id, const EditSettings& s) {
+    const std::string line = prism::gui::live_line(id, s);
+    const std::string off = "Off, so no change. When on: ";
+    return line.rfind(off, 0) == 0 ? line.substr(off.size()) : line;
+}
+
+}  // namespace
+
+TEST(RecipeComments, EachNumberIsTheOneTheExplainAreaShows) {
+    std::vector<EditSettings> all = reachable_without_matrix();
+    for (int position = -100; position <= 100; position += 5) {
+        for (const prism::gui::SimpleControl control :
+             {prism::gui::SimpleControl::brightness, prism::gui::SimpleControl::contrast,
+              prism::gui::SimpleControl::colour}) {
+            EditSettings s;
+            prism::gui::apply_simple_control(s, control, static_cast<float>(position));
+            all.push_back(s);
+        }
+    }
+    for (const EditSettings& s : all) {
+        const std::string text = prism::write_recipe(prism::gui::recipe_from(s));
+        SCOPED_TRACE(text);
+
+        // Exposure: 2^stops, "1.62x the light" in the file and "1.62× the light" in the window.
+        EXPECT_EQ(
+            first_match(section_text(text, "exposure"), "# ([0-9.]+|inf)x the light"),
+            first_match(live_when_on("stage.exposure", s), "([0-9.]+|inf)" + times + " the light"));
+
+        // Saturation: the factor, or black and white.
+        const std::string saturation = section_text(text, "saturation");
+        const std::string saturation_live = live_when_on("stage.saturation", s);
+        if (s.saturation == 0.0f) {
+            EXPECT_NE(saturation.find("# black and white"), std::string::npos);
+            EXPECT_NE(saturation_live.find("black and white"), std::string::npos);
+        } else {
+            EXPECT_EQ(first_match(saturation, "# ([0-9.]+)x the colourfulness"),
+                      first_match(saturation_live, times + "([0-9.]+) colour"));
+        }
+
+        // Contrast: how much wider or narrower each stop near middle grey becomes.
+        const std::string contrast = section_text(text, "contrast");
+        const std::string contrast_live = live_when_on("stage.contrast", s);
+        EXPECT_EQ(first_match(contrast, "# each stop near middle grey is ([0-9]+% [a-z]+)"),
+                  first_match(contrast_live, "each stop near middle grey is ([0-9]+% [a-z]+)"));
+        EXPECT_EQ(contrast.find("no change") != std::string::npos,
+                  contrast_live.find("no change") != std::string::npos);
+
+        // The curve: what 18% grey becomes.
+        const std::string curve = section_text(text, "curve");
+        const std::string curve_live = live_when_on("stage.curve", s);
+        EXPECT_EQ(first_match(curve, "# 18% grey becomes ([0-9]+%)"),
+                  first_match(curve_live, "18% grey becomes ([0-9]+%)"));
+        if (s.curve == CurveKind::none) {
+            EXPECT_NE(curve.find("# no tone curve"), std::string::npos);
+        } else {
+            EXPECT_NE(first_match(curve, "# 18% grey becomes ([0-9]+%)"), "(none)");
+        }
+        if (::testing::Test::HasFailure()) {
+            return;
         }
     }
 }

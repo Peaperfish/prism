@@ -85,22 +85,36 @@ std::string_view shape_name(CurveShape shape) {
 
 class RecipeWriter {
 public:
-    void setting(std::string_view key, const std::string& value) {
-        text_ += std::string(key) + " = " + value + "\n";
+    explicit RecipeWriter(bool comments) : comments_(comments) {}
+
+    // `key = value`, with `comment` after it when comments are on.
+    void setting(std::string_view key, const std::string& value, const std::string& comment = {}) {
+        text_ += std::string(key) + " = " + value;
+        if (comments_ && !comment.empty()) {
+            text_ += "  # " + comment;
+        }
+        text_ += "\n";
     }
 
     void section(std::string_view name) { text_ += "\n[" + std::string(name) + "]\n"; }
 
+    void comment_line(std::string_view text) {
+        if (comments_) {
+            text_ += "# " + std::string(text) + "\n";
+        }
+    }
+
     // A stage's switch: written only when it is off.
     void switch_off_if(bool on) {
         if (!on) {
-            setting("on", "false");
+            setting("on", "false", "off: Prism skips this stage but keeps its values");
         }
     }
 
     [[nodiscard]] std::string take() { return std::move(text_); }
 
 private:
+    bool comments_;
     std::string text_;
 };
 
@@ -109,11 +123,65 @@ std::string row_text(const Matrix3& m, int row) {
            number_text(m[row * 3 + 2]) + "]";
 }
 
+// --- The comments' numbers ---
+//
+// Worked out with the engine's own maths, as the GUI's Explain area does (explanations.cpp), and
+// formatted the same way, so a recipe and the window never disagree; a gui_core test checks that.
+
+std::string printf_text(const char* format, double v) {
+    char buffer[64];
+    std::snprintf(buffer, sizeof buffer, format, v);
+    return buffer;
+}
+
+// Exposure multiplies the light by 2^stops.
+std::string exposure_comment(float stops) {
+    return printf_text("%.2f", static_cast<double>(std::exp2(stops))) + "x the light";
+}
+
+// Saturation scales each colour's distance from grey.
+std::string saturation_comment(float amount) {
+    if (amount == 0.0f) {
+        return "black and white";
+    }
+    return printf_text("%.2f", static_cast<double>(amount)) + "x the colourfulness";
+}
+
+// Contrast's slope at middle grey is the amount: each stop there is (amount - 1) x 100% wider.
+std::string contrast_comment(float amount) {
+    const long percent = std::lround(std::fabs(static_cast<double>(amount) - 1.0) * 100.0);
+    if (percent == 0) {
+        return "no change near middle grey";
+    }
+    return "each stop near middle grey is " + std::to_string(percent) + "% " +
+           (amount > 1.0f ? "wider" : "narrower");
+}
+
+// What 18% grey becomes through the curve (ToneCurve::map), as a whole percent.
+std::string curve_comment(const RecipeCurve& curve) {
+    if (curve.shape == CurveShape::none) {
+        return "no tone curve";
+    }
+    const bool valid = curve.shape == CurveShape::gamma      ? is_positive(curve.gamma)
+                       : curve.shape == CurveShape::reinhard ? is_positive(curve.white)
+                                                             : true;
+    if (!valid) {
+        return {};  // parse_curve would refuse it; the recipe would not read back either
+    }
+    const ToneCurve tone = parse_curve(*curve_spec(curve));
+    const long percent = std::lround(static_cast<double>(tone.map(contrast_pivot)) * 100.0);
+    return "18% grey becomes " + std::to_string(percent) + "%";
+}
+
 }  // namespace
 
-std::string write_recipe(const Recipe& recipe) {
-    RecipeWriter w;
-    w.setting("prism_recipe", std::to_string(recipe_format_version));
+std::string write_recipe(const Recipe& recipe, const RecipeWriteOptions& options) {
+    RecipeWriter w(options.comments);
+    w.comment_line(
+        "Prism recipe: edit settings in plain text. Prism rewrites these comments when it saves.");
+    w.comment_line(
+        "What each line means: https://github.com/Peaperfish/prism/blob/main/docs/RECIPES.md");
+    w.setting("prism_recipe", std::to_string(recipe_format_version), "recipe format version");
     if (recipe.name) {
         w.setting("name", toml_string(*recipe.name));
     }
@@ -122,37 +190,41 @@ std::string write_recipe(const Recipe& recipe) {
     }
     if (const auto& e = recipe.exposure) {
         w.section("exposure");
-        w.setting("stops", number_text(e->stops, true));
+        w.setting("stops", number_text(e->stops, true), exposure_comment(e->stops));
         w.switch_off_if(e->on);
     }
     if (const auto& m = recipe.matrix) {
         w.section("matrix");
+        const bool none = m->values == identity_matrix && !m->from;
         constexpr std::string_view rows[] = {"red", "green", "blue"};
         for (int row = 0; row < 3; ++row) {
-            w.setting(rows[row], row_text(m->values, row));
+            w.setting(rows[row], row_text(m->values, row),
+                      none ? "identity: no colour matrix"
+                           : "output " + std::string(rows[row]) + " from input R, G, B");
         }
         if (m->from) {
-            w.setting("from", toml_string(*m->from));
+            w.setting("from", toml_string(*m->from),
+                      "where the numbers came from: a label, never opened");
         }
         w.switch_off_if(m->on);
     }
     if (const auto& s = recipe.saturation) {
         w.section("saturation");
-        w.setting("amount", number_text(s->amount));
+        w.setting("amount", number_text(s->amount), saturation_comment(s->amount));
         w.switch_off_if(s->on);
     }
     if (const auto& c = recipe.contrast) {
         w.section("contrast");
-        w.setting("amount", number_text(c->amount));
+        w.setting("amount", number_text(c->amount), contrast_comment(c->amount));
         w.switch_off_if(c->on);
     }
     if (const auto& c = recipe.curve) {
         w.section("curve");
-        w.setting("shape", toml_string(shape_name(c->shape)));
+        w.setting("shape", toml_string(shape_name(c->shape)), curve_comment(*c));
         if (c->shape == CurveShape::gamma) {
-            w.setting("gamma", number_text(c->gamma));
+            w.setting("gamma", number_text(c->gamma), "out = in^(1/gamma): above 1 brightens");
         } else if (c->shape == CurveShape::reinhard) {
-            w.setting("white", number_text(c->white));
+            w.setting("white", number_text(c->white), "this scene value becomes pure white");
         }
         w.switch_off_if(c->on);
     }
@@ -1398,8 +1470,10 @@ Recipe load_recipe(const std::filesystem::path& path) {
     return parse_recipe(text, source);
 }
 
-void save_recipe(const std::filesystem::path& path, const Recipe& recipe) {
-    const std::optional<AtomicWriteError> error = write_file_atomically(path, write_recipe(recipe));
+void save_recipe(const std::filesystem::path& path, const Recipe& recipe,
+                 const RecipeWriteOptions& options) {
+    const std::optional<AtomicWriteError> error =
+        write_file_atomically(path, write_recipe(recipe, options));
     if (!error) {
         return;
     }

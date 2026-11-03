@@ -56,6 +56,9 @@ std::string read_text(const fs::path& path) {
     return text.str();
 }
 
+// Writing without the teaching comments: the values alone.
+const prism::RecipeWriteOptions bare{.comments = false};
+
 // The recipe tests/data/recipe_complete.prism holds.
 Recipe complete_recipe() {
     Recipe r;
@@ -74,7 +77,7 @@ Recipe complete_recipe() {
 std::string stops_line(float stops) {
     Recipe r;
     r.exposure = prism::RecipeExposure{stops, true};
-    const std::string text = prism::write_recipe(r);
+    const std::string text = prism::write_recipe(r, bare);
     const std::size_t start = text.find("stops = ");
     return text.substr(start + 8, text.find('\n', start) - start - 8);
 }
@@ -83,7 +86,7 @@ std::string stops_line(float stops) {
 std::string amount_line(float amount) {
     Recipe r;
     r.saturation = prism::RecipeSaturation{amount, true};
-    const std::string text = prism::write_recipe(r);
+    const std::string text = prism::write_recipe(r, bare);
     const std::size_t start = text.find("amount = ");
     return text.substr(start + 9, text.find('\n', start) - start - 9);
 }
@@ -262,13 +265,22 @@ private:
 // --- Writing -------------------------------------------------------------------------------------
 
 TEST(RecipeWrite, MatchesTheGoldenFileByteForByte) {
-    const std::string golden = read_text(fs::path(PRISM_TEST_DATA) / "recipe_complete.prism");
+    const std::string golden =
+        read_text(fs::path(PRISM_TEST_DATA) / "recipe_complete_commented.prism");
     ASSERT_FALSE(golden.empty());
     EXPECT_EQ(prism::write_recipe(complete_recipe()), golden);
 }
 
+TEST(RecipeWrite, WithoutCommentsMatchesTheBareGoldenFile) {
+    const std::string golden = read_text(fs::path(PRISM_TEST_DATA) / "recipe_complete.prism");
+    ASSERT_FALSE(golden.empty());
+    const std::string text = prism::write_recipe(complete_recipe(), bare);
+    EXPECT_EQ(text, golden);
+    EXPECT_EQ(text.find('#'), std::string::npos);
+}
+
 TEST(RecipeWrite, AnEmptyRecipeIsJustTheVersion) {
-    EXPECT_EQ(prism::write_recipe(Recipe{}), "prism_recipe = 1\n");
+    EXPECT_EQ(prism::write_recipe(Recipe{}, bare), "prism_recipe = 1\n");
 }
 
 TEST(RecipeWrite, NumbersAreShortestAndWholeNumbersGetADecimal) {
@@ -309,11 +321,11 @@ TEST(RecipeWrite, SectionsComeInPipelineOrderWithoutAlignment) {
 TEST(RecipeWrite, OnlyTheChosenCurvesParameterIsWritten) {
     Recipe r;
     r.curve = prism::RecipeCurve{CurveShape::reinhard, 3.0f, 6.0f, true};
-    EXPECT_EQ(prism::write_recipe(r),
+    EXPECT_EQ(prism::write_recipe(r, bare),
               "prism_recipe = 1\n\n[curve]\nshape = \"reinhard\"\nwhite = 6.0\n");
     r.curve->shape = CurveShape::filmic;
     r.curve->on = false;
-    EXPECT_EQ(prism::write_recipe(r),
+    EXPECT_EQ(prism::write_recipe(r, bare),
               "prism_recipe = 1\n\n[curve]\nshape = \"filmic\"\non = false\n");
 }
 
@@ -321,8 +333,61 @@ TEST(RecipeWrite, TextIsEscapedAndStaysOnOneLine) {
     Recipe r;
     r.name = std::string("a \"b\" \\ c\td\ne\x01 f\x7F café 写真");
     EXPECT_EQ(
-        prism::write_recipe(r),
+        prism::write_recipe(r, bare),
         "prism_recipe = 1\nname = \"a \\\"b\\\" \\\\ c\\td\\ne\\u0001 f\\u007F café 写真\"\n");
+}
+
+// --- Comments ----------------------------------------------------------------------------------
+
+TEST(RecipeComments, TheHeaderIsFixedTextAndTheVersionLineIsExplained) {
+    const std::string text = prism::write_recipe(Recipe{});
+    EXPECT_EQ(text,
+              "# Prism recipe: edit settings in plain text. Prism rewrites these comments when it "
+              "saves.\n"
+              "# What each line means: https://github.com/Peaperfish/prism/blob/main/docs/"
+              "RECIPES.md\n"
+              "prism_recipe = 1  # recipe format version\n");
+}
+
+TEST(RecipeComments, AreIgnoredWhenReading) {
+    RandomRecipes random(4242);
+    for (int i = 0; i < 500; ++i) {
+        const Recipe r = random.next();
+        expect_same_bits(prism::parse_recipe(prism::write_recipe(r, bare)),
+                         prism::parse_recipe(prism::write_recipe(r)));
+    }
+    // A comment written by hand is ignored too, and is gone after saving again.
+    const Recipe r = prism::parse_recipe(
+        "prism_recipe = 1\n[saturation]\namount = 2  # my favourite\n# note to self\n");
+    EXPECT_EQ(prism::write_recipe(r).find("favourite"), std::string::npos);
+}
+
+TEST(RecipeComments, TheNoMatrixRowsSaySo) {
+    Recipe r;
+    r.matrix = prism::RecipeMatrix{};
+    const std::string none = prism::write_recipe(r);
+    EXPECT_NE(none.find("red = [1.0, 0.0, 0.0]  # identity: no colour matrix\n"), std::string::npos)
+        << none;
+    EXPECT_NE(none.find("blue = [0.0, 0.0, 1.0]  # identity: no colour matrix\n"),
+              std::string::npos);
+    r.matrix->from = "identity.txt";  // a real file that happens to change nothing
+    EXPECT_EQ(prism::write_recipe(r).find("no colour matrix"), std::string::npos);
+}
+
+TEST(RecipeComments, EachStageExplainsItsNumber) {
+    Recipe r;
+    r.exposure = prism::RecipeExposure{0.0f, false};
+    r.saturation = prism::RecipeSaturation{0.0f, true};
+    r.contrast = prism::RecipeContrast{1.0f, true};
+    r.curve = prism::RecipeCurve{CurveShape::none, 2.2f, 4.0f, true};
+    const std::string text = prism::write_recipe(r);
+    EXPECT_NE(text.find("stops = +0.0  # 1.00x the light\n"
+                        "on = false  # off: Prism skips this stage but keeps its values\n"),
+              std::string::npos)
+        << text;
+    EXPECT_NE(text.find("amount = 0.0  # black and white\n"), std::string::npos) << text;
+    EXPECT_NE(text.find("amount = 1.0  # no change near middle grey\n"), std::string::npos);
+    EXPECT_NE(text.find("shape = \"none\"  # no tone curve\n"), std::string::npos);
 }
 
 // --- Reading valid recipes -----------------------------------------------------------------------

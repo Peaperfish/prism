@@ -1,0 +1,25 @@
+# Prism recipe: edit settings in plain text. Prism rewrites these comments when it saves.
+# What each line means: https://github.com/Peaperfish/prism/blob/main/docs/RECIPES.md
+prism_recipe = 1  # recipe format version
+name = "Golden \"test\" recipe"
+description = "Every stage, one of them off"
+
+[exposure]
+stops = -1.25  # 0.42x the light
+
+[matrix]
+red = [1.05, 0.03, -0.01]  # output red from input R, G, B
+green = [0.01, 1.0, 0.0]  # output green from input R, G, B
+blue = [-0.02, -0.02, 0.94]  # output blue from input R, G, B
+from = "grade.txt"  # where the numbers came from: a label, never opened
+
+[saturation]
+amount = 1.2  # 1.20x the colourfulness
+on = false  # off: Prism skips this stage but keeps its values
+
+[contrast]
+amount = 0.85  # each stop near middle grey is 15% narrower
+
+[curve]
+shape = "gamma"  # 18% grey becomes 49%
+gamma = 2.4  # out = in^(1/gamma): above 1 brightens

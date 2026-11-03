@@ -82,12 +82,23 @@ struct Recipe {
     bool operator==(const Recipe&) const = default;
 };
 
+struct RecipeWriteOptions {
+    // A fixed two-line header (what the file is, and where the format is described) and one short
+    // comment on each value's line saying what the number does, worked out with the engine's own
+    // maths: "1.41x the light", "18% grey becomes 15%". Comments are ignored when reading and
+    // written afresh on every save. Off only for tests and tools that want the bare values.
+    bool comments = true;
+};
+
 // The recipe as text, in the format of docs/RECIPES.md: `prism_recipe = 1`, the name and
 // description if there are any, then each section the recipe has, in pipeline order with a fixed
 // key order. Numbers are written in the shortest form that reads back as exactly the same float,
 // with ".0" added to whole numbers; exposure always has a sign, and -0 is written as 0. `on =
-// false` is written only for a stage that is off. UTF-8 without a byte-order mark, LF line ends.
-[[nodiscard]] std::string write_recipe(const Recipe& recipe);
+// false` is written only for a stage that is off. No aligned = signs, and nothing that changes
+// from one save to the next (no date, no Prism version), so saved recipes diff cleanly. UTF-8
+// without a byte-order mark, LF line ends.
+[[nodiscard]] std::string write_recipe(const Recipe& recipe,
+                                       const RecipeWriteOptions& options = {});
 
 // --- Reading -------------------------------------------------------------------------------------
 //
@@ -210,6 +221,7 @@ struct RecipeFormat {
 // Writes write_recipe(recipe) to `path`, atomically (prism/atomic_file.hpp): a crash or a full
 // disk never leaves half a recipe behind, and an existing file is replaced in one step. Throws
 // std::runtime_error naming the file if it cannot be written.
-void save_recipe(const std::filesystem::path& path, const Recipe& recipe);
+void save_recipe(const std::filesystem::path& path, const Recipe& recipe,
+                 const RecipeWriteOptions& options = {});
 
 }  // namespace prism
