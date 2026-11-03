@@ -1,0 +1,420 @@
+#include "prism/gui/explanations.hpp"
+
+#include <array>
+#include <cmath>
+#include <cstdio>
+
+#include "prism/gui/stage_controls.hpp"
+#include "prism/pipeline.hpp"
+
+namespace prism::gui {
+
+namespace {
+
+// The texts are in the order they appear in the window. The draft they come from is the notes for
+// #16; numbers in a text are checked against the code by explanations_test.cpp, and live numbers
+// are never typed here.
+constexpr Explanation table[] = {
+    // --- Look ------------------------------------------------------------------------------
+    {"look", "A look is a saved recipe: three numbers and a curve.",
+     "Picking one sets Exposure, Saturation, Contrast and the Tone curve in the pipeline below; "
+     "nothing is hidden. Change any of them and the name becomes Custom.",
+     LiveKind::look},
+    {"look.natural", "A stop brighter with a filmic curve.",
+     "RAW files are linear, so they look dark and flat as decoded. +1 stop and the filmic curve "
+     "give a neutral starting point."},
+    {"look.original", "Nothing applied.",
+     "The image as decoded: for RAW, linear light as the sensor recorded it (dark and flat); for "
+     "JPEG and PNG, the photo as it is."},
+    {"look.vivid", "More colour and contrast.",
+     "Saturation ×1.25 and contrast ×1.15 for RAW (×1.2 and ×1.1 for JPEG and PNG). RAW also gets "
+     "the +1 stop and filmic curve."},
+    {"look.soft", "Gentler contrast, muted colour.",
+     "Saturation ×0.9 and lower contrast. For RAW the Reinhard curve rolls highlights off more "
+     "softly than filmic."},
+    {"look.bw", "Greyscale with a little extra contrast.",
+     "Saturation 0 removes colour but keeps each pixel's luminance. Contrast ×1.2 (RAW) or ×1.15 "
+     "(JPEG, PNG) stops the grey looking flat."},
+    {"look.reset", "Go back to the starting look.",
+     "Sets the same four values as the first look in the list. One undo step."},
+
+    // --- Simple sliders ----------------------------------------------------------------------
+    {"simple.brightness", "Lets in more or less light, in stops.",
+     "Every pixel is multiplied by the same amount, in linear light, like opening or closing the "
+     "aperture. +50 on this slider is +1 stop, which doubles the light.",
+     LiveKind::brightness},
+    {"simple.contrast", "Pushes tones apart around middle grey.",
+     "Above middle grey (18%) tones get brighter and below it darker; negative values do the "
+     "reverse. Middle grey does not move. The effect fades beyond about 2 stops, so extremes are "
+     "not crushed.",
+     LiveKind::contrast},
+    {"simple.colour", "Makes colours stronger or weaker.",
+     "Each pixel's colour moves away from, or towards, the grey of the same brightness. "
+     "Brightness stays the same. -100 is black and white, +100 doubles the distance from grey.",
+     LiveKind::colour},
+
+    // --- Pipeline stages ---------------------------------------------------------------------
+    {"stage.decode", "The file turned into linear light.",
+     "JPEG and PNG have their sRGB curve undone. RAW is demosaiced with the camera's white "
+     "balance as shot. After this, numbers are proportional to light."},
+    {"stage.exposure", "Same-sized change to all light, in stops.",
+     "Multiplies every value by 2 to the power of the stops. Because it works on linear light, +1 "
+     "stop is exactly twice as bright.",
+     LiveKind::exposure},
+    {"stage.matrix", "Mixes red, green and blue, before saturation and tone.",
+     "A 3×3 table: each output channel is a weighted sum of the input red, green and blue, in "
+     "linear light. Used to calibrate camera colour or apply a grade. Load one with --matrix.",
+     LiveKind::matrix},
+    {"stage.saturation", "Colourfulness, brightness unchanged.",
+     "Each channel moves away from the pixel's luminance (0.2126 R + 0.7152 G + 0.0722 B). A "
+     "colour that would go below zero stops at the most saturated version sRGB can show, so hues "
+     "do not shift.",
+     LiveKind::saturation},
+    {"stage.contrast", "An S-curve around middle grey, in stops.",
+     "Applied to each channel in log2 space around 0.18, so it works on ratios of light like the "
+     "eye. Slope at middle grey equals the setting. Strongest within 2 stops of grey.",
+     LiveKind::contrast_row},
+    {"stage.curve", "Squeezes scene light to fit the screen.",
+     "Linear light has more range than a screen shows. The curve compresses it: bright values are "
+     "pulled in, so highlights have room. Pick a kind below.",
+     LiveKind::curve},
+    {"stage.encode", "Light turned into the 8-bit sRGB file.",
+     "Applies the sRGB curve and rounds to 8 bits. Anything still above white or below black is "
+     "cut off here, and cannot come back."},
+
+    // --- Tone curve kinds --------------------------------------------------------------------
+    {"curve.none", "No curve.",
+     "Values go straight to Output encode. Right for JPEG and PNG, which already have one. For "
+     "RAW the picture is dark and flat."},
+    {"curve.gamma", "Raises midtones with a power curve.",
+     "out = in^(1/gamma). 0 and 1 stay fixed. Above 1 brightens midtones, below 1 darkens. "
+     "Highlights above 1 are not compressed; they clip.",
+     LiveKind::gamma},
+    {"curve.reinhard", "Rolls highlights off smoothly.",
+     "out = in × (1 + in/white²) / (1 + in). The white point is the linear value that lands "
+     "exactly on white; brighter values clip. A larger white point keeps more highlight detail "
+     "but looks flatter.",
+     LiveKind::reinhard},
+    {"curve.filmic", "Soft toe, soft shoulder (Hable).",
+     "The “Uncharted 2” curve with fixed constants and a built-in 2× boost to its input. Darkens "
+     "deep shadows gently and compresses highlights; scene value 5.6 maps to white. No setting.",
+     LiveKind::filmic},
+    {"curve.white", "Where highlights stop compressing.",
+     "Reinhard only. The linear value that becomes pure white. Range 1 to 16, default 4.",
+     LiveKind::white},
+    {"curve.gamma_value", "The exponent of the gamma curve.", "Range 0.5 to 4, default 2.2.",
+     LiveKind::gamma},
+
+    // --- Histogram and scopes ----------------------------------------------------------------
+    {"scope.histogram", "How many pixels sit at each brightness.",
+     "Black on the left, white on the right, of the 8-bit result at the stage you are viewing. "
+     "Grey is luminance; red, green and blue lines are the channels.",
+     LiveKind::viewing},
+    {"scope.parade", "Each colour channel's brightness, side by side.",
+     "Left to right across the photo, red, green and blue panels show how bright that channel is "
+     "at each column. Equal heights mean neutral.",
+     LiveKind::viewing},
+    {"scope.waveform", "Brightness of each part of the photo.",
+     "Horizontal position matches the photo; the vertical axis is Rec. 709 luma, 0 at the bottom "
+     "and 255 at the top. Brighter trace means more pixels there.",
+     LiveKind::viewing},
+    {"scope.vectorscope", "Which colours are present and how strong.",
+     "Angle is hue and distance from the centre is strength (Rec. 709 Cb and Cr). Centre is "
+     "neutral grey. The line marks where skin tones usually sit.",
+     LiveKind::viewing},
+    {"scope.skin", "Skin tones usually sit near this line.",
+     "The skin-tone line, 123° from the Cb axis: skin of any complexion lands close to it. Skin "
+     "far from the line suggests a colour cast."},
+    {"chip.over", "Pixels brighter than white.",
+     "Share of pixels with a channel above 1 at this stage. The red, green and blue figures "
+     "count each channel alone.",
+     LiveKind::over},
+    {"chip.under", "Pixels darker than black.",
+     "Share of pixels with a channel below 0 at this stage. The red, green and blue figures "
+     "count each channel alone.",
+     LiveKind::under},
+
+    // --- Clipping ----------------------------------------------------------------------------
+    {"clip.overlay", "Mark clipped pixels on the photo (J).",
+     "Orange-red: brighter than white. Blue: no light left. Violet stripes: too saturated for "
+     "sRGB. A pixel an earlier stage already cut off stays marked in later stages."},
+    {"clip.dot", "Filled dot: detail lost. Hollow: recoverable.",
+     "Out-of-range values are kept as numbers until a stage cuts them off at 0 or 1. Hollow "
+     "means a later stage can still pull them back."},
+    {"clip.summary", "Where clipping starts and where it costs detail.",
+     "Detail is lost only where a stage cuts values off at white or black. Until then the values "
+     "are kept, so a later stage can still bring them back."},
+    {"clip.note", "Clipping in the photo, in one line.",
+     "Dot colours as in the pipeline: orange above white, blue below black, violet too saturated "
+     "for sRGB. It follows your edits and settles a moment after you stop dragging.",
+     LiveKind::clip_note},
+
+    // --- Compare and the viewed stage --------------------------------------------------------
+    {"compare", "Show two points in the pipeline side by side.",
+     "The stage you click in the list is the right half; “Compare with” picks the left half. "
+     "Original is the file before any edit.",
+     LiveKind::compare},
+    {"compare.swap", "Swap the two halves.",
+     "The stage on the left becomes the one you view on the right, and the other way round. Only "
+     "the view changes, not the photo."},
+    {"viewing", "The photo shows the pipeline up to this stage.",
+     "Edits made after it are real, but not visible here. Click Output encode (or press Esc) to "
+     "see the final result."},
+
+    // --- Test strip --------------------------------------------------------------------------
+    {"strip", "Try several exposures at once (T).",
+     "Splits the photo into bands, each a fixed number of stops from now. Click a band to take "
+     "its exposure. Steps of 1/3, 1/2 or 1 stop.",
+     LiveKind::strip},
+    {"strip.line", "A full stop doubles the light.",
+     "Each band is one step more or less light than its neighbour. A third of a stop is about "
+     "1.3×, half a stop about 1.4×, a whole stop 2×."},
+
+    // --- Preferences -------------------------------------------------------------------------
+    {"pref.theme", "Light, dark, or follow the system.",
+     "The photo canvas stays neutral grey in both so your eyes judge the photo, not the frame."},
+    {"pref.size", "Scales text and controls.",
+     "Auto follows the display. Also Cmd + and Cmd − to step, Cmd 0 for Auto (Ctrl on Windows and "
+     "Linux)."},
+    {"pref.panel", "Width of the side panel.", "Drag the panel's left edge to change it too."},
+    {"pref.explain", "Show a plain-language note for the control you point at.",
+     "Off removes the Explain area at the foot of the panel. Tooltips still show the one-line "
+     "summary."},
+};
+
+// Ids that have no enum of their own: the controls the window shows beyond the stages, Simple's
+// sliders, the curve kinds, the scopes and the presets.
+constexpr std::array<std::string_view, 20> other_ids{
+    explain::look,         explain::look_reset,   explain::curve_white, explain::curve_gamma_value,
+    explain::scope_skin,   explain::chip_over,    explain::chip_under,  explain::clip_overlay,
+    explain::clip_dot,     explain::clip_summary, explain::clip_note,   explain::compare,
+    explain::compare_swap, explain::viewing,      explain::strip,       explain::strip_line,
+    explain::pref_theme,   explain::pref_size,    explain::pref_panel,  explain::pref_explain,
+};
+
+std::string printf_string(const char* format, double a) {
+    char buffer[64];
+    std::snprintf(buffer, sizeof buffer, format, a);
+    return buffer;
+}
+
+std::string slider_prefix(float position) {
+    return printf_string("%+.0f", static_cast<double>(position)) + ": ";
+}
+
+// 18% grey through one of the engine's own tone curves, as a whole percent.
+int grey_card(const EditSettings& s, CurveKind kind) {
+    EditSettings curve = s;
+    curve.curve = kind;
+    curve.curve_on = true;
+    const std::optional<std::string> spec = curve_spec(curve);
+    if (!spec) {
+        return 18;
+    }
+    const ToneCurve tone = parse_curve(*spec);
+    return static_cast<int>(std::lround(static_cast<double>(tone.map(contrast_pivot)) * 100.0));
+}
+
+std::string number_text(float v) {
+    return printf_string("%g", static_cast<double>(v));
+}
+
+// An off stage does nothing: say so, and what it would say once on.
+std::string if_off(const EditSettings& s, StageId stage, const std::string& when_on) {
+    if (stage_enabled(s, stage)) {
+        return when_on;
+    }
+    return "Off, so no change. When on: " + when_on;
+}
+
+std::string stops_and_factor(float stops) {
+    return format_exposure(stops) + ", " +
+           printf_string("%.2f", static_cast<double>(std::exp2(stops))) + "× the light";
+}
+
+std::string contrast_text(float c) {
+    const long pct = std::lround(std::fabs(static_cast<double>(c) - 1.0) * 100.0);
+    if (pct == 0) {
+        return format_times(c) + ", no change";
+    }
+    return format_times(c) + ", each stop near middle grey is " + std::to_string(pct) + "% " +
+           (c > 1.0f ? "wider" : "narrower");
+}
+
+std::string colour_text(float s) {
+    return s == 0.0f ? "black and white" : format_times(s) + " colour";
+}
+
+std::string grey_text(int percent) {
+    return "18% grey becomes " + std::to_string(percent) + "%";
+}
+
+}  // namespace
+
+std::span<const Explanation> explanations() noexcept {
+    return table;
+}
+
+const Explanation* explanation_for(std::string_view id) noexcept {
+    for (const Explanation& e : table) {
+        if (e.id == id) {
+            return &e;
+        }
+    }
+    return nullptr;
+}
+
+std::string_view explain_id(StageId stage) noexcept {
+    switch (stage) {
+        case StageId::decode: return "stage.decode";
+        case StageId::exposure: return "stage.exposure";
+        case StageId::matrix: return "stage.matrix";
+        case StageId::saturation: return "stage.saturation";
+        case StageId::contrast: return "stage.contrast";
+        case StageId::curve: return "stage.curve";
+        case StageId::encode: return "stage.encode";
+    }
+    return {};
+}
+
+std::string_view explain_id(SimpleControl control) noexcept {
+    switch (control) {
+        case SimpleControl::brightness: return "simple.brightness";
+        case SimpleControl::contrast: return "simple.contrast";
+        case SimpleControl::colour: return "simple.colour";
+    }
+    return {};
+}
+
+std::string_view explain_id(CurveKind kind) noexcept {
+    switch (kind) {
+        case CurveKind::none: return "curve.none";
+        case CurveKind::gamma: return "curve.gamma";
+        case CurveKind::reinhard: return "curve.reinhard";
+        case CurveKind::filmic: return "curve.filmic";
+    }
+    return {};
+}
+
+std::string_view explain_id(ScopeChoice scope) noexcept {
+    switch (scope) {
+        case ScopeChoice::histogram: return "scope.histogram";
+        case ScopeChoice::parade: return "scope.parade";
+        case ScopeChoice::waveform: return "scope.waveform";
+        case ScopeChoice::vectorscope: return "scope.vectorscope";
+    }
+    return {};
+}
+
+std::string explain_id(const Preset& preset) {
+    return "look." + std::string(preset.id);
+}
+
+std::span<const std::string_view> other_explain_ids() noexcept {
+    return other_ids;
+}
+
+std::string format_times(float value) {
+    return "×" + printf_string("%.2f", static_cast<double>(value));
+}
+
+std::string grey_card_percent(CurveKind kind, const EditSettings& settings) {
+    return std::to_string(grey_card(settings, kind)) + "%";
+}
+
+std::string live_line(std::string_view id, const EditSettings& s, const LiveContext& context) {
+    const Explanation* entry = explanation_for(id);
+    if (entry == nullptr) {
+        return {};
+    }
+    const SimpleControls positions = simple_from(s);
+    switch (entry->live) {
+        case LiveKind::none:
+            return {};
+        case LiveKind::look: {
+            const Preset* preset = matching_preset(context.kind, s);
+            const EditSettings neutral;
+            const float exposure_stops = s.exposure_on ? s.exposure_stops : neutral.exposure_stops;
+            const float saturation_value = s.saturation_on ? s.saturation : neutral.saturation;
+            const float contrast_value = s.contrast_on ? s.contrast : neutral.contrast;
+            return (preset != nullptr ? std::string(preset->name) : std::string("Custom")) + ": " +
+                   format_exposure(exposure_stops) + ", colour " + format_times(saturation_value) +
+                   ", contrast " + format_times(contrast_value) + ", " +
+                   (s.curve_on ? stage_value_text(s, StageId::curve) : std::string("none"));
+        }
+        case LiveKind::brightness:
+            return slider_prefix(positions.brightness) +
+                   stops_and_factor(s.exposure_on ? s.exposure_stops : 0.0f);
+        case LiveKind::contrast:
+            return slider_prefix(positions.contrast) +
+                   contrast_text(s.contrast_on ? s.contrast : 1.0f);
+        case LiveKind::colour:
+            return slider_prefix(positions.colour) +
+                   colour_text(s.saturation_on ? s.saturation : 1.0f);
+        case LiveKind::exposure:
+            return if_off(s, StageId::exposure, stops_and_factor(s.exposure_stops));
+        case LiveKind::matrix:
+            return if_off(s, StageId::matrix, stage_value_text(s, StageId::matrix));
+        case LiveKind::saturation:
+            return if_off(s, StageId::saturation, colour_text(s.saturation));
+        case LiveKind::contrast_row:
+            return if_off(s, StageId::contrast, contrast_text(s.contrast));
+        case LiveKind::curve: {
+            std::string text = stage_value_text(s, StageId::curve);
+            if (s.curve != CurveKind::none) {
+                text += ": " + grey_text(grey_card(s, s.curve));
+            }
+            return if_off(s, StageId::curve, text);
+        }
+        case LiveKind::gamma:
+            return "gamma " + number_text(s.gamma) + ": " + grey_text(grey_card(s, CurveKind::gamma));
+        case LiveKind::reinhard:
+            return "white " + number_text(s.reinhard_white) + ": a scene value of " +
+                   number_text(s.reinhard_white) + " maps to white; " +
+                   grey_text(grey_card(s, CurveKind::reinhard));
+        case LiveKind::filmic:
+            return grey_text(grey_card(s, CurveKind::filmic));
+        case LiveKind::white:
+            return "white = " + number_text(s.reinhard_white);
+        case LiveKind::viewing:
+            return "Viewing: " + stage_caption(context.viewed);
+        case LiveKind::over:
+        case LiveKind::under: {
+            if (context.histogram == nullptr || context.histogram->pixel_count == 0) {
+                return {};
+            }
+            const StageHistogram& h = *context.histogram;
+            const bool over = entry->live == LiveKind::over;
+            const auto percent = [&](const ChannelClips& c) {
+                return printf_string("%.2f", pixel_percent(over ? c.over_white : c.under_black,
+                                                           h.pixel_count)) +
+                       "%";
+            };
+            return "R " + percent(h.red_clips) + "   G " + percent(h.green_clips) + "   B " +
+                   percent(h.blue_clips);
+        }
+        case LiveKind::clip_note: {
+            if (context.clips == nullptr) {
+                return {};
+            }
+            std::string text = describe_clipping(*context.clips);
+            const std::string gamut = describe_gamut(*context.clips);
+            return gamut.empty() ? text : text + " " + gamut;
+        }
+        case LiveKind::compare:
+            if (!context.compare) {
+                return "No comparison: the photo is shown on its own.";
+            }
+            return "Left: " + stage_caption(*context.compare) +
+                   ". Right: " + stage_caption(context.viewed) + ".";
+        case LiveKind::strip: {
+            const int divisor = strip_step_divisor(context.strip_step);
+            const char* name = divisor == 3 ? "1/3 stop" : divisor == 2 ? "1/2 stop" : "1 stop";
+            return std::string("Steps of ") + name + ": each band is " +
+                   printf_string("%.2f", std::exp2(1.0 / divisor)) + "× the light of the one before";
+        }
+    }
+    return {};
+}
+
+}  // namespace prism::gui

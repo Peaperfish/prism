@@ -5,6 +5,7 @@
 add_library(prism_gui_core STATIC
   src/background_export.cpp
   src/clipping.cpp
+  src/explanations.cpp
   src/file_types.cpp
   src/histogram.cpp
   src/history.cpp
