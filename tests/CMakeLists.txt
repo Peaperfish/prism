@@ -24,6 +24,7 @@ add_executable(prism_tests
   pipeline_test.cpp
   process_test.cpp
   ranges_test.cpp
+  recipe_test.cpp
   prism_profile_test.cpp
   raw_test.cpp
   resize_test.cpp
@@ -39,7 +40,8 @@ target_include_directories(prism_tests PRIVATE ${PROJECT_SOURCE_DIR}/lib)
 # building the tests also (re)builds prism so the tests never run a stale binary.
 target_compile_definitions(prism_tests PRIVATE PRISM_EXE="$<TARGET_FILE:prism>"
                                               PRISM_PROFILE_EXE="$<TARGET_FILE:prism_profile>"
-                                              PRISM_CLI_DOC="${PROJECT_SOURCE_DIR}/docs/CLI.md")
+                                              PRISM_CLI_DOC="${PROJECT_SOURCE_DIR}/docs/CLI.md"
+                                              PRISM_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
 add_dependencies(prism_tests prism prism_profile)
 
 # The test executable needs libraw_r.dll next to it too (Windows source build), and already when

@@ -1,0 +1,23 @@
+prism_recipe = 1
+name = "Golden \"test\" recipe"
+description = "Every stage, one of them off"
+
+[exposure]
+stops = -1.25
+
+[matrix]
+red = [1.05, 0.03, -0.01]
+green = [0.01, 1.0, 0.0]
+blue = [-0.02, -0.02, 0.94]
+from = "grade.txt"
+
+[saturation]
+amount = 1.2
+on = false
+
+[contrast]
+amount = 0.85
+
+[curve]
+shape = "gamma"
+gamma = 2.4

@@ -8,6 +8,7 @@ add_library(prism_core STATIC
   pipeline.cpp
   process.cpp
   ranges.cpp
+  recipe.cpp
   resize.cpp
   raw.cpp
   tiff_reader.cpp
