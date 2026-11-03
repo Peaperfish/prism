@@ -103,7 +103,7 @@ At the top of the Pipeline section, **Compare with** shows a second point in the
 - **Off** (or choosing the viewed stage again) goes back to one picture;
 - `Esc` clears the comparison first, then the viewed stage.
 
-The histogram, scopes, clipping numbers and the `J` marks describe the viewed stage only, which is the right half. A comparison is only a view: it is not saved, it can't be undone, it goes back to Off when you open another photo, and it does not affect export.
+The histogram, scopes, clipping numbers and the `J` marks describe the viewed stage only, which is the right half (the marks are drawn over the right half). A comparison is only a view: it is not saved, it can't be undone, it goes back to Off when you open another photo, and it does not affect export.
 
 ### The test strip
 
@@ -112,7 +112,8 @@ A darkroom test strip prints one frame in bands at different exposures, so you c
 - The photo is cut into five bands along its longer side (side by side for a landscape photo, stacked for a portrait), darkest first.
 - A bar above the photo picks the step between bands: **⅓**, **½** (the default) or **1 stop**. It also says what that step means, for example "A full stop doubles the light; each half stop is about 1.4×." Its **×** button closes the strip.
 - Each band has a label with its offset from your current exposure and the change in light: **−1 stop · ½× light**, **−½ · 0.71×**, **0 · now**, **+½ · 1.41×**, **+1 · 2×**. The middle band is your photo as it is now.
-- The band under the cursor is outlined, and the histogram and scopes show that band (the middle one when the cursor is elsewhere).
+- The band under the cursor is outlined, and the histogram and scopes show that band (the middle one when the cursor is elsewhere). The histogram's title says which, for example *Histogram (−½ stop band)*.
+- While the strip is on, the Pipeline list hides its clipping dots and says so.
 - Press `J` to mark clipping in each band, to see which exposure starts to blow the highlights.
 - **Click a band** to use its exposure. This is one undo step; the strip stays on, centred on the new exposure. Clicking the middle band does nothing.
 
@@ -124,7 +125,7 @@ The strip needs the Exposure stage or a later one in view: while you are viewing
 
 - **In the Pipeline view**, each stage row shows a dot and a percentage when something is out of range: orange for **highlights** (brighter than white), blue for **shadows** (no light left), and violet for colours **too saturated for sRGB**. A **filled** dot means the stage cut those pixels off and the detail is gone. A **hollow** dot means they are out of range but a later stage may still bring them back. The percentages are hidden at 0.
 - **A line under the list** says where clipping starts and where it costs detail, for example "Highlights first clip at Exposure (2.1% of pixels); still recoverable until Output encode." or "Nothing clips." A second sentence appears only when there is something to say about colours too saturated for sRGB, for example "4.1% of colours are too saturated for sRGB after Colour matrix; Saturation clips them, so hues may shift."
-- **On the photo**: the **Show clipping on photo (J)** button under the histogram, or the `J` key, marks those pixels on the preview for the stage you are viewing: orange-red for brighter than white, blue for no light left, violet stripes for too saturated for sRGB. A pixel that an earlier stage already cut off stays marked in later stages. It is off by default and Prism remembers the setting.
+- **On the photo**: the **Show clipping on photo (J)** button under the histogram, or the `J` key, marks those pixels on the preview for the stage you are viewing: orange-red for brighter than white, blue for no light left, violet diagonal stripes (about 4 pixels wide, so the colour underneath stays visible) for too saturated for sRGB. A pixel that an earlier stage already cut off stays marked in later stages. It is off by default and Prism remembers the setting.
 - **The status-bar note.** Once a photo is open, the right end of the status bar says in a few words what clipped, with the same dot colours: "2.7% clipped in the file", "3% highlights clipped at Output encode" or "No clipping". Hover over it for the full sentence. It follows your edits and settles a moment after you stop dragging.
 - **The histogram's two indicators**, **Shadows** and **Highlights**, light up when any channel is below black or above white. Hover for the percentage in red, green and blue.
 
@@ -232,7 +233,9 @@ Open **Preferences** from the Edit menu (Windows and Linux) or the Prism menu (m
 - **Show explanations** (on by default): the Explain area. Tooltips keep their one-line summary either way.
 - **Restore defaults** resets all of the above, and also the scope you chose and the clipping marks.
 
-Prism keeps these in a file, `preferences.txt`, in the folder the system gives the app for its data: `~/Library/Application Support/Prism/Prism/` on macOS, `%APPDATA%\Prism\Prism\` on Windows, `~/.local/share/Prism/Prism/` on Linux. It holds `key=value` lines and is safe to edit or delete: a missing or damaged file, or a bad value, falls back to the default for that setting alone, and settings this version doesn't know (from a newer one) are kept. The file is written atomically (a temporary file renamed over it), so a crash doesn't leave half a file. The window layout is kept next to it in `imgui.ini`.
+**Help → About Prism** (on macOS, **Prism → About Prism**) shows the version, Prism's licence and the third-party components with their licences; **Third-party notices…** opens their full notices. `Esc` closes it.
+
+Prism keeps the preferences in a file, `preferences.txt`, in the folder the system gives the app for its data: `~/Library/Application Support/Prism/Prism/` on macOS, `%APPDATA%\Prism\Prism\` on Windows, `~/.local/share/Prism/Prism/` on Linux. It holds `key=value` lines and is safe to edit or delete: a missing or damaged file, or a bad value, falls back to the default for that setting alone, and settings this version doesn't know (from a newer one) are kept. The file is written atomically (a temporary file renamed over it), so a crash doesn't leave half a file. The window layout is kept next to it in `imgui.ini`.
 
 ## Reference details
 

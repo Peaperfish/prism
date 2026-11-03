@@ -6,6 +6,8 @@
 
 A small, fast command-line photo tool written in modern C++.
 
+**Documentation:** the [user guide](docs/GUIDE.md) covers the desktop app, from first launch to export, with every keyboard shortcut and a page on how Prism thinks about light. The [command-line reference](docs/CLI.md) covers every option of `prism` and `prism_profile`.
+
 Prism loads an image (PNG, JPEG or camera RAW), runs it through a simple colour pipeline (exposure, a 3×3 colour matrix and a tone curve), and writes the result back out. It's a learning project for working directly with pixel buffers, colour maths and performance in C++20.
 
 > 🚧 Work in progress.
@@ -17,7 +19,7 @@ Prism loads an image (PNG, JPEG or camera RAW), runs it through a simple colour 
 Mainstream photo editors often come with a subscription and a cloud catalog, hide what their sliders do, and sell looks as presets you can't read. Prism is built on four principles instead:
 
 1. **Free for personal use.** No subscription, no cloud, no catalog: open a file, edit it, export it. (See [Licences](#licences).)
-2. **It teaches as you go.** Every control should say in plain words what it does to the light, and you should be able to see each step happen. Planned for [0.2.0](https://github.com/Peaperfish/prism/milestone/1): a pipeline view, colour scopes and a test strip.
+2. **It teaches as you go.** Every control should say in plain words what it does to the light, and you should be able to see each step happen. Since [0.2.0](https://github.com/Peaperfish/prism/milestone/1): a pipeline view, colour scopes and a test strip.
 3. **No black-box presets.** A look should be a readable recipe you can see and adjust. Planned for [0.3.0](https://github.com/Peaperfish/prism/milestone/3): a plain-text recipe format, with the built-in presets rewritten as recipes.
 4. **Physical controls.** You adjust light rather than apply effects. Exposure is already in stops; white balance in Kelvin, contrast as paper grades, and dodge and burn are planned for [0.4.0](https://github.com/Peaperfish/prism/milestone/4).
 
@@ -30,14 +32,7 @@ Ready-made builds of the desktop app and the command-line tool are on the [Relea
 | `prism-<version>-macos-universal.zip` | macOS 13.3 or later, Apple Silicon and Intel |
 | `prism-<version>-windows-x64.zip` | Windows 10 and 11, 64-bit |
 
-Each zip holds the app (`Prism.app` on macOS, `prism_gui.exe` on Windows), the command-line tool (`prism`, `prism.exe`), Prism's `LICENSE.md`, `THIRD_PARTY_NOTICES.txt`, LibRaw's and Inter's licence files in `licenses/LibRaw/` and `licenses/Inter/`, and a short `README.txt`. Both include RAW support. Nothing needs installing beside them.
-
-The apps aren't signed by Apple or Microsoft yet, so both systems warn the first time:
-
-- **macOS:** unzip and drag `Prism.app` to Applications. The first time, right-click (or Control-click) it and choose **Open**, then **Open** again. On macOS 15 and later that no longer works: try to open Prism once, then go to **System Settings → Privacy & Security**, scroll down to the message about Prism and click **Open Anyway**. After that it opens normally. (Only downloaded files are checked; a build of your own opens straight away.)
-- **Windows:** extract the whole zip, then run `prism_gui.exe`. If Microsoft Defender SmartScreen says "Windows protected your PC", click **More info → Run anyway**. Smart App Control (Windows 11), when it is on, blocks unsigned apps with no way to allow just one.
-
-Each release also has `LibRaw-<version>-source.tar.gz`, the LibRaw source the builds were made from, and `SHA256SUMS.txt`. How the downloads are built: [Release builds](#release-builds).
+Both include RAW support, and nothing needs installing beside them. The apps aren't signed by Apple or Microsoft yet, so both systems warn the first time. What is in the zips, and how to get past the warning, is in the user guide: [First launch](docs/GUIDE.md#first-launch). How the downloads are built: [Release builds](#release-builds).
 
 ## Features
 
@@ -56,38 +51,11 @@ Each release also has `LibRaw-<version>-source.tar.gz`, the LibRaw source the bu
 ## Usage
 
 ```sh
-prism input.jpg -o output.png --exposure +0.5 --matrix samples/grade.txt --curve filmic --histogram hist.png
-
-# Check clipping without writing an output image:
-prism input.jpg --exposure +1 --histogram hist.png
-
-# A Sony RAW file, at half size for a quick preview:
-prism DSC03866.ARW --raw-half --exposure +1 --curve filmic -o preview.jpg
-
-# ...with more colour and contrast, closer to the camera's JPEG:
-prism DSC03866.ARW --raw-half --exposure +1 --saturation 1.25 --contrast 1.15 --curve filmic -o punchy.jpg
-
-# Single-threaded, printing how long each stage took:
-prism input.jpg -o output.jpg --curve filmic --threads 1 --time
+prism input.jpg -o output.png --exposure +0.5 --curve filmic
+prism DSC03866.ARW --exposure +1 --curve filmic -o out.jpg
 ```
 
-At least one of `-o` and `--histogram` is required. Without `-o`, the full pipeline still runs and the histogram shows the processed result; only the output image is skipped.
-
-| Option | Effect |
-|--------|--------|
-| `-o <file>` | Output file; `.png`, `.jpg` or `.jpeg` picks the format |
-| `--exposure <stops>` | Multiply linear values by 2^stops (`+1` doubles, `-1` halves) |
-| `--matrix <file>` | 3×3 colour matrix: 9 numbers, row-major, `#` starts a comment (see `samples/grade.txt`) |
-| `--saturation <s>` | Scale each pixel's distance from its own luminance (`1` = unchanged, `0` = greyscale, up to `10`). Brightness and hue are kept; see [Saturation and contrast](#saturation-and-contrast) |
-| `--contrast <c>` | S-curve around middle grey (0.18) in stops: `1` = unchanged, `1.15` = each stop near middle grey becomes 1.15 stops; `0.1` to `10` |
-| `--curve <spec>` | `gamma:<value>` (>1 brightens midtones), `reinhard[:<white>]` (default white 4), or `filmic` (Hable) |
-| `--histogram <file>` | Save a 512×200 histogram of the result (R, G, B overlaid additively over a grey Rec. 709 luma fill) and print the % of pixels clipped to 0 and 255 per channel |
-| `--raw-half` | RAW input only: decode at half the width and height using LibRaw's half-size mode (no demosaicing). About twice as fast on an α7R V file |
-| `--raw-camera-matrix <file>` | RAW input only: use your own 3×3 camera RGB → linear sRGB matrix (same file format as `--matrix`) instead of LibRaw's built-in one. See [RAW files](#raw-files) |
-| `--threads <n>` | Use up to `n` threads (default: one per hardware thread; `1` = single-threaded). Images under ~1 MP always run on one thread, where starting threads would cost more than it saves. The output is bit-identical for any thread count |
-| `--time` | Print how long each stage took (load, exposure, matrix, saturation, contrast, curve, save, histogram) and the total. A stage given its neutral value (e.g. `--exposure 0`) is skipped and not listed |
-
-Options are always applied in pipeline order, whatever order you type them.
+Every command and option, with defaults, more examples (a folder of files in a shell loop, checking clipping without writing a picture, timing) and the exit codes, is in the [command-line reference](docs/CLI.md). `prism --help` prints the short version. Options are always applied in pipeline order, whatever order you type them.
 
 ## Pipeline
 
@@ -230,59 +198,19 @@ Between the two outputs: mean CIE76 ΔE 5.7 (median 4.0, 95th percentile 16.7, m
 
 ## GUI
 
-A desktop app for macOS and Windows, in progress. `prism_gui` (`gui_app/`) is a window built with SDL3 and Dear ImGui; it is off by default and built with `-DPRISM_BUILD_GUI=ON` (see [Building the GUI](#building-the-gui)). So far it opens a photo (File → Open, Ctrl/Cmd+O, drag and drop, or a path on the command line), shows a live preview fitted to the window with a stage histogram, edits it in Simple mode (a preset plus Brightness, Contrast and Colour, with undo and redo: Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z or Ctrl+Y), inspects or toggles individual stages in the Pipeline view, and exports at full resolution as PNG or JPEG (File → Export, Ctrl/Cmd+E). Errors appear as a banner in the window. Help → About Prism (on macOS: Prism → About Prism) shows the version, Prism's licence and the third-party components with their full notices. Packaging is done: see [Downloading and running Prism](#downloading-and-running-prism). Scopes, comparing stages and the rest are planned: see the [Roadmap](#roadmap).
+A desktop app for macOS and Windows. `prism_gui` (`gui_app/`) is a window built with SDL3 and Dear ImGui; it is off by default and built with `-DPRISM_BUILD_GUI=ON` (see [Building the GUI](#building-the-gui)). How to use it is in the [user guide](docs/GUIDE.md): opening a photo, Simple mode, the Pipeline view, comparing stages, the test strip, clipping, the Explain area, export, every keyboard shortcut and the preferences. Packaging is done: see [Downloading and running Prism](#downloading-and-running-prism). What is planned is in the [Roadmap](#roadmap).
 
-### Pipeline view and histogram
+### How the GUI measures things
 
-At the top of the control panel, above Simple mode, **Histogram** shows the distribution of light for whatever stage is currently on screen: Rec. 709 luminance as a filled area with red, green and blue lines drawn on top (256 bins each, on the display scale: a value falls in the bin of its sRGB code, so linear mid-grey 0.18 sits near bin 118 and shadows are not crushed). Because the histogram is computed on the render worker from the stage's float values *before* the 8-bit sRGB display encode, it counts what clips separately from the end bins: two small indicators below the graph (**Shadows** on the left, **Highlights** on the right) light up when any channel clips below black (`< 0`) or above white (`> 1`), with a tooltip showing the percentage of clipped pixels in R, G and B.
+The numbers behind what the guide describes, for people working on the code:
 
-Below Simple mode's sliders, a collapsible **Pipeline** section lists the seven stages in the order the light passes through them: **Decode**, **Exposure**, **Colour matrix**, **Saturation**, **Contrast**, **Tone curve** and **Output encode**. Hovering a stage shows a one-sentence explanation of what it does to the light. The five middle stages have checkboxes to turn them on or off; each toggle goes through History as a single undo step. Clicking any row taps the pipeline after that stage—stopping the preview render there and applying only the 8-bit sRGB display encode—so you see the photo and its histogram at that exact point in the pipeline. While viewing an earlier stage, the canvas shows a **Viewing: after \<stage\>** badge with a **Final image (Esc)** button (or press `Esc`) to return to the final output.
-
-Each stage row also carries that stage's controls. **Exposure**, **Saturation** and **Contrast** have a slider under the row: the same slider as Simple mode's Brightness, Colour and Contrast (same range, same field, so moving one moves the other), with the value in its own units: `+0.70 stops` for exposure (−2 to +2), `x1.20` for saturation (`x0.00` to `x2.00`, and exactly 0 reads *black and white*) and `x1.20` for contrast (`x0.67` to `x1.50`). A drag is one undo step, and right-click resets the slider. **Tone curve** has a dropdown (None, Gamma, Reinhard, Filmic) and, for Gamma and Reinhard, a slider for the curve's one number (gamma 0.5 to 4, Reinhard white point 0.5 to 16). **Colour matrix** shows the name of the loaded matrix file, or `none`; it is read-only, since the matrix comes from `--matrix`. A stage that is switched off shows its controls greyed out and fixed, with the value it will come back with. Decode and Output encode have nothing to edit. Editing a stage after the one you are viewing keeps the view where it is, and the row says *Not visible here: you're viewing after \<stage\>.* until you view that stage or a later one.
-
-**Compare with** (at the top of the Pipeline section) shows a second point in the pipeline next to the one you are viewing: choose **Original** (the file as decoded, before any edit) or any stage. The canvas splits in two at the same picture size and position, so the halves line up: the **compare stage on the left**, the **viewed stage on the right**, each with a chip in its corner (*Original*, *after Exposure*, ...). Drag the divider to move it (it stays between 5% and 95%); **Swap** exchanges the halves, choosing the viewed stage again is the same as **Off**, and `Esc` clears the comparison first and then the viewed stage. Both halves come from one render with one set of settings, which runs to the later of the two stages and encodes the earlier picture as it passes, so comparing costs one extra 8-bit encode rather than a second render, and costs nothing while it is off. The histogram, scopes, clipping numbers and the `J` overlay still describe the viewed stage only (the overlay is drawn over the right half). An edit after the *later* of the two stages gets the *Not visible here* note. The comparison is only a view: it is not saved with the settings, is not part of undo, goes back to Off when you open another photo, and does not affect export.
-
-### Colour scopes
-
-Under the histogram, a selector switches the graph between **Histogram**, **Parade**, **Waveform** and **Vectorscope** (the choice is remembered). The parade shows the red, green and blue levels side by side from left to right across the image, the waveform shows the luma of each part of the image the same way, with guide lines at 0, 25, 50, 75 and 100%, and the vectorscope plots hue and strength on a round graticule (centre = neutral grey) with targets for R, Mg, B, Cy, G and Yl at 75% saturation and the skin-tone line at about 123°. Like the histogram, a scope measures the stage being viewed, on the display scale (the 8-bit sRGB values on screen). The counts come from a sample of at most 250,000 pixels, computed on the render worker only while a scope is shown, and are drawn log-scaled so faint detail stays visible.
-
-### Clipping by stage
-
-A value above white (1.0), or a pixel left with no light (luminance at or below 0 because a channel went negative), is not lost by itself: the pipeline works in float, so a later stage may bring it back. Detail is lost only where a stage clamps. Saturation and Tone curve clamp below 0 and Output encode clamps both ends; Exposure, Colour matrix and Contrast never do. Decode counts pixels already at white in the file (a RAW file's saturated sensor values, or 255 in an 8-bit file) as lost before any edit. While the Pipeline section is open, each stage row shows a dot and a percentage for highlights (orange) and shadows (blue), hidden at 0: a **filled** dot means the stage clamped those pixels (the detail is gone), a **hollow** one that they are out of range but still recoverable. A line under the list says where clipping starts and where it costs detail, for example "Highlights first clip at Exposure (2.1% of pixels); still recoverable until Output encode." or "Nothing clips." The **Show clipping on photo** button under the histogram, or the `J` key, marks those pixels on the preview for the stage being viewed (off by default, remembered). The counts come from a sample of at most 250,000 pixels and are computed on the render worker only while the Pipeline section is open; the overlay mask only while it is on. Decode counts any channel within 0.000001 of 1.0, so an unclipped value at exactly white is counted too (rare in a photo). At Decode the overlay marks those pixels. A negative channel on a pixel that still has light is not a shadow: it is a colour outside sRGB, covered by the gamut warning below.
-
-### Gamut warning
-
-Some colours can't be shown in sRGB, the space of the screen preview and of exported files. A strongly saturated yellow or orange, pushed further by a colour matrix, can end up with a negative blue: light can't be negative, so the encode cuts it to 0 and the colour's hue shifts. The pipeline view counts these on the same sampled grid and in the same pass as the clipping warnings, so it costs nothing extra and runs only while the Pipeline section is open. A pixel is **outside the gamut** when it still has light (luminance `Y > 0`) but a channel is below −0.00015 in linear sRGB (half an 8-bit step at the dark end of the sRGB curve; smaller negatives round to 0 anyway). It is counted at every stage the same way and independently of highlights and shadows: a pixel with no light is a shadow, not a gamut problem.
-
-Each row shows a third, violet dot and percentage, hollow while a later stage may still change those colours and filled where a stage clamps them. The line under the list gets a second sentence, only when there is something to say, for example "4.1% of colours are too saturated for sRGB after Colour matrix; Saturation clips them, so hues may shift." *Pushed out* is the first stage with such colours (usually Colour matrix); *clips* is the first later stage that clamps negatives: Saturation if it runs, otherwise Tone curve, otherwise Output encode. Saturation limits its own result to the gamut boundary rather than cutting it off, so that is not counted as a loss; only colours that arrive at Saturation already negative are. The `J` overlay shares the clipping toggle and draws these pixels as violet diagonal stripes (about 4 px wide), so the colour underneath stays visible. A pixel that a stage clipped (colours cut at Saturation or the Tone curve, shadows cut at the Tone curve) stays marked on every later stage up to the one you are viewing, so the final image still shows where hues shifted; where a pixel is in several categories, highlights win over gamut, and gamut over shadows.
-
-### Test strip
-
-A darkroom test strip for exposure: **Test strip** (next to Brightness, in Adjust and in the Exposure row), **View → Test Strip**, or the `T` key cuts the preview into five bands along its long side (side by side for a landscape photo, stacked for a portrait one), each shown at a different exposure around the current one, darkest first. A bar above the canvas picks the step, **⅓**, **½** (the default) or **1 stop**, and says in one line what it means ("A full stop doubles the light; each half stop is about 1.4×."); its × button closes the strip.
-
-Each band has a chip with its offset from the current exposure and how much more or less light that is: **−1 stop · ½× light**, **−½ · 0.71×**, **0 · now**, **+½ · 1.41×**, **+1 · 2×**. The middle band is exactly the normal picture. The band under the cursor is outlined, and the histogram and scopes show that band (the histogram's title says which, for example *Histogram (−½ stop band)*), or the middle one when the cursor is elsewhere. `J` marks clipping per band, so you can see which exposure starts to blow the highlights. **Click a band** to use its exposure: it is one undo step, the strip stays on and is centred on the new value, and clicking the middle band does nothing. While the strip is on the pipeline list hides its clipping dots and says so.
-
-`Esc` turns the strip off first (before the comparison and the viewed stage), and so does the × button or `T` again. The strip needs the Exposure stage or a later one in view: on Decode, where no edit shows, the controls are greyed out with a tooltip saying why. Turning it on clears a comparison. The strip is only a view: it is not saved with the settings, is not part of undo, goes away when you open another photo, and **export is never affected** (it always renders the whole photo at the chosen settings).
-
-### Explanations, the clipping note and closing safely
-
-**Explain area.** At the foot of the control panel, a box says in plain words what the control under the mouse does to the light: a one-line summary, a short detail, and a live line worked out with the engine's own maths (Brightness +35 reads "+35: +0.70 stops, 1.62× the light"). It follows the hovered control, else the focused one, else the last one you dragged or changed. The box is at most about five lines tall and scrolls inside itself when a text is longer. Tooltips show just the summary, after the same short delay everywhere. The texts live in `gui_core/src/explanations.cpp`, and a test checks that every stage, slider, curve, scope and look has one and that the live numbers match the engine.
-
-**Clipping note.** Once a photo is open, the right end of the status bar says what clipped, with the pipeline's dot colours (orange above white, blue below black, violet too saturated for sRGB): "2.7% clipped in the file", "3% highlights clipped at Output encode" or "No clipping". Hover it for the full sentence. The per-stage report is asked for whenever no control is being dragged, so dragging costs what it did before and the note settles when you let go.
-
-**Unexported edits.** Quitting (Cmd/Ctrl+Q, the close button, File → Quit) or opening or dropping another photo, when the settings differ from those at the last export (or at open), asks "You have edits that haven't been exported." with **Export…**, **Quit Without Exporting** (**Open Without Exporting**) and **Cancel**. Export… goes on only after a successful export; undoing back to the exported state counts as clean. If an export is running, Prism waits for it first.
-
-### Themes and Preferences
-
-Preferences (on macOS: Prism → Preferences…, Cmd+,; on Windows and Linux: Edit → Preferences…, Ctrl+,) is an ordinary window whose changes apply at once:
-
-- **Appearance:** System (the default: follows the operating system's light or dark mode, also when it switches while Prism is open), Light or Dark. Whatever the theme, the canvas behind the photo stays a neutral grey (slightly lighter in Light), never white, black or tinted, so it doesn't sway how bright or colourful the photo looks.
-- **Interface size:** Auto (the display's scale, e.g. 150% on a Windows laptop set to 150%) or 75–200% in steps of 25. Cmd+= (or Cmd++) makes it one step bigger, Cmd+- one step smaller and Cmd+0 returns to Auto, also from the View menu (Ctrl instead of Cmd on Windows and Linux); the choice is kept like the others.
-- **Panel width:** the control panel's width; it can also be dragged at its left edge. It never takes more than 40% of the window (or less than 240 points where there is room). "Reset layout" goes back to 320 points, "Restore defaults" resets everything.
-
-- **Show explanations** (on by default): the Explain area, see below. Tooltips keep their one-line summary either way.
-
-They are kept in `preferences.txt`, key=value lines next to ImGui's `imgui.ini` in the folder SDL picks for the app: `~/Library/Application Support/Prism/Prism/` on macOS, `%APPDATA%\Prism\Prism\` on Windows, `~/.local/share/Prism/Prism/` on Linux. The file is written atomically (a temporary file renamed over it). A missing or damaged file, or a bad value, falls back to the default for that setting alone, and settings Prism doesn't know (from a newer version) are kept.
+- **Histogram.** It is computed on the render worker from the stage's float values *before* the 8-bit sRGB display encode, which is how it counts what clips separately from the end bins.
+- **Scopes.** The counts come from a sample of at most 250,000 pixels and are computed on the render worker only while a scope is shown.
+- **Clipping.** The counts come from a sample of at most 250,000 pixels and are computed on the render worker only while the Pipeline section is open. The overlay mask is computed only while the overlay is on. Decode counts any channel within 0.000001 of 1.0. The per-stage report for the status bar's clipping note is asked for whenever no control is being dragged, so dragging costs what it did before and the note settles when you let go.
+- **Gamut warning.** It is counted on the same sampled grid and in the same pass as the clipping, so it costs nothing extra. A pixel is outside the gamut when it has light (luminance `Y > 0`) but a channel is below −0.00015 in linear sRGB. It is counted at every stage the same way and independently of highlights and shadows.
+- **Comparing stages.** Both halves come from one render with one set of settings, which runs to the later of the two stages and encodes the earlier picture as it passes. Comparing costs one extra 8-bit encode rather than a second render, and costs nothing while it is off.
+- **Explain area.** The texts live in `gui_core/src/explanations.cpp`, and a test checks that every stage, slider, curve, scope and look has one and that the live numbers match the engine.
+- **Preferences.** They are kept in `preferences.txt`, `key=value` lines next to ImGui's `imgui.ini` in the folder SDL picks for the app. The file is written atomically (a temporary file renamed over it).
 
 ### GUI core
 
@@ -319,7 +247,7 @@ A full preview re-render (every stage plus the sRGB encode, 2560×1707 from a 61
 
 ## Roadmap
 
-v0.1.0 was the first pre-release of the desktop app, and v0.2.0 the second. What's planned next is tracked as GitHub issues in four milestones.
+v0.1.0 was a pre-release of the desktop app, and v0.2.0 is its first full release. What's planned next is tracked as GitHub issues in four milestones.
 
 [**0.2.0 – See the light**](https://github.com/Peaperfish/prism/milestone/1): understand what each step does to the light.
 
@@ -641,7 +569,7 @@ prism/
 ├── samples/      # example matrix files
 ├── bench/        # prism_bench: per-stage timings on a 61 MP image
 ├── packaging/    # Info.plist, Windows version resource, icon drawing, README.txt, package scripts
-├── docs/         # release notes template
+├── docs/         # user guide (GUIDE.md), command-line reference (CLI.md), release notes template
 ├── .github/      # CI and release workflows
 └── third_party/  # stb headers
 ```

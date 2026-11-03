@@ -40,11 +40,11 @@ Apply a 3×3 colour matrix, in linear light, after exposure. The file holds 9 nu
 
 ### `--saturation <s>`
 
-Scale each pixel's colourfulness around its own luminance. `1` leaves the image as it is, `0` makes it greyscale, `2` doubles the distance from grey. Brightness and hue are kept, and a colour that would go below zero stops at the most saturated colour sRGB can show. Accepts 0 to 10. Default: not applied (same as 1).
+Scale each pixel's colourfulness around its own luminance. `1` leaves the image as it is, `0` makes it greyscale, `2` doubles the distance from grey. Brightness and hue are kept, and a colour that would go below zero stops at the most saturated colour sRGB can show. Accepts 0 to 10. The maths is in the README: [Saturation and contrast](../README.md#saturation-and-contrast). Default: not applied (same as 1).
 
 ### `--contrast <c>`
 
-An S-curve around middle grey (0.18), in stops. `1` leaves the image as it is; `1.15` makes each stop near middle grey 1.15 stops wide; below 1 is less contrast. The effect fades beyond about 2 stops from middle grey. Accepts 0.1 to 10. Default: not applied (same as 1).
+An S-curve around middle grey (0.18), in stops. `1` leaves the image as it is; `1.15` makes each stop near middle grey 1.15 stops wide; below 1 is less contrast. The effect fades beyond about 2 stops from middle grey. Accepts 0.1 to 10. Default: not applied (same as 1). The maths is in the README: [Saturation and contrast](../README.md#saturation-and-contrast).
 
 ### `--curve <spec>`
 
@@ -60,7 +60,7 @@ An unknown or malformed spec fails with an error that lists the available curves
 
 ### `--histogram <file>`
 
-Save a histogram image of the result, 512 pixels wide and 200 high (red, green and blue overlaid over a grey fill of the luminance), and print the percentage of pixels clipped at 0 and at 255 for each channel:
+Save a histogram image of the result, 512 pixels wide and 200 high (red, green and blue overlaid additively over a grey fill of the Rec. 709 luminance), and print the percentage of pixels clipped at 0 and at 255 for each channel:
 
 ```
 clipped (0 / 255):  R 0.00% / 1.25%  G 0.00% / 0.80%  B 0.10% / 0.00%
@@ -70,11 +70,11 @@ The file format follows the extension (`.png`, `.jpg`, `.jpeg`). The histogram i
 
 ### `--raw-half`
 
-RAW input only. Decode at half the width and height, which skips demosaicing and is much faster; good for previews. On a PNG or JPEG input it is an error ("only applies to RAW input"), so a wrong input file doesn't go unnoticed.
+RAW input only. Decode at half the width and height, which uses LibRaw's half-size mode (no demosaicing) and is much faster, about twice as fast on a 61-megapixel Sony α7R V file; good for previews. On a PNG or JPEG input it is an error ("only applies to RAW input"), so a wrong input file doesn't go unnoticed.
 
 ### `--raw-camera-matrix <file>`
 
-RAW input only. Convert camera colour to linear sRGB with your own 3×3 matrix instead of LibRaw's built-in one for the camera model. The file has the same format as for `--matrix`. The matrix must map white-balanced camera RGB to linear sRGB (D65), row-major, with each row summing to 1 so that white stays white. `prism_profile` (below) can make this file from a camera profile. On a PNG or JPEG input it is an error. Default: LibRaw's matrix.
+RAW input only. Convert camera colour to linear sRGB with your own 3×3 matrix instead of LibRaw's built-in one for the camera model. The file has the same format as for `--matrix`. The matrix must map white-balanced camera RGB to linear sRGB (D65), row-major, with each row summing to 1 so that white stays white. `prism_profile` (below) can make this file from a camera profile. On a PNG or JPEG input it is an error. Default: LibRaw's matrix. Passing LibRaw's own matrix for your camera reproduces the default output, which makes a good check before trying your own. More in the README: [RAW files](../README.md#your-own-camera-matrix).
 
 ### `--threads <n>`
 
@@ -106,10 +106,10 @@ Print `prism <version>` to stdout and exit with code 0.
 
 ## Examples
 
-A JPEG, brightened by half a stop, with a warm grade, written as a PNG:
+A JPEG, brightened by half a stop, with a warm grade and the filmic curve, written as a PNG, plus a histogram of the result:
 
 ```sh
-prism photo.jpg -o photo.png --exposure +0.5 --matrix samples/grade.txt
+prism input.jpg -o output.png --exposure +0.5 --matrix samples/grade.txt --curve filmic --histogram hist.png
 ```
 
 A RAW file at +1 stop, with the filmic curve, written as a JPEG:
