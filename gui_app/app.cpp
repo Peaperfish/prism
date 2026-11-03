@@ -967,9 +967,12 @@ void App::draw_strip_bands(ImDrawList* draw, ImVec2 at, ImVec2 shown) {
 void App::draw_strip_button() {
     const bool on = strip_.has_value();
     const bool available = gui::strip_available(viewed_stage_);
+    const float line_height = ImGui::GetFrameHeight();
     ImGui::PushFont(nullptr, token_type().small);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
                         ImVec2(token_metrics().selector_pad, ImGui::GetStyle().FramePadding.y * 0.5f));
+    // Centred on the line of the label beside it (as tall as a frame).
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (line_height - ImGui::GetFrameHeight()) / 2);
     ImGui::BeginDisabled(!on && !available);
     if (on) {
         ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
