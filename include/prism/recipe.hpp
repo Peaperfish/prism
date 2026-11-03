@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <optional>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -20,7 +21,8 @@ namespace prism {
 // when the recipe is applied; a stage that is absent stays as it was (the partial rule). Each
 // stage has an on/off switch, as in the GUI: a stage that is off keeps its values but is skipped.
 
-// The recipe format version this Prism writes.
+// The recipe format version this Prism reads up to and writes. recipe_format() lists what each
+// version has.
 inline constexpr int recipe_format_version = 1;
 
 struct RecipeExposure {
@@ -123,8 +125,65 @@ private:
     std::vector<RecipeIssue> issues_;
 };
 
+// --- Format versions -----------------------------------------------------------------------------
+//
+// Every section and key, with the format version that introduced it, as data: the parser reads
+// this table, docs/RECIPES.md's key table is checked against it, and a test can hand the parser a
+// table with a version 2 in it.
+//
+// A file says which version it is written in (prism_recipe = N). A file newer than the table's
+// latest version is refused as a whole, without guessing at it; a key or section introduced after
+// the file's own version is an error naming the version it needs. A key that is required (a
+// section's main key) is only required in files of its version or later.
+
+enum class RecipeValueType {
+    version,  // a whole number: prism_recipe
+    number,   // one finite number
+    boolean,  // true or false
+    text,     // one line of text in double quotes
+    row,      // a list of 3 numbers: a matrix row
+    shape,    // the name of a tone curve, in double quotes
+};
+
+struct RecipeSectionSpec {
+    std::string_view name;
+    int since = 1;  // the format version that introduced it
+};
+
+struct RecipeKeySpec {
+    std::string_view section;  // "" = the top of the file, before any [section]
+    std::string_view key;
+    RecipeValueType type = RecipeValueType::number;
+    int since = 1;
+    bool required = false;  // a section's main key (and, at the top, prism_recipe)
+    // For numbers: the range (none = any finite number), or only "above 0".
+    std::optional<ValueRange> range;
+    bool positive = false;
+    // For people (docs/RECIPES.md): the unit, and the default when the key is left out: a number,
+    // or else a word ("true", "none"; required keys have none).
+    std::string_view unit;
+    std::optional<float> default_number;
+    std::string_view default_text;
+};
+
+struct RecipeFormat {
+    int latest = recipe_format_version;
+    std::span<const RecipeSectionSpec> sections;
+    std::span<const RecipeKeySpec> keys;
+};
+
+// This Prism's format: every section and key up to recipe_format_version.
+[[nodiscard]] const RecipeFormat& recipe_format() noexcept;
+
+// What a key's row in docs/RECIPES.md says, from the table: its values ("0 to 10", "above 0",
+// "3 numbers", ...) and its default ("required", "2.2", "true", ...).
+[[nodiscard]] std::string describe_values(const RecipeKeySpec& spec);
+[[nodiscard]] std::string describe_default(const RecipeKeySpec& spec);
+
 // Reads a recipe from its text. `source` names it in messages (usually the file's name). A
-// byte-order mark at the start and CRLF line ends are accepted. Throws RecipeError.
-[[nodiscard]] Recipe parse_recipe(std::string_view text, std::string_view source = {});
+// byte-order mark at the start and CRLF line ends are accepted. `format` is what this Prism
+// reads; only tests pass another. Throws RecipeError.
+[[nodiscard]] Recipe parse_recipe(std::string_view text, std::string_view source = {},
+                                  const RecipeFormat& format = recipe_format());
 
 }  // namespace prism

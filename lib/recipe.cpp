@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <sstream>
 #include <stdexcept>
 #include <string_view>
 #include <system_error>
@@ -158,39 +159,47 @@ std::string write_recipe(const Recipe& recipe) {
 
 namespace {
 
-// What kind of value a key takes.
-enum class ValueType { version, number, boolean, text, row, shape };
+using ValueType = RecipeValueType;
+using KeySpec = RecipeKeySpec;
 
-struct KeySpec {
-    std::string_view section;  // "" = the top of the file, before any [section]
-    std::string_view key;
-    ValueType type;
-    bool required;  // the section's main key (or, at the top, prism_recipe)
+constexpr RecipeSectionSpec section_specs[] = {
+    {"exposure", 1}, {"matrix", 1}, {"saturation", 1}, {"contrast", 1}, {"curve", 1},
 };
 
-constexpr std::string_view section_names[] = {"exposure", "matrix", "saturation", "contrast",
-                                              "curve"};
+constexpr std::string_view weights = "weights of input R, G, B";
 
-constexpr KeySpec key_specs[] = {
-    {"", "prism_recipe", ValueType::version, true},
-    {"", "name", ValueType::text, false},
-    {"", "description", ValueType::text, false},
-    {"exposure", "stops", ValueType::number, true},
-    {"exposure", "on", ValueType::boolean, false},
-    {"matrix", "red", ValueType::row, true},
-    {"matrix", "green", ValueType::row, true},
-    {"matrix", "blue", ValueType::row, true},
-    {"matrix", "from", ValueType::text, false},
-    {"matrix", "on", ValueType::boolean, false},
-    {"saturation", "amount", ValueType::number, true},
-    {"saturation", "on", ValueType::boolean, false},
-    {"contrast", "amount", ValueType::number, true},
-    {"contrast", "on", ValueType::boolean, false},
-    {"curve", "shape", ValueType::shape, true},
-    {"curve", "gamma", ValueType::number, false},
-    {"curve", "white", ValueType::number, false},
-    {"curve", "on", ValueType::boolean, false},
+// Every key of format version 1, at the top of the file and then in pipeline order.
+constexpr RecipeKeySpec key_specs[] = {
+    {"", "prism_recipe", ValueType::version, 1, true, {}, false, "format version", {}, {}},
+    {"", "name", ValueType::text, 1, false, {}, false, "text", {}, "none"},
+    {"", "description", ValueType::text, 1, false, {}, false, "text", {}, "none"},
+    {"exposure", "stops", ValueType::number, 1, true, {}, false, "stops", {}, {}},
+    {"exposure", "on", ValueType::boolean, 1, false, {}, false, "switch", {}, "true"},
+    {"matrix", "red", ValueType::row, 1, true, {}, false, weights, {}, {}},
+    {"matrix", "green", ValueType::row, 1, true, {}, false, weights, {}, {}},
+    {"matrix", "blue", ValueType::row, 1, true, {}, false, weights, {}, {}},
+    {"matrix", "from", ValueType::text, 1, false, {}, false, "file name", {}, "none"},
+    {"matrix", "on", ValueType::boolean, 1, false, {}, false, "switch", {}, "true"},
+    {"saturation", "amount", ValueType::number, 1, true, saturation_range, false, "factor", {}, {}},
+    {"saturation", "on", ValueType::boolean, 1, false, {}, false, "switch", {}, "true"},
+    {"contrast", "amount", ValueType::number, 1, true, contrast_range, false, "factor", {}, {}},
+    {"contrast", "on", ValueType::boolean, 1, false, {}, false, "switch", {}, "true"},
+    {"curve", "shape", ValueType::shape, 1, true, {}, false, "curve", {}, {}},
+    {"curve", "gamma", ValueType::number, 1, false, {}, true, "exponent", gamma_default, {}},
+    {"curve",
+     "white",
+     ValueType::number,
+     1,
+     false,
+     {},
+     true,
+     "linear value",
+     reinhard_white_default,
+     {}},
+    {"curve", "on", ValueType::boolean, 1, false, {}, false, "switch", {}, "true"},
 };
+
+constexpr RecipeFormat format_v1{recipe_format_version, section_specs, key_specs};
 
 constexpr CurveShape all_shapes[] = {CurveShape::none, CurveShape::gamma, CurveShape::reinhard,
                                      CurveShape::filmic};
@@ -770,6 +779,9 @@ std::optional<CurveShape> shape_from(std::string_view name) {
 
 class RecipeParser {
 public:
+    explicit RecipeParser(const RecipeFormat& format)
+        : format_(format), file_version_(format.latest) {}
+
     Recipe parse(std::string_view text) {
         if (text.size() > recipe_max_bytes) {
             fail(0, "the file is larger than 64 KB, too large to be a recipe");
@@ -779,7 +791,7 @@ public:
             text.remove_prefix(3);
         }
         int number = 0;
-        while (!text.empty() && !full()) {
+        while (!text.empty() && !full() && !refused_) {
             const std::size_t newline = text.find('\n');
             std::string_view line = text.substr(0, newline);
             text =
@@ -789,7 +801,7 @@ public:
             }
             read_line(++number, line);
         }
-        if (!full()) {
+        if (!full() && !refused_) {
             check_sections();
         }
         if (!seen_version_ && issues_.empty()) {
@@ -884,26 +896,37 @@ private:
                              "as in [exposure]");
             return;
         }
-        const auto known = std::find(std::begin(section_names), std::end(section_names), name);
-        if (known == std::end(section_names)) {
+        const RecipeSectionSpec* known = nullptr;
+        std::vector<std::string_view> names;
+        for (const RecipeSectionSpec& spec : format_.sections) {
+            names.push_back(spec.name);
+            if (spec.name == name) {
+                known = &spec;
+            }
+        }
+        if (known == nullptr) {
             std::string message = "unknown section [" + std::string(name) + "]";
-            if (const auto suggestion = closest(name, section_names)) {
+            if (const auto suggestion = closest(name, names)) {
                 message += ". Did you mean [" + std::string(*suggestion) + "]?";
             }
             fail(number, message);
             return;
         }
+        if (known->since > file_version_) {
+            fail(number, "[" + std::string(name) + "]" + needs_version(known->since));
+            return;
+        }
         for (auto& [section, state] : sections_) {
-            if (section == *known) {
+            if (section == known->name) {
                 fail(number, "[" + std::string(name) + "] appears twice (first on line " +
                                  std::to_string(state.line) + ")");
                 return;
             }
         }
         current_ = sections_.size();
-        sections_.push_back({*known, SectionState{number, {}}});
+        sections_.push_back({known->name, SectionState{number, {}}});
         skip_section_ = false;
-        start_section(*known);
+        start_section(known->name);
     }
 
     void read_setting(int number, std::string_view content, bool first) {
@@ -979,9 +1002,13 @@ private:
     const KeySpec* find_spec(int number, std::string_view section, std::string_view key) {
         std::vector<std::string_view> here;
         std::vector<std::string_view> elsewhere;  // sections that do have this key
-        for (const KeySpec& spec : key_specs) {
+        for (const KeySpec& spec : format_.keys) {
             if (spec.section == section) {
                 if (spec.key == key) {
+                    if (spec.since > file_version_) {
+                        fail(number, quote(key) + needs_version(spec.since));
+                        return nullptr;
+                    }
                     return &spec;
                 }
                 here.push_back(spec.key);
@@ -1033,7 +1060,22 @@ private:
     void store(int number, const KeySpec& spec, const Value& v) {
         const std::string_view s = spec.section;
         const std::string_view k = spec.key;
-        if (s.empty()) {
+        if (spec.type == ValueType::number) {
+            const std::string where = "[" + std::string(s) + "] ";
+            if (spec.range && !in_range(v.number, *spec.range)) {
+                fail(number, where + range_message(k, v.number, *spec.range));
+                return;
+            }
+            if (spec.positive && !is_positive(v.number)) {
+                fail(number, where + positive_message(k, v.number));
+                return;
+            }
+        }
+        // Keys this code does not know (only in a test's format table) are checked as above and
+        // otherwise dropped: there is nowhere to keep them.
+        if (k == "on") {
+            set_on(s, v.boolean);
+        } else if (s.empty()) {
             if (k == "prism_recipe") {
                 store_version(number, v);
             } else if (k == "name") {
@@ -1041,47 +1083,39 @@ private:
             } else if (k == "description") {
                 recipe_.description = v.text;
             }
-        } else if (k == "on") {
-            set_on(s, v.boolean);
-        } else if (s == "exposure") {
+        } else if (s == "exposure" && k == "stops") {
             recipe_.exposure->stops = v.number;
-        } else if (s == "matrix") {
-            if (k == "from") {
-                if (v.text.empty()) {
-                    fail(number, "'from' needs a file name, not empty text");
-                } else if (v.text.find_first_of("/\\") != std::string::npos) {
-                    fail(number,
-                         "'from' must be a file name only, without folders (it is " + v.raw + ")");
-                } else {
-                    recipe_.matrix->from = v.text;
-                }
-                return;
+        } else if (s == "matrix" && k == "from") {
+            if (v.text.empty()) {
+                fail(number, "'from' needs a file name, not empty text");
+            } else if (v.text.find_first_of("/\\") != std::string::npos) {
+                fail(number,
+                     "'from' must be a file name only, without folders (it is " + v.raw + ")");
+            } else {
+                recipe_.matrix->from = v.text;
             }
-            const int row = k == "red" ? 0 : k == "green" ? 1 : 2;
-            for (int i = 0; i < 3; ++i) {
-                recipe_.matrix->values[static_cast<std::size_t>(row * 3 + i)] =
-                    v.numbers[static_cast<std::size_t>(i)];
+        } else if (s == "matrix" && (k == "red" || k == "green" || k == "blue")) {
+            const std::size_t row = k == "red" ? 0 : k == "green" ? 1 : 2;
+            for (std::size_t i = 0; i < 3; ++i) {
+                recipe_.matrix->values[row * 3 + i] = v.numbers[i];
             }
-        } else if (s == "saturation") {
-            if (!in_range(v.number, saturation_range)) {
-                fail(number, "[saturation] " + range_message("amount", v.number, saturation_range));
-            }
+        } else if (s == "saturation" && k == "amount") {
             recipe_.saturation->amount = v.number;
-        } else if (s == "contrast") {
-            if (!in_range(v.number, contrast_range)) {
-                fail(number, "[contrast] " + range_message("amount", v.number, contrast_range));
-            }
+        } else if (s == "contrast" && k == "amount") {
             recipe_.contrast->amount = v.number;
-        } else if (s == "curve") {
-            if (k == "shape") {
-                store_shape(number, v);
-                return;
-            }
-            if (!is_positive(v.number)) {
-                fail(number, "[curve] " + positive_message(k, v.number));
-            }
-            (k == "gamma" ? recipe_.curve->gamma : recipe_.curve->white) = v.number;
+        } else if (s == "curve" && k == "shape") {
+            store_shape(number, v);
+        } else if (s == "curve" && k == "gamma") {
+            recipe_.curve->gamma = v.number;
+        } else if (s == "curve" && k == "white") {
+            recipe_.curve->white = v.number;
         }
+    }
+
+    // " needs recipe format 2, but this file says prism_recipe = 1", for a key or section.
+    std::string needs_version(int since) const {
+        return " needs recipe format " + std::to_string(since) +
+               ", but this file says prism_recipe = " + std::to_string(file_version_);
     }
 
     static std::string whole_number(float v) {
@@ -1092,10 +1126,14 @@ private:
         seen_version_ = true;
         if (v.number < 1.0f) {
             fail(number, "prism_recipe must be 1 or more (it is " + v.raw + ")");
-        } else if (v.number > static_cast<float>(recipe_format_version)) {
-            fail(number, "this recipe needs recipe format " + whole_number(v.number) +
-                             ", but this Prism reads up to format " +
-                             std::to_string(recipe_format_version) + ": update Prism to read it");
+        } else if (v.number > static_cast<float>(format_.latest)) {
+            // Refused as a whole: a newer format may mean anything, so nothing else is reported.
+            issues_ = {{number, "this recipe needs recipe format " + whole_number(v.number) +
+                                    ", but this Prism reads up to format " +
+                                    std::to_string(format_.latest) + ": update Prism to read it"}};
+            refused_ = true;
+        } else {
+            file_version_ = static_cast<int>(v.number);
         }
     }
 
@@ -1143,9 +1181,9 @@ private:
                 }
                 return 0;
             };
-            for (const KeySpec& spec : key_specs) {
-                if (spec.section == section && spec.required && line_of(spec.key) == 0 &&
-                    !state.had_error) {
+            for (const KeySpec& spec : format_.keys) {
+                if (spec.section == section && spec.required && spec.since <= file_version_ &&
+                    line_of(spec.key) == 0 && !state.had_error) {
                     fail(state.line, "[" + std::string(section) + "] needs " + quote(spec.key));
                 }
             }
@@ -1164,6 +1202,9 @@ private:
         }
     }
 
+    const RecipeFormat& format_;
+    int file_version_;  // the file's prism_recipe; until it is read, the latest
+    bool refused_ = false;
     Recipe recipe_;
     std::vector<RecipeIssue> issues_;
     std::vector<std::pair<std::string_view, SectionState>> sections_;
@@ -1208,8 +1249,51 @@ RecipeError::RecipeError(std::string source, std::vector<RecipeIssue> issues)
       source_(std::move(source)),
       issues_(std::move(issues)) {}
 
-Recipe parse_recipe(std::string_view text, std::string_view source) {
-    RecipeParser parser;
+const RecipeFormat& recipe_format() noexcept {
+    return format_v1;
+}
+
+std::string describe_values(const RecipeKeySpec& spec) {
+    switch (spec.type) {
+        case ValueType::version: return "whole number from 1";
+        case ValueType::number: {
+            if (spec.range) {
+                std::ostringstream text;
+                text << static_cast<float>(spec.range->min) << " to "
+                     << static_cast<float>(spec.range->max);
+                return text.str();
+            }
+            return spec.positive ? "above 0" : "any number";
+        }
+        case ValueType::boolean: return "true or false";
+        case ValueType::text: return "one line";
+        case ValueType::row: return "3 numbers";
+        case ValueType::shape: {
+            std::string text;
+            for (const CurveShape shape : all_shapes) {
+                text += (text.empty() ? "" : ", ") + std::string(shape_name(shape));
+            }
+            return text;
+        }
+    }
+    return {};
+}
+
+std::string describe_default(const RecipeKeySpec& spec) {
+    if (spec.required) {
+        return "required";
+    }
+    if (spec.default_number) {
+        char buffer[32];
+        const std::to_chars_result r =
+            std::to_chars(buffer, buffer + sizeof buffer, *spec.default_number);
+        return std::string(buffer, r.ptr);
+    }
+    return std::string(spec.default_text);
+}
+
+Recipe parse_recipe(std::string_view text, std::string_view source, const RecipeFormat& format) {
+    RecipeParser parser(format);
     Recipe recipe = parser.parse(text);
     std::vector<RecipeIssue> issues = parser.take_issues();
     if (!issues.empty()) {
