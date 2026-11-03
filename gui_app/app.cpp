@@ -1316,7 +1316,8 @@ void App::draw_slider(const char* label, gui::SimpleControl control, bool in_sta
 // light, and colours outside sRGB, each hidden at 0. A filled dot means the stage clamped them (the
 // detail is gone), a hollow one that they are out of range but a later stage may still bring them
 // back. True if the mouse is over them (and their tooltip was shown).
-bool App::draw_stage_clip_indicator(const gui::StageClip& clip, ImVec2 row_min, ImVec2 row_max) {
+bool App::draw_stage_clip_indicator(const gui::StageClip& clip, ImVec2 row_min, ImVec2 row_max,
+                                    float baseline) {
     if (!clips_ || !clip.ran) {
         return false;
     }
@@ -1350,8 +1351,11 @@ bool App::draw_stage_clip_indicator(const gui::StageClip& clip, ImVec2 row_min, 
     const float gap = token_metrics().dot_gap;
     const float between = token_metrics().dot_between;
     const float inset = token_metrics().dot_inset;
-    const float cy = (row_min.y + row_max.y) * 0.5f;
     ImGui::PushFont(nullptr, token_type().small);
+    // The percentages stand on the row name's baseline, and the dots are centred on the height of
+    // their digits.
+    const float text_top = baseline - ImGui::GetFontBaked()->Ascent;
+    const float cy = baseline - ImGui::GetFontSize() * 0.36f;
     float right = row_max.x - inset;
     float left = right;
     // Drawn right to left (the last in the array is first here), so highlights end up on the left
@@ -1364,7 +1368,7 @@ bool App::draw_stage_clip_indicator(const gui::StageClip& clip, ImVec2 row_min, 
         const std::string text = gui::format_clip_percent(m.counts->any, total);
         const ImVec2 size = ImGui::CalcTextSize(text.c_str());
         const float text_x = right - size.x;
-        draw->AddText(ImVec2(text_x, cy - size.y * 0.5f), ImGui::GetColorU32(ImGuiCol_Text),
+        draw->AddText(ImVec2(text_x, text_top), ImGui::GetColorU32(ImGuiCol_Text),
                       text.c_str());
         const ImVec2 centre(text_x - gap - radius, cy);
         if (m.fate == gui::ClipFate::lost) {
@@ -1648,13 +1652,15 @@ void App::draw_pipeline() {
         ImGui::PushFont(fonts().semibold, token_type().body);
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted(name.c_str());
+        // Where the name's letters sit: the dots and percentages at the row's right share it.
+        const float name_baseline = ImGui::GetItemRectMin().y + ImGui::GetFontBaked()->Ascent;
         ImGui::PopFont();
         if (!enabled) {
             ImGui::PopStyleColor();
         }
 
         const bool over_indicator =
-            clips_ && draw_stage_clip_indicator(clips_->at(stage.id), row_min, row_max);
+            clips_ && draw_stage_clip_indicator(clips_->at(stage.id), row_min, row_max, name_baseline);
         if (row_hovered && !over_indicator) {
             ImGui::SetTooltip("%s", std::string(stage.description).c_str());
         }

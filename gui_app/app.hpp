@@ -89,7 +89,9 @@ private:
     void draw_clip_overlay_button();
     void toggle_clip_overlay();
     void update_clip_overlay_texture();
-    bool draw_stage_clip_indicator(const gui::StageClip& clip, ImVec2 row_min, ImVec2 row_max);
+    // `baseline` is the screen y of the row name's baseline.
+    bool draw_stage_clip_indicator(const gui::StageClip& clip, ImVec2 row_min, ImVec2 row_max,
+                                   float baseline);
     void draw_clipping_summary();
     void draw_presets();
     void draw_simple_slider(const char* label, gui::SimpleControl control);
