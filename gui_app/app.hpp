@@ -207,8 +207,9 @@ private:
     bool overlay_dirty_ = false;
     std::optional<gui::Theme> overlay_theme_;
     gui::BackgroundExport exporter_;
-    // What the photo was last saved with, to tell unexported edits from none.
-    gui::ExportBaseline baseline_;
+    // What the photo was last saved with, by export or as a recipe, to tell unsaved edits from
+    // none.
+    gui::SavedBaseline baseline_;
     gui::EditSettings exporting_settings_;  // the settings of the export in flight
     bool quit_ = false;
     // The quit or open being held back, where it is, and (for an open) which file.

@@ -344,7 +344,8 @@ void App::take_export_result() {
         end = gui::ExportEnd::failed;
     } else {
         notice_ = "Saved " + file_name(result->output) + ".";
-        baseline_.exported(exporting_settings_);  // what was exported, not what is on screen now
+        // What was exported, not what is on screen now.
+        baseline_.exported(exporting_settings_, file_name(result->output));
     }
     if (close_pending_ && close_phase_ == ClosePhase::exporting) {
         apply_close_step(gui::export_finished(end));

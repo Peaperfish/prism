@@ -1,6 +1,32 @@
 #include "prism/gui/close_guard.hpp"
 
+#include <utility>
+
 namespace prism::gui {
+
+void SavedBaseline::opened(const EditSettings& settings) {
+    opened_ = settings;
+    exported_.reset();
+    recipe_.reset();
+    last_.reset();
+}
+
+void SavedBaseline::exported(const EditSettings& settings, std::string file) {
+    exported_ = settings;
+    last_ = LastSave{SaveKind::export_image, std::move(file)};
+}
+
+void SavedBaseline::recipe_saved(const EditSettings& settings, std::string file) {
+    recipe_ = settings;
+    last_ = LastSave{SaveKind::recipe, std::move(file)};
+}
+
+bool SavedBaseline::dirty(const EditSettings& current) const {
+    if (!exported_ && !recipe_) {
+        return !(current == opened_);
+    }
+    return !(exported_ && current == *exported_) && !(recipe_ && current == *recipe_);
+}
 
 CloseStep close_requested(const CloseState& state) noexcept {
     if (!state.has_file) {

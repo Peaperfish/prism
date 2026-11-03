@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+#include <string>
 #include <string_view>
 
 #include "prism/gui/settings.hpp"
@@ -9,30 +11,52 @@ namespace prism::gui {
 // Asking before edits are thrown away (#32). All the decisions are here, as pure functions, so
 // the window only has to show a modal and report what happened.
 //
-// "Edits that haven't been exported" means the settings differ from those at the last successful
-// export, or from those at open if nothing was exported yet. So undoing back to the exported state
-// is clean again, and a photo that was only opened is clean.
+// "Edits that haven't been saved" means the settings differ from those of the last successful
+// export and from those of the last recipe saved (#18), or, if neither has happened yet, from
+// those at open. So undoing back to a saved state is clean again, and a photo that was only
+// opened is clean.
 
 // What the user asked for that would leave the photo.
 enum class Pending { quit, open_photo };
 
-// The settings the photo was last known to be saved with.
-class ExportBaseline {
+// The two ways of saving an edit: an exported picture, or a recipe of its settings.
+enum class SaveKind { export_image, recipe };
+
+// The most recent successful save: its kind and the file's name (without folders).
+struct LastSave {
+    SaveKind kind = SaveKind::export_image;
+    std::string file;
+    bool operator==(const LastSave&) const = default;
+};
+
+// The settings the photo was last known to be saved with, by export and by recipe.
+class SavedBaseline {
 public:
-    // A photo was opened: its starting settings are the baseline.
-    void opened(const EditSettings& settings) { baseline_ = settings; }
+    // A photo was opened: its starting settings are the baseline, and nothing is saved yet.
+    void opened(const EditSettings& settings);
     // An export of a job with `settings` finished successfully (use the job's copy, not what is
-    // on screen by then).
-    void exported(const EditSettings& settings) { baseline_ = settings; }
-    [[nodiscard]] bool dirty(const EditSettings& current) const { return !(current == baseline_); }
+    // on screen by then). `file` is the name it was saved as.
+    void exported(const EditSettings& settings, std::string file);
+    // A recipe of `settings` was written to `file`.
+    void recipe_saved(const EditSettings& settings, std::string file);
+
+    // Clean if `current` equals the last export or the last recipe save, or, while nothing has
+    // been saved, the settings at open. Each kind keeps its own state, so an export that
+    // finishes after a recipe was saved leaves both clean.
+    [[nodiscard]] bool dirty(const EditSettings& current) const;
+    // The save that happened last, of either kind; nothing since the photo was opened.
+    [[nodiscard]] const std::optional<LastSave>& last_save() const noexcept { return last_; }
 
 private:
-    EditSettings baseline_;
+    EditSettings opened_;
+    std::optional<EditSettings> exported_;
+    std::optional<EditSettings> recipe_;
+    std::optional<LastSave> last_;
 };
 
 struct CloseState {
     bool has_file = false;
-    bool dirty = false;           // unexported edits (ExportBaseline::dirty)
+    bool dirty = false;           // unsaved edits (SavedBaseline::dirty)
     bool export_running = false;  // an export is in progress right now
 };
 
