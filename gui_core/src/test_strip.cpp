@@ -153,6 +153,10 @@ std::optional<int> strip_band_at(int width, int height, int count, float x, floa
     return std::nullopt;
 }
 
+bool strip_available(StageId viewed) noexcept {
+    return viewed != StageId::decode;
+}
+
 float strip_centre_stops(const EditSettings& s) noexcept {
     return s.exposure_on ? s.exposure_stops : 0.0f;
 }

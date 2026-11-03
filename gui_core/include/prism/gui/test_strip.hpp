@@ -74,6 +74,10 @@ struct StripRect {
 [[nodiscard]] std::optional<int> strip_band_at(int width, int height, int count, float x,
                                                float y) noexcept;
 
+// Whether a strip can be shown while `viewed` is the viewed stage: from Exposure on. Before that
+// (Decode, the file as it came) no edit shows, so there is nothing to vary.
+[[nodiscard]] bool strip_available(StageId viewed) noexcept;
+
 // The exposure the strip is centred on: the exposure in effect, 0 if the stage is off.
 [[nodiscard]] float strip_centre_stops(const EditSettings& s) noexcept;
 

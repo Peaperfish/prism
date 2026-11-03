@@ -529,6 +529,8 @@ void App::handle_shortcuts() {
             case gui::EscapeAction::close_window:
                 *focused_window_last_frame_ = false;  // the window's own open flag
                 break;
+            case gui::EscapeAction::clear_test_strip:
+                break;  // the test strip has no UI yet
             case gui::EscapeAction::clear_compare:
                 compare_stage_.reset();
                 break;

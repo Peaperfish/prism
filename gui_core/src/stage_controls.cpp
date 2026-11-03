@@ -201,6 +201,9 @@ EscapeAction escape_action(const EscapeContext& c) noexcept {
     if (c.window_focused) {
         return EscapeAction::close_window;
     }
+    if (c.test_strip) {
+        return EscapeAction::clear_test_strip;
+    }
     if (c.comparing) {
         return EscapeAction::clear_compare;
     }

@@ -247,3 +247,22 @@ TEST(TestStrip, BandSettingsDifferOnlyInExposure) {
     }
     EXPECT_EQ(strip_band_settings(s, StripStep::half, 5, 2), s);  // the middle band is "now"
 }
+
+TEST(TestStrip, AvailableFromExposureOn) {
+    EXPECT_FALSE(strip_available(StageId::decode));
+    for (StageId s : {StageId::exposure, StageId::matrix, StageId::saturation, StageId::contrast,
+                      StageId::curve, StageId::encode}) {
+        EXPECT_TRUE(strip_available(s));
+    }
+}
+
+TEST(TestStrip, ClickingBandsInTurnReCentresTheStrip) {
+    // The strip stays on and is centred on the new value, so the same band offset moves again.
+    EditSettings s;
+    for (int i = 0; i < 3; ++i) {
+        ASSERT_TRUE(apply_strip_band(s, StripStep::half, 5, 4));
+    }
+    EXPECT_FLOAT_EQ(s.exposure_stops, 3.0f);
+    EXPECT_EQ(strip_label(StripStep::half, 5, strip_middle(5)), "0 · now");
+    EXPECT_FLOAT_EQ(strip_centre_stops(s), 3.0f);
+}

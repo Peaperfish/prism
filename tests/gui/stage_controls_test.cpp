@@ -424,3 +424,59 @@ TEST(Escape, APopupOrATextEditOrDragInTheWindowIsClosedBeforeTheWindow) {
 }
 
 }  // namespace
+
+TEST(Escape, TheTestStripGoesBeforeTheComparisonAndTheViewedStage) {
+    EscapeContext c;
+    c.test_strip = true;
+    c.viewing_earlier = true;
+    EXPECT_EQ(escape_action(c), EscapeAction::clear_test_strip);
+    c.test_strip = false;  // the app turned it off
+    EXPECT_EQ(escape_action(c), EscapeAction::show_final);
+    c.test_strip = true;
+    c.comparing = true;  // exclusive in the app, but the order holds regardless
+    EXPECT_EQ(escape_action(c), EscapeAction::clear_test_strip);
+    c.test_strip = false;
+    EXPECT_EQ(escape_action(c), EscapeAction::clear_compare);
+}
+
+TEST(Escape, TheTestStripOnTheFinalPictureStillClears) {
+    EscapeContext c;
+    c.test_strip = true;
+    EXPECT_EQ(escape_action(c), EscapeAction::clear_test_strip);
+    c.test_strip = false;
+    EXPECT_EQ(escape_action(c), EscapeAction::none);
+}
+
+TEST(Escape, ImGuiOwnedThingsAndFocusedWindowsComeBeforeTheStrip) {
+    for (int which = 0; which < 4; ++which) {
+        EscapeContext c;
+        c.test_strip = true;
+        c.comparing = true;
+        c.viewing_earlier = true;
+        c.text_editing = which == 0;
+        c.popup_open = which == 1;
+        c.item_active = which == 2;
+        c.window_focused = which == 3;
+        EXPECT_EQ(escape_action(c), which == 3 ? EscapeAction::close_window : EscapeAction::none)
+            << which;
+    }
+    EscapeContext c;  // a text edit inside a focused window: the edit first
+    c.test_strip = true;
+    c.window_focused = true;
+    c.text_editing = true;
+    EXPECT_EQ(escape_action(c), EscapeAction::none);
+}
+
+TEST(Escape, FullSequenceFromStripToFinal) {
+    EscapeContext c;
+    c.test_strip = true;
+    c.viewing_earlier = true;
+    c.window_focused = true;
+    EXPECT_EQ(escape_action(c), EscapeAction::close_window);
+    c.window_focused = false;
+    EXPECT_EQ(escape_action(c), EscapeAction::clear_test_strip);
+    c.test_strip = false;
+    EXPECT_EQ(escape_action(c), EscapeAction::show_final);
+    c.viewing_earlier = false;
+    EXPECT_EQ(escape_action(c), EscapeAction::none);
+}
