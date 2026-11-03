@@ -97,6 +97,8 @@ private:
     void show_recipe_load_dialog();
     void load_recipe_file(const std::filesystem::path& path, bool remember_folder);
     void draw_recipe_error();
+    // The files of a drop that has just ended.
+    void take_drop();
     // The panel's Load recipe... / Save recipe... row, in the Look section.
     void draw_recipe_buttons();
     // "Recipe: <name>" under the Look menu, and what it sets, while the settings are still its.
@@ -279,7 +281,7 @@ private:
     bool dialog_open_ = false;         // a file dialog is up: don't open another
 
     bool drag_over_ = false;                      // files are being dragged over the window
-    std::vector<std::filesystem::path> dropped_;  // the files of the current drop
+    std::vector<std::filesystem::path> dropped_;  // the files of the current drop (see take_drop)
 
     std::optional<gui::Error> error_;  // shown as a banner until dismissed
     bool error_details_open_ = false;  // the banner's Details are unfolded

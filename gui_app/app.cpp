@@ -887,11 +887,7 @@ void App::handle_event(const SDL_Event& event) {
             break;
         case SDL_EVENT_DROP_COMPLETE:
             drag_over_ = false;
-            if (!dropped_.empty()) {
-                notice_ = dropped_.size() > 1 ? "Prism opens one photo at a time." : "";
-                request_open(dropped_.front());
-                dropped_.clear();
-            }
+            take_drop();
             break;
         case SDL_EVENT_MOUSE_MOTION:
             // No motion events arrive during a system drag: the drag left without dropping.
@@ -899,6 +895,34 @@ void App::handle_event(const SDL_Event& event) {
             break;
         default:
             break;
+    }
+}
+
+// A drop of photos and recipes (see classify_drop): a photo opens as before, and a recipe on an
+// open photo is applied, as an edit (no unsaved-edits question). Nothing happens while the close
+// question, the save sheet, a file dialog or an export is in progress.
+void App::take_drop() {
+    std::vector<fs::path> paths = std::move(dropped_);
+    dropped_.clear();
+    gui::DropContext context;
+    context.has_photo = session_.has_file();
+    context.busy = close_pending_.has_value() || recipe_sheet_.has_value() || dialog_open_ ||
+                   exporter_.busy();
+    const gui::DropAction action = gui::classify_drop(paths, context);
+    switch (action.kind) {
+        case gui::DropAction::Kind::ignore:
+            return;
+        case gui::DropAction::Kind::open_photo:
+            notice_ = action.notice;
+            request_open(action.path);
+            return;
+        case gui::DropAction::Kind::apply_recipe:
+            notice_ = action.notice;
+            load_recipe_file(action.path, false);
+            return;
+        case gui::DropAction::Kind::notice_only:
+            notice_ = action.notice;
+            return;
     }
 }
 
