@@ -126,7 +126,7 @@ constexpr TokenColours darkroom_dark{
     .strip_hover_edge = {0.55f, 0.72f, 0.98f, 1},
     .strip_chip_bg = grey(0.05f, 0.84f),
     .strip_chip_text = grey(1.0f),
-    .strip_pill_active = grey(1.0f, 0.26f),
+    .strip_pill_active = grey(1.0f, 0.18f),
 };
 
 constexpr TokenColours darkroom_light{
@@ -171,7 +171,7 @@ constexpr TokenColours darkroom_light{
     .strip_hover_edge = {0.55f, 0.72f, 0.98f, 1},
     .strip_chip_bg = grey(0.05f, 0.84f),
     .strip_chip_text = grey(1.0f),
-    .strip_pill_active = grey(1.0f, 0.26f),
+    .strip_pill_active = grey(1.0f, 0.18f),
 };
 
 constexpr std::array<TokenSet, 2> sets{{
