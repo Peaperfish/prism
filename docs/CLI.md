@@ -4,7 +4,7 @@ Prism has two command-line tools. The download holds `prism` (`prism.exe` on Win
 
 `prism --help` prints the usage text, but to **stderr**, not stdout (exit code 0). To page it, redirect: `prism --help 2>&1 | less`.
 
-Contents: [prism](#prism) · [Options of prism](#options-of-prism) · [Examples](#examples) · [Exit codes](#exit-codes) · [prism_profile](#prism_profile)
+Contents: [prism](#prism) · [Options of prism](#options-of-prism) · [Recipes and batches](#recipes-and-batches) · [Examples](#examples) · [Exit codes](#exit-codes) · [prism_profile](#prism_profile)
 
 ## prism
 
@@ -115,6 +115,50 @@ Print the usage text to stderr and exit with code 0.
 ### `--version`
 
 Print `prism <version>` to stdout and exit with code 0.
+
+## Recipes and batches
+
+A recipe (`.prism`, described in [RECIPES.md](RECIPES.md)) lets you settle on a look in the app, save it with **File → Save Recipe…**, and then run it on one photo or a whole shoot from the command line.
+
+`--recipe <file>` loads the recipe and checks it once, before any photo is opened. If the file is missing, unreadable or has mistakes, `prism` prints one `error:` line per mistake (with the line number), writes nothing and exits with code 1.
+
+When you give stage flags alongside `--recipe`, **flags win stage by stage**:
+
+- `--exposure` replaces `[exposure]` and switches that stage on;
+- `--matrix` replaces `[matrix]` and switches it on;
+- `--saturation` replaces `[saturation]` and switches it on;
+- `--contrast` replaces `[contrast]` and switches it on;
+- `--curve` replaces the whole `[curve]` section (both shape and parameter) and switches it on.
+
+A recipe stage with `on = false` is skipped unless you give the flag for that stage. A stage left out of the recipe (and not given as a flag) **does nothing** on the command line, because `prism` starts each photo from no adjustments — unlike the app, where a recipe leaves omitted stages at whatever values the open photo already had.
+
+To process **several inputs** in one run, pass them on the command line with `--out-dir <dir>` (an existing folder). With more than one input, `-o` and `--histogram` are usage errors (exit code 2), and `--out-dir` is required. Each result is written into `<dir>` as `<input stem>_prism.jpg` (or `<input stem>_prism.png` with `--format png`), matching the name the app's **Export** suggests. If a file of that name already exists in `<dir>`, it is replaced. Before any photo is decoded, `prism` checks the whole batch: if `--out-dir` does not exist or is not a folder, or if two inputs would produce the same output name (ignoring case, such as `a/photo.jpg` and `b/PHOTO.png`), it exits with code 2 and writes nothing.
+
+Photos in a batch are processed one after another (each photo already uses all hardware threads). Each photo that succeeds prints its usual `wrote <file> (<width>x<height>)` line. If one photo fails (unreadable, decode error or write error), `prism` prints an `error:` line naming that photo and carries on with the rest. At the end of a run with more than one input, it prints a summary line to stdout:
+
+```
+3 of 4 photos written; 1 failed.
+```
+
+(or `4 of 4 photos written.` when all succeeded). It exits with code 0 if every photo succeeded, 1 if any photo failed (or if the recipe, matrix or curve was bad), and 2 for a command-line usage error.
+
+Apply a saved recipe to a single RAW file:
+
+```sh
+prism DSC03866.ARW --recipe warm.prism -o DSC03866_warm.jpg
+```
+
+Apply a recipe to a batch of RAW files into an existing `edited` folder, overriding the recipe's exposure for this shoot:
+
+```sh
+prism DSC03866.ARW DSC03867.ARW DSC03868.ARW --recipe warm.prism --exposure +1.25 --out-dir edited
+```
+
+Export a batch of RAW files with a recipe as lossless PNGs at half size, replacing the recipe's tone curve with filmic:
+
+```sh
+prism IMG_001.CR3 IMG_002.CR3 --raw-half --recipe look.prism --curve filmic --format png --out-dir previews
+```
 
 ## Examples
 

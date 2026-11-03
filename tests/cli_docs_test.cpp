@@ -198,3 +198,64 @@ TEST(CliDocs, ParserReadsLeadingOptionsAndTheUsageLine) {
     const std::set<std::string> expected{"-o", "--histogram", "--exposure", "-h", "--help"};
     EXPECT_EQ(options_in_help(help), expected);
 }
+
+TEST(CliDocs, RecipesAndBatchesExamplesParseWithKnownOptions) {
+    const std::set<std::string> known = options_in_help(help_of(PRISM_EXE));
+    const std::string doc = read_text(PRISM_CLI_DOC);
+    ASSERT_FALSE(doc.empty()) << "cannot read " << PRISM_CLI_DOC;
+    const std::vector<std::string> lines = section_of(doc, "Recipes and batches");
+    ASSERT_FALSE(lines.empty()) << "missing '## Recipes and batches' section in CLI.md";
+
+    bool in_sh = false;
+    int commands = 0;
+    for (const std::string& line : lines) {
+        if (line == "```sh") {
+            in_sh = true;
+            continue;
+        }
+        if (line == "```") {
+            in_sh = false;
+            continue;
+        }
+        if (!in_sh || line.empty() || line[0] == '#') {
+            continue;
+        }
+        ++commands;
+        std::istringstream in(line);
+        std::vector<std::string> words;
+        for (std::string w; in >> w;) {
+            words.push_back(w);
+        }
+        ASSERT_FALSE(words.empty()) << line;
+        EXPECT_EQ(words[0], "prism") << line;
+
+        bool has_recipe = false;
+        bool has_output = false;
+        std::size_t inputs = 0;
+        for (std::size_t i = 1; i < words.size(); ++i) {
+            const std::string& w = words[i];
+            if (w[0] == '-') {
+                EXPECT_TRUE(known.count(w) != 0)
+                    << "unknown option '" << w << "' in example: " << line;
+                if (w == "--recipe") {
+                    has_recipe = true;
+                }
+                if (w == "-o" || w == "--out-dir" || w == "--histogram") {
+                    has_output = true;
+                }
+                if (w != "-h" && w != "--help" && w != "--version" && w != "--time" &&
+                    w != "--raw-half") {
+                    ASSERT_LT(i + 1, words.size())
+                        << "missing value for '" << w << "' in example: " << line;
+                    ++i;  // skip the option's value (even if it starts with '-' like -1.25)
+                }
+            } else {
+                ++inputs;
+            }
+        }
+        EXPECT_TRUE(has_recipe) << line;
+        EXPECT_TRUE(has_output) << line;
+        EXPECT_GE(inputs, 1u) << line;
+    }
+    EXPECT_GE(commands, 3) << "expected at least 3 worked examples in '## Recipes and batches'";
+}

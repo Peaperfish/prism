@@ -109,6 +109,8 @@ A stage a recipe leaves out stays as it is in the photo you apply it to, and a s
 
 So a recipe with only `[saturation]` changes the saturation and nothing else. Within a section, the main value must be there (`stops`, all three matrix rows, `amount` or `shape`); `gamma`, `white` and `on` may be left out and then take their defaults from the table above.
 
+On the command line (`prism --recipe <file>`), each photo starts with no adjustments, so a stage left out of the recipe does nothing unless you also give a command-line flag for that stage. See [Recipes and batches](CLI.md#recipes-and-batches) in the command-line reference.
+
 A recipe never holds the photo it was made on, how you were viewing it, or the RAW decoding options (half size and the camera matrix), so applying one never makes Prism decode the file again.
 
 ## The rules of the format
