@@ -439,10 +439,41 @@ int main(int argc, char* argv[]) {
 
         // 0 asks the library for one thread per hardware thread.
         const int threads = opts.threads.value_or(0);
-        for (std::size_t i = 0; i < opts.inputs.size(); ++i) {
-            run_one(opts.inputs[i], opts.outputs[i], opts.histogram_path, opts.time, settings, raw,
+        if (opts.inputs.size() == 1) {
+            // A failure is reported by the catch blocks below, as it always was.
+            run_one(opts.inputs[0], opts.outputs[0], opts.histogram_path, opts.time, settings, raw,
                     threads);
+            return 0;
         }
+
+        // A batch: one photo after another (each one already uses every core). A photo that fails
+        // is reported and skipped, and the rest still run.
+        std::size_t written = 0;
+        for (std::size_t i = 0; i < opts.inputs.size(); ++i) {
+            const std::string& input = opts.inputs[i];
+            try {
+                run_one(input, opts.outputs[i], std::nullopt, opts.time, settings, raw, threads);
+                ++written;
+            } catch (const std::exception& e) {
+                // Keep the "wrote" lines before this one when both go to the same place.
+                std::cout << std::flush;
+                // Loading errors name the input already; others (such as a failed save) name the
+                // output, so the input is added.
+                const std::string what = e.what();
+                if (what.find("'" + input + "'") != std::string::npos) {
+                    std::cerr << "error: " << what << '\n';
+                } else {
+                    std::cerr << "error: '" << input << "': " << what << '\n';
+                }
+            }
+        }
+        const std::size_t failed = opts.inputs.size() - written;
+        std::cout << written << " of " << opts.inputs.size() << " photos written";
+        if (failed > 0) {
+            std::cout << "; " << failed << " failed";
+        }
+        std::cout << ".\n";
+        return failed > 0 ? 1 : 0;
     } catch (const UsageError& e) {
         std::cerr << "error: " << e.what() << "\n\n";
         print_usage(program);

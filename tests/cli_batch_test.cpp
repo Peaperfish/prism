@@ -329,6 +329,8 @@ TEST_F(CliBatch, SeveralInputsAreEachWrittenAsStemPrismJpg) {
     }
     std::sort(written.begin(), written.end());
     EXPECT_EQ(written, (std::vector<std::string>{"a_prism.jpg", "b_prism.jpg", "c_prism.jpg"}));
+    EXPECT_TRUE(contains(r.output, "3 of 3 photos written.\n")) << r.output;
+    EXPECT_FALSE(contains(r.output, "error")) << r.output;
 
     // Each is what a run of its own with -o gives, and each gets its "wrote" line.
     for (const fs::path& input : {a, b, c}) {
@@ -476,4 +478,50 @@ TEST_F(CliBatch, FormatNeedsOutDirAndJpgOrPng) {
     EXPECT_EQ(r.exit_code, 2) << r.output;
     EXPECT_TRUE(contains(r.output, "--format given more than once")) << r.output;
     EXPECT_TRUE(fs::is_empty(path("out")));
+}
+
+TEST_F(CliBatch, AFileThatFailsIsNamedAndTheOthersAreStillWritten) {
+    fs::create_directory(path("out"));
+    const fs::path a = write_input("a.png", 1);
+    const fs::path broken = write_text("broken.png", "not a picture");
+    const fs::path missing = path("missing.jpg");
+    const fs::path d = write_input("d.png", 4);
+
+    const RunResult r = run_prism(quoted(a) + " " + quoted(broken) + " " + quoted(missing) + " " +
+                                  quoted(d) + " --exposure 0.5 --out-dir " + quoted(path("out")));
+    EXPECT_EQ(r.exit_code, 1) << r.output;
+    EXPECT_TRUE(fs::exists(path("out") / "a_prism.jpg"));
+    EXPECT_TRUE(fs::exists(path("out") / "d_prism.jpg"));
+    EXPECT_FALSE(fs::exists(path("out") / "broken_prism.jpg"));
+    EXPECT_FALSE(fs::exists(path("out") / "missing_prism.jpg"));
+    EXPECT_TRUE(contains(r.output, "error: cannot load image '" + broken.string() + "'"))
+        << r.output;
+    EXPECT_TRUE(contains(r.output, "error: cannot load image '" + missing.string() + "'"))
+        << r.output;
+    EXPECT_TRUE(contains(r.output, "2 of 4 photos written; 2 failed.\n")) << r.output;
+    EXPECT_FALSE(contains(r.output, "Usage:")) << r.output;
+}
+
+TEST_F(CliBatch, AFailedSaveNamesTheInput) {
+    fs::create_directory(path("out"));
+    const fs::path a = write_input("a.png", 1);
+    const fs::path b = write_input("b.png", 2);
+    // A folder where b's result should go: saving it fails on every system.
+    fs::create_directory(path("out") / "b_prism.jpg");
+
+    const RunResult r =
+        run_prism(quoted(a) + " " + quoted(b) + " --out-dir " + quoted(path("out")));
+    EXPECT_EQ(r.exit_code, 1) << r.output;
+    EXPECT_TRUE(fs::exists(path("out") / "a_prism.jpg"));
+    EXPECT_TRUE(contains(r.output, "error: '" + b.string() + "': cannot save image '")) << r.output;
+    EXPECT_TRUE(contains(r.output, "1 of 2 photos written; 1 failed.\n")) << r.output;
+}
+
+TEST_F(CliBatch, ASingleInputPrintsNoSummaryLine) {
+    const fs::path a = write_input("a.png", 1);
+    fs::create_directory(path("out"));
+    const RunResult r = run_prism(quoted(a) + " --out-dir " + quoted(path("out")));
+    EXPECT_EQ(r.exit_code, 0) << r.output;
+    EXPECT_FALSE(contains(r.output, "photos written")) << r.output;
+    EXPECT_EQ(lines_of(r.output).size(), 1u) << r.output;
 }
