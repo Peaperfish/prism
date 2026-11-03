@@ -72,6 +72,12 @@ constexpr TokenMetrics darkroom_metrics{
     .scope_target_half = 4,
     .scope_label_gap = 3,
     .scope_hit = 6,
+    .strip_divider_width = 1,
+    .strip_hover_edge_width = 2,
+    .strip_chip_margin = 8,
+    .strip_pill_pad_x = 9,
+    .strip_pill_pad_y = 3,
+    .strip_bar_wrap = 520,
 };
 
 // Body text is 16 px at 100%: readable on a Retina laptop without squinting. Headers and small
@@ -115,6 +121,12 @@ constexpr TokenColours darkroom_dark{
     .grip_ink = grey(0.157f),
     .modal_dim = grey(0.0f, 0.45f),
     .canvas = grey(46.0f / 255.0f),  // about 19 on the L* scale, darker than the chrome's panels
+    .strip_divider = grey(1.0f, 0.85f),
+    .strip_hover_fill = grey(1.0f, 0.12f),
+    .strip_hover_edge = {0.55f, 0.72f, 0.98f, 1},
+    .strip_chip_bg = grey(0.05f, 0.84f),
+    .strip_chip_text = grey(1.0f),
+    .strip_pill_active = grey(1.0f, 0.26f),
 };
 
 constexpr TokenColours darkroom_light{
@@ -154,6 +166,12 @@ constexpr TokenColours darkroom_light{
     .grip_ink = grey(0.157f),
     .modal_dim = grey(0.20f, 0.35f),
     .canvas = grey(118.0f / 255.0f),  // about 50 on the L* scale: mid-grey, as photo editors use
+    .strip_divider = grey(1.0f, 0.85f),
+    .strip_hover_fill = grey(1.0f, 0.12f),
+    .strip_hover_edge = {0.55f, 0.72f, 0.98f, 1},
+    .strip_chip_bg = grey(0.05f, 0.84f),
+    .strip_chip_text = grey(1.0f),
+    .strip_pill_active = grey(1.0f, 0.26f),
 };
 
 constexpr std::array<TokenSet, 2> sets{{
@@ -247,6 +265,12 @@ TokenMetrics scaled(const TokenMetrics& m, float s) {
     r.scope_target_half = m.scope_target_half * s;
     r.scope_label_gap = m.scope_label_gap * s;
     r.scope_hit = m.scope_hit * s;
+    r.strip_divider_width = m.strip_divider_width * s;
+    r.strip_hover_edge_width = m.strip_hover_edge_width * s;
+    r.strip_chip_margin = m.strip_chip_margin * s;
+    r.strip_pill_pad_x = m.strip_pill_pad_x * s;
+    r.strip_pill_pad_y = m.strip_pill_pad_y * s;
+    r.strip_bar_wrap = m.strip_bar_wrap * s;
     return r;
 }
 

@@ -80,6 +80,49 @@ TEST(ThemeTokens, LitClipChipsAreReadableAndStillToldApart) {
     }
 }
 
+// `top` (with its alpha) over a flat `under`.
+Rgba composite(const Rgba& top, const Rgba& under) {
+    return {top.r * top.a + under.r * (1 - top.a), top.g * top.a + under.g * (1 - top.a),
+            top.b * top.a + under.b * (1 - top.a), 1};
+}
+
+TEST(ThemeTokens, StripChipTextIsReadableOnAnyPhoto) {
+    for (const TokenSet& set : token_sets()) {
+        const TokenColours& c = set.colours;
+        // The chip sits on the picture: the worst cases are pure white and pure black.
+        for (const float photo : {0.0f, 0.5f, 1.0f}) {
+            EXPECT_GE(contrast_ratio(c.strip_chip_text, composite(c.strip_chip_bg, grey(photo))),
+                      7.0f)
+                << label(set) << " photo " << photo;
+        }
+    }
+}
+
+TEST(ThemeTokens, StripLinesAreSeenOnTheirOwnColours) {
+    for (const TokenSet& set : token_sets()) {
+        const TokenColours& c = set.colours;
+        // The divider between bands on a mid grey and on black; the hovered band's edge on both.
+        for (const float photo : {0.0f, 0.25f}) {
+            EXPECT_GE(contrast_ratio(composite(c.strip_divider, grey(photo)), grey(photo)), 3.0f)
+                << label(set);
+            EXPECT_GE(contrast_ratio(c.strip_hover_edge, grey(photo)), 3.0f) << label(set);
+        }
+        EXPECT_GT(c.strip_hover_fill.a, 0.0f) << label(set);
+        EXPECT_LT(c.strip_hover_fill.a, 0.3f) << label(set);  // a wash, not a cover
+    }
+}
+
+TEST(ThemeTokens, StripPillTextIsReadableOnTheBar) {
+    for (const TokenSet& set : token_sets()) {
+        const TokenColours& c = set.colours;
+        // The bar is the overlay box (black at 180/255) over the window; the chosen pill adds a
+        // light wash, and the bar's text is white.
+        const Rgba bar = composite(grey(0.0f, 180.0f / 255.0f), c.window_bg);
+        EXPECT_GE(contrast_ratio(grey(1.0f), composite(c.strip_pill_active, bar)), 4.5f)
+            << label(set);
+    }
+}
+
 TEST(ThemeTokens, PlotBoxSitsCalmlyInThePanel) {
     for (const TokenSet& set : token_sets()) {
         const TokenColours& c = set.colours;
@@ -122,7 +165,7 @@ TEST(ThemeTokens, TypeSizesAreAsDesigned) {
 
 // Every field of TokenMetrics is a float or two; a field added without teaching scaled() about it
 // would not scale, so the size is pinned here.
-static_assert(sizeof(TokenMetrics) == 68 * sizeof(float));
+static_assert(sizeof(TokenMetrics) == 74 * sizeof(float));
 
 TEST(ThemeTokens, EverySizeScalesLinearlyWithTheInterfaceScale) {
     for (const TokenSet& set : token_sets()) {

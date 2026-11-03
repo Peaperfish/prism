@@ -136,6 +136,47 @@ std::string strip_label(StripStep step, int count, int band) {
     return text;
 }
 
+std::string strip_offset_text(StripStep step, int count, int band) {
+    if (band < 0 || band >= count) {
+        return {};
+    }
+    const int k = band - strip_middle(count);
+    if (k == 0) {
+        return "0";
+    }
+    return std::string(k < 0 ? "\u2212" : "+") + magnitude_text(k, strip_step_divisor(step));
+}
+
+std::string strip_band_title(StripStep step, int count, int band) {
+    if (band < 0 || band >= count) {
+        return {};
+    }
+    const int k = band - strip_middle(count);
+    if (k == 0) {
+        return "current band";
+    }
+    const bool plural = std::abs(k) > strip_step_divisor(step);
+    return strip_offset_text(step, count, band) + (plural ? " stops band" : " stop band");
+}
+
+std::string strip_teaching_line(StripStep step) {
+    switch (step) {
+        case StripStep::third:
+            return "A full stop doubles the light; each third of a stop is about 1.3\u00D7.";
+        case StripStep::half:
+            return "A full stop doubles the light; each half stop is about 1.4\u00D7.";
+        case StripStep::whole:
+            return "A full stop doubles the light; each band here is one stop, 2\u00D7 the "
+                   "one before.";
+    }
+    return {};
+}
+
+const char* strip_unavailable_hint() noexcept {
+    return "Not available while viewing the Decode stage: no edit shows there. "
+           "View Exposure or a later stage.";
+}
+
 std::optional<int> strip_band_at(int width, int height, int count, float x, float y) noexcept {
     if (width <= 0 || height <= 0 || count < 1 || !(x >= 0.0f) || !(y >= 0.0f) ||
         x >= static_cast<float>(width) || y >= static_cast<float>(height)) {

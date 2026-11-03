@@ -266,3 +266,50 @@ TEST(TestStrip, ClickingBandsInTurnReCentresTheStrip) {
     EXPECT_EQ(strip_label(StripStep::half, 5, strip_middle(5)), "0 · now");
     EXPECT_FLOAT_EQ(strip_centre_stops(s), 3.0f);
 }
+
+namespace prism::gui {
+
+TEST(TestStrip, OffsetTextIsTheLabelsOffset) {
+    EXPECT_EQ(strip_offset_text(StripStep::half, 5, 0), "−1");
+    EXPECT_EQ(strip_offset_text(StripStep::half, 5, 1), "−½");
+    EXPECT_EQ(strip_offset_text(StripStep::half, 5, 2), "0");
+    EXPECT_EQ(strip_offset_text(StripStep::half, 5, 4), "+1");
+    EXPECT_EQ(strip_offset_text(StripStep::third, 5, 1), "−⅓");
+    EXPECT_EQ(strip_offset_text(StripStep::third, 9, 0), "−1⅓");
+    EXPECT_EQ(strip_offset_text(StripStep::whole, 5, 4), "+2");
+    EXPECT_EQ(strip_offset_text(StripStep::half, 5, 5), "");
+    EXPECT_EQ(strip_offset_text(StripStep::half, 5, -1), "");
+}
+
+TEST(TestStrip, BandTitleNamesTheBand) {
+    EXPECT_EQ(strip_band_title(StripStep::half, 5, 1), "−½ stop band");
+    EXPECT_EQ(strip_band_title(StripStep::half, 5, 0), "−1 stop band");
+    EXPECT_EQ(strip_band_title(StripStep::half, 5, 3), "+½ stop band");
+    EXPECT_EQ(strip_band_title(StripStep::half, 5, 2), "current band");
+    EXPECT_EQ(strip_band_title(StripStep::third, 5, 4), "+⅔ stop band");
+    EXPECT_EQ(strip_band_title(StripStep::whole, 5, 0), "−2 stops band");
+    EXPECT_EQ(strip_band_title(StripStep::third, 9, 8), "+1⅓ stops band");
+    EXPECT_EQ(strip_band_title(StripStep::half, 5, 7), "");
+}
+
+TEST(TestStrip, TeachingLineForEachStep) {
+    EXPECT_EQ(strip_teaching_line(StripStep::half),
+              "A full stop doubles the light; each half stop is about 1.4×.");
+    EXPECT_EQ(strip_teaching_line(StripStep::third),
+              "A full stop doubles the light; each third of a stop is about 1.3×.");
+    EXPECT_EQ(strip_teaching_line(StripStep::whole),
+              "A full stop doubles the light; each band here is one stop, 2× the one before.");
+}
+
+TEST(TestStrip, TeachingLineFactorsMatchTheSteps) {
+    // The numbers in the line are the step's real light factor, to the digits shown.
+    EXPECT_NEAR(strip_light_factor(strip_step_stops(StripStep::half)), 1.4f, 0.03f);
+    EXPECT_NEAR(strip_light_factor(strip_step_stops(StripStep::third)), 1.3f, 0.05f);
+    EXPECT_FLOAT_EQ(strip_light_factor(strip_step_stops(StripStep::whole)), 2.0f);
+}
+
+TEST(TestStrip, UnavailableHintSaysWhy) {
+    EXPECT_NE(std::string(strip_unavailable_hint()).find("Decode"), std::string::npos);
+}
+
+}  // namespace prism::gui

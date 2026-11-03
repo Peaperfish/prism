@@ -70,6 +70,24 @@ struct StripRect {
 // the strip.
 [[nodiscard]] std::string strip_label(StripStep step, int count, int band);
 
+// The band's offset on its own, signed: "−½", "+1", "+1½", and "0" for the middle band. Same
+// glyphs as strip_label. Empty for a band outside the strip.
+[[nodiscard]] std::string strip_offset_text(StripStep step, int count, int band);
+
+// What names the band in the histogram's title: "current band" for the middle one, otherwise the
+// offset and its unit, e.g. "−½ stop band", "+1 stop band", "+1½ stops band" (a unit of "stop" up
+// to one whole stop). Empty for a band outside the strip.
+[[nodiscard]] std::string strip_band_title(StripStep step, int count, int band);
+
+// The one line of teaching under the step choice, worked out from the step: what a full stop
+// does, and what one band does, e.g. "A full stop doubles the light; each half stop is about
+// 1.4× (the next band up lets in 1.4× the light)." Uses the glyph ×.
+[[nodiscard]] std::string strip_teaching_line(StripStep step);
+
+// Why the strip is not on offer when the viewed stage is Decode (a tooltip on its disabled
+// controls).
+[[nodiscard]] const char* strip_unavailable_hint() noexcept;
+
 // The band under the image pixel (x, y) of a width x height image, if the point is inside it.
 [[nodiscard]] std::optional<int> strip_band_at(int width, int height, int count, float x,
                                                float y) noexcept;

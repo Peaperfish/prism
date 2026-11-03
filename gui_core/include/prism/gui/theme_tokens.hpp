@@ -53,6 +53,12 @@ struct TokenColours {
     Rgba modal_dim;
     // Behind the photo: always neutral (R = G = B), neither near white nor near black.
     Rgba canvas;
+    // The test strip, drawn over the photo (so theme-independent): the thin line between bands, the
+    // hovered band's wash and edge, the label chip in a band's corner, and the chosen step's pill
+    // in the strip bar (drawn on the overlay background).
+    Rgba strip_divider, strip_hover_fill, strip_hover_edge;
+    Rgba strip_chip_bg, strip_chip_text;
+    Rgba strip_pill_active;
 };
 
 // Sizes in points at an interface size of 100%.
@@ -93,6 +99,10 @@ struct TokenMetrics {
     float progress_width;
     // The vectorscope's targets: half side, label gap, and how near the skin line shows its tip.
     float scope_target_half, scope_label_gap, scope_hit;
+    // The test strip: the line between bands, the hovered band's edge, the label chip's distance
+    // from the band's corner; the strip bar's step pills (padding) and the bar's widest line.
+    float strip_divider_width, strip_hover_edge_width, strip_chip_margin;
+    float strip_pill_pad_x, strip_pill_pad_y, strip_bar_wrap;
 };
 
 // Type sizes in points at 100%.
