@@ -8,6 +8,7 @@
 #include <variant>
 #include <vector>
 
+#include "prism/gui/recipe_settings.hpp"
 #include "prism/raw.hpp"
 #include "prism/resize.hpp"
 #include "prism/utf8_path.hpp"
@@ -151,6 +152,12 @@ MaybeError Session::set_settings(const EditSettings& s) {
     }
     history_.set(s);
     return update_preview_base();
+}
+
+MaybeError Session::apply_recipe(const Recipe& recipe) {
+    EditSettings s = settings();
+    gui::apply_recipe(s, recipe);
+    return set_settings(s);
 }
 
 MaybeError Session::undo() {

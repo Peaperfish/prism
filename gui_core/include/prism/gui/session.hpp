@@ -11,6 +11,7 @@
 #include "prism/gui/settings.hpp"
 #include "prism/image.hpp"
 #include "prism/process.hpp"
+#include "prism/recipe.hpp"
 
 namespace prism::gui {
 
@@ -87,6 +88,10 @@ public:
     // a second for a 60 MP RAW file); if that fails, the settings stay changed but the preview base
     // does not.
     [[nodiscard]] MaybeError set_settings(const EditSettings& s);
+    // Applies a recipe to the current settings (apply_recipe in recipe_settings.hpp) through
+    // set_settings: one undo step, or none if it changes nothing. A recipe never changes the RAW
+    // options, so this never decodes the file again.
+    [[nodiscard]] MaybeError apply_recipe(const Recipe& recipe);
     void begin_gesture() { history_.begin_gesture(); }
     void end_gesture() { history_.end_gesture(); }
     // Undo and redo, which may also re-decode, as set_settings does. Use history().can_undo() and
