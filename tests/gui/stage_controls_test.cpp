@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <cctype>
+
 #include <cmath>
 #include <filesystem>
 #include <limits>
@@ -125,14 +127,41 @@ TEST(StageFormat, Exposure) {
 }
 
 TEST(StageFormat, MultipliersAndBlackAndWhite) {
-    EXPECT_EQ(prism::gui::format_multiplier(1.2f), "x1.20");
-    EXPECT_EQ(prism::gui::format_multiplier(1.0f), "x1.00");
-    EXPECT_EQ(prism::gui::format_multiplier(1.0f / 1.5f), "x0.67");
-    EXPECT_EQ(prism::gui::format_multiplier(1.5f), "x1.50");
-    EXPECT_EQ(prism::gui::format_saturation(1.2f), "x1.20");
-    EXPECT_EQ(prism::gui::format_saturation(2.0f), "x2.00");
+    EXPECT_EQ(prism::gui::format_multiplier(1.2f), "×1.20");
+    EXPECT_EQ(prism::gui::format_multiplier(1.0f), "×1.00");
+    EXPECT_EQ(prism::gui::format_multiplier(1.0f / 1.5f), "×0.67");
+    EXPECT_EQ(prism::gui::format_multiplier(1.5f), "×1.50");
+    EXPECT_EQ(prism::gui::format_saturation(1.2f), "×1.20");
+    EXPECT_EQ(prism::gui::format_saturation(2.0f), "×2.00");
     EXPECT_EQ(prism::gui::format_saturation(0.0f), "black and white");
-    EXPECT_EQ(prism::gui::format_saturation(0.004f), "x0.00");  // only exactly 0 is B&W
+    EXPECT_EQ(prism::gui::format_saturation(0.004f), "×0.00");  // only exactly 0 is B&W
+}
+
+// A multiplier is written with the multiplication sign, never the letter x.
+TEST(StageFormat, MultipliersUseTheTimesSignInEveryOutput) {
+    const auto has_ascii_x_times = [](const std::string& text) {
+        for (std::size_t i = 0; i + 1 < text.size(); ++i) {
+            if (text[i] == 'x' && std::isdigit(static_cast<unsigned char>(text[i + 1]))) {
+                return true;
+            }
+        }
+        return false;
+    };
+    for (const float v : {0.0f, 0.004f, 0.5f, 1.0f, 1.2f, 2.0f, 10.0f}) {
+        EditSettings s;
+        s.saturation = v;
+        s.contrast = v == 0.0f ? 0.1f : v;
+        s.exposure_stops = v - 1;
+        for (const StageId stage : {StageId::decode, StageId::exposure, StageId::matrix,
+                                    StageId::saturation, StageId::contrast, StageId::curve,
+                                    StageId::encode}) {
+            EXPECT_FALSE(has_ascii_x_times(prism::gui::stage_value_text(s, stage))) << v;
+        }
+        EXPECT_FALSE(has_ascii_x_times(prism::gui::format_multiplier(v)));
+        EXPECT_FALSE(has_ascii_x_times(prism::gui::format_saturation(v)));
+    }
+    EXPECT_NE(prism::gui::stage_value_text(EditSettings{}, StageId::contrast).find("\u00D7"),
+              std::string::npos);
 }
 
 TEST(StageFormat, RowTextForEveryStage) {
@@ -141,8 +170,8 @@ TEST(StageFormat, RowTextForEveryStage) {
     s.saturation = 1.2f;
     s.contrast = 1.2f;
     EXPECT_EQ(prism::gui::stage_value_text(s, StageId::exposure), "+0.70 stops");
-    EXPECT_EQ(prism::gui::stage_value_text(s, StageId::saturation), "x1.20");
-    EXPECT_EQ(prism::gui::stage_value_text(s, StageId::contrast), "x1.20");
+    EXPECT_EQ(prism::gui::stage_value_text(s, StageId::saturation), "×1.20");
+    EXPECT_EQ(prism::gui::stage_value_text(s, StageId::contrast), "×1.20");
     EXPECT_EQ(prism::gui::stage_value_text(s, StageId::matrix), "none");
     EXPECT_EQ(prism::gui::stage_value_text(s, StageId::curve), "none");
     EXPECT_EQ(prism::gui::stage_value_text(s, StageId::decode), "");

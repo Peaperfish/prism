@@ -57,7 +57,7 @@ std::string format_exposure(float stops) {
 }
 
 std::string format_multiplier(float value) {
-    return "x" + two_places(value);
+    return "\u00D7" + two_places(value);
 }
 
 std::string format_saturation(float value) {

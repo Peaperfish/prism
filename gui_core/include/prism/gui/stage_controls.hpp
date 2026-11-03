@@ -28,10 +28,10 @@ namespace prism::gui {
 // to zero is "+0.00" rather than "-0.00".
 [[nodiscard]] std::string format_exposure(float stops);
 
-// "x1.20": a multiplier, to two places.
+// "×1.20": a multiplier, to two places, with the multiplication sign.
 [[nodiscard]] std::string format_multiplier(float value);
 
-// Saturation as a multiplier ("x1.20"), except 0, which is "black and white".
+// Saturation as a multiplier ("×1.20"), except 0, which is "black and white".
 [[nodiscard]] std::string format_saturation(float value);
 
 // The value to show in `stage`'s row: format_exposure / format_saturation / format_multiplier for
