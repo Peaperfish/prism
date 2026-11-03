@@ -93,7 +93,7 @@ jobs:
       # GoogleTest and the LibRaw source (FetchContent) are downloaded into .deps, cached per job
       # and keyed on the files that pin their versions, so most runs skip the download.
       - name: Cache FetchContent downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .deps
           key: deps-${{ matrix.os }}-${{ matrix.name }}-${{ hashFiles('tests/CMakeLists.txt', 'cmake/LibRaw.cmake') }}
@@ -171,7 +171,7 @@ jobs:
           libwayland-dev libdecor-0-dev wayland-protocols
 
       - name: Cache FetchContent downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .deps
           key: deps-gui-${{ matrix.os }}-${{ hashFiles('cmake/GuiDependencies.cmake') }}

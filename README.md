@@ -319,7 +319,7 @@ A full preview re-render (every stage plus the sRGB encode, 2560×1707 from a 61
 
 ## Roadmap
 
-v0.1.0 is the first pre-release of the desktop app. What's planned next is tracked as GitHub issues in four milestones.
+v0.1.0 was the first pre-release of the desktop app, and v0.2.0 the second. What's planned next is tracked as GitHub issues in four milestones.
 
 [**0.2.0 – See the light**](https://github.com/Peaperfish/prism/milestone/1): understand what each step does to the light.
 

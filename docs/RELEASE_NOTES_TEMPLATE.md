@@ -1,8 +1,7 @@
 <!-- The release workflow fills in {{VERSION}} and {{LIBRAW_VERSION}} and uses this as the
      draft release's notes. Edit the draft on GitHub before publishing if needed. -->
 
-The first release of Prism's desktop app, for macOS and Windows. It is a pre-release: expect
-rough edges.
+Prism's desktop app, for macOS and Windows. It is a pre-release: expect rough edges.
 
 ## What it does
 
@@ -11,7 +10,15 @@ rough edges.
 - Shows a live preview that follows every slider as you drag it.
 - Simple mode: presets for RAW and for PNG/JPEG, and sliders for the main adjustments, with
   undo and redo.
-- Exports the result as PNG or JPEG.
+- Pipeline view: every stage in the order the light passes through it, with its controls. Turn
+  stages on or off and click one to see the photo at that point.
+- Compare any two stages, including the original, side by side.
+- Histogram, parade, waveform and vectorscope for the stage you are viewing.
+- Clipping by stage, shown per stage and on the photo, plus a warning for colours outside sRGB.
+- Test strip: the photo in five bands at different exposures, to choose by eye.
+- A plain-language explanation of each control, with the numbers for its current value.
+- Exports the result as PNG or JPEG, and asks first if you would lose edits you haven't
+  exported.
 - Light and dark themes, following the system by default.
 - Preferences for the theme, the interface size and the panel width.
 - The command-line tool `prism` is included in both downloads.
