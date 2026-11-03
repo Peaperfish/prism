@@ -174,7 +174,7 @@ TEST(RecipeDocs, TheSavedExampleIsExactlyWhatPrismWrites) {
 }
 
 TEST(RecipeDocs, TheSavedExampleIsTheHandWrittenOneWithExposureAndACurve) {
-    // As the text says: the same recipe, saved from a photo with +0.5 stops and Reinhard.
+    // As the text says: the same recipe under a new name, saved with +0.5 stops and Reinhard.
     prism::Recipe hand;
     prism::Recipe saved;
     for (const Example& e : examples()) {
@@ -187,8 +187,10 @@ TEST(RecipeDocs, TheSavedExampleIsTheHandWrittenOneWithExposureAndACurve) {
     ASSERT_TRUE(saved.exposure && saved.curve);
     EXPECT_EQ(saved.exposure->stops, 0.5f);
     EXPECT_EQ(saved.curve->shape, prism::CurveShape::reinhard);
+    EXPECT_EQ(saved.name, "Warm low contrast, brighter");
     saved.exposure.reset();
     saved.curve.reset();
+    saved.name = hand.name;
     EXPECT_EQ(saved, hand);
 }
 

@@ -4,7 +4,7 @@ Prism is a photo editor for PNG, JPEG and camera RAW files. It shows what each s
 
 ![The Prism window: a photo with the control panel beside it, in the dark theme](images/prism-window.jpg)
 
-Contents: [First launch](#first-launch) · [A walkthrough](#a-walkthrough) · [Keyboard shortcuts](#keyboard-shortcuts) · [How Prism thinks about light](#how-prism-thinks-about-light) · [Preferences](#preferences) · [Reference details](#reference-details) · Recipe files: [RECIPES.md](RECIPES.md)
+Contents: [First launch](#first-launch) · [A walkthrough](#a-walkthrough) · [Recipes](#recipes) · [Keyboard shortcuts](#keyboard-shortcuts) · [How Prism thinks about light](#how-prism-thinks-about-light) · [Preferences](#preferences) · [Reference details](#reference-details)
 
 ## First launch
 
@@ -87,7 +87,7 @@ Below the sliders, the **Pipeline** section lists the stages the light goes thro
 - **Per-stage controls** sit under the stage's name:
   - Exposure, Saturation and Contrast have a slider that is the same slider as Brightness, Colour and Contrast above (moving one moves the other), with the value in its own units: `+0.70 stops` (−2 to +2), `×1.20` for Saturation (`×0.00` to `×2.00`; exactly 0 reads "black and white") and `×1.20` for Contrast (`×0.67` to `×1.50`).
   - Tone curve has a menu (None, Gamma, Reinhard, Filmic). Gamma has a slider for the exponent (0.5 to 4, default 2.2). Reinhard has a slider for its white point (1 to 16, default 4). Filmic has no setting. Right-click for **Reset to**.
-  - Colour matrix shows the name of the loaded matrix file, or `none`. The app has no way to load one, so it reads `none`.
+  - Colour matrix shows the name of the matrix file, or `none`. The app gets a matrix only from a [recipe](#recipes): one that names the file its numbers came from shows that name, and one that names none reads `recipe matrix`.
   - Decode and Output encode have nothing to edit.
 - A stage that is switched off shows its controls greyed out, with the value it will have when it is switched on.
 - If you edit a stage that comes after the one you are viewing, the photo can't change, and the row says **Not visible here** and names the stage you are viewing.
@@ -137,7 +137,7 @@ At the foot of the panel, a box says in plain words what the control under the m
 
 ### Undo and redo
 
-**Undo** and **Redo** buttons sit at the top of the panel, and **Edit → Undo** and **Redo** do the same. Every change to a slider, a stage switch, a look or the tone curve is a step; Prism keeps up to 100. A whole slider drag is one step. Test strip, comparison and the stage you are viewing are views and are not part of undo.
+**Undo** and **Redo** buttons sit at the top of the panel, and **Edit → Undo** and **Redo** do the same. Every change to a slider, a stage switch, a look or the tone curve is a step, and so is loading a recipe; Prism keeps up to 100. A whole slider drag is one step. Test strip, comparison and the stage you are viewing are views and are not part of undo.
 
 ### Export
 
@@ -149,15 +149,41 @@ At the foot of the panel, a box says in plain words what the control under the m
 - Export decodes the file again at **full size** and runs every stage, so it does not depend on the preview. A **Saving…** window shows while it runs, with a **Cancel** button.
 - The result is 8-bit sRGB. JPEGs are saved at quality 95.
 
+### Recipes
+
+A **recipe** is a small text file, ending in `.prism`, that writes down an edit: the exposure, the colour matrix, the saturation, the contrast and the tone curve, each with its on/off switch. It holds numbers, not pixels, so you can use it on any photo, read it in a text editor and send it to someone. [RECIPES.md](RECIPES.md) describes the format line by line.
+
+**Saving.** **File → Save Recipe…** (`Cmd+Shift+S` or `Ctrl+Shift+S`), or **Save recipe…** in the Look section of the panel, first asks for two things:
+
+- **Name**, filled in for you: the recipe you loaded (with "(modified)" once you have changed something), or the look you picked, or empty with the hint "Name this look". The suggested file name is made from it.
+- **Description** (optional): one line on what the recipe is for.
+
+The sheet says what is saved: all five stages. The photo and the RAW decoding options (half size, camera matrix) are not in a recipe. `Esc` cancels; while you are typing in a field, the first `Esc` only leaves the field. **Save…** then opens the system's save dialog. It starts in the folder you last saved or loaded a recipe in (Prism remembers it in your [preferences](#preferences)), or next to the photo the first time. If you type a name without `.prism`, it is added. A banner says "Saved recipe *name*.prism." when it is written.
+
+**Loading.** **File → Load Recipe…** (`Cmd+Shift+O` or `Ctrl+Shift+O`), or **Load recipe…** in the panel, applies a recipe to the open photo:
+
+- It sets each stage the recipe has, with its switch, and leaves the others as they are. It is one undo step, and the photo is not decoded again.
+- Under the Look menu, **Recipe:** *name* says which recipe it was (point at it for its description), with a line saying what it set: "Sets all five stages." or, for a recipe with only some of them, "Sets only Colour matrix, Saturation and Contrast; the other stages are unchanged." A recipe that switches a stage off says so too.
+- Change anything and the line reads *name* **(modified)**; undo back past the load and it goes away, and Redo brings it back. Opening another photo clears it.
+- The Look menu stays honest: it names a built-in look only when the numbers match one, and otherwise reads **Custom**, whatever the recipe is called.
+- A colour matrix from a recipe shows in the Pipeline view under the file name the recipe gives, or as `recipe matrix` when it gives none.
+
+**Dropping.** Drop a `.prism` file on an open photo to apply it, just like Load Recipe…. Prism applies one recipe at a time. A recipe dropped together with a photo isn't applied (the photo opens, and a note asks you to drop the recipe again once it is open), and with no photo open Prism asks you to open one first.
+
+**When a recipe has a mistake**, nothing changes and a **Recipe not loaded** window lists every mistake with its line, for example "line 5: unknown setting 'amout' in [saturation]. Did you mean 'amount'?" (Prism stops at 10). **Copy** puts the list on the clipboard; **Close** or `Esc` closes the window. A missing or unreadable file is reported the same way.
+
 ### Unexported edits
 
-If you quit (`Cmd+Q` on macOS, `Ctrl+Q` on Windows and Linux, the close button or **File → Quit**) or open or drop another photo while your settings differ from the last export (or from when you opened the photo), Prism asks: "You have edits that haven't been exported." with three buttons:
+If you quit (`Cmd+Q` on macOS, `Ctrl+Q` on Windows and Linux, the close button or **File → Quit**) or open or drop another photo while your settings differ from the last export and from the last recipe you saved (or, if you have saved neither, from when you opened the photo), Prism asks: "You have edits that haven't been exported or saved as a recipe." Under it, a line says what you saved last, for example "Last saved: exported as IMG_0001_prism.jpg" or "Last saved: recipe Warm grade.prism". The buttons:
 
 - **Export…** goes on with the quit or open only after the export succeeds.
-- **Quit Without Exporting** (or **Open Without Exporting**).
+- **Save Recipe…** shows the save sheet and then the save dialog; the quit or open goes on once the recipe is written. Cancelling either, or a recipe that can't be written, cancels the quit or open.
+- **Quit Without Saving** (or **Open Without Saving**).
 - **Cancel** (also `Esc`).
 
-Undoing back to the exported state counts as having no edits. If an export is still running, Prism waits for it first.
+On macOS **Quit Without Saving** stands on its own on the left, and Cancel, Save Recipe… and Export… are on the right; on Windows and Linux the order is Export…, Save Recipe…, Quit Without Saving, Cancel. Export… is the default (`Enter`) on both.
+
+Undoing back to an exported or saved state counts as having no edits. If an export is still running, Prism waits for it first. A quit while the recipe save sheet is open closes the sheet before asking.
 
 ## Keyboard shortcuts
 
@@ -167,6 +193,8 @@ On macOS the main key is `Cmd`; on Windows and Linux it is `Ctrl`. This is every
 |---|---|---|
 | Open a photo | `Cmd+O` | `Ctrl+O` |
 | Export | `Cmd+E` or `Cmd+S` | `Ctrl+E` or `Ctrl+S` |
+| Load a recipe | `Cmd+Shift+O` | `Ctrl+Shift+O` |
+| Save a recipe | `Cmd+Shift+S` | `Ctrl+Shift+S` |
 | Undo | `Cmd+Z` | `Ctrl+Z` |
 | Redo | `Cmd+Shift+Z` or `Cmd+Y` | `Ctrl+Shift+Z` or `Ctrl+Y` |
 | Preferences | `Cmd+,` | `Ctrl+,` |
@@ -175,7 +203,7 @@ On macOS the main key is `Cmd`; on Windows and Linux it is `Ctrl`. This is every
 | Interface size back to Auto | `Cmd+0` | `Ctrl+0` |
 | Mark clipping on the photo | `J` | `J` |
 | Test strip on or off | `T` | `T` |
-| Step back: close the Preferences, About or notices window if it has the focus; otherwise the test strip, then the comparison, then the viewed stage | `Esc` | `Esc` |
+| Step back: close the Preferences, About, notices or Recipe not loaded window if it has the focus; otherwise the test strip, then the comparison, then the viewed stage | `Esc` | `Esc` |
 | Quit | `Cmd+Q` | `Ctrl+Q` |
 
 Notes:
@@ -183,8 +211,8 @@ Notes:
 - The keypad's `+`, `-` and `0` also work with `Cmd`/`Ctrl` for the interface size.
 - Undo, Redo, `J` and `T` do nothing while you are dragging a slider.
 - `J` and `T` give way to a text field that has the keyboard, so typing a value never triggers them.
-- `Esc` is also Cancel in the "unexported edits" window, and in the "Saving…" window while a quit or open is waiting for the export.
-- In the menus: **File** has Open…, Export… and Quit (on Windows and Linux the menu shows `Ctrl+Q`; on macOS, Quit is in the **Prism** menu too). **Edit** has Undo, Redo and (on Windows and Linux) Preferences…. **View** has Bigger Interface, Smaller Interface, Interface Size: Auto and Test Strip. **Help → About Prism** is on Windows and Linux; on macOS, About and Preferences are in the **Prism** menu (**Prism → About Prism**, **Prism → Preferences…**).
+- `Esc` is also Cancel in the "unsaved edits" window, in the recipe save sheet (inside a text field, the first `Esc` only leaves the field), and in the "Saving…" window while a quit or open is waiting for the export.
+- In the menus: **File** has Open…, Export…, Load Recipe…, Save Recipe… and Quit (on Windows and Linux the menu shows `Ctrl+Q`; on macOS, Quit is in the **Prism** menu too). **Edit** has Undo, Redo and (on Windows and Linux) Preferences…. **View** has Bigger Interface, Smaller Interface, Interface Size: Auto and Test Strip. **Help → About Prism** is on Windows and Linux; on macOS, About and Preferences are in the **Prism** menu (**Prism → About Prism**, **Prism → Preferences…**).
 
 Mouse and trackpad: click a stage row to view it; right-click a slider, or the Tone curve menu, to reset it; Ctrl-click (Cmd-click) a slider to type a value; drag the divider in a comparison; click a band in the test strip; drag the panel's left edge to resize the panel.
 

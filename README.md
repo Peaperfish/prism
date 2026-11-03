@@ -20,7 +20,7 @@ Mainstream photo editors often come with a subscription and a cloud catalog, hid
 
 1. **Free for personal use.** No subscription, no cloud, no catalog: open a file, edit it, export it. (See [Licences](#licences).)
 2. **It teaches as you go.** Every control should say in plain words what it does to the light, and you should be able to see each step happen. Since [0.2.0](https://github.com/Peaperfish/prism/milestone/1): a pipeline view, colour scopes and a test strip.
-3. **No black-box presets.** A look should be a readable recipe you can see and adjust. The plain-text [recipe format](docs/RECIPES.md) is defined; saving and loading recipes in the app and on the command line, and the built-in presets rewritten as recipes, are planned for [0.3.0](https://github.com/Peaperfish/prism/milestone/3).
+3. **No black-box presets.** A look should be a readable recipe you can see and adjust. The plain-text [recipe format](docs/RECIPES.md) is defined, and the app saves and loads recipes ([Recipes](docs/GUIDE.md#recipes)); recipes on the command line, and the built-in presets rewritten as recipes, are planned for [0.3.0](https://github.com/Peaperfish/prism/milestone/3).
 4. **Physical controls.** You adjust light rather than apply effects. Exposure is already in stops; white balance in Kelvin, contrast as paper grades, and dodge and burn are planned for [0.4.0](https://github.com/Peaperfish/prism/milestone/4).
 
 ## Downloading and running Prism
@@ -238,7 +238,7 @@ prism_core (lib/)                            the pipeline, shared with the CLI
 | `slider_gesture.hpp` | Turns a slider's per-frame state (pressed, moved, released) into History gestures, so a whole drag is one undo step, made on release |
 | `background_export.hpp` | Runs `export_image()` on its own thread with a stop token, so the window keeps drawing while a full-resolution export runs; the UI polls for the result |
 | `main_thread_queue.hpp` | A small locked queue that hands values from any thread to the UI thread, e.g. the answer of a file dialog whose callback runs on another thread |
-| `explanations.hpp`, `clip_note.hpp`, `close_guard.hpp` | The Explain area's texts and live lines; the status bar's clipping note; and when unexported edits matter and what each answer to the quit/open prompt does |
+| `explanations.hpp`, `clip_note.hpp`, `close_guard.hpp` | The Explain area's texts and live lines; the status bar's clipping note; and when unsaved edits matter and what each answer to the quit/open prompt does |
 | `preferences.hpp` | The app's own settings (theme, interface size, panel width, which scope is shown, whether explanations show): defaults, reading and writing the key=value file, clamping, and resolving "System" to light or dark |
 | `layout.hpp` | Window layout as pure functions: the panel's width for a given window and scale, and shortening a file name in the middle to fit the status bar |
 | `file_types.hpp` | The file dialogs' filters (RAW only in a build with LibRaw), and the export file name: the suggested name next to the source, and the extension added if the user left it out |

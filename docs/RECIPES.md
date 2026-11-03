@@ -35,14 +35,14 @@ This one has no `[exposure]` and no `[curve]`, so it leaves those alone: the pho
 
 ## As Prism saves it
 
-When Prism saves a recipe it writes every stage, in the order the light goes through them, with a short comment on each line saying what the number does. Here is the recipe above, saved from a photo that also had +0.5 stops of exposure and the Reinhard tone curve:
+When Prism saves a recipe it writes every stage, in the order the light goes through them, with a short comment on each line saying what the number does. Here is "Warm low contrast, brighter": to get it, load the recipe above onto a photo in Prism, set Exposure to +0.5 stops and the Tone curve to Reinhard, and choose **File → Save Recipe…** with that name.
 
 <!-- recipe: saved -->
 ```toml
 # Prism recipe: edit settings in plain text. Prism rewrites these comments when it saves.
 # What each line means: https://github.com/Peaperfish/prism/blob/main/docs/RECIPES.md
 prism_recipe = 1  # recipe format version
-name = "Warm low contrast"
+name = "Warm low contrast, brighter"
 description = "Softer contrast and a warm grade, for portraits in open shade"
 
 [exposure]
