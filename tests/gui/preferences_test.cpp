@@ -50,6 +50,7 @@ Preferences customised() {
     p.panel_width = 400;
     p.scope = prism::gui::ScopeChoice::vectorscope;
     p.clip_overlay = true;
+    p.show_explanations = false;
     return p;
 }
 
@@ -138,7 +139,7 @@ TEST(Preferences, SerializeAndParseRoundTrip) {
     const std::string text = prism::gui::serialize_preferences(p);
     EXPECT_EQ(text,
               "# Prism preferences\ntheme=light\ninterface_size=150\npanel_width=400\n"
-              "scope=vectorscope\nclip_overlay=on\n");
+              "scope=vectorscope\nclip_overlay=on\nshow_explanations=off\n");
     EXPECT_EQ(prism::gui::parse_preferences(text), p);
     EXPECT_EQ(prism::gui::parse_preferences(prism::gui::serialize_preferences(Preferences{})),
               Preferences{});
@@ -150,6 +151,21 @@ TEST(Preferences, TheClippingOverlayIsOffByDefaultAndRemembered) {
     EXPECT_FALSE(prism::gui::parse_preferences("clip_overlay=off\n").clip_overlay);
     EXPECT_FALSE(prism::gui::parse_preferences("clip_overlay=maybe\n").clip_overlay);
     EXPECT_TRUE(prism::gui::parse_preferences("clip_overlay=on\n").unknown.empty());
+}
+
+TEST(Preferences, ExplanationsAreOnByDefaultAndTheChoiceIsRemembered) {
+    EXPECT_TRUE(Preferences{}.show_explanations);
+    EXPECT_TRUE(prism::gui::parse_preferences("").show_explanations);
+    EXPECT_FALSE(prism::gui::parse_preferences("show_explanations=off\n").show_explanations);
+    EXPECT_TRUE(prism::gui::parse_preferences("show_explanations=on\n").show_explanations);
+    EXPECT_TRUE(prism::gui::parse_preferences("show_explanations=maybe\n").show_explanations);
+    EXPECT_TRUE(prism::gui::parse_preferences("show_explanations=off\n").unknown.empty());
+    Preferences off;
+    off.show_explanations = false;
+    EXPECT_FALSE(
+        prism::gui::parse_preferences(prism::gui::serialize_preferences(off)).show_explanations);
+    EXPECT_NE(prism::gui::serialize_preferences(Preferences{}).find("show_explanations=on\n"),
+              std::string::npos);
 }
 
 TEST(Preferences, SaveAndLoadRoundTripThroughANonAsciiPath) {
