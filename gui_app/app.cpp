@@ -306,32 +306,46 @@ void App::show_save_dialog() {
 void App::take_dialog_results() {
     for (DialogResult& result : dialogs_.take_all()) {
         dialog_open_ = false;
-        const bool for_close = close_phase_ == ClosePhase::saving_dialog &&
-                               result.kind != DialogResult::Kind::open;
-        if (!result.error.empty()) {
-            show_error({gui::ErrorKind::unreadable, "Couldn't show the file dialog.",
-                        result.error});
-            if (for_close) {
-                apply_close_step(gui::save_dialog_closed(false));
-            }
-        } else if (!result.path) {
-            // Cancelled: so is the quit or open that asked for it.
-            if (for_close) {
-                apply_close_step(gui::save_dialog_closed(false));
-            }
-        } else if (result.kind == DialogResult::Kind::open) {
-            request_open(std::move(*result.path));
-        } else if (session_.has_file()) {
-            // The export works on a copy of the settings: what the preview shows right now.
-            const fs::path output = gui::with_export_extension(*result.path, result.format);
-            error_.reset();
-            notice_.clear();
-            exporting_settings_ = session_.settings();
-            exporter_.start(session_.export_job(), output);
-            if (for_close) {
-                apply_close_step(gui::save_dialog_closed(true));
-            }
+        switch (result.kind) {
+            case DialogResult::Kind::open:
+                if (!result.error.empty()) {
+                    show_error({gui::ErrorKind::unreadable, "Couldn't show the file dialog.",
+                                result.error});
+                } else if (result.path) {
+                    request_open(std::move(*result.path));
+                }
+                break;
+            case DialogResult::Kind::save:
+                take_export_dialog(result);
+                break;
+            case DialogResult::Kind::recipe_load:
+            case DialogResult::Kind::recipe_save:
+                break;  // nothing asks for these yet
         }
+    }
+}
+
+// The export's save dialog answered: start the export, or (cancelled or failed) drop the quit or
+// open that asked for it.
+void App::take_export_dialog(DialogResult& result) {
+    const bool for_close = close_phase_ == ClosePhase::saving_dialog;
+    if (!result.error.empty()) {
+        show_error({gui::ErrorKind::unreadable, "Couldn't show the file dialog.", result.error});
+    }
+    if (!result.path || !session_.has_file()) {
+        if (for_close) {
+            apply_close_step(gui::save_dialog_closed(false));
+        }
+        return;
+    }
+    // The export works on a copy of the settings: what the preview shows right now.
+    const fs::path output = gui::with_export_extension(*result.path, result.format);
+    error_.reset();
+    notice_.clear();
+    exporting_settings_ = session_.settings();
+    exporter_.start(session_.export_job(), output);
+    if (for_close) {
+        apply_close_step(gui::save_dialog_closed(true));
     }
 }
 

@@ -78,6 +78,7 @@ private:
     void show_save_dialog();
     void take_export_result();
     void take_dialog_results();
+    void take_export_dialog(DialogResult& result);
     void update_preview();
     void show_error(gui::Error error);
     void report(gui::MaybeError error);

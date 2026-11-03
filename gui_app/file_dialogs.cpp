@@ -99,4 +99,36 @@ void show_save_dialog(SDL_Window* window, DialogQueue& queue,
                            static_cast<int>(r->filters.size()), r->default_location.c_str());
 }
 
+void show_recipe_load_dialog(SDL_Window* window, DialogQueue& queue,
+                             const std::filesystem::path& start_folder) {
+    auto request = std::make_unique<Request>();
+    request->queue = &queue;
+    request->kind = DialogResult::Kind::recipe_load;
+    request->patterns = {gui::recipe_filter_pattern()};
+    finish_filters(*request, {"Prism recipe"});
+    request->default_location = start_folder.empty() ? "" : utf8(start_folder);
+
+    wake_event_type();
+    Request* r = request.release();  // the callback owns it now
+    SDL_ShowOpenFileDialog(on_dialog_done, r, window, r->filters.data(),
+                           static_cast<int>(r->filters.size()),
+                           r->default_location.empty() ? nullptr : r->default_location.c_str(),
+                           false);
+}
+
+void show_recipe_save_dialog(SDL_Window* window, DialogQueue& queue,
+                             const std::filesystem::path& suggested) {
+    auto request = std::make_unique<Request>();
+    request->queue = &queue;
+    request->kind = DialogResult::Kind::recipe_save;
+    request->patterns = {gui::recipe_filter_pattern()};
+    finish_filters(*request, {"Prism recipe"});
+    request->default_location = utf8(suggested);
+
+    wake_event_type();
+    Request* r = request.release();  // the callback owns it now
+    SDL_ShowSaveFileDialog(on_dialog_done, r, window, r->filters.data(),
+                           static_cast<int>(r->filters.size()), r->default_location.c_str());
+}
+
 }  // namespace prism::gui_app
