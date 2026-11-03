@@ -1306,6 +1306,75 @@ Recipe parse_recipe(std::string_view text, std::string_view source, const Recipe
     return recipe;
 }
 
+std::optional<std::string> curve_spec(const RecipeCurve& curve) {
+    const auto shortest = [](float v) {
+        char buffer[32];
+        const std::to_chars_result r = std::to_chars(buffer, buffer + sizeof buffer, v);
+        return std::string(buffer, r.ptr);
+    };
+    switch (curve.shape) {
+        case CurveShape::none: return std::nullopt;
+        case CurveShape::gamma: return "gamma:" + shortest(curve.gamma);
+        case CurveShape::reinhard: return "reinhard:" + shortest(curve.white);
+        case CurveShape::filmic: return "filmic";
+    }
+    return std::nullopt;
+}
+
+ProcessSettings to_process_settings(const Recipe& recipe) {
+    std::vector<std::string> problems;
+    if (recipe.exposure && !std::isfinite(recipe.exposure->stops)) {
+        problems.push_back("[exposure] stops must be a finite number");
+    }
+    if (recipe.matrix && !std::all_of(recipe.matrix->values.begin(), recipe.matrix->values.end(),
+                                      [](float v) { return std::isfinite(v); })) {
+        problems.push_back("[matrix] must hold finite numbers");
+    }
+    if (recipe.saturation && !in_range(recipe.saturation->amount, saturation_range)) {
+        problems.push_back("[saturation] " +
+                           range_message("amount", recipe.saturation->amount, saturation_range));
+    }
+    if (recipe.contrast && !in_range(recipe.contrast->amount, contrast_range)) {
+        problems.push_back("[contrast] " +
+                           range_message("amount", recipe.contrast->amount, contrast_range));
+    }
+    if (const auto& c = recipe.curve) {
+        if (c->shape == CurveShape::gamma && !is_positive(c->gamma)) {
+            problems.push_back("[curve] " + positive_message("gamma", c->gamma));
+        }
+        if (c->shape == CurveShape::reinhard && !is_positive(c->white)) {
+            problems.push_back("[curve] " + positive_message("white", c->white));
+        }
+    }
+    if (!problems.empty()) {
+        std::string message = "invalid recipe:";
+        for (const std::string& p : problems) {
+            message += " " + p + ".";
+        }
+        throw std::invalid_argument(message);
+    }
+
+    ProcessSettings p;
+    if (recipe.exposure && recipe.exposure->on) {
+        p.exposure_stops = recipe.exposure->stops;
+    }
+    if (recipe.matrix && recipe.matrix->on) {
+        p.matrix = recipe.matrix->values;
+    }
+    if (recipe.saturation && recipe.saturation->on) {
+        p.saturation = recipe.saturation->amount;
+    }
+    if (recipe.contrast && recipe.contrast->on) {
+        p.contrast = recipe.contrast->amount;
+    }
+    if (recipe.curve && recipe.curve->on) {
+        if (const std::optional<std::string> spec = curve_spec(*recipe.curve)) {
+            p.curve = parse_curve(*spec);
+        }
+    }
+    return p;
+}
+
 Recipe load_recipe(const std::filesystem::path& path) {
     const std::string source = utf8(path);
     std::error_code ec;

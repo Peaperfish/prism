@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "prism/pipeline.hpp"
+#include "prism/process.hpp"
 #include "prism/ranges.hpp"
 
 namespace prism {
@@ -186,6 +187,19 @@ struct RecipeFormat {
 // reads; only tests pass another. Throws RecipeError.
 [[nodiscard]] Recipe parse_recipe(std::string_view text, std::string_view source = {},
                                   const RecipeFormat& format = recipe_format());
+
+// --- Running a recipe ----------------------------------------------------------------------------
+
+// The curve's spec for prism::parse_curve and the CLI's --curve ("gamma:2.2", "reinhard:4",
+// "filmic"), or nothing for shape none. Numbers in their shortest exact form.
+[[nodiscard]] std::optional<std::string> curve_spec(const RecipeCurve& curve);
+
+// What prism::process should do for this recipe on its own: each stage that is present and on,
+// and nothing for the others (a stage left out of a recipe does nothing here, as with a CLI flag
+// that is not given). The curve is prism::parse_curve(curve_spec(...)), exactly the curve --curve
+// builds from the same numbers. Throws std::invalid_argument for values outside their ranges,
+// which parse_recipe never returns.
+[[nodiscard]] ProcessSettings to_process_settings(const Recipe& recipe);
 
 // --- Files ---------------------------------------------------------------------------------------
 
