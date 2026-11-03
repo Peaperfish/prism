@@ -47,10 +47,17 @@ says "Windows protected your PC", click **More info → Run anyway**. If Smart A
 
 ## Known limitations
 
-- No Advanced mode yet: only Simple mode's presets and sliders.
+- The apps are not signed or notarized yet, so macOS and Windows warn the first time you open
+  them.
+- The preview is not colour-managed for wide-gamut (P3) displays. It is shown as sRGB.
+- There is no zoom or pan yet.
 - File names in Chinese, Japanese or Korean show as `??` in the window (the file still opens
   and exports correctly).
 - Opening a large RAW file freezes the window for a moment while it is decoded.
+- DNG files compressed with deflate or lossy JPEG don't open.
+- There is no Linux download yet.
+
+The open issues on GitHub list these and what else is planned.
 
 ## Coming next
 
