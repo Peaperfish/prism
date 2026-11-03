@@ -42,6 +42,7 @@ void print_usage(const char* program) {
               << "Several photos:\n"
               << "  --out-dir <dir>     write each result into this existing folder, as\n"
               << "                      <input name>_prism.jpg; needed for more than one input\n"
+              << "  --format jpg|png    what --out-dir writes: JPEG (the default) or PNG\n"
               << "\n"
               << "RAW input:\n"
               << "  --raw-half                  decode at half size (much faster; for previews)\n"
@@ -82,6 +83,7 @@ struct Options {
     std::vector<std::string> inputs;
     std::optional<std::string> output;
     std::optional<std::string> out_dir;
+    std::optional<std::string> format;  // "jpg" or "png", for --out-dir
     std::optional<std::string> recipe_path;
     std::optional<float> exposure_stops;
     std::optional<std::string> matrix_path;
@@ -210,6 +212,12 @@ Options parse_args(int argc, char* argv[]) {
             set_once(opts.output, arg, next_value());
         } else if (arg == "--out-dir") {
             set_once(opts.out_dir, arg, next_value());
+        } else if (arg == "--format") {
+            std::string format = next_value();
+            if (format != "jpg" && format != "png") {
+                throw UsageError("--format needs jpg or png, got '" + format + "'");
+            }
+            set_once(opts.format, arg, std::move(format));
         } else if (arg == "--recipe") {
             set_once(opts.recipe_path, arg, next_value());
         } else if (arg == "--exposure") {
@@ -277,8 +285,16 @@ Options parse_args(int argc, char* argv[]) {
             }
         }
     }
+    // With -o the file name's extension already says the format; a second say would only
+    // contradict it.
+    if (opts.format && !opts.out_dir) {
+        throw UsageError(
+            "--format only applies to --out-dir (with -o, the extension of the file "
+            "name chooses the format)");
+    }
     if (opts.out_dir) {
-        opts.outputs = out_dir_outputs(*opts.out_dir, opts.inputs, ".jpg");
+        opts.outputs =
+            out_dir_outputs(*opts.out_dir, opts.inputs, "." + opts.format.value_or("jpg"));
     } else {
         opts.outputs = {opts.output};
     }

@@ -32,7 +32,11 @@ The output image. The extension (`.png`, `.jpg` or `.jpeg`, in any case) picks t
 
 ### `--out-dir <dir>`
 
-Write each result into the folder `<dir>`, which must already exist, as `<input name>_prism.jpg`: `DSC03866.ARW` becomes `DSC03866_prism.jpg`, the name the app's **Export** suggests. A file of that name is replaced, as with `-o`. Needed for more than one input, and then `-o` and `--histogram` can't be used. With a single input it can take the place of `-o`, but not be given together with it. A folder that doesn't exist, or two inputs that would give the same name (such as `a/photo.jpg` and `b/photo.png`, or `photo.jpg` and `PHOTO.PNG`), is an error before any photo is processed. No default.
+Write each result into the folder `<dir>`, which must already exist, as `<input name>_prism.jpg` (or `.png`, see `--format`): `DSC03866.ARW` becomes `DSC03866_prism.jpg`, the name the app's **Export** suggests. A file of that name is replaced, as with `-o`. Needed for more than one input, and then `-o` and `--histogram` can't be used. With a single input it can take the place of `-o`, but not be given together with it. A folder that doesn't exist, or two inputs that would give the same name (such as `a/photo.jpg` and `b/photo.png`, or `photo.jpg` and `PHOTO.PNG`), is an error before any photo is processed. No default.
+
+### `--format jpg|png`
+
+The format `--out-dir` writes: `jpg` (the default) for JPEG at quality 95, exactly as `-o` writes a `.jpg`, or `png` for PNG. Only with `--out-dir`: with `-o` the extension of the name you give chooses the format, so `--format` there is an error. Anything other than `jpg` or `png` (in small letters) is an error.
 
 ### `--recipe <file>`
 
@@ -176,7 +180,7 @@ foreach ($f in Get-ChildItem *.jpg) {
 |---|---|
 | 0 | Success. Also `--help` and `--version` |
 | 1 | The run failed: a file couldn't be read or written, an input can't be decoded, a recipe has mistakes or can't be read, a matrix file or a `--curve` spec is wrong, or a RAW file was given to a build without RAW support. The message after `error:` says which |
-| 2 | The command line is wrong: no input, a missing value, an unknown option, an option given twice, a number outside its range, none of `-o`, `--out-dir` and `--histogram`, `--raw-half` or `--raw-camera-matrix` on a PNG or JPEG, several inputs without `--out-dir` (or with `-o` or `--histogram`), `-o` together with `--out-dir`, an `--out-dir` folder that doesn't exist, or two inputs that would be written under the same name. Prism prints `error: <reason>` and then the usage text |
+| 2 | The command line is wrong: no input, a missing value, an unknown option, an option given twice, a number outside its range, a `--format` other than `jpg` or `png` or without `--out-dir`, none of `-o`, `--out-dir` and `--histogram`, `--raw-half` or `--raw-camera-matrix` on a PNG or JPEG, several inputs without `--out-dir` (or with `-o` or `--histogram`), `-o` together with `--out-dir`, an `--out-dir` folder that doesn't exist, or two inputs that would be written under the same name. Prism prints `error: <reason>` and then the usage text |
 
 Errors go to stderr.
 

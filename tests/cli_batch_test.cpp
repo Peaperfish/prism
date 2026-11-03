@@ -423,3 +423,57 @@ TEST_F(CliBatch, ASingleInputWithTheExistingOptionsIsUnchanged) {
     EXPECT_EQ(extra.exit_code, 2) << extra.output;
     EXPECT_EQ(extra.output.rfind("error: unexpected argument '--nope'\n\n", 0), 0u) << extra.output;
 }
+
+TEST_F(CliBatch, FormatPngWritesPngFiles) {
+    const fs::path a = write_input("a.png", 1);
+    const fs::path b = write_input("b.png", 2);
+    fs::create_directory(path("out"));
+    const RunResult r = run_prism(quoted(a) + " " + quoted(b) + " --curve filmic --format png " +
+                                  "--out-dir " + quoted(path("out")));
+    ASSERT_EQ(r.exit_code, 0) << r.output;
+    for (const fs::path& input : {a, b}) {
+        const std::string stem = input.stem().string();
+        const std::string written = read_bytes(path("out") / (stem + "_prism.png"));
+        EXPECT_EQ(written.substr(0, 8), "\x89PNG\r\n\x1a\n") << stem;
+        const RunResult one =
+            run_prism(quoted(input) + " --curve filmic -o " + quoted(path(stem + "_o.png")));
+        ASSERT_EQ(one.exit_code, 0) << one.output;
+        EXPECT_EQ(written, read_bytes(path(stem + "_o.png"))) << stem;
+    }
+}
+
+TEST_F(CliBatch, FormatJpgIsTheDefaultAndTheSameJpegAsO) {
+    const fs::path a = write_input("a.png", 1);
+    fs::create_directory(path("default"));
+    fs::create_directory(path("jpg"));
+    ASSERT_EQ(run_prism(quoted(a) + " --out-dir " + quoted(path("default"))).exit_code, 0);
+    ASSERT_EQ(run_prism(quoted(a) + " --format jpg --out-dir " + quoted(path("jpg"))).exit_code, 0);
+    ASSERT_EQ(run_prism(quoted(a) + " -o " + quoted(path("o.jpg"))).exit_code, 0);
+
+    const std::string by_default = read_bytes(path("default") / "a_prism.jpg");
+    EXPECT_EQ(by_default.substr(0, 2), "\xff\xd8") << "a JPEG starts with FF D8";
+    EXPECT_EQ(by_default, read_bytes(path("jpg") / "a_prism.jpg"));
+    EXPECT_EQ(by_default, read_bytes(path("o.jpg")));
+}
+
+TEST_F(CliBatch, FormatNeedsOutDirAndJpgOrPng) {
+    const fs::path a = write_input("a.png", 1);
+    fs::create_directory(path("out"));
+
+    RunResult r = run_prism(quoted(a) + " --format png -o " + quoted(path("x.jpg")));
+    EXPECT_EQ(r.exit_code, 2) << r.output;
+    EXPECT_TRUE(contains(r.output, "error: --format only applies to --out-dir")) << r.output;
+    EXPECT_FALSE(fs::exists(path("x.jpg")));
+
+    for (const char* bad : {"jpeg", "PNG", "tiff", ""}) {
+        r = run_prism(quoted(a) + " --format \"" + bad + "\" --out-dir " + quoted(path("out")));
+        EXPECT_EQ(r.exit_code, 2) << bad << ": " << r.output;
+        EXPECT_TRUE(
+            contains(r.output, "error: --format needs jpg or png, got '" + std::string(bad) + "'"))
+            << r.output;
+    }
+    r = run_prism(quoted(a) + " --format png --format jpg --out-dir " + quoted(path("out")));
+    EXPECT_EQ(r.exit_code, 2) << r.output;
+    EXPECT_TRUE(contains(r.output, "--format given more than once")) << r.output;
+    EXPECT_TRUE(fs::is_empty(path("out")));
+}
