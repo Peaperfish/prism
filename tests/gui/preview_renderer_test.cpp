@@ -771,6 +771,39 @@ TEST(PreviewStrip, TheMiddleBandIsTheSameCropOfANormalRender) {
     }
 }
 
+TEST(PreviewStrip, TheMiddleBandIsACropOfTheWholeNormalRenderInEitherOrientation) {
+    // A normal render of the whole picture at the current exposure, then cropped to the middle
+    // band: landscape and portrait (odd sizes, so the bands are uneven), at Contrast and the other
+    // stages, for every step, single- and multi-threaded.
+    for (const auto& size : {std::pair{67, 41}, std::pair{41, 67}, std::pair{2, 7}}) {
+        const auto base = make_base(size.first, size.second);
+        EditSettings s = every_stage();
+        s.exposure_stops = -0.35f;
+        for (const StageId stage : {StageId::contrast, StageId::exposure, StageId::curve}) {
+            prism::gui::PreviewOptions plain;
+            plain.clip_mask = true;
+            const auto normal = prism::gui::render_preview(*base, s, 1, {}, {}, stage, plain);
+            ASSERT_TRUE(normal);
+            for (const auto step : {prism::gui::StripStep::third, prism::gui::StripStep::half,
+                                    prism::gui::StripStep::whole}) {
+                for (const int threads : {1, 0}) {
+                    const auto strip = prism::gui::render_preview(
+                        *base, s, threads, {}, {}, stage, strip_options(step, false, true));
+                    ASSERT_TRUE(strip);
+                    const StripRect r = strip->strip[2].rect;
+                    ASSERT_GT(r.width * r.height, 0);
+                    EXPECT_EQ(bytes_of(strip->rgb8, size.first, r, 3),
+                              bytes_of(normal->rgb8, size.first, r, 3))
+                        << size.first << "x" << size.second << " stage " << int(stage);
+                    EXPECT_EQ(bytes_of(strip->clip_mask, size.first, r, 1),
+                              bytes_of(normal->clip_mask, size.first, r, 1))
+                        << size.first << "x" << size.second << " stage " << int(stage);
+                }
+            }
+        }
+    }
+}
+
 TEST(PreviewStrip, WithExposureOffTheMiddleBandIsUnedited) {
     const auto base = make_base(40, 20);
     EditSettings s = every_stage();
