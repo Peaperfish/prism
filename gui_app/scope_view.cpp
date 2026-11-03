@@ -110,6 +110,7 @@ void ScopeView::rebuild(gui::ScopeChoice which, gui::Theme theme) {
 }
 
 void ScopeView::draw(gui::ScopeChoice which, gui::Theme theme, float avail_w, float s) {
+    skin_hovered_ = false;
     if (dirty_ || which != built_for_ || theme != built_theme_) {
         rebuild(which, theme);
     }
@@ -215,6 +216,7 @@ void ScopeView::draw(gui::ScopeChoice which, gui::Theme theme, float avail_w, fl
             const float dx = m.x - (centre.x + d.x * t);
             const float dy = m.y - (centre.y + d.y * t);
             if (dx * dx + dy * dy <= metrics.scope_hit * metrics.scope_hit) {
+                skin_hovered_ = true;
                 ImGui::SetTooltip("Skin tones usually sit near this line.");
             }
         }

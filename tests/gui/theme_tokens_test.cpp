@@ -134,6 +134,21 @@ TEST(ThemeTokens, PlotBoxSitsCalmlyInThePanel) {
     }
 }
 
+TEST(ThemeTokens, ExplainAreaTextIsReadableInBothThemes) {
+    for (const TokenSet& set : token_sets()) {
+        const TokenColours& c = set.colours;
+        // The Explain area sits on the plot fill: summary and detail in the body colour, the live
+        // line and the hint in the muted one.
+        EXPECT_GE(contrast_ratio(c.text, c.plot_bg), 4.5f) << label(set);
+        EXPECT_GE(contrast_ratio(c.text_muted, c.plot_bg), 4.5f) << label(set);
+        EXPECT_GT(set.metrics.explain_pad.x, 0.0f) << label(set);
+        EXPECT_GT(set.metrics.explain_pad.y, 0.0f) << label(set);
+        EXPECT_GT(set.metrics.explain_gap, 0.0f) << label(set);
+        // The small type the Explain area is set in stays readable.
+        EXPECT_GE(set.type.small, 12.0f) << label(set);
+    }
+}
+
 TEST(ThemeTokens, CanvasIsNeutralAndNeitherBlackNorWhite) {
     for (const TokenSet& set : token_sets()) {
         const Rgba& canvas = set.colours.canvas;
@@ -165,7 +180,7 @@ TEST(ThemeTokens, TypeSizesAreAsDesigned) {
 
 // Every field of TokenMetrics is a float or two; a field added without teaching scaled() about it
 // would not scale, so the size is pinned here.
-static_assert(sizeof(TokenMetrics) == 74 * sizeof(float));
+static_assert(sizeof(TokenMetrics) == 77 * sizeof(float));
 
 TEST(ThemeTokens, EverySizeScalesLinearlyWithTheInterfaceScale) {
     for (const TokenSet& set : token_sets()) {

@@ -5,13 +5,16 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "file_dialogs.hpp"
 #include "preview_texture.hpp"
 #include "scope_view.hpp"
 #include "prism/gui/background_export.hpp"
+#include "prism/gui/clip_note.hpp"
 #include "prism/gui/clipping.hpp"
+#include "prism/gui/explanations.hpp"
 #include "prism/gui/histogram.hpp"
 #include "prism/gui/layout.hpp"
 #include "prism/gui/live_preview.hpp"
@@ -96,7 +99,23 @@ private:
     // Both halves of the picture drawn at `at` with size `shown`, the divider and the two chips.
     void draw_split(ImDrawList* draw, ImVec2 at, ImVec2 shown);
     void draw_splitter(float canvas_width, float width, float height, float available);
+    // The control panel with the Explain area under it (when on); `height` is for both.
+    void draw_panel_column(float height);
     void draw_panel();
+    // The Explain area (#16). explain() is called right after a control is submitted: it notes
+    // the control as hovered, focused or changed, for the next frame's area. describe() does that
+    // and also shows the control's one-line summary as its tooltip once the mouse rests on it.
+    void explain(std::string_view id, bool changed = false);
+    void describe(std::string_view id, bool changed = false,
+                  ImGuiHoveredFlags tooltip_after = ImGuiHoveredFlags_DelayNormal);
+    struct ExplainText {
+        std::string summary;
+        std::string detail;
+        std::string live;
+    };
+    [[nodiscard]] ExplainText explain_text() const;
+    [[nodiscard]] float explain_height(float width, float max_height) const;
+    void draw_explain_area(float width, float height);
     void draw_histogram();
     void draw_histogram_graph(const gui::StageHistogram& h, float avail_w);
     void draw_clip_chips(const gui::StageHistogram& h, float avail_w);
@@ -173,6 +192,14 @@ private:
     std::optional<gui::Error> error_;  // shown as a banner until dismissed
     bool error_details_open_ = false;  // the banner's Details are unfolded
     std::string notice_;               // a short note that isn't an error, e.g. "Saved ..."
+
+    // The Explain area follows the hovered control, else the focused one, else the last one
+    // dragged or changed. The three are filled while a frame is drawn; the area shows the choice
+    // made at the end of the previous frame, so its size and text always agree within a frame.
+    std::string explain_hover_;
+    std::string explain_focus_;
+    std::string explain_last_;
+    std::string explain_shown_;
 
     std::filesystem::path prefs_file_;
     gui::Preferences prefs_;

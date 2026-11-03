@@ -27,6 +27,9 @@ public:
 
     [[nodiscard]] bool has_data() const noexcept { return scopes_.has_value(); }
 
+    // True if the last draw() had the mouse on the vectorscope's skin-tone line.
+    [[nodiscard]] bool skin_line_hovered() const noexcept { return skin_hovered_; }
+
     // Draws `which` (not the histogram) into the next `avail_w` x scope_height(...) area of the
     // current ImGui window. Draws the empty panel when there is no data yet.
     void draw(gui::ScopeChoice which, gui::Theme theme, float avail_w, float scale);
@@ -39,6 +42,7 @@ private:
     SDL_Texture* texture_ = nullptr;
     int texture_width_ = 0;
     std::optional<gui::Scopes> scopes_;
+    bool skin_hovered_ = false;
     bool dirty_ = true;  // the texture does not show scopes_ / the choice / the theme yet
     gui::ScopeChoice built_for_ = gui::ScopeChoice::waveform;
     gui::Theme built_theme_ = gui::Theme::dark;

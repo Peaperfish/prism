@@ -103,6 +103,10 @@ struct TokenMetrics {
     // from the band's corner; the strip bar's step pills (padding) and the bar's widest line.
     float strip_divider_width, strip_hover_edge_width, strip_chip_margin;
     float strip_pill_pad_x, strip_pill_pad_y, strip_bar_wrap;
+    // The Explain area at the foot of the control panel: its padding and the gap between its
+    // summary, detail and live line.
+    Vec2 explain_pad;
+    float explain_gap;
 };
 
 // Type sizes in points at 100%.

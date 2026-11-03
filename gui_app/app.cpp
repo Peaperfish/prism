@@ -13,6 +13,7 @@
 #include "macos_menu.hpp"
 #include "theme.hpp"
 #include "widgets.hpp"
+#include "prism/gui/explanations.hpp"
 #include "prism/gui/file_types.hpp"
 #include "prism/gui/layout.hpp"
 #include "prism/gui/presets.hpp"
@@ -198,6 +199,7 @@ void App::open_now(const fs::path& path) {
     compare_stage_.reset();
     strip_.reset();
     strip_bands_.clear();
+    explain_last_.clear();
     SDL_SetWindowTitle(window_, ("Prism - " + file_name(path)).c_str());
 }
 
@@ -450,6 +452,8 @@ void App::frame() {
         open_now(path);
     }
     take_export_result();
+    explain_hover_.clear();
+    explain_focus_.clear();
     handle_shortcuts();
     update_preview();
 
@@ -494,9 +498,7 @@ void App::frame() {
     ImGui::SameLine(0.0f, 0.0f);
     draw_splitter(canvas, splitter, body_height, avail.x);
     ImGui::SameLine(0.0f, 0.0f);
-    ImGui::BeginChild("panel", ImVec2(0, body_height), ImGuiChildFlags_Borders);
-    draw_panel();
-    ImGui::EndChild();
+    draw_panel_column(body_height);
 
     draw_status_bar();
     draw_saving_popup();
@@ -510,6 +512,9 @@ void App::frame() {
         pending_open_shown_ = true;
     }
     // For Esc next frame: ImGui will have used the key on these before the app sees it.
+    explain_shown_ = !explain_hover_.empty() ? explain_hover_
+                     : !explain_focus_.empty() ? explain_focus_
+                                               : explain_last_;
     popup_open_last_frame_ =
         ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
     item_active_last_frame_ = ImGui::IsAnyItemActive();
@@ -859,6 +864,9 @@ void App::draw_strip_bar(float width) {
     ImGui::PushTextWrapPos(0.0f);
     ImGui::TextUnformatted(gui::strip_teaching_line(current).c_str());
     ImGui::PopTextWrapPos();
+    if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)) {
+        explain_hover_ = std::string(gui::explain::strip_line);
+    }
     ImGui::EndChild();
     ImGui::PopStyleVar(2);
     ImGui::PopStyleColor(2);
@@ -986,13 +994,13 @@ void App::draw_strip_button() {
     ImGui::EndDisabled();
     ImGui::PopStyleVar();
     ImGui::PopFont();
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled)) {
-        if (!on && !available) {
+    if (!on && !available) {
+        explain(gui::explain::strip);
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled)) {
             ImGui::SetTooltip("%s", gui::strip_unavailable_hint());
-        } else {
-            ImGui::SetTooltip("Shows the photo in bands, each at a different exposure, to pick "
-                              "the one you like (T).");
         }
+    } else {
+        describe(gui::explain::strip);
     }
 }
 
@@ -1149,6 +1157,9 @@ void App::draw_stage_badge() {
     if (ImGui::SmallButton("Final image (Esc)")) {
         viewed_stage_ = gui::final_stage;
     }
+    if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)) {
+        explain_hover_ = std::string(gui::explain::viewing);
+    }
     ImGui::EndChild();
     ImGui::PopStyleVar();
     ImGui::PopStyleColor(3);
@@ -1167,6 +1178,120 @@ void App::draw_splitter(float canvas_width, float width, float height, float ava
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal) && !ImGui::IsItemActive()) {
         ImGui::SetTooltip("Drag to resize the panel");
     }
+}
+
+void App::explain(std::string_view id, bool changed) {
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        explain_hover_ = id;
+    }
+    if (ImGui::IsItemFocused()) {
+        explain_focus_ = id;
+    }
+    if (changed || ImGui::IsItemActive() || ImGui::IsItemDeactivatedAfterEdit()) {
+        explain_last_ = id;
+    }
+}
+
+// explain(), and the control's summary as its tooltip. A disabled control still explains itself.
+void App::describe(std::string_view id, bool changed, ImGuiHoveredFlags tooltip_after) {
+    explain(id, changed);
+    if (ImGui::IsItemHovered(tooltip_after | ImGuiHoveredFlags_AllowWhenDisabled)) {
+        if (const gui::Explanation* e = gui::explanation_for(id)) {
+            ImGui::SetTooltip("%s", std::string(e->summary).c_str());
+        }
+    }
+}
+
+App::ExplainText App::explain_text() const {
+    const gui::Explanation* e = gui::explanation_for(explain_shown_);
+    if (e == nullptr) {
+        return {"Point at a control to see what it does to the light.", "", ""};
+    }
+    gui::LiveContext context;
+    context.kind = session_.kind();
+    context.viewed = viewed_stage_;
+    context.compare = gui::effective_compare(viewed_stage_, compare_stage_);
+    context.histogram = histogram_ ? &*histogram_ : nullptr;
+    context.clips = clips_ ? &*clips_ : nullptr;
+    context.strip_step = strip_ ? strip_->step : strip_step_;
+    return {std::string(e->summary), std::string(e->detail),
+            gui::live_line(explain_shown_, session_.settings(), context)};
+}
+
+// The height the Explain area needs for its text at `width`, never more than `max_height`.
+float App::explain_height(float width, float max_height) const {
+    const gui::TokenMetrics& m = token_metrics();
+    const ExplainText text = explain_text();
+    const float wrap = std::max(1.0f, width - 2 * m.explain_pad.x - 2 * m.window_border);
+    float height = 2 * m.explain_pad.y + 2 * m.window_border;
+    int parts = 0;
+    const auto add = [&](const std::string& s, ImFont* font) {
+        if (s.empty()) {
+            return;
+        }
+        ImGui::PushFont(font, token_type().small);
+        height += ImGui::CalcTextSize(s.c_str(), nullptr, false, wrap).y;
+        ImGui::PopFont();
+        if (parts++ > 0) {
+            height += m.explain_gap;
+        }
+    };
+    add(text.summary, fonts().semibold);
+    add(text.detail, nullptr);
+    add(text.live, nullptr);
+    return std::min(height, max_height);
+}
+
+void App::draw_explain_area(float width, float height) {
+    const gui::TokenMetrics& m = token_metrics();
+    const gui::TokenColours& c = token_colours();
+    const auto vec = [](const gui::Rgba& rgba) { return ImVec4(rgba.r, rgba.g, rgba.b, rgba.a); };
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, vec(c.plot_bg));
+    ImGui::PushStyleColor(ImGuiCol_Border, vec(c.plot_border));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(m.explain_pad.x, m.explain_pad.y));
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, m.plot_rounding);
+    ImGui::BeginChild("explain", ImVec2(width, height),
+                      ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding);
+    const ExplainText text = explain_text();
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, m.explain_gap));
+    const auto part = [&](const std::string& s, ImFont* font, ImVec4 colour) {
+        if (s.empty()) {
+            return;
+        }
+        ImGui::PushFont(font, token_type().small);
+        ImGui::PushStyleColor(ImGuiCol_Text, colour);
+        ImGui::TextUnformatted(s.c_str());
+        ImGui::PopStyleColor();
+        ImGui::PopFont();
+    };
+    const bool hint = gui::explanation_for(explain_shown_) == nullptr;
+    part(text.summary, hint ? nullptr : fonts().semibold, vec(hint ? c.text_muted : c.text));
+    part(text.detail, nullptr, vec(c.text));
+    part(text.live, nullptr, vec(c.text_muted));
+    ImGui::PopStyleVar();
+    ImGui::PopTextWrapPos();
+    ImGui::EndChild();
+    ImGui::PopStyleVar(2);
+    ImGui::PopStyleColor(2);
+}
+
+void App::draw_panel_column(float height) {
+    const float width = ImGui::GetContentRegionAvail().x;
+    const bool explaining = prefs_.show_explanations && session_.has_file();
+    const float spacing = ImGui::GetStyle().ItemSpacing.y;
+    // At most 45% of the panel's height, so the controls keep room; a longer text scrolls.
+    const float explain_h = explaining ? explain_height(width, height * 0.45f) : 0.0f;
+    ImGui::BeginGroup();
+    ImGui::BeginChild("panel",
+                      ImVec2(width, std::max(1.0f, height - (explaining ? explain_h + spacing : 0.0f))),
+                      ImGuiChildFlags_Borders);
+    draw_panel();
+    ImGui::EndChild();
+    if (explaining) {
+        draw_explain_area(width, explain_h);
+    }
+    ImGui::EndGroup();
 }
 
 void App::draw_panel() {
@@ -1220,7 +1345,8 @@ void App::draw_panel() {
     draw_simple_slider("Contrast", gui::SimpleControl::contrast);
     draw_simple_slider("Colour", gui::SimpleControl::colour);
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-    ImGui::TextWrapped("Right-click a slider to reset it.");
+    ImGui::TextWrapped("Right-click a slider to reset it. Ctrl-click (Cmd-click on Mac) to type a "
+                       "value.");
     ImGui::PopStyleColor();
 
     draw_pipeline();
@@ -1251,6 +1377,10 @@ void App::draw_histogram() {
         draw_histogram_graph(h, avail_w);
     } else {
         scope_view_.draw(prefs_.scope, theme(), avail_w, ui_scale());
+    }
+    explain(gui::explain_id(prefs_.scope));
+    if (prefs_.scope == gui::ScopeChoice::vectorscope && scope_view_.skin_line_hovered()) {
+        explain_hover_ = std::string(gui::explain::scope_skin);
     }
     draw_clip_chips(h, avail_w);
     draw_scope_selector();
@@ -1347,7 +1477,8 @@ void App::draw_clip_chips(const gui::StageHistogram& h, float avail_w) {
 
     const auto draw_clip_chip = [&](const char* id, const char* label, bool left_arrow, bool active,
                                     ImU32 active_fill, ImU32 active_border, std::uint64_t r_clip, std::uint64_t g_clip,
-                                    std::uint64_t b_clip, const char* tooltip_title) {
+                                    std::uint64_t b_clip, const char* tooltip_title,
+                                    std::string_view explain_id) {
         ImGui::InvisibleButton(id, ImVec2(chip_w, chip_h));
         const ImVec2 cmin = ImGui::GetItemRectMin();
         const ImVec2 cmax = ImGui::GetItemRectMax();
@@ -1377,6 +1508,7 @@ void App::draw_clip_chips(const gui::StageHistogram& h, float avail_w) {
                           label);
         }
 
+        explain(explain_id);
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("%s\nR %.2f%%   G %.2f%%   B %.2f%%", tooltip_title,
                               gui::pixel_percent(r_clip, h.pixel_count),
@@ -1387,37 +1519,30 @@ void App::draw_clip_chips(const gui::StageHistogram& h, float avail_w) {
 
     draw_clip_chip("##clip_shadows", "Shadows", true, shadows_clipped, rgba(tokens.chip_shadows),
                    rgba(tokens.chip_shadows, 0.25f), h.red_clips.under_black, h.green_clips.under_black, h.blue_clips.under_black,
-                   "Shadows clipped (below black):");
+                   "Shadows clipped (below black):", gui::explain::chip_under);
     ImGui::SameLine(0.0f, gap);
     draw_clip_chip("##clip_highlights", "Highlights", false, highlights_clipped,
                    rgba(tokens.chip_highlights), rgba(tokens.chip_highlights, 0.25f), h.red_clips.over_white, h.green_clips.over_white,
-                   h.blue_clips.over_white, "Highlights clipped (above white):");
+                   h.blue_clips.over_white, "Highlights clipped (above white):",
+                   gui::explain::chip_over);
 }
 
 void App::draw_scope_selector() {
     struct Choice {
         gui::ScopeChoice scope;
         const char* label;
-        const char* tip;
     };
     static const Choice choices[] = {
-        {gui::ScopeChoice::histogram, "Histogram",
-         "Shows how many pixels are at each brightness, from black on the left to white on the "
-         "right."},
-        {gui::ScopeChoice::parade, "Parade",
-         "Shows how bright the red, green and blue parts of the image are, side by side, from "
-         "left to right."},
-        {gui::ScopeChoice::waveform, "Waveform",
-         "Shows how bright each part of the image is, from left to right."},
-        {gui::ScopeChoice::vectorscope, "Vectorscope",
-         "Shows which colours are in the image and how strong they are; the centre is neutral "
-         "grey."},
+        {gui::ScopeChoice::histogram, "Histogram"},
+        {gui::ScopeChoice::parade, "Parade"},
+        {gui::ScopeChoice::waveform, "Waveform"},
+        {gui::ScopeChoice::vectorscope, "Vectorscope"},
     };
     const float avail = std::max(1.0f, ImGui::GetContentRegionAvail().x);
     const float spacing = ImGui::GetStyle().ItemSpacing.x;
     // A slightly smaller font, so the full names fit in one row at the default panel width.
     ImGui::PushFont(nullptr, token_type().small);
-    const char* hovered_tip = nullptr;
+    std::string_view hovered_id;
     const float pad = token_metrics().selector_pad;  // tighter than a button so all four fit a row
     const float gap = token_metrics().selector_gap;  // and closer together
     float needed = 3 * gap;
@@ -1449,15 +1574,16 @@ void App::draw_scope_selector() {
         if (selected) {
             ImGui::PopStyleColor();
         }
+        explain(gui::explain_id(c.scope));
         if (ImGui::IsItemHovered()) {
-            hovered_tip = c.tip;
+            hovered_id = gui::explain_id(c.scope);
         }
         ++index;
     }
     ImGui::PopStyleVar();
     ImGui::PopFont();
-    if (hovered_tip != nullptr) {
-        ImGui::SetTooltip("%s", hovered_tip);  // in the normal font size
+    if (const gui::Explanation* e = gui::explanation_for(hovered_id)) {
+        ImGui::SetTooltip("%s", std::string(e->summary).c_str());  // in the normal font size
     }
 }
 
@@ -1477,12 +1603,7 @@ void App::draw_clip_overlay_button() {
     }
     ImGui::PopStyleVar();
     ImGui::PopFont();
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip(
-            "Marks pixels that are brighter than white (orange-red), have no light left "
-            "(blue) or are too saturated for sRGB (violet stripes).\nPixels an earlier stage "
-            "already clipped stay marked at the stages after it.");
-    }
+    describe(gui::explain::clip_overlay, false, ImGuiHoveredFlags_None);
 }
 
 void App::draw_presets() {
@@ -1497,18 +1618,20 @@ void App::draw_presets() {
                 gui::apply_preset(s, preset);
                 report(session_.set_settings(s));  // one undo step
             }
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("%s", std::string(preset.description).c_str());
-            }
+            describe(gui::explain_id(preset), false, ImGuiHoveredFlags_None);
         }
         ImGui::EndCombo();
     }
+    describe(gui::explain::look, false, ImGuiHoveredFlags_None);
     const gui::Preset& start = gui::default_preset(kind);
-    if (&start != current &&
-        ImGui::Button(("Reset to " + std::string(start.name)).c_str())) {
-        gui::EditSettings s = session_.settings();
-        gui::apply_preset(s, start);
-        report(session_.set_settings(s));
+    if (&start != current) {
+        const bool reset = ImGui::Button(("Reset to " + std::string(start.name)).c_str());
+        describe(gui::explain::look_reset, reset);
+        if (reset) {
+            gui::EditSettings s = session_.settings();
+            gui::apply_preset(s, start);
+            report(session_.set_settings(s));
+        }
     }
 }
 
@@ -1603,6 +1726,7 @@ void App::draw_slider(const char* label, gui::SimpleControl control, bool in_sta
     gui::apply_simple_control(edited, control, value);
     // A drag updates the preview every frame but becomes one undo step, on release.
     report(gui::apply_slider_frame(session_, frame, edited));
+    explain(in_stage_row ? gui::explain_id(stage) : gui::explain_id(control), changed);
 
     if (ImGui::BeginPopupContextItem("reset")) {
         const std::string neutral =
@@ -1731,6 +1855,7 @@ void App::draw_clipping_summary() {
     ImGui::Spacing();
     ImGui::PushTextWrapPos(0.0f);
     ImGui::TextUnformatted(gui::describe_clipping(*clips_).c_str());
+    explain(gui::explain::clip_summary);
     const bool hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal);
     const std::string gamut = gui::describe_gamut(*clips_);
     if (!gamut.empty()) {
@@ -1739,9 +1864,7 @@ void App::draw_clipping_summary() {
     }
     ImGui::PopTextWrapPos();
     if (hovered) {
-        ImGui::SetTooltip(
-            "Detail is lost only where a stage cuts values off at white or black.\n"
-            "Until then the values are kept, so a later stage can still bring them back.");
+        ImGui::SetTooltip("%s", std::string(gui::explanation_for(gui::explain::clip_summary)->summary).c_str());
     }
 }
 
@@ -1782,9 +1905,11 @@ void App::draw_curve_controls() {
                 gui::set_curve_kind(s, kind);
                 report(session_.set_settings(s));
             }
+            explain(gui::explain_id(kind));
         }
         ImGui::EndCombo();
     }
+    explain(gui::explain_id(gui::StageId::curve));
     if (ImGui::BeginPopupContextItem("reset_kind")) {
         if (ImGui::MenuItem("Reset to None")) {
             gui::EditSettings s = current;
@@ -1826,6 +1951,9 @@ void App::draw_curve_controls() {
         // Unmoved, the value stays exactly as stored rather than going through the mapping.
         gui::set_curve_parameter(edited, changed ? gui::curve_value_at(*p, position) : value);
         report(gui::apply_slider_frame(session_, frame, edited));
+        explain(current.curve == gui::CurveKind::gamma ? gui::explain::curve_gamma_value
+                                                       : gui::explain::curve_white,
+                changed);
         if (ImGui::BeginPopupContextItem("reset_parameter")) {
             char neutral[16];
             std::snprintf(neutral, sizeof neutral, "Reset to %g",
@@ -1860,9 +1988,7 @@ void App::draw_compare_controls() {
         strip_.reset();
     }
     ImGui::EndDisabled();
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled)) {
-        ImGui::SetTooltip("Swap the two halves.");
-    }
+    describe(gui::explain::compare_swap);
     ImGui::SetNextItemWidth(-FLT_MIN);
     const std::string current = shown ? gui::stage_caption(*shown) : std::string("Off");
     if (styled_begin_combo("##compare_with", current.c_str())) {
@@ -1883,10 +2009,7 @@ void App::draw_compare_controls() {
         }
         ImGui::EndCombo();
     }
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
-        ImGui::SetTooltip("Show another point in the pipeline next to the one you're viewing.\n"
-                          "It is the left half; the stage you click below is the right half.");
-    }
+    describe(gui::explain::compare);
 }
 
 void App::draw_pipeline() {
@@ -1937,6 +2060,7 @@ void App::draw_pipeline() {
                 style.FrameRounding);
         }
         const bool row_hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal);
+        explain(gui::explain_id(stage.id));
 
         ImGui::SetCursorScreenPos(ImVec2(row_pos.x + inset, row_pos.y));
         if (stage.can_toggle) {
@@ -1946,9 +2070,7 @@ void App::draw_pipeline() {
                 gui::set_stage_enabled(s, stage.id, on);
                 report(session_.set_settings(s));  // one undo step in History
             }
-            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
-                ImGui::SetTooltip("%s", std::string(stage.description).c_str());
-            }
+            describe(gui::explain_id(stage.id));
         } else {
             ImGui::Dummy(ImVec2(box, row_h));
         }
@@ -1972,8 +2094,11 @@ void App::draw_pipeline() {
 
         const bool over_indicator =
             clips_ && !strip_ && draw_stage_clip_indicator(clips_->at(stage.id), row_min, row_max, name_baseline);
-        if (row_hovered && !over_indicator) {
-            ImGui::SetTooltip("%s", std::string(stage.description).c_str());
+        if (over_indicator) {
+            explain_hover_ = std::string(gui::explain::clip_dot);
+        } else if (row_hovered) {
+            ImGui::SetTooltip("%s",
+                              std::string(gui::explanation_for(gui::explain_id(stage.id))->summary).c_str());
         }
         if (gui::hidden_by_view(session_.settings(), stage.id, viewed_stage_, compare_stage_)) {
             // An edit after the viewed stage changes the photo but not what is on screen.
@@ -2059,10 +2184,13 @@ void App::draw_preferences() {
     section_text("Appearance");
     int theme = static_cast<int>(p.theme);
     styled_radio("System", &theme, static_cast<int>(gui::ThemeChoice::system));
+    describe(gui::explain::pref_theme);
     ImGui::SameLine();
     styled_radio("Light", &theme, static_cast<int>(gui::ThemeChoice::light));
+    describe(gui::explain::pref_theme);
     ImGui::SameLine();
     styled_radio("Dark", &theme, static_cast<int>(gui::ThemeChoice::dark));
+    describe(gui::explain::pref_theme);
     p.theme = static_cast<gui::ThemeChoice>(theme);
 
     section_text("Interface size");
@@ -2085,6 +2213,7 @@ void App::draw_preferences() {
         }
         ImGui::EndCombo();
     }
+    describe(gui::explain::pref_size);
     ImGui::SameLine();
     ImGui::TextDisabled("Auto follows the display.");
 
@@ -2105,12 +2234,17 @@ void App::draw_preferences() {
                           gui::panel_width_default, ImGuiSliderFlags_AlwaysClamp)) {
         p.panel_width = gui::clamp_panel_width(width);
     }
+    describe(gui::explain::pref_panel);
     const bool dragging = ImGui::IsItemActive();
     const bool released = ImGui::IsItemDeactivatedAfterEdit();
     if (ImGui::Button("Reset layout")) {
         p.panel_width = gui::panel_width_default;
     }
     ImGui::TextDisabled("You can also drag the panel's left edge.");
+
+    section_text("Help");
+    styled_checkbox("Show explanations", &p.show_explanations);
+    describe(gui::explain::pref_explain);
 
     ImGui::Separator();
     if (ImGui::Button("Restore defaults")) {
@@ -2217,3 +2351,4 @@ void App::draw_saving_popup() {
 }
 
 }  // namespace prism::gui_app
+
