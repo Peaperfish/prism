@@ -18,6 +18,7 @@
 #include "prism/gui/preferences.hpp"
 #include "prism/gui/session.hpp"
 #include "prism/gui/settings.hpp"
+#include "prism/gui/test_strip.hpp"
 
 namespace prism::gui_app {
 
@@ -75,6 +76,20 @@ private:
     void draw_menu();
     void draw_canvas();
     void draw_banner();
+    // The test strip. Whether it is on and usable (strip_ is cleared when the viewed stage can't
+    // show it).
+    [[nodiscard]] bool strip_active() const { return strip_.has_value(); }
+    void toggle_test_strip();
+    void set_strip_step(gui::StripStep step);
+    // The bar above the canvas: step choice, close, the teaching line.
+    void draw_strip_bar(float width);
+    // Dividers, chips, the hovered band's highlight and the click, over the picture drawn at
+    // `at` with size `shown`.
+    void draw_strip_bands(ImDrawList* draw, ImVec2 at, ImVec2 shown);
+    // Makes the histogram and scopes those of band `band` of the frame on screen.
+    void show_strip_band(int band);
+    // The Test strip button of the Brightness slider (Adjust and the Exposure stage row).
+    void draw_strip_button();
     void draw_stage_badge();
     // True while the canvas shows two halves: a compare stage is set and its picture has arrived.
     [[nodiscard]] bool splitting() const;
@@ -119,6 +134,14 @@ private:
     PreviewTexture texture_;
     ScopeView scope_view_;
     std::optional<gui::StageHistogram> histogram_;
+    // The test strip: on (with its step), the step chosen last (it comes back when the strip is
+    // turned on again), and, for the frame on screen, each band's histogram and scopes. The
+    // histogram_ and scopes shown are those of strip_shown_band_ (the hovered band, else the
+    // middle one). View state like the compare stage: not in the settings or undo.
+    std::optional<gui::TestStrip> strip_;
+    gui::StripStep strip_step_ = gui::strip_default_step;
+    std::vector<gui::StripBandFrame> strip_bands_;
+    int strip_shown_band_ = -1;
     gui::StageId histogram_stage_ = gui::final_stage;  // the stage histogram_ was measured on
     gui::StageId viewed_stage_ = gui::final_stage;
     // The stage to compare the viewed one with (Original is Decode), or none. View state like

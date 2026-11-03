@@ -18,6 +18,7 @@
 #include "prism/gui/presets.hpp"
 #include "prism/gui/slider_gesture.hpp"
 #include "prism/gui/stage_controls.hpp"
+#include "prism/gui/test_strip.hpp"
 #include "prism/raw.hpp"
 #include "prism/utf8_path.hpp"
 #include "prism/version.hpp"
@@ -195,6 +196,8 @@ void App::open_now(const fs::path& path) {
     scope_view_.set(std::nullopt);
     viewed_stage_ = gui::final_stage;
     compare_stage_.reset();
+    strip_.reset();
+    strip_bands_.clear();
     SDL_SetWindowTitle(window_, ("Prism - " + file_name(path)).c_str());
 }
 
@@ -254,11 +257,15 @@ void App::take_export_result() {
 void App::update_preview() {
     // Scopes, the per-stage clipping and the clip mask are only computed while they are on screen
     // (the pipeline view open, the overlay on); the histogram comes with every frame.
+    if (strip_ && !gui::strip_available(viewed_stage_)) {
+        strip_.reset();  // the Decode stage shows no edit, so there is nothing to vary
+    }
     gui::PreviewOptions options;
     options.scopes = prefs_.scope != gui::ScopeChoice::histogram;
-    options.clip_report = pipeline_open_;
+    options.clip_report = pipeline_open_ && !strip_;  // not computed while a strip is on
     options.clip_mask = prefs_.clip_overlay;
-    options.compare_stage = gui::effective_compare(viewed_stage_, compare_stage_);
+    options.compare_stage = strip_ ? std::nullopt : gui::effective_compare(viewed_stage_, compare_stage_);
+    options.test_strip = strip_;
     preview_.update(session_.preview_base(), session_.settings(), viewed_stage_, options);
     std::optional<gui::PreviewFrame> frame = preview_.poll();
     if (!frame) {
@@ -289,6 +296,12 @@ void App::update_preview() {
     clip_mask_height_ = frame->height;
     overlay_dirty_ = true;
     scope_view_.set(std::move(frame->scopes));
+    // A strip frame's histogram and scopes are the middle band's; the others wait in strip_bands_
+    // for the cursor.
+    strip_bands_ = std::move(frame->strip);
+    strip_shown_band_ = strip_bands_.empty()
+                            ? -1
+                            : gui::strip_middle(static_cast<int>(strip_bands_.size()));
     histogram_stage_ = frame->stage;  // may differ from viewed_stage_ until the next frame
     last_render_ms_ = frame->total_ms;
 }
@@ -463,12 +476,21 @@ void App::frame() {
         gui::panel_width_pixels(static_cast<float>(prefs_.panel_width), ui_scale(), avail.x);
     const float canvas = std::max(1.0f, avail.x - panel - splitter);
 
-    ImGui::BeginChild("canvas", ImVec2(canvas, body_height), ImGuiChildFlags_None,
-                      ImGuiWindowFlags_NoScrollbar);
+    // The canvas column: the test strip's bar (when on) above the canvas.
+    ImGui::BeginGroup();
+    float bar_height = 0;
+    if (strip_) {
+        const float top = ImGui::GetCursorPosY();
+        draw_strip_bar(canvas);
+        bar_height = ImGui::GetCursorPosY() - top;
+    }
+    ImGui::BeginChild("canvas", ImVec2(canvas, std::max(1.0f, body_height - bar_height)),
+                      ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar);
     draw_canvas();
     draw_banner();
     draw_stage_badge();
     ImGui::EndChild();
+    ImGui::EndGroup();
     ImGui::SameLine(0.0f, 0.0f);
     draw_splitter(canvas, splitter, body_height, avail.x);
     ImGui::SameLine(0.0f, 0.0f);
@@ -538,6 +560,7 @@ void App::handle_shortcuts() {
     // has the keyboard focus, so Esc did nothing until the picture was clicked.
     if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
         gui::EscapeContext esc;
+        esc.test_strip = strip_.has_value();
         esc.comparing = gui::effective_compare(viewed_stage_, compare_stage_).has_value();
         esc.viewing_earlier = viewed_stage_ != gui::final_stage;
         esc.text_editing = ImGui::GetIO().WantTextInput;  // as of the last frame
@@ -549,7 +572,8 @@ void App::handle_shortcuts() {
                 *focused_window_last_frame_ = false;  // the window's own open flag
                 break;
             case gui::EscapeAction::clear_test_strip:
-                break;  // the test strip has no UI yet
+                strip_.reset();
+                break;
             case gui::EscapeAction::clear_compare:
                 compare_stage_.reset();
                 break;
@@ -575,6 +599,9 @@ void App::handle_shortcuts() {
     }
     if (ImGui::Shortcut(ImGuiKey_J, ImGuiInputFlags_RouteGlobal)) {
         toggle_clip_overlay();  // J: "jumping" highlights; free of every other shortcut
+    }
+    if (ImGui::Shortcut(ImGuiKey_T, ImGuiInputFlags_RouteGlobal)) {
+        toggle_test_strip();  // T: the test strip, routed like J so typing never triggers it
     }
 }
 
@@ -629,6 +656,16 @@ void App::draw_menu() {
                             size != gui::interface_size_auto)) {
             step_interface_size(0);
         }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Test Strip", "T", strip_.has_value(),
+                            session_.has_file() &&
+                                (strip_.has_value() || gui::strip_available(viewed_stage_)))) {
+            toggle_test_strip();
+        }
+        if (session_.has_file() && !strip_ && !gui::strip_available(viewed_stage_) &&
+            ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+            ImGui::SetTooltip("%s", gui::strip_unavailable_hint());
+        }
         ImGui::EndMenu();
     }
     if (native_about_event_ == 0) {  // otherwise it's in the macOS app menu
@@ -670,6 +707,9 @@ void App::draw_canvas() {
                                    reinterpret_cast<std::uintptr_t>(texture_.overlay()))),
                                at, ImVec2(at.x + shown.x, at.y + shown.y));
             }
+            if (strip_ && !strip_bands_.empty()) {
+                draw_strip_bands(draw, at, shown);
+            }
         }
     } else if (!session_.has_file() && !pending_open_) {
         // Empty state: a dashed drop area with the one thing to do. It lights up while a file is
@@ -705,6 +745,251 @@ void App::draw_canvas() {
     if (drag_over_ && session_.has_file()) {
         draw->AddRect(min, max, colours.drop_highlight, 0.0f, 0,
                   token_metrics().drop_line_active);
+    }
+}
+
+void App::toggle_test_strip() {
+    if (!session_.has_file()) {
+        return;
+    }
+    if (strip_) {
+        strip_.reset();
+        return;
+    }
+    if (!gui::strip_available(viewed_stage_)) {
+        return;
+    }
+    gui::TestStrip strip;
+    strip.step = strip_step_;
+    strip_ = strip;
+    compare_stage_.reset();  // a comparison and a strip don't mix
+}
+
+void App::set_strip_step(gui::StripStep step) {
+    strip_step_ = step;
+    if (strip_) {
+        strip_->step = step;
+    }
+}
+
+void App::show_strip_band(int band) {
+    if (band < 0 || band >= static_cast<int>(strip_bands_.size())) {
+        return;
+    }
+    strip_shown_band_ = band;
+    histogram_ = strip_bands_[static_cast<std::size_t>(band)].histogram;
+    scope_view_.set(strip_bands_[static_cast<std::size_t>(band)].scopes);
+}
+
+// The strip's bar, above the canvas: its name, the step choice, a close button, and a line that
+// says what the steps mean. On the overlay's dark box, like the other text over the photo.
+void App::draw_strip_bar(float width) {
+    const Palette& colours = palette(theme());
+    const gui::TokenColours& tokens = token_colours();
+    const gui::TokenMetrics& metrics = token_metrics();
+    const auto rgba = [](const gui::Rgba& c) {
+        return ImGui::ColorConvertFloat4ToU32(ImVec4(c.r, c.g, c.b, c.a));
+    };
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::ColorConvertU32ToFloat4(colours.overlay_background));
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(colours.overlay_text));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
+                        ImVec2(metrics.badge_padding.x, metrics.badge_padding.y));
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, metrics.overlay_rounding);
+    ImGui::BeginChild("strip_bar", ImVec2(width, 0),
+                      ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding,
+                      ImGuiWindowFlags_NoScrollbar);
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    const float line_top = ImGui::GetCursorPosY();
+    const float frame = ImGui::GetFrameHeight();
+    ImGui::AlignTextToFramePadding();
+    ImGui::PushFont(fonts().semibold, token_type().body);
+    ImGui::TextUnformatted("Test strip");
+    ImGui::PopFont();
+
+    struct Choice {
+        gui::StripStep step;
+        const char* text;
+    };
+    const Choice choices[] = {{gui::StripStep::third, "\u2153 stop"},
+                              {gui::StripStep::half, "\u00BD stop"},
+                              {gui::StripStep::whole, "1 stop"}};
+    const gui::StripStep current = strip_->step;
+    for (const Choice& choice : choices) {
+        const ImVec2 text = ImGui::CalcTextSize(choice.text);
+        const ImVec2 size(text.x + 2 * metrics.strip_pill_pad_x,
+                          text.y + 2 * metrics.strip_pill_pad_y);
+        ImGui::SameLine();
+        ImGui::SetCursorPosY(line_top + (frame - size.y) / 2);
+        ImGui::PushID(static_cast<int>(choice.step));
+        const bool picked = ImGui::InvisibleButton("##step", size);
+        ImGui::PopID();
+        const ImVec2 min = ImGui::GetItemRectMin();
+        const ImVec2 max = ImGui::GetItemRectMax();
+        if (choice.step == current) {
+            draw->AddRectFilled(min, max, rgba(tokens.strip_pill_active), metrics.chip_rounding);
+        } else if (ImGui::IsItemHovered()) {
+            draw->AddRectFilled(min, max, rgba(tokens.strip_hover_fill), metrics.chip_rounding);
+        }
+        draw->AddText(ImVec2(min.x + metrics.strip_pill_pad_x, min.y + metrics.strip_pill_pad_y),
+                      colours.overlay_text, choice.text);
+        if (picked) {
+            set_strip_step(choice.step);
+        }
+    }
+
+    const float close_size = frame * 0.8f;
+    ImGui::SameLine(ImGui::GetContentRegionMax().x - close_size);
+    ImGui::SetCursorPosY(line_top + (frame - close_size) / 2);
+    if (ImGui::InvisibleButton("##close_strip", ImVec2(close_size, close_size))) {
+        strip_.reset();
+    }
+    const ImVec2 cmin = ImGui::GetItemRectMin();
+    const ImVec2 cmax = ImGui::GetItemRectMax();
+    if (ImGui::IsItemHovered()) {
+        draw->AddRectFilled(cmin, cmax, rgba(tokens.strip_hover_fill), metrics.chip_rounding);
+        ImGui::SetTooltip("Close the test strip (Esc)");
+    }
+    const ImVec2 mid((cmin.x + cmax.x) / 2, (cmin.y + cmax.y) / 2);
+    const float arm = metrics.chevron_size * 0.8f;
+    draw->AddLine(ImVec2(mid.x - arm, mid.y - arm), ImVec2(mid.x + arm, mid.y + arm),
+                  colours.overlay_text, metrics.chevron_thickness);
+    draw->AddLine(ImVec2(mid.x - arm, mid.y + arm), ImVec2(mid.x + arm, mid.y - arm),
+                  colours.overlay_text, metrics.chevron_thickness);
+
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextUnformatted(gui::strip_teaching_line(current).c_str());
+    ImGui::PopTextWrapPos();
+    ImGui::EndChild();
+    ImGui::PopStyleVar(2);
+    ImGui::PopStyleColor(2);
+}
+
+// The bands over the picture: thin dividers, a chip with each band's label, a wash and edge on the
+// band under the cursor. Clicking a band sets the exposure to it; the strip stays on and is
+// centred on the new value. Hovering also decides whose histogram and scopes the panel shows.
+void App::draw_strip_bands(ImDrawList* draw, ImVec2 at, ImVec2 shown) {
+    const Palette& colours = palette(theme());
+    const gui::TokenColours& tokens = token_colours();
+    const gui::TokenMetrics& metrics = token_metrics();
+    const auto rgba = [](const gui::Rgba& c) {
+        return ImGui::ColorConvertFloat4ToU32(ImVec4(c.r, c.g, c.b, c.a));
+    };
+    (void)colours;
+    const int count = static_cast<int>(strip_bands_.size());
+    const int middle = gui::strip_middle(count);
+    const int image_w = texture_.width();
+    const int image_h = texture_.height();
+    const float sx = shown.x / static_cast<float>(image_w);
+    const float sy = shown.y / static_cast<float>(image_h);
+
+    // One hit area over the whole picture; the band is found from the cursor.
+    const ImVec2 saved = ImGui::GetCursorScreenPos();
+    ImGui::SetCursorScreenPos(at);
+    const bool clicked =
+        ImGui::InvisibleButton("##strip_bands", ImVec2(std::max(1.0f, shown.x), std::max(1.0f, shown.y)));
+    const bool hovered = ImGui::IsItemHovered();
+    ImGui::SetCursorScreenPos(saved);
+    std::optional<int> hot;
+    if (hovered) {
+        const ImVec2 mouse = ImGui::GetIO().MousePos;
+        hot = gui::strip_band_at(image_w, image_h, count, (mouse.x - at.x) / sx,
+                                 (mouse.y - at.y) / sy);
+    }
+    const int shown_band = hot.value_or(middle);
+    if (shown_band != strip_shown_band_) {
+        show_strip_band(shown_band);
+    }
+    if (clicked && hot) {
+        gui::EditSettings edited = session_.settings();
+        if (gui::apply_strip_band(edited, strip_->step, count, *hot)) {
+            report(session_.set_settings(edited));  // one undo step
+        }
+    }
+
+    const auto screen = [&](const gui::StripRect& r) {
+        return std::pair{ImVec2(std::round(at.x + static_cast<float>(r.x) * sx),
+                                std::round(at.y + static_cast<float>(r.y) * sy)),
+                         ImVec2(std::round(at.x + static_cast<float>(r.x + r.width) * sx),
+                                std::round(at.y + static_cast<float>(r.y + r.height) * sy))};
+    };
+    const bool vertical = gui::strip_vertical(image_w, image_h);
+    const float line = std::max(1.0f, std::round(metrics.strip_divider_width));
+    for (int i = 1; i < count; ++i) {
+        const gui::StripRect& r = strip_bands_[static_cast<std::size_t>(i)].rect;
+        if (r.width <= 0 || r.height <= 0) {
+            continue;
+        }
+        const auto [min, max] = screen(r);
+        if (vertical) {
+            draw->AddRectFilled(ImVec2(min.x - line / 2, min.y), ImVec2(min.x + line / 2, max.y),
+                                rgba(tokens.strip_divider));
+        } else {
+            draw->AddRectFilled(ImVec2(min.x, min.y - line / 2), ImVec2(max.x, min.y + line / 2),
+                                rgba(tokens.strip_divider));
+        }
+    }
+    if (hot) {
+        const auto [min, max] = screen(strip_bands_[static_cast<std::size_t>(*hot)].rect);
+        const float edge = metrics.strip_hover_edge_width;
+        draw->AddRectFilled(min, max, rgba(tokens.strip_hover_fill));
+        draw->AddRect(ImVec2(min.x + edge / 2, min.y + edge / 2),
+                      ImVec2(max.x - edge / 2, max.y - edge / 2), rgba(tokens.strip_hover_edge), 0.0f,
+                      0, edge);
+    }
+    const float pad = metrics.overlay_padding;
+    for (int i = 0; i < count; ++i) {
+        const gui::StripRect& r = strip_bands_[static_cast<std::size_t>(i)].rect;
+        if (r.width <= 0 || r.height <= 0) {
+            continue;
+        }
+        const auto [min, max] = screen(r);
+        const std::string label = gui::strip_label(strip_->step, count, i);
+        const ImVec2 text = ImGui::CalcTextSize(label.c_str());
+        const ImVec2 chip_min(min.x + metrics.strip_chip_margin, min.y + metrics.strip_chip_margin);
+        draw->PushClipRect(min, max, true);
+        draw->AddRectFilled(chip_min, ImVec2(chip_min.x + text.x + 2 * pad, chip_min.y + text.y + pad),
+                            rgba(tokens.strip_chip_bg), metrics.overlay_rounding);
+        draw->AddText(ImVec2(chip_min.x + pad, chip_min.y + pad / 2), rgba(tokens.strip_chip_text),
+                      label.c_str());
+        draw->PopClipRect();
+    }
+    if (hot && *hot != middle) {
+        ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
+            ImGui::SetTooltip("Click to use this band's exposure");
+        }
+    } else if (hot && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
+        ImGui::SetTooltip("The current exposure");
+    }
+}
+
+// The Test strip toggle that sits beside Brightness, in Adjust and in the Exposure stage's row.
+void App::draw_strip_button() {
+    const bool on = strip_.has_value();
+    const bool available = gui::strip_available(viewed_stage_);
+    ImGui::PushFont(nullptr, token_type().small);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
+                        ImVec2(token_metrics().selector_pad, ImGui::GetStyle().FramePadding.y * 0.5f));
+    ImGui::BeginDisabled(!on && !available);
+    if (on) {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+    }
+    if (ImGui::Button("Test strip")) {
+        toggle_test_strip();
+    }
+    if (on) {
+        ImGui::PopStyleColor();
+    }
+    ImGui::EndDisabled();
+    ImGui::PopStyleVar();
+    ImGui::PopFont();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled)) {
+        if (!on && !available) {
+            ImGui::SetTooltip("%s", gui::strip_unavailable_hint());
+        } else {
+            ImGui::SetTooltip("Shows the photo in bands, each at a different exposure, to pick "
+                              "the one you like (T).");
+        }
     }
 }
 
@@ -944,10 +1229,17 @@ void App::draw_histogram() {
     }
     const char* const scope_titles[] = {"Histogram", "RGB parade", "Waveform", "Vectorscope"};
     const std::string base_title = scope_titles[static_cast<int>(prefs_.scope)];
-    const std::string title =
-        histogram_stage_ == gui::final_stage
-            ? base_title
-            : base_title + " (" + std::string(gui::stage_info(histogram_stage_).name) + ")";
+    std::string detail =
+        histogram_stage_ == gui::final_stage ? "" : std::string(gui::stage_info(histogram_stage_).name);
+    if (strip_ && strip_shown_band_ >= 0) {
+        // With a test strip: whose histogram this is.
+        if (!detail.empty()) {
+            detail += ", ";
+        }
+        detail += gui::strip_band_title(strip_->step, static_cast<int>(strip_bands_.size()),
+                                        strip_shown_band_);
+    }
+    const std::string title = detail.empty() ? base_title : base_title + " (" + detail + ")";
     section_text(title.c_str());
 
     const gui::StageHistogram& h = *histogram_;
@@ -1271,8 +1563,19 @@ void App::draw_slider(const char* label, gui::SimpleControl control, bool in_sta
             ImGui::SameLine();
             ImGui::TextDisabled("(beyond the slider)");
         }
+        if (control == gui::SimpleControl::brightness) {
+            ImGui::SameLine();
+            draw_strip_button();
+        }
     } else {
+        if (control == gui::SimpleControl::brightness) {
+            ImGui::AlignTextToFramePadding();
+        }
         ImGui::TextUnformatted(label);
+        if (control == gui::SimpleControl::brightness) {
+            ImGui::SameLine();
+            draw_strip_button();
+        }
         if (custom) {
             // Set beyond the slider's range (e.g. in Advanced mode): shown at its end until moved.
             ImGui::SameLine();
@@ -1419,7 +1722,7 @@ bool App::draw_stage_clip_indicator(const gui::StageClip& clip, ImVec2 row_min, 
 
 // One plain line under the pipeline view about where clipping starts and where it costs detail.
 void App::draw_clipping_summary() {
-    if (!clips_ || !session_.has_file()) {
+    if (!clips_ || strip_ || !session_.has_file()) {
         return;
     }
     ImGui::Spacing();
@@ -1551,6 +1854,7 @@ void App::draw_compare_controls() {
         const gui::StageId was_viewed = viewed_stage_;
         viewed_stage_ = *shown;
         compare_stage_ = was_viewed;
+        strip_.reset();
     }
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled)) {
@@ -1570,6 +1874,7 @@ void App::draw_compare_controls() {
                     compare_stage_.reset();  // comparing a stage with itself: Off
                 } else {
                     compare_stage_ = stage.id;
+                    strip_.reset();  // a comparison and a strip don't mix
                 }
             }
         }
@@ -1588,6 +1893,9 @@ void App::draw_pipeline() {
         return;
     }
     draw_compare_controls();
+    if (strip_) {
+        ImGui::TextDisabled("Test strip on: the clipping dots are hidden.");
+    }
 
     const ImGuiStyle& style = ImGui::GetStyle();
     const float row_h = ImGui::GetFrameHeight();
@@ -1660,7 +1968,7 @@ void App::draw_pipeline() {
         }
 
         const bool over_indicator =
-            clips_ && draw_stage_clip_indicator(clips_->at(stage.id), row_min, row_max, name_baseline);
+            clips_ && !strip_ && draw_stage_clip_indicator(clips_->at(stage.id), row_min, row_max, name_baseline);
         if (row_hovered && !over_indicator) {
             ImGui::SetTooltip("%s", std::string(stage.description).c_str());
         }
