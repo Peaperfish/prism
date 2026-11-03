@@ -16,6 +16,7 @@
 #include "prism/gui/histogram.hpp"
 #include "prism/gui/scopes.hpp"
 #include "prism/gui/settings.hpp"
+#include "prism/gui/test_strip.hpp"
 #include "prism/image.hpp"
 #include "prism/process.hpp"
 
@@ -31,6 +32,12 @@ struct PreviewOptions {
     // carries no histogram, scopes or clip data: those always describe the viewed stage. The
     // viewed stage itself as compare means no comparison, the same as nothing.
     std::optional<StageId> compare_stage;
+    // The test strip (test_strip.hpp): the picture is cut into bands along its long side and each
+    // band is rendered at the current exposure plus its own offset, into one frame of the normal
+    // size (PreviewFrame::strip has each band's histogram and scopes). Only for the Exposure stage
+    // and later: a strip of the Decode stage is ignored. The clip report is not computed, and
+    // compare_stage is ignored, while it is on (the UI keeps the two exclusive anyway).
+    std::optional<TestStrip> test_strip;
 
     PreviewOptions() = default;
     // Implicit, so that "scopes on/off" can still be written as a plain bool.
@@ -47,6 +54,13 @@ struct CompareFrame {
     std::vector<std::uint8_t> rgb8;  // width * height * 3 bytes, as PreviewFrame::rgb8
 };
 
+// One band of a test strip render: where it is in the picture, and what describes it.
+struct StripBandFrame {
+    StripRect rect;                 // in picture pixels; empty if the picture has fewer pixels than bands
+    StageHistogram histogram;       // of this band only
+    std::optional<Scopes> scopes;   // of this band only; only if options.scopes
+};
+
 // One finished preview, ready to upload as a texture, together with the histogram of the stage
 // it shows (computed from that stage's values before the 8-bit encode).
 struct PreviewFrame {
@@ -61,6 +75,10 @@ struct PreviewFrame {
     // One byte per pixel (clip_mask_high / _low / _gamut bits) of this stage; only if requested.
     // A pixel that an earlier stage clamped (colours outside the gamut, shadows) stays marked.
     std::vector<std::uint8_t> clip_mask;
+    // With a test strip: one entry per band, in order. `histogram` and `scopes` above then
+    // describe the middle band (the current exposure), and `clips` is never set. The clip mask is
+    // per band: each band's pixels are marked by that band's own exposure.
+    std::vector<StripBandFrame> strip;
     // The compare stage's picture, from the same render as `rgb8` (so the same settings); only if
     // options.compare_stage was set to a stage other than the viewed one.
     std::optional<CompareFrame> compare;

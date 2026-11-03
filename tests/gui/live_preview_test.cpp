@@ -329,3 +329,81 @@ TEST(LivePreview, TheViewedStageAsCompareStageIsTheSameAsOff) {
     EXPECT_EQ(frame->stage, StageId::decode);
     EXPECT_FALSE(frame->compare);
 }
+
+TEST(LivePreview, TheTestStripIsPartOfTheRequest) {
+    using prism::gui::StageId;
+    using prism::gui::StripStep;
+    using prism::gui::TestStrip;
+    LivePreview preview(1);
+    const auto base = make_base();
+    const EditSettings s = with_exposure(0.5f);
+    prism::gui::PreviewOptions options;
+
+    preview.update(base, s, StageId::encode, options);
+    ASSERT_TRUE(next_frame(preview));
+    preview.update(base, s, StageId::encode, options);
+    EXPECT_FALSE(preview.rendering());  // unchanged: nothing submitted
+
+    options.test_strip = TestStrip{StripStep::half, 5};  // on
+    preview.update(base, s, StageId::encode, options);
+    EXPECT_TRUE(preview.rendering());
+    const auto with_strip = next_frame(preview);
+    ASSERT_TRUE(with_strip);
+    EXPECT_EQ(with_strip->strip.size(), 5u);
+    preview.update(base, s, StageId::encode, options);
+    EXPECT_FALSE(preview.rendering());
+
+    options.test_strip = TestStrip{StripStep::third, 5};  // another step
+    preview.update(base, s, StageId::encode, options);
+    EXPECT_TRUE(preview.rendering());
+    ASSERT_TRUE(next_frame(preview));
+
+    options.test_strip.reset();  // off: the picture must be the plain one again
+    preview.update(base, s, StageId::encode, options);
+    EXPECT_TRUE(preview.rendering());
+    const auto without = next_frame(preview);
+    ASSERT_TRUE(without);
+    EXPECT_TRUE(without->strip.empty());
+}
+
+TEST(LivePreview, ClipReportAndCompareDoNotRestartAStrip) {
+    using prism::gui::StageId;
+    LivePreview preview(1);
+    const auto base = make_base();
+    const EditSettings s = with_exposure(0.5f);
+    prism::gui::PreviewOptions options;
+    options.test_strip = prism::gui::TestStrip{};
+    preview.update(base, s, StageId::exposure, options);
+    ASSERT_TRUE(next_frame(preview));
+    options.clip_report = true;  // not computed while the strip is on: the same request
+    options.compare_stage = StageId::decode;
+    preview.update(base, s, StageId::exposure, options);
+    EXPECT_FALSE(preview.rendering());
+}
+
+TEST(LivePreview, AStripOfTheDecodeStageIsNoStrip) {
+    using prism::gui::StageId;
+    LivePreview preview(1);
+    const auto base = make_base();
+    prism::gui::PreviewOptions options;
+    preview.update(base, EditSettings{}, StageId::decode, options);
+    ASSERT_TRUE(next_frame(preview));
+    options.test_strip = prism::gui::TestStrip{};
+    preview.update(base, EditSettings{}, StageId::decode, options);
+    EXPECT_FALSE(preview.rendering());
+}
+
+TEST(LivePreview, AChangedSettingRendersAgainWhileTheStripIsOn) {
+    using prism::gui::StageId;
+    LivePreview preview(1);
+    const auto base = make_base();
+    prism::gui::PreviewOptions options;
+    options.test_strip = prism::gui::TestStrip{};
+    preview.update(base, with_exposure(0.5f), StageId::encode, options);
+    ASSERT_TRUE(next_frame(preview));
+    preview.update(base, with_exposure(1.0f), StageId::encode, options);  // a band was applied
+    EXPECT_TRUE(preview.rendering());
+    const auto f = next_frame(preview);
+    ASSERT_TRUE(f);
+    EXPECT_EQ(f->strip.size(), 5u);
+}

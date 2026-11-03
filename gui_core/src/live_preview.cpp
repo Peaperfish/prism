@@ -29,11 +29,21 @@ void LivePreview::update(const std::shared_ptr<const Image>& base, const EditSet
     if (options.compare_stage == stop_after) {
         options.compare_stage.reset();
     }
+    // A strip of the Decode stage is no strip. While a strip is on there is no clip report and no
+    // comparison (the render ignores them), so they must not count as different requests.
+    if (stop_after == StageId::decode) {
+        options.test_strip.reset();
+    }
+    if (options.test_strip) {
+        options.clip_report = false;
+        options.compare_stage.reset();
+    }
     // A compare stage is wanted exactly: another stage than the frame has needs a new render.
     const bool covered = (options_.scopes || !options.scopes) &&
                          (options_.clip_report || !options.clip_report) &&
                          (options_.clip_mask || !options.clip_mask) &&
-                         (!options.compare_stage || options.compare_stage == options_.compare_stage);
+                         (!options.compare_stage || options.compare_stage == options_.compare_stage) &&
+                         options.test_strip == options_.test_strip;  // exactly: on, off or step
     if (base == base_ && settings == settings_ && stop_after == stop_after_ && covered) {
         // Hidden: the next time they show, ask again.
         options_.scopes = options_.scopes && options.scopes;

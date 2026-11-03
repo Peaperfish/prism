@@ -1,5 +1,6 @@
 #include "prism/gui/preview_renderer.hpp"
 
+#include <algorithm>
 #include <exception>
 #include <stdexcept>
 #include <string_view>
@@ -22,11 +23,101 @@ std::optional<Image> render_stage_image(const Image& base, const EditSettings& s
     return img;
 }
 
+namespace {
+
+// The test strip: every band is the same render_preview of its crop of `base` at its own exposure,
+// so a band is bit-identical to rendering that crop alone, and the pipeline itself is untouched.
+std::optional<PreviewFrame> render_strip(const Image& base, const EditSettings& settings,
+                                         int threads, std::stop_token stop,
+                                         const StageCallback& on_stage, StageId stop_after,
+                                         const PreviewOptions& options) {
+    using Clock = std::chrono::steady_clock;
+    const auto start = Clock::now();
+    const TestStrip strip = *options.test_strip;
+    const std::vector<StripRect> bands = strip_bands(base.width, base.height, strip.count);
+    const int middle = strip_middle(strip.count);
+    constexpr std::size_t ch = Image::channels;
+    const auto width = static_cast<std::size_t>(base.width);
+
+    PreviewOptions band_options;  // what a band renders: the picture, and its scopes and mask
+    band_options.scopes = options.scopes;
+    band_options.clip_mask = options.clip_mask;
+
+    PreviewFrame frame;
+    frame.stage = stop_after;
+    frame.width = base.width;
+    frame.height = base.height;
+    frame.rgb8.assign(width * static_cast<std::size_t>(base.height) * ch, 0);
+    if (options.clip_mask) {
+        frame.clip_mask.assign(width * static_cast<std::size_t>(base.height), 0);
+    }
+    frame.strip.resize(bands.size());
+
+    for (std::size_t i = 0; i < bands.size(); ++i) {
+        const StripRect& r = bands[i];
+        frame.strip[i].rect = r;
+        if (r.width <= 0 || r.height <= 0) {
+            continue;
+        }
+        if (stop.stop_requested()) {
+            return std::nullopt;
+        }
+        Image crop;
+        crop.width = r.width;
+        crop.height = r.height;
+        crop.pixels.resize(static_cast<std::size_t>(r.width) * r.height * ch);
+        for (int y = 0; y < r.height; ++y) {
+            const float* from = base.pixels.data() + ((static_cast<std::size_t>(r.y + y) * width) + r.x) * ch;
+            std::copy(from, from + static_cast<std::size_t>(r.width) * ch,
+                      crop.pixels.begin() + static_cast<std::ptrdiff_t>(static_cast<std::size_t>(y) * r.width * ch));
+        }
+        const EditSettings band_settings =
+            strip_band_settings(settings, strip.step, strip.count, static_cast<int>(i));
+        const bool is_middle = static_cast<int>(i) == middle;
+        std::optional<PreviewFrame> part =
+            render_preview(crop, band_settings, threads, stop, is_middle ? on_stage : StageCallback{},
+                           stop_after, band_options);
+        if (!part) {
+            return std::nullopt;
+        }
+        for (int y = 0; y < r.height; ++y) {
+            const auto src = static_cast<std::size_t>(y) * r.width;
+            const auto dst = static_cast<std::size_t>(r.y + y) * width + r.x;
+            std::copy_n(part->rgb8.begin() + static_cast<std::ptrdiff_t>(src * ch),
+                        static_cast<std::size_t>(r.width) * ch,
+                        frame.rgb8.begin() + static_cast<std::ptrdiff_t>(dst * ch));
+            if (options.clip_mask) {
+                std::copy_n(part->clip_mask.begin() + static_cast<std::ptrdiff_t>(src),
+                            static_cast<std::size_t>(r.width),
+                            frame.clip_mask.begin() + static_cast<std::ptrdiff_t>(dst));
+            }
+        }
+        frame.strip[i].histogram = part->histogram;
+        frame.strip[i].scopes = std::move(part->scopes);
+        if (is_middle) {
+            frame.stages = std::move(part->stages);
+        }
+    }
+    if (middle < static_cast<int>(frame.strip.size())) {
+        frame.histogram = frame.strip[static_cast<std::size_t>(middle)].histogram;
+        frame.scopes = frame.strip[static_cast<std::size_t>(middle)].scopes;
+    }
+    frame.total_ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+    return frame;
+}
+
+}  // namespace
+
 std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings& settings,
                                            int threads, std::stop_token stop,
                                            const StageCallback& on_stage, StageId stop_after,
                                            PreviewOptions options) {
     using Clock = std::chrono::steady_clock;
+    if (options.test_strip && stop_after != StageId::decode && options.test_strip->count >= 1 &&
+        base.width > 0 && base.height > 0) {
+        return render_strip(base, settings, threads, stop, on_stage, stop_after, options);
+    }
+    options.test_strip.reset();
     const auto start = Clock::now();
     const ProcessSettings process_settings = to_process_settings(settings, stop_after);
 

@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -662,4 +663,240 @@ TEST(PreviewCompare, ACancelledRenderGivesNoFrame) {
     options.compare_stage = StageId::encode;
     EXPECT_FALSE(prism::gui::render_preview(*base, every_stage(), 1, source.get_token(), {},
                                             StageId::exposure, options));
+}
+
+// --- Test strip ---------------------------------------------------------------------------------
+
+namespace {
+
+using prism::gui::StageId;
+using prism::gui::StripRect;
+using prism::gui::TestStrip;
+
+prism::Image crop_of(const prism::Image& base, const StripRect& r) {
+    prism::Image out;
+    out.width = r.width;
+    out.height = r.height;
+    for (int y = r.y; y < r.y + r.height; ++y) {
+        for (int x = r.x; x < r.x + r.width; ++x) {
+            for (int c = 0; c < 3; ++c) {
+                out.pixels.push_back(base.pixels[(static_cast<std::size_t>(y) * base.width + x) * 3 + c]);
+            }
+        }
+    }
+    return out;
+}
+
+// The bytes of `r` taken out of a whole frame of `frame_width` pixels, 3 bytes (or `per`) per pixel.
+std::vector<std::uint8_t> bytes_of(const std::vector<std::uint8_t>& whole, int frame_width,
+                                   const StripRect& r, int per) {
+    std::vector<std::uint8_t> out;
+    for (int y = r.y; y < r.y + r.height; ++y) {
+        for (int x = r.x; x < r.x + r.width; ++x) {
+            for (int c = 0; c < per; ++c) {
+                out.push_back(whole[(static_cast<std::size_t>(y) * frame_width + x) * per + c]);
+            }
+        }
+    }
+    return out;
+}
+
+prism::gui::PreviewOptions strip_options(prism::gui::StripStep step, bool scopes, bool mask) {
+    prism::gui::PreviewOptions o;
+    o.scopes = scopes;
+    o.clip_mask = mask;
+    o.test_strip = TestStrip{step, 5};
+    return o;
+}
+
+}  // namespace
+
+TEST(PreviewStrip, EachBandIsItsCropRenderedAloneAtItsOwnExposure) {
+    for (const auto& size : {std::pair{47, 31}, std::pair{31, 47}, std::pair{64, 40}}) {
+        const auto base = make_base(size.first, size.second);
+        EditSettings s = every_stage();
+        s.exposure_stops = 0.3f;
+        for (const auto step : {prism::gui::StripStep::third, prism::gui::StripStep::half,
+                                prism::gui::StripStep::whole}) {
+            for (const StageId stage : {StageId::exposure, StageId::contrast, StageId::encode}) {
+                const auto opts = strip_options(step, true, true);
+                const auto frame = prism::gui::render_preview(*base, s, 1, {}, {}, stage, opts);
+                ASSERT_TRUE(frame && frame->error.empty());
+                EXPECT_EQ(frame->width, size.first);
+                EXPECT_EQ(frame->height, size.second);
+                EXPECT_EQ(frame->rgb8.size(), static_cast<std::size_t>(size.first) * size.second * 3);
+                EXPECT_EQ(frame->clip_mask.size(), static_cast<std::size_t>(size.first) * size.second);
+                EXPECT_FALSE(frame->clips) << "no clip report while the strip is on";
+                ASSERT_EQ(frame->strip.size(), 5u);
+                const auto bands = prism::gui::strip_bands(size.first, size.second, 5);
+                for (int i = 0; i < 5; ++i) {
+                    const StripRect& r = bands[static_cast<std::size_t>(i)];
+                    EditSettings band = s;
+                    band.exposure_stops = 0.3f + prism::gui::strip_offset(step, 5, i);
+                    prism::gui::PreviewOptions alone;
+                    alone.scopes = true;
+                    alone.clip_mask = true;
+                    const auto expected = prism::gui::render_preview(crop_of(*base, r), band, 1, {},
+                                                                     {}, stage, alone);
+                    ASSERT_TRUE(expected);
+                    const auto& got = frame->strip[static_cast<std::size_t>(i)];
+                    EXPECT_EQ(got.rect, r);
+                    EXPECT_EQ(bytes_of(frame->rgb8, size.first, r, 3), expected->rgb8)
+                        << "band " << i << " stage " << int(stage);
+                    EXPECT_EQ(bytes_of(frame->clip_mask, size.first, r, 1), expected->clip_mask)
+                        << "band " << i << " stage " << int(stage);
+                    EXPECT_EQ(got.histogram, expected->histogram) << "band " << i;
+                    EXPECT_EQ(got.scopes, expected->scopes) << "band " << i;
+                }
+            }
+        }
+    }
+}
+
+TEST(PreviewStrip, TheMiddleBandIsTheSameCropOfANormalRender) {
+    const auto base = make_base(53, 29);
+    EditSettings s = every_stage();
+    const auto opts = strip_options(prism::gui::StripStep::half, true, true);
+    for (const StageId stage : {StageId::exposure, StageId::saturation, StageId::encode}) {
+        const auto strip = prism::gui::render_preview(*base, s, 1, {}, {}, stage, opts);
+        prism::gui::PreviewOptions plain;
+        plain.clip_mask = true;
+        plain.scopes = true;
+        const auto normal = prism::gui::render_preview(*base, s, 1, {}, {}, stage, plain);
+        ASSERT_TRUE(strip && normal);
+        const StripRect r = strip->strip[2].rect;
+        EXPECT_EQ(bytes_of(strip->rgb8, 53, r, 3), bytes_of(normal->rgb8, 53, r, 3));
+        EXPECT_EQ(bytes_of(strip->clip_mask, 53, r, 1), bytes_of(normal->clip_mask, 53, r, 1));
+        EXPECT_EQ(strip->stages.size(), normal->stages.size());
+    }
+}
+
+TEST(PreviewStrip, WithExposureOffTheMiddleBandIsUnedited) {
+    const auto base = make_base(40, 20);
+    EditSettings s = every_stage();
+    s.exposure_on = false;
+    s.exposure_stops = 3.0f;  // ignored while off
+    const auto frame = prism::gui::render_preview(*base, s, 1, {}, {}, StageId::exposure,
+                                                  strip_options(prism::gui::StripStep::half, false, false));
+    ASSERT_TRUE(frame);
+    const StripRect r = frame->strip[2].rect;
+    EditSettings neutral = s;
+    neutral.exposure_stops = 0.0f;
+    EXPECT_EQ(bytes_of(frame->rgb8, 40, r, 3),
+              bytes_of(stage_bytes(*base, neutral, StageId::exposure), 40, r, 3));
+    // Neighbouring bands differ from it.
+    EXPECT_NE(bytes_of(frame->rgb8, 40, frame->strip[1].rect, 3),
+              bytes_of(stage_bytes(*base, neutral, StageId::exposure), 40, frame->strip[1].rect, 3));
+}
+
+TEST(PreviewStrip, TheMaskIsPerBand) {
+    // Uniform grey 0.3: clipped only in the bands bright enough (+1 stop is still 0.6; +2 is 1.2).
+    auto img = std::make_shared<prism::Image>();
+    img->width = 50;
+    img->height = 10;
+    img->pixels.assign(50 * 10 * 3, 0.3f);
+    EditSettings s;
+    const auto frame = prism::gui::render_preview(
+        *img, s, 1, {}, {}, StageId::exposure, strip_options(prism::gui::StripStep::whole, false, true));
+    ASSERT_TRUE(frame);
+    for (int i = 0; i < 5; ++i) {
+        const auto m = bytes_of(frame->clip_mask, 50, frame->strip[static_cast<std::size_t>(i)].rect, 1);
+        const bool any_high = std::any_of(m.begin(), m.end(), [](std::uint8_t b) { return b != 0; });
+        EXPECT_EQ(any_high, i == 4) << "band " << i;  // only +2 stops (1.2) passes the ceiling
+        if (i == 4) {
+            EXPECT_TRUE(std::all_of(m.begin(), m.end(), [&](std::uint8_t b) { return b == m[0] && b != 0; }));
+        }
+    }
+}
+
+TEST(PreviewStrip, ScopesAndMaskAreOnlyMadeIfAsked) {
+    const auto base = make_base(30, 30);
+    const auto frame = prism::gui::render_preview(*base, every_stage(), 1, {}, {}, StageId::encode,
+                                                  strip_options(prism::gui::StripStep::half, false, false));
+    ASSERT_TRUE(frame);
+    EXPECT_FALSE(frame->scopes);
+    EXPECT_TRUE(frame->clip_mask.empty());
+    for (const auto& b : frame->strip) {
+        EXPECT_FALSE(b.scopes);
+        EXPECT_GT(b.histogram.pixel_count, 0u);
+    }
+    // The frame's own histogram and scopes are the middle band's.
+    EXPECT_EQ(frame->histogram, frame->strip[2].histogram);
+}
+
+TEST(PreviewStrip, ReportAndCompareAreIgnoredWhileItIsOn) {
+    const auto base = make_base(30, 30);
+    auto opts = strip_options(prism::gui::StripStep::half, false, false);
+    opts.clip_report = true;
+    opts.compare_stage = StageId::decode;
+    const auto frame = prism::gui::render_preview(*base, every_stage(), 1, {}, {}, StageId::exposure, opts);
+    ASSERT_TRUE(frame);
+    EXPECT_FALSE(frame->clips);
+    EXPECT_FALSE(frame->compare);
+}
+
+TEST(PreviewStrip, DecodeAndOddImagesAreHandled) {
+    const auto base = make_base(30, 20);
+    const auto decode = prism::gui::render_preview(*base, every_stage(), 1, {}, {}, StageId::decode,
+                                                   strip_options(prism::gui::StripStep::half, true, true));
+    ASSERT_TRUE(decode);
+    EXPECT_TRUE(decode->strip.empty());  // a strip of the Decode stage is ignored
+    EXPECT_EQ(decode->rgb8, stage_bytes(*base, every_stage(), StageId::decode));
+
+    // Fewer pixels than bands: some bands are empty, the picture is still complete.
+    const auto tiny = make_base(3, 2);
+    const auto frame = prism::gui::render_preview(*tiny, every_stage(), 1, {}, {}, StageId::encode,
+                                                  strip_options(prism::gui::StripStep::half, true, true));
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(frame->strip.size(), 5u);
+    int empty = 0;
+    for (const auto& b : frame->strip) {
+        empty += b.rect.width == 0 ? 1 : 0;
+    }
+    EXPECT_EQ(empty, 2);
+    EXPECT_EQ(frame->rgb8.size(), 3u * 2 * 3);
+}
+
+TEST(PreviewStrip, StripOffGivesExactlyTheOldFrame) {
+    const auto base = make_base(32, 24);
+    prism::gui::PreviewOptions none;
+    const auto a = prism::gui::render_preview(*base, every_stage(), 1, {});
+    const auto b = prism::gui::render_preview(*base, every_stage(), 1, {}, {}, prism::gui::final_stage, none);
+    ASSERT_TRUE(a && b);
+    EXPECT_EQ(a->rgb8, b->rgb8);
+    EXPECT_TRUE(b->strip.empty());
+}
+
+TEST(PreviewStrip, ThreadsDoNotChangeTheResult) {
+    const auto base = make_base(61, 37);
+    const auto opts = strip_options(prism::gui::StripStep::third, true, true);
+    const auto one = prism::gui::render_preview(*base, every_stage(), 1, {}, {}, StageId::encode, opts);
+    const auto four = prism::gui::render_preview(*base, every_stage(), 4, {}, {}, StageId::encode, opts);
+    ASSERT_TRUE(one && four);
+    EXPECT_EQ(one->rgb8, four->rgb8);
+    EXPECT_EQ(one->clip_mask, four->clip_mask);
+    for (std::size_t i = 0; i < 5; ++i) {
+        EXPECT_EQ(one->strip[i].histogram, four->strip[i].histogram);
+        EXPECT_EQ(one->strip[i].scopes, four->strip[i].scopes);
+    }
+}
+
+TEST(PreviewStrip, ACancelledRenderGivesNoFrame) {
+    const auto base = make_base(16, 16);
+    std::stop_source source;
+    source.request_stop();
+    EXPECT_FALSE(prism::gui::render_preview(*base, every_stage(), 1, source.get_token(), {},
+                                            StageId::exposure,
+                                            strip_options(prism::gui::StripStep::half, false, false)));
+}
+
+TEST(PreviewStrip, WorksThroughTheWorker) {
+    const auto base = make_base(40, 30);
+    PreviewRenderer renderer(2);
+    renderer.submit(base, every_stage(), StageId::encode, strip_options(prism::gui::StripStep::half, true, true));
+    ASSERT_TRUE(renderer.wait_until_idle(timeout));
+    const auto frame = renderer.poll();
+    ASSERT_TRUE(frame);
+    EXPECT_TRUE(frame->error.empty());
+    EXPECT_EQ(frame->strip.size(), 5u);
 }
