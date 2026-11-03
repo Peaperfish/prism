@@ -15,6 +15,8 @@
 #endif
 
 #include "prism/image.hpp"
+#include "prism/pipeline.hpp"
+#include "prism/process.hpp"
 #include "run_command.hpp"
 
 // End-to-end tests of --recipe and of batches (several inputs with --out-dir), through the real
@@ -83,8 +85,18 @@ protected:
         const std::string command =
             "\"" + std::string(PRISM_EXE) + "\" " + args + " > " + quoted(log) + " 2>&1";
         const int exit_code = prism_test::run_command(command);
-        std::string text = read_bytes(log);
+        const std::string bytes = read_bytes(log);
         fs::remove(log);
+        // On Windows prism's stdout and stderr are in text mode, so each "\n" reaches the log as
+        // "\r\n"; the tests compare against "\n".
+        std::string text;
+        text.reserve(bytes.size());
+        for (std::size_t i = 0; i < bytes.size(); ++i) {
+            if (bytes[i] == '\r' && i + 1 < bytes.size() && bytes[i + 1] == '\n') {
+                continue;
+            }
+            text += bytes[i];
+        }
         return {exit_code, std::move(text)};
     }
 
@@ -107,16 +119,6 @@ protected:
         const fs::path p = path(name);
         std::ofstream(p, std::ios::binary) << text;
         return p;
-    }
-
-    // Files in the test's folder, by name.
-    [[nodiscard]] std::vector<std::string> files() const {
-        std::vector<std::string> names;
-        for (const fs::directory_entry& e : fs::directory_iterator(dir_)) {
-            names.push_back(e.path().filename().string());
-        }
-        std::sort(names.begin(), names.end());
-        return names;
     }
 
     fs::path dir_;
@@ -239,4 +241,185 @@ TEST_F(CliRecipe, AMissingRecipeFileIsAnErrorAndNothingIsWritten) {
     ASSERT_EQ(lines.size(), 1u) << r.output;
     EXPECT_EQ(lines[0].rfind("error: recipe '", 0), 0u) << lines[0];
     EXPECT_TRUE(contains(lines[0], "nowhere.prism': the file does not exist")) << lines[0];
+}
+
+using CliBatch = CliRecipeTest;
+
+TEST_F(CliBatch, SeveralInputsWithoutOutDirAreAUsageError) {
+    const fs::path a = write_input("a.png", 1);
+    const fs::path b = write_input("b.png", 2);
+    const RunResult r = run_prism(quoted(a) + " " + quoted(b) + " --exposure 1");
+    EXPECT_EQ(r.exit_code, 2) << r.output;
+    EXPECT_TRUE(contains(r.output, "error: 2 inputs need --out-dir <dir>")) << r.output;
+    EXPECT_TRUE(contains(r.output, "Usage:")) << r.output;
+}
+
+TEST_F(CliBatch, SeveralInputsWithOAreAUsageError) {
+    const fs::path a = write_input("a.png", 1);
+    const fs::path b = write_input("b.png", 2);
+    fs::create_directory(path("out"));
+    for (const std::string& extra : {std::string(), " --out-dir " + quoted(path("out"))}) {
+        const RunResult r =
+            run_prism(quoted(a) + " " + quoted(b) + " -o " + quoted(path("x.jpg")) + extra);
+        EXPECT_EQ(r.exit_code, 2) << r.output;
+        EXPECT_TRUE(
+            contains(r.output, "error: -o names one output file, so it takes a single input"))
+            << r.output;
+        EXPECT_FALSE(fs::exists(path("x.jpg")));
+    }
+    EXPECT_TRUE(fs::is_empty(path("out")));
+}
+
+TEST_F(CliBatch, HistogramWithSeveralInputsIsAUsageError) {
+    const fs::path a = write_input("a.png", 1);
+    const fs::path b = write_input("b.png", 2);
+    fs::create_directory(path("out"));
+    const RunResult r = run_prism(quoted(a) + " " + quoted(b) + " --out-dir " +
+                                  quoted(path("out")) + " --histogram " + quoted(path("hist.png")));
+    EXPECT_EQ(r.exit_code, 2) << r.output;
+    EXPECT_TRUE(contains(r.output,
+                         "error: --histogram writes one histogram file, so it takes a "
+                         "single input"))
+        << r.output;
+    EXPECT_TRUE(fs::is_empty(path("out")));
+    EXPECT_FALSE(fs::exists(path("hist.png")));
+}
+
+TEST_F(CliBatch, OutDirMustBeAnExistingFolder) {
+    const fs::path a = write_input("a.png", 1);
+    const fs::path b = write_input("b.png", 2);
+    const fs::path not_a_folder = write_text("notes.txt", "hello");
+
+    RunResult r = run_prism(quoted(a) + " " + quoted(b) + " --out-dir " + quoted(path("missing")));
+    EXPECT_EQ(r.exit_code, 2) << r.output;
+    EXPECT_TRUE(contains(r.output, "does not exist (create the folder first)")) << r.output;
+    EXPECT_FALSE(fs::exists(path("missing")));
+
+    r = run_prism(quoted(a) + " --out-dir " + quoted(not_a_folder));
+    EXPECT_EQ(r.exit_code, 2) << r.output;
+    EXPECT_TRUE(contains(r.output, "' is not a folder")) << r.output;
+}
+
+TEST_F(CliBatch, OAndOutDirTogetherAreAUsageError) {
+    const fs::path a = write_input("a.png", 1);
+    fs::create_directory(path("out"));
+    const RunResult r =
+        run_prism(quoted(a) + " -o " + quoted(path("x.jpg")) + " --out-dir " + quoted(path("out")));
+    EXPECT_EQ(r.exit_code, 2) << r.output;
+    EXPECT_TRUE(contains(r.output, "error: -o and --out-dir can't be used together")) << r.output;
+    EXPECT_FALSE(fs::exists(path("x.jpg")));
+    EXPECT_TRUE(fs::is_empty(path("out")));
+}
+
+TEST_F(CliBatch, SeveralInputsAreEachWrittenAsStemPrismJpg) {
+    fs::create_directory(path("in"));
+    fs::create_directory(path("out"));
+    const fs::path a = write_input("in/a.png", 1);
+    const fs::path b = write_input("in/b.png", 2);
+    const fs::path c = write_input("c.png", 3);
+    const std::string flags = " --exposure 0.5 --curve filmic";
+
+    const RunResult r = run_prism(quoted(a) + " " + quoted(b) + " " + quoted(c) + flags +
+                                  " --out-dir " + quoted(path("out")));
+    ASSERT_EQ(r.exit_code, 0) << r.output;
+
+    std::vector<std::string> written;
+    for (const fs::directory_entry& e : fs::directory_iterator(path("out"))) {
+        written.push_back(e.path().filename().string());
+    }
+    std::sort(written.begin(), written.end());
+    EXPECT_EQ(written, (std::vector<std::string>{"a_prism.jpg", "b_prism.jpg", "c_prism.jpg"}));
+
+    // Each is what a run of its own with -o gives, and each gets its "wrote" line.
+    for (const fs::path& input : {a, b, c}) {
+        const std::string stem = input.stem().string();
+        const fs::path single = path(stem + "_single.jpg");
+        const RunResult one = run_prism(quoted(input) + flags + " -o " + quoted(single));
+        ASSERT_EQ(one.exit_code, 0) << one.output;
+        EXPECT_EQ(read_bytes(path("out") / (stem + "_prism.jpg")), read_bytes(single)) << stem;
+        EXPECT_TRUE(contains(r.output, stem + "_prism.jpg (6x4)\n")) << r.output;
+    }
+}
+
+TEST_F(CliBatch, OneInputWithOutDirIsTheSameAsO) {
+    const fs::path a = write_input("photo.png", 1);
+    fs::create_directory(path("out"));
+    const RunResult r = run_prism(quoted(a) + " --curve filmic --out-dir " + quoted(path("out")));
+    ASSERT_EQ(r.exit_code, 0) << r.output;
+    const RunResult o = run_prism(quoted(a) + " --curve filmic -o " + quoted(path("o.jpg")));
+    ASSERT_EQ(o.exit_code, 0) << o.output;
+    EXPECT_EQ(read_bytes(path("out") / "photo_prism.jpg"), read_bytes(path("o.jpg")));
+}
+
+TEST_F(CliBatch, TwoInputsWithTheSameNameAreAUsageErrorBeforeAnythingIsWritten) {
+    fs::create_directory(path("one"));
+    fs::create_directory(path("two"));
+    fs::create_directory(path("out"));
+    const fs::path first = write_input("first.png", 1);
+    const fs::path a = write_input("one/photo.png", 2);
+    // A different case gives the same file on macOS and Windows, so it counts as the same name.
+    const fs::path b = write_input("two/PHOTO.png", 3);
+
+    const RunResult r = run_prism(quoted(first) + " " + quoted(a) + " " + quoted(b) +
+                                  " --out-dir " + quoted(path("out")));
+    EXPECT_EQ(r.exit_code, 2) << r.output;
+    EXPECT_TRUE(contains(r.output, "photo.png' and '")) << r.output;
+    EXPECT_TRUE(contains(r.output, "PHOTO.png' would both be written as 'PHOTO_prism.jpg'"))
+        << r.output;
+    EXPECT_TRUE(fs::is_empty(path("out"))) << "nothing may be written, not even first.png";
+}
+
+TEST_F(CliBatch, RawFlagsWithSeveralInputsNameTheInputThatIsNotRaw) {
+    const fs::path a = write_input("a.png", 1);
+    const fs::path b = write_input("b.png", 2);
+    fs::create_directory(path("out"));
+    const RunResult r =
+        run_prism(quoted(a) + " " + quoted(b) + " --raw-half --out-dir " + quoted(path("out")));
+    EXPECT_EQ(r.exit_code, 2) << r.output;
+    EXPECT_TRUE(contains(r.output, "--raw-half only applies to RAW input")) << r.output;
+    EXPECT_TRUE(contains(r.output, "a.png' is not a RAW file")) << r.output;
+}
+
+// Rule for every change to the command line: a run with one input and the options that existed
+// before recipes and batches prints, writes and returns exactly what it did then.
+TEST_F(CliBatch, ASingleInputWithTheExistingOptionsIsUnchanged) {
+    const fs::path input = write_input("in.png", 4);
+    const fs::path out = path("out.jpg");
+
+    // Success: the same bytes as the library's own pipeline, and exactly one "wrote" line.
+    const RunResult ok = run_prism(quoted(input) +
+                                   " --exposure 0.5 --saturation 1.2 --curve "
+                                   "reinhard:3 -o " +
+                                   quoted(out));
+    ASSERT_EQ(ok.exit_code, 0) << ok.output;
+    EXPECT_EQ(ok.output, "wrote " + out.string() + " (6x4)\n");
+    prism::Image img = prism::load_image(input, 1);
+    prism::ProcessSettings settings;
+    settings.exposure_stops = 0.5f;
+    settings.saturation = 1.2f;
+    settings.curve = prism::parse_curve("reinhard:3");
+    ASSERT_EQ(prism::process(img, settings, 1), prism::ProcessResult::completed);
+    const fs::path expected = path("expected.jpg");
+    prism::save_image(expected, img, 1);
+    EXPECT_EQ(read_bytes(out), read_bytes(expected));
+
+    // A file that cannot be read: one error line, exit 1, no usage text.
+    const fs::path missing = path("missing.png");
+    const RunResult bad = run_prism(quoted(missing) + " -o " + quoted(path("never.jpg")));
+    EXPECT_EQ(bad.exit_code, 1) << bad.output;
+    EXPECT_EQ(bad.output.rfind("error: cannot load image '" + missing.string() + "'", 0), 0u)
+        << bad.output;
+    EXPECT_EQ(lines_of(bad.output).size(), 1u) << bad.output;
+    EXPECT_FALSE(fs::exists(path("never.jpg")));
+
+    // A usage error: the same message and exit code, then the usage text.
+    const RunResult usage = run_prism(quoted(input) + " --exposure 1");
+    EXPECT_EQ(usage.exit_code, 2) << usage.output;
+    EXPECT_EQ(usage.output.rfind(
+                  "error: no output given (use -o <output>, --histogram <file>, or both)\n\n", 0),
+              0u)
+        << usage.output;
+    const RunResult extra = run_prism(quoted(input) + " -o " + quoted(out) + " --nope");
+    EXPECT_EQ(extra.exit_code, 2) << extra.output;
+    EXPECT_EQ(extra.output.rfind("error: unexpected argument '--nope'\n\n", 0), 0u) << extra.output;
 }

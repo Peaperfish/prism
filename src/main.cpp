@@ -4,8 +4,10 @@
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
+#include <filesystem>
 #include <iomanip>
 #include <iostream>
+#include <map>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -30,11 +32,16 @@ namespace {
 void print_usage(const char* program) {
     std::cerr << "prism " << prism::version() << " - command-line photo tool\n"
               << "\n"
-              << "Usage: " << program << " <input> [-o <output>] [--histogram <file>] [options]\n"
+              << "Usage: " << program
+              << " <input>... [-o <output> | --out-dir <dir>] [--histogram <file>] [options]\n"
               << "\n"
               << "Loads <input> (PNG, JPEG or camera RAW: .arw .dng .cr2 .cr3 .nef .raf) and\n"
               << "writes <output> (.png, .jpg or .jpeg).\n"
-              << "At least one of -o and --histogram is required.\n"
+              << "At least one of -o, --out-dir and --histogram is required.\n"
+              << "\n"
+              << "Several photos:\n"
+              << "  --out-dir <dir>     write each result into this existing folder, as\n"
+              << "                      <input name>_prism.jpg; needed for more than one input\n"
               << "\n"
               << "RAW input:\n"
               << "  --raw-half                  decode at half size (much faster; for previews)\n"
@@ -72,8 +79,9 @@ struct UsageError : std::runtime_error {
 // File names stay as the text from argv (UTF-8: on Windows the manifest asks for it, see
 // src/CMakeLists.txt) and become paths with prism::path_from_utf8 where they are opened.
 struct Options {
-    std::string input;
+    std::vector<std::string> inputs;
     std::optional<std::string> output;
+    std::optional<std::string> out_dir;
     std::optional<std::string> recipe_path;
     std::optional<float> exposure_stops;
     std::optional<std::string> matrix_path;
@@ -85,6 +93,10 @@ struct Options {
     std::optional<std::string> raw_camera_matrix_path;
     std::optional<int> threads;  // unset = automatic (one per hardware thread)
     bool time = false;
+
+    // Worked out by parse_args from the above: what to write for each input, in the same order.
+    // With one input and no --out-dir, `output` as given.
+    std::vector<std::optional<std::string>> outputs;
 };
 
 float parse_stops(const std::string& text) {
@@ -133,6 +145,47 @@ void set_once(std::optional<T>& slot, std::string_view flag, T value) {
     slot = std::move(value);
 }
 
+// Lower-case ASCII letters, for comparing file names the way macOS and Windows file systems do.
+std::string ascii_lower(std::string text) {
+    for (char& c : text) {
+        if (c >= 'A' && c <= 'Z') {
+            c = static_cast<char>(c - 'A' + 'a');
+        }
+    }
+    return text;
+}
+
+// The files --out-dir writes, one per input: <dir>/<input name>_prism<extension>, the name the
+// app's Export suggests. Checks the whole batch before anything runs: the folder must exist, and
+// no two inputs may give the same name (they would overwrite each other).
+std::vector<std::optional<std::string>> out_dir_outputs(const std::string& dir,
+                                                        const std::vector<std::string>& inputs,
+                                                        const std::string& extension) {
+    const std::filesystem::path folder = prism::path_from_utf8(dir);
+    std::error_code ec;
+    if (!std::filesystem::exists(folder, ec)) {
+        throw UsageError("--out-dir '" + dir + "' does not exist (create the folder first)");
+    }
+    if (!std::filesystem::is_directory(folder, ec)) {
+        throw UsageError("--out-dir '" + dir + "' is not a folder");
+    }
+    std::vector<std::optional<std::string>> outputs;
+    std::map<std::string, std::size_t> by_name;  // lower-case output name -> index of its input
+    for (std::size_t i = 0; i < inputs.size(); ++i) {
+        std::filesystem::path name = prism::path_from_utf8(inputs[i]).stem();
+        name += "_prism";
+        name += extension;
+        const auto [it, added] = by_name.emplace(ascii_lower(prism::utf8(name)), i);
+        if (!added) {
+            throw UsageError("'" + inputs[it->second] + "' and '" + inputs[i] +
+                             "' would both be written as '" + prism::utf8(name) + "' in '" + dir +
+                             "'");
+        }
+        outputs.emplace_back(prism::utf8(folder / name));
+    }
+    return outputs;
+}
+
 Options parse_args(int argc, char* argv[]) {
     Options opts;
     for (int i = 1; i < argc; ++i) {
@@ -155,6 +208,8 @@ Options parse_args(int argc, char* argv[]) {
             std::exit(0);
         } else if (arg == "-o") {
             set_once(opts.output, arg, next_value());
+        } else if (arg == "--out-dir") {
+            set_once(opts.out_dir, arg, next_value());
         } else if (arg == "--recipe") {
             set_once(opts.recipe_path, arg, next_value());
         } else if (arg == "--exposure") {
@@ -181,25 +236,51 @@ Options parse_args(int argc, char* argv[]) {
             opts.raw_half = true;
         } else if (arg == "--raw-camera-matrix") {
             set_once(opts.raw_camera_matrix_path, arg, next_value());
-        } else if (arg.starts_with('-') || !opts.input.empty()) {
+        } else if (arg.starts_with('-')) {
             throw UsageError("unexpected argument '" + std::string(arg) + "'");
         } else {
-            opts.input = arg;
+            opts.inputs.emplace_back(arg);
         }
     }
-    if (opts.input.empty()) {
+    if (opts.inputs.empty()) {
         throw UsageError("no input file given");
+    }
+    const bool several = opts.inputs.size() > 1;
+    if (several && opts.output) {
+        throw UsageError("-o names one output file, so it takes a single input; for " +
+                         std::to_string(opts.inputs.size()) +
+                         " inputs, use --out-dir <dir> instead");
+    }
+    if (several && opts.histogram_path) {
+        throw UsageError("--histogram writes one histogram file, so it takes a single input");
+    }
+    if (several && !opts.out_dir) {
+        throw UsageError(std::to_string(opts.inputs.size()) +
+                         " inputs need --out-dir <dir>, the folder to write the results to");
+    }
+    if (opts.output && opts.out_dir) {
+        throw UsageError("-o and --out-dir can't be used together: give one or the other");
     }
     // A histogram on its own is a useful result (e.g. checking clipping before exporting),
     // but with neither there would be nothing to show for the work.
-    if (!opts.output && !opts.histogram_path) {
+    if (!opts.output && !opts.histogram_path && !opts.out_dir) {
         throw UsageError("no output given (use -o <output>, --histogram <file>, or both)");
     }
     // Silently ignoring these on a PNG or JPEG would hide a mistake such as the wrong input file.
-    if ((opts.raw_half || opts.raw_camera_matrix_path) &&
-        !prism::is_raw_file(prism::path_from_utf8(opts.input))) {
-        throw UsageError(std::string(opts.raw_half ? "--raw-half" : "--raw-camera-matrix") +
-                         " only applies to RAW input (.arw, .dng, .cr2, .cr3, .nef, .raf)");
+    if (opts.raw_half || opts.raw_camera_matrix_path) {
+        for (const std::string& input : opts.inputs) {
+            if (!prism::is_raw_file(prism::path_from_utf8(input))) {
+                throw UsageError(
+                    std::string(opts.raw_half ? "--raw-half" : "--raw-camera-matrix") +
+                    " only applies to RAW input (.arw, .dng, .cr2, .cr3, .nef, .raf)" +
+                    (several ? ", and '" + input + "' is not a RAW file" : std::string()));
+            }
+        }
+    }
+    if (opts.out_dir) {
+        opts.outputs = out_dir_outputs(*opts.out_dir, opts.inputs, ".jpg");
+    } else {
+        opts.outputs = {opts.output};
     }
     return opts;
 }
@@ -256,6 +337,57 @@ private:
     std::vector<Stage> stages_;
 };
 
+// Loads one photo, runs `settings` on it and writes what was asked for: the image to `output`
+// and the histogram to `histogram_path`, each when given. File names are UTF-8 text, printed as
+// they are.
+void run_one(const std::string& input, const std::optional<std::string>& output,
+             const std::optional<std::string>& histogram_path, bool time,
+             const prism::ProcessSettings& settings, const prism::RawOptions& raw, int threads) {
+    StageTimer timer;
+
+    prism::Image img;
+    timer.run("load", [&] { img = prism::load_image(prism::path_from_utf8(input), raw, threads); });
+    // process() applies the stages in the README's order and skips those left at their
+    // neutral value. Without a stop token it always runs to the end, so the result is always
+    // ProcessResult::completed.
+    (void)prism::process(img, settings, threads, {},
+                         [&](const prism::StageTime& t) { timer.add(std::string(t.name), t.ms); });
+    // With both -o and --histogram the image is converted to 8-bit sRGB once: the saved bytes
+    // are also what the histogram counts. (Without -o the histogram encodes block by block.)
+    std::vector<std::uint8_t> bytes;
+    if (output) {
+        timer.run("save", [&] {
+            if (histogram_path) {
+                bytes = prism::encode_srgb8(img, threads);
+                prism::save_srgb8(prism::path_from_utf8(*output), bytes, img.width, img.height);
+            } else {
+                prism::save_image(prism::path_from_utf8(*output), img, threads);
+            }
+        });
+        std::cout << "wrote " << *output << " (" << img.width << "x" << img.height << ")\n";
+    }
+
+    if (histogram_path) {
+        // Measured after the whole pipeline, on the same 8-bit values save_image writes,
+        // whether or not -o was given.
+        prism::Histogram hist;
+        timer.run("histogram", [&] {
+            hist = bytes.empty() ? prism::compute_histogram(img, threads)
+                                 : prism::compute_histogram(bytes, img.width, img.height, threads);
+            prism::save_image(prism::path_from_utf8(*histogram_path), prism::render_histogram(hist),
+                              threads);
+        });
+        std::cout << "wrote " << *histogram_path << " (histogram)\n";
+        print_clipping(hist);
+    }
+
+    if (time) {
+        // Report what was actually used: small images run single-threaded whatever was asked.
+        timer.print(prism::threads_for_pixels(
+            static_cast<std::size_t>(img.width) * static_cast<std::size_t>(img.height), threads));
+    }
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -291,55 +423,9 @@ int main(int argc, char* argv[]) {
 
         // 0 asks the library for one thread per hardware thread.
         const int threads = opts.threads.value_or(0);
-        StageTimer timer;
-
-        prism::Image img;
-        timer.run("load", [&] {
-            img = prism::load_image(prism::path_from_utf8(opts.input), raw, threads);
-        });
-        // process() applies the stages in the README's order and skips those left at their
-        // neutral value. Without a stop token it always runs to the end, so the result is always
-        // ProcessResult::completed.
-        (void)prism::process(img, settings, threads, {}, [&](const prism::StageTime& t) {
-            timer.add(std::string(t.name), t.ms);
-        });
-        // With both -o and --histogram the image is converted to 8-bit sRGB once: the saved bytes
-        // are also what the histogram counts. (Without -o the histogram encodes block by block.)
-        std::vector<std::uint8_t> bytes;
-        if (opts.output) {
-            timer.run("save", [&] {
-                if (opts.histogram_path) {
-                    bytes = prism::encode_srgb8(img, threads);
-                    prism::save_srgb8(prism::path_from_utf8(*opts.output), bytes, img.width,
-                                      img.height);
-                } else {
-                    prism::save_image(prism::path_from_utf8(*opts.output), img, threads);
-                }
-            });
-            std::cout << "wrote " << *opts.output << " (" << img.width << "x" << img.height
-                      << ")\n";
-        }
-
-        if (opts.histogram_path) {
-            // Measured after the whole pipeline, on the same 8-bit values save_image writes,
-            // whether or not -o was given.
-            prism::Histogram hist;
-            timer.run("histogram", [&] {
-                hist = bytes.empty()
-                           ? prism::compute_histogram(img, threads)
-                           : prism::compute_histogram(bytes, img.width, img.height, threads);
-                prism::save_image(prism::path_from_utf8(*opts.histogram_path),
-                                  prism::render_histogram(hist), threads);
-            });
-            std::cout << "wrote " << *opts.histogram_path << " (histogram)\n";
-            print_clipping(hist);
-        }
-
-        if (opts.time) {
-            // Report what was actually used: small images run single-threaded whatever was asked.
-            timer.print(prism::threads_for_pixels(
-                static_cast<std::size_t>(img.width) * static_cast<std::size_t>(img.height),
-                threads));
+        for (std::size_t i = 0; i < opts.inputs.size(); ++i) {
+            run_one(opts.inputs[i], opts.outputs[i], opts.histogram_path, opts.time, settings, raw,
+                    threads);
         }
     } catch (const UsageError& e) {
         std::cerr << "error: " << e.what() << "\n\n";

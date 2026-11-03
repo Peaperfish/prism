@@ -9,13 +9,13 @@ Contents: [prism](#prism) · [Options of prism](#options-of-prism) · [Examples]
 ## prism
 
 ```
-prism <input> [-o <output>] [--histogram <file>] [options]
+prism <input>... [-o <output> | --out-dir <dir>] [--histogram <file>] [options]
 ```
 
 `prism` loads `<input>`, applies the options you give, and writes `<output>`. The input is a PNG, a JPEG or a camera RAW file (`.arw`, `.dng`, `.cr2`, `.cr3`, `.nef`, `.raf`, in any case). The output is `.png`, `.jpg` or `.jpeg`, chosen by the extension of the name you give with `-o`. JPEGs are saved at quality 95. If `<output>` exists, it is replaced.
 
-- Exactly one input file is allowed, and it must be given (anything else that doesn't start with `-` is an error).
-- At least one of `-o` and `--histogram` is required. With only `--histogram`, the whole pipeline still runs and the histogram shows the processed result, but no image is written. That is a quick way to check clipping before you export.
+- At least one input file must be given. Every argument that doesn't start with `-` and isn't the value of an option is an input. Several inputs need `--out-dir` (see `--out-dir` below).
+- At least one of `-o`, `--out-dir` and `--histogram` is required. With only `--histogram`, the whole pipeline still runs and the histogram shows the processed result, but no image is written. That is a quick way to check clipping before you export.
 - Every option except `--help`, `--version`, `--time`, `--raw-half` takes the next argument as its value, even if it starts with a minus sign, so `--exposure -1` works.
 - An option given twice is an error.
 - **Options are always applied in pipeline order**, whatever order you type them: exposure, colour matrix, saturation, contrast, tone curve. See [How Prism thinks about light](GUIDE.md#how-prism-thinks-about-light).
@@ -29,6 +29,10 @@ After a successful run, `prism` prints `wrote <file> (<width>x<height>)` for the
 ### `-o <file>`
 
 The output image. The extension (`.png`, `.jpg` or `.jpeg`, in any case) picks the format; any other extension fails with "unsupported extension" when the file is saved, after the processing has run. No default.
+
+### `--out-dir <dir>`
+
+Write each result into the folder `<dir>`, which must already exist, as `<input name>_prism.jpg`: `DSC03866.ARW` becomes `DSC03866_prism.jpg`, the name the app's **Export** suggests. A file of that name is replaced, as with `-o`. Needed for more than one input, and then `-o` and `--histogram` can't be used. With a single input it can take the place of `-o`, but not be given together with it. A folder that doesn't exist, or two inputs that would give the same name (such as `a/photo.jpg` and `b/photo.png`, or `photo.jpg` and `PHOTO.PNG`), is an error before any photo is processed. No default.
 
 ### `--recipe <file>`
 
@@ -140,7 +144,7 @@ Print how long each stage takes, on one thread:
 prism photo.jpg -o out.jpg --curve filmic --threads 1 --time
 ```
 
-A whole folder, in a shell loop (bash or zsh). Prism processes one file per run:
+A whole folder can go to `--out-dir` in one run (see `--out-dir`). A shell loop (bash or zsh) gives you full control over the names instead:
 
 ```sh
 mkdir -p edited
@@ -172,7 +176,7 @@ foreach ($f in Get-ChildItem *.jpg) {
 |---|---|
 | 0 | Success. Also `--help` and `--version` |
 | 1 | The run failed: a file couldn't be read or written, an input can't be decoded, a recipe has mistakes or can't be read, a matrix file or a `--curve` spec is wrong, or a RAW file was given to a build without RAW support. The message after `error:` says which |
-| 2 | The command line is wrong: no input, a missing value, an unknown option, an option given twice, a number outside its range, neither `-o` nor `--histogram`, or `--raw-half` or `--raw-camera-matrix` on a PNG or JPEG. Prism prints `error: <reason>` and then the usage text |
+| 2 | The command line is wrong: no input, a missing value, an unknown option, an option given twice, a number outside its range, none of `-o`, `--out-dir` and `--histogram`, `--raw-half` or `--raw-camera-matrix` on a PNG or JPEG, several inputs without `--out-dir` (or with `-o` or `--histogram`), `-o` together with `--out-dir`, an `--out-dir` folder that doesn't exist, or two inputs that would be written under the same name. Prism prints `error: <reason>` and then the usage text |
 
 Errors go to stderr.
 
