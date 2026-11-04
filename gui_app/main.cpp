@@ -6,11 +6,13 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <exception>
 #include <filesystem>
 #include <string>
 
 #include "app.hpp"
 #include "theme.hpp"
+#include "prism/gui/presets.hpp"
 #include "prism/gui/wheel_scaling.hpp"
 #include "prism/utf8_path.hpp"
 #include "imgui.h"
@@ -18,6 +20,14 @@
 #include "imgui_impl_sdlrenderer3.h"
 
 int main(int argc, char** argv) {
+    // Before SDL, which can change the C locale the recipe parser depends on (presets.hpp).
+    try {
+        prism::gui::load_builtin_looks();
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "Prism: couldn't read the built-in looks: %s\n", e.what());
+        return 1;
+    }
+
     // Keep the trackpad's momentum scrolling after the fingers lift (off by default in SDL).
     SDL_SetHint(SDL_HINT_MAC_SCROLL_MOMENTUM, "1");
     if (!SDL_Init(SDL_INIT_VIDEO)) {

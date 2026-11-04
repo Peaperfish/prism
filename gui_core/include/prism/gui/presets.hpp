@@ -1,8 +1,11 @@
 #pragma once
 
 #include <span>
+#include <string>
 #include <string_view>
+#include <vector>
 
+#include "prism/gui/builtin_looks.hpp"
 #include "prism/gui/settings.hpp"
 
 namespace prism::gui {
@@ -11,16 +14,45 @@ namespace prism::gui {
 // needs a tone curve to look like a photo, while a JPEG already has one baked in.
 enum class InputKind { image, raw };
 
-// A named look. Only the look fields of `settings` matter: exposure, saturation, contrast and
-// the tone curve (with its parameter). Applying a preset sets those and turns those stages on;
-// it leaves the colour matrix and the RAW options alone, since those describe the camera or a
-// grade the user loaded on purpose rather than the look.
+// A named look, read from a recipe in recipes/ (recipes/README.md says why each is what it is).
+// Only the look fields of `settings` matter: exposure, saturation, contrast and the tone curve
+// (with its parameter). Applying a preset sets those and turns those stages on; it leaves the
+// colour matrix and the RAW options alone, since those describe the camera or a grade the user
+// loaded on purpose rather than the look.
 struct Preset {
     std::string_view id;           // stable, for saving and tests: "natural", "vivid", ...
     std::string_view name;         // shown in the UI
     std::string_view description;  // tooltip
     EditSettings settings;
 };
+
+// Looks read from recipe texts, and the storage their Presets' text points at. Throws RecipeError,
+// naming the file, unless every file reads and is a look: no [matrix]; exposure, saturation,
+// contrast and curve all present and on; a name and a description; settings that pass validate().
+class LookTable {
+public:
+    explicit LookTable(std::span<const BuiltinLookFile> files);
+
+    // The Presets point into this object's storage.
+    LookTable(const LookTable&) = delete;
+    LookTable& operator=(const LookTable&) = delete;
+
+    [[nodiscard]] std::span<const Preset> presets() const noexcept { return presets_; }
+
+private:
+    struct Text {
+        std::string id;
+        std::string name;
+        std::string description;
+    };
+    std::vector<Text> texts_;
+    std::vector<Preset> presets_;
+};
+
+// Reads the built-in looks now, rather than at their first use, and throws what LookTable throws.
+// The app calls this first thing: a bad look stops it at once, and the numbers are read before
+// anything can touch the C locale that the recipe parser depends on (lib/recipe.cpp).
+void load_builtin_looks();
 
 // The presets offered for this kind of input, in display order. The first is the default.
 [[nodiscard]] std::span<const Preset> presets_for(InputKind kind);

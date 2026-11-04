@@ -1,60 +1,48 @@
 #include "prism/gui/presets.hpp"
 
-#include <vector>
+#include <cstddef>
+#include <utility>
+
+#include "prism/gui/recipe_settings.hpp"
+#include "prism/recipe.hpp"
 
 namespace prism::gui {
 
 namespace {
 
-// A look: the fields a preset sets. Everything else stays at EditSettings' defaults.
-EditSettings look(float exposure, float saturation, float contrast, CurveKind curve) {
-    EditSettings s;
-    s.exposure_stops = exposure;
-    s.saturation = saturation;
-    s.contrast = contrast;
-    s.curve = curve;
-    return s;
+const LookTable& raw_looks() {
+    static const LookTable looks(builtin_raw_look_files());
+    return looks;
 }
 
-// Initial values, from the GUI plan (section 7). They still need checking on real photos (an
-// a7R V RAW, a few phone JPEGs) and may be tuned later (plan decision D17). Every value is one
-// the CLI accepts, so each preset is also a prism command line.
-//
-// RAW files are linear: without a curve they look dark and flat, so every RAW preset except
-// Original brightens by a stop and adds a curve. +1 stop with filmic is the README's starting
-// point for an a7R V file, and Vivid is the README's "closer to the camera's JPEG" example.
-const std::vector<Preset>& raw_presets() {
-    static const std::vector<Preset> presets = {
-        {"natural", "Natural", "A stop brighter with a filmic curve: a neutral starting point",
-         look(1.0f, 1.0f, 1.0f, CurveKind::filmic)},
-        {"original", "Original", "No adjustments: the linear image as the sensor saw it",
-         look(0.0f, 1.0f, 1.0f, CurveKind::none)},
-        {"vivid", "Vivid", "More colour and contrast, closer to a camera JPEG",
-         look(1.0f, 1.25f, 1.15f, CurveKind::filmic)},
-        // Reinhard rolls the highlights off more gently than filmic; with less contrast and
-        // colour that gives a low-key, soft look.
-        {"soft", "Soft", "Gentle contrast, muted colour and soft highlights",
-         look(1.0f, 0.9f, 0.85f, CurveKind::reinhard)},
-        // A little extra contrast, because a greyscale image without colour contrast looks flat.
-        {"bw", "Black & white", "Greyscale with a little extra contrast",
-         look(1.0f, 0.0f, 1.2f, CurveKind::filmic)},
-    };
-    return presets;
+const LookTable& image_looks() {
+    static const LookTable looks(builtin_image_look_files());
+    return looks;
 }
 
-// A PNG or JPEG already has a tone curve and the camera's colour: no preset adds a curve (that
-// would apply one twice and dull the whites), and the changes are milder than for RAW.
-const std::vector<Preset>& image_presets() {
-    static const std::vector<Preset> presets = {
-        {"original", "Original", "No adjustments: the photo as it is",
-         look(0.0f, 1.0f, 1.0f, CurveKind::none)},
-        {"vivid", "Vivid", "More colour and contrast", look(0.0f, 1.2f, 1.1f, CurveKind::none)},
-        {"soft", "Soft", "Gentler contrast and muted colour",
-         look(0.0f, 0.9f, 0.9f, CurveKind::none)},
-        {"bw", "Black & white", "Greyscale with a little extra contrast",
-         look(0.0f, 0.0f, 1.15f, CurveKind::none)},
+// What is wrong with `recipe` as a look, as messages for the whole file.
+std::vector<RecipeIssue> look_issues(const Recipe& recipe) {
+    std::vector<RecipeIssue> issues;
+    const auto need = [&](bool ok, std::string message) {
+        if (!ok) {
+            issues.push_back({0, std::move(message)});
+        }
     };
-    return presets;
+    const auto stage = [&](const auto& section, std::string_view name) {
+        need(section.has_value(), "a look must have [" + std::string(name) + "]");
+        if (section) {
+            need(section->on, "a look can't switch off [" + std::string(name) + "]");
+        }
+    };
+    need(!recipe.matrix.has_value(),
+         "a look leaves the colour matrix alone: it can't have [matrix]");
+    stage(recipe.exposure, "exposure");
+    stage(recipe.saturation, "saturation");
+    stage(recipe.contrast, "contrast");
+    stage(recipe.curve, "curve");
+    need(recipe.name && !recipe.name->empty(), "a look must have a name");
+    need(recipe.description && !recipe.description->empty(), "a look must have a description");
+    return issues;
 }
 
 // The look as it acts on the image: an off stage is its neutral value.
@@ -82,8 +70,43 @@ EffectiveLook effective(const EditSettings& s) {
 
 }  // namespace
 
+LookTable::LookTable(std::span<const BuiltinLookFile> files) {
+    // All the text first and only then the views of it: moving a short std::string, as a growing
+    // vector would, moves its characters too.
+    texts_.reserve(files.size());
+    std::vector<EditSettings> settings;
+    settings.reserve(files.size());
+    for (const BuiltinLookFile& file : files) {
+        const std::string source(file.source);
+        const Recipe recipe = parse_recipe(file.text, source);
+        std::vector<RecipeIssue> issues = look_issues(recipe);
+        if (!issues.empty()) {
+            throw RecipeError(source, std::move(issues));
+        }
+        EditSettings s;
+        apply_recipe(s, recipe);
+        for (std::string& problem : validate(s)) {
+            issues.push_back({0, std::move(problem)});
+        }
+        if (!issues.empty()) {
+            throw RecipeError(source, std::move(issues));
+        }
+        texts_.push_back({std::string(file.id), *recipe.name, *recipe.description});
+        settings.push_back(s);
+    }
+    presets_.reserve(files.size());
+    for (std::size_t i = 0; i < texts_.size(); ++i) {
+        presets_.push_back({texts_[i].id, texts_[i].name, texts_[i].description, settings[i]});
+    }
+}
+
+void load_builtin_looks() {
+    (void)raw_looks();
+    (void)image_looks();
+}
+
 std::span<const Preset> presets_for(InputKind kind) {
-    return kind == InputKind::raw ? raw_presets() : image_presets();
+    return kind == InputKind::raw ? raw_looks().presets() : image_looks().presets();
 }
 
 const Preset& default_preset(InputKind kind) {

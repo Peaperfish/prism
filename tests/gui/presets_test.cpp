@@ -11,6 +11,7 @@
 #include "prism/gui/settings.hpp"
 #include "prism/image.hpp"
 #include "prism/process.hpp"
+#include "prism/recipe.hpp"
 
 using prism::gui::EditSettings;
 using prism::gui::InputKind;
@@ -34,6 +35,37 @@ prism::Image make_image() {
         }
     }
     return img;
+}
+
+// The four stages of a look that LookTable accepts.
+constexpr std::string_view stages =
+    "[exposure]\nstops = +1.0\n[saturation]\namount = 1.0\n[contrast]\namount = 1.0\n"
+    "[curve]\nshape = \"none\"\n";
+
+std::string look_text(std::string_view body = stages) {
+    return "prism_recipe = 1\nname = \"Test look\"\ndescription = \"For the test\"\n" +
+           std::string(body);
+}
+
+// The messages LookTable gives for this one file; empty if it accepts it.
+std::vector<prism::RecipeIssue> issues_of(const std::string& text) {
+    const prism::gui::BuiltinLookFile files[] = {{"test", "raw/test.prism", text}};
+    try {
+        const prism::gui::LookTable table(files);
+    } catch (const prism::RecipeError& e) {
+        EXPECT_EQ(e.source(), "raw/test.prism");
+        return e.issues();
+    }
+    return {};
+}
+
+bool has_message(const std::vector<prism::RecipeIssue>& issues, std::string_view words) {
+    for (const prism::RecipeIssue& issue : issues) {
+        if (issue.message.find(words) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // The 8-bit sRGB bytes a preset produces (what would end up in the file).
@@ -142,4 +174,89 @@ TEST(Presets, OnlyTheEffectiveLookCounts) {
     off.curve = prism::gui::CurveKind::filmic;
     off.exposure_on = off.curve_on = false;
     EXPECT_EQ(prism::gui::matching_preset(InputKind::raw, off)->id, "original");
+}
+
+// --- Reading looks -------------------------------------------------------------------------------
+
+TEST(LookTable, AGoodFileIsALook) {
+    const std::string text = look_text();
+    const prism::gui::BuiltinLookFile files[] = {{"test", "raw/test.prism", text}};
+    const prism::gui::LookTable table(files);
+    ASSERT_EQ(table.presets().size(), 1u);
+    EXPECT_EQ(table.presets()[0].id, "test");
+    EXPECT_EQ(table.presets()[0].name, "Test look");
+    EXPECT_EQ(table.presets()[0].description, "For the test");
+    EXPECT_EQ(table.presets()[0].settings.exposure_stops, 1.0f);
+}
+
+TEST(LookTable, AFileThatDoesNotReadIsRefusedByName) {
+    const std::vector<prism::RecipeIssue> issues = issues_of("prism_recipe = 1\nnmae = \"x\"\n");
+    ASSERT_FALSE(issues.empty());
+    EXPECT_EQ(issues[0].line, 2);
+    EXPECT_TRUE(has_message(issues, "Did you mean 'name'?"));
+    EXPECT_TRUE(has_message(issues_of(""), "no settings"));
+}
+
+TEST(LookTable, ALookHasExactlyItsFourStagesAllOn) {
+    EXPECT_TRUE(issues_of(look_text()).empty());
+    const std::string matrix =
+        "[matrix]\nred = [1, 0, 0]\ngreen = [0, 1, 0]\nblue = [0, 0, 1]\n";
+    EXPECT_TRUE(has_message(issues_of(look_text(std::string(stages) + matrix)), "[matrix]"));
+
+    for (const std::string_view stage : {"exposure", "saturation", "contrast", "curve"}) {
+        const std::string section = "[" + std::string(stage) + "]";
+        const std::string header = section + "\n";
+        std::string body(stages);
+
+        // Left out.
+        std::string without = body;
+        const std::size_t at = without.find(header);
+        ASSERT_NE(at, std::string::npos);
+        const std::size_t next = without.find('[', at + 1);
+        without.erase(at, next == std::string::npos ? std::string::npos : next - at);
+        EXPECT_TRUE(has_message(issues_of(look_text(without)), "must have " + section)) << stage;
+
+        // Switched off.
+        body.insert(body.find('\n', at + header.size()) + 1, "on = false\n");
+        EXPECT_TRUE(has_message(issues_of(look_text(body)), "switch off " + section)) << stage;
+    }
+}
+
+TEST(LookTable, ALookHasANameAndADescription) {
+    const std::string body(stages);
+    const auto issues = [&](std::string_view top) {
+        return issues_of("prism_recipe = 1\n" + std::string(top) + body);
+    };
+    EXPECT_TRUE(has_message(issues("description = \"d\"\n"), "must have a name"));
+    EXPECT_TRUE(has_message(issues("name = \"\"\ndescription = \"d\"\n"), "must have a name"));
+    EXPECT_TRUE(has_message(issues("name = \"n\"\n"), "must have a description"));
+    EXPECT_TRUE(
+        has_message(issues("name = \"n\"\ndescription = \"\"\n"), "must have a description"));
+}
+
+// Short names sit inside the std::string, so these point into the table's own storage. Under
+// AddressSanitizer a view left pointing at the input, or at moved-from text, fails here.
+TEST(LookTable, ThePresetsPointIntoTheTablesOwnStorage) {
+    std::vector<std::string> ids;
+    std::vector<std::string> texts;
+    std::vector<prism::gui::BuiltinLookFile> files;
+    for (int i = 0; i < 40; ++i) {
+        ids.push_back("id" + std::to_string(i));
+        texts.push_back("prism_recipe = 1\nname = \"n" + std::to_string(i) +
+                        "\"\ndescription = \"A description long enough to be on the heap\"\n" +
+                        std::string(stages));
+    }
+    for (int i = 0; i < 40; ++i) {
+        files.push_back({ids[i], "raw/test.prism", texts[i]});
+    }
+    const prism::gui::LookTable table(files);
+    files.clear();
+    ids.clear();
+    texts.clear();
+    ASSERT_EQ(table.presets().size(), 40u);
+    for (int i = 0; i < 40; ++i) {
+        EXPECT_EQ(table.presets()[i].id, "id" + std::to_string(i));
+        EXPECT_EQ(table.presets()[i].name, "n" + std::to_string(i));
+        EXPECT_EQ(table.presets()[i].description, "A description long enough to be on the heap");
+    }
 }
