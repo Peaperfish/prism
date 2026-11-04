@@ -108,6 +108,20 @@ jobs:
           -DPRISM_SANITIZE_ADDRESS=${{ matrix.asan || 'OFF' }}
           -DFETCHCONTENT_BASE_DIR=${{ github.workspace }}/.deps
 
+      # Which compiler this is and what it targets by default. A default target with FMA changes
+      # how a*b+c is rounded, and that is what output bits can depend on.
+      - name: Show the compiler and its default floating-point target
+        if: runner.os != 'Windows'
+        run: |
+          "${CXX:-c++}" --version | head -n 1
+          defs=$("${CXX:-c++}" -dM -E -x c++ /dev/null)
+          found=$(echo "$defs" | grep -E '^#define __(FMA|AVX|AVX2)__ ' || true)
+          if [ -z "$found" ]; then
+            echo "none of FMA/AVX/AVX2 by default"
+          else
+            echo "$found"
+          fi
+
       # --config and -C pick the configuration on multi-config generators (Visual Studio);
       # single-config ones (Makefiles on Linux and macOS) ignore them.
       - name: Build
@@ -184,6 +198,21 @@ jobs:
           -DPRISM_BUILD_TESTS=OFF
           -DPRISM_WITH_LIBRAW=OFF
           -DFETCHCONTENT_BASE_DIR=${{ github.workspace }}/.deps
+
+      # This job builds with the system's default C++ compiler.
+      - name: Show the compiler and its default floating-point target
+        if: runner.os != 'Windows'
+        env:
+          CXX: c++
+        run: |
+          "${CXX:-c++}" --version | head -n 1
+          defs=$("${CXX:-c++}" -dM -E -x c++ /dev/null)
+          found=$(echo "$defs" | grep -E '^#define __(FMA|AVX|AVX2)__ ' || true)
+          if [ -z "$found" ]; then
+            echo "none of FMA/AVX/AVX2 by default"
+          else
+            echo "$found"
+          fi
 
       - name: Build prism_gui
         run: cmake --build build --config Release --target prism_gui --parallel
