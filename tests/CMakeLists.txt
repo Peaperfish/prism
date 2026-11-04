@@ -61,6 +61,7 @@ gtest_discover_tests(prism_tests)
 # The GUI core's tests, in their own executable so that they show up under their own name.
 add_executable(prism_gui_core_tests
   gui/background_export_test.cpp
+  gui/builtin_looks_test.cpp
   gui/clip_note_test.cpp
   gui/clipping_test.cpp
   gui/close_guard_test.cpp
@@ -88,5 +89,7 @@ target_link_libraries(prism_gui_core_tests PRIVATE prism_gui_core prism_warnings
 # The RAW tests use the synthetic DNG writer (synthetic_dng.hpp, which needs lib/tiff_reader.hpp).
 target_include_directories(prism_gui_core_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
                                                         ${PROJECT_SOURCE_DIR}/lib)
+target_compile_definitions(prism_gui_core_tests PRIVATE
+                           PRISM_RECIPES_DIR="${PROJECT_SOURCE_DIR}/recipes")
 prism_copy_libraw_dll(prism_gui_core_tests)
 gtest_discover_tests(prism_gui_core_tests)

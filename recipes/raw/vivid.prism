@@ -1,0 +1,17 @@
+# Prism recipe: edit settings in plain text. Prism rewrites these comments when it saves.
+# What each line means: https://github.com/Peaperfish/prism/blob/main/docs/RECIPES.md
+prism_recipe = 1  # recipe format version
+name = "Vivid"
+description = "More colour and contrast, closer to a camera JPEG"
+
+[exposure]
+stops = +1.0  # 2.00x the light
+
+[saturation]
+amount = 1.25  # 1.25x the colourfulness
+
+[contrast]
+amount = 1.15  # each stop near middle grey is 15% wider
+
+[curve]
+shape = "filmic"  # 18% grey becomes 13%

@@ -1,0 +1,17 @@
+# Prism recipe: edit settings in plain text. Prism rewrites these comments when it saves.
+# What each line means: https://github.com/Peaperfish/prism/blob/main/docs/RECIPES.md
+prism_recipe = 1  # recipe format version
+name = "Original"
+description = "No adjustments: the photo as it is"
+
+[exposure]
+stops = +0.0  # 1.00x the light
+
+[saturation]
+amount = 1.0  # 1.00x the colourfulness
+
+[contrast]
+amount = 1.0  # no change near middle grey
+
+[curve]
+shape = "none"  # no tone curve

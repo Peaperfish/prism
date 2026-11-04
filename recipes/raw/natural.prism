@@ -1,0 +1,17 @@
+# Prism recipe: edit settings in plain text. Prism rewrites these comments when it saves.
+# What each line means: https://github.com/Peaperfish/prism/blob/main/docs/RECIPES.md
+prism_recipe = 1  # recipe format version
+name = "Natural"
+description = "A stop brighter with a filmic curve: a neutral starting point"
+
+[exposure]
+stops = +1.0  # 2.00x the light
+
+[saturation]
+amount = 1.0  # 1.00x the colourfulness
+
+[contrast]
+amount = 1.0  # no change near middle grey
+
+[curve]
+shape = "filmic"  # 18% grey becomes 13%
