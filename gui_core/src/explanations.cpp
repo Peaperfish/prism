@@ -2,7 +2,11 @@
 
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
+#include <iterator>
+#include <stdexcept>
+#include <vector>
 
 #include "prism/gui/stage_controls.hpp"
 #include "prism/pipeline.hpp"
@@ -13,28 +17,31 @@ namespace {
 
 // The texts are in the order they appear in the window. The draft they come from is the notes for
 // #16; numbers in a text are checked against the code by explanations_test.cpp, and live numbers
-// are never typed here.
-constexpr Explanation table[] = {
+// are never typed here. A look's numbers in a detail are tokens, such as {raw.vivid.contrast}:
+// expanded() below fills them in from the recipes, with expand_look_text.
+constexpr Explanation templates[] = {
     // --- Look ------------------------------------------------------------------------------
     {"look", "A look is a saved recipe: three numbers and a curve.",
      "Picking one sets Exposure, Saturation, Contrast and the Tone curve in the pipeline below; "
      "nothing is hidden. Change any of them and the name becomes Custom.",
      LiveKind::look},
     {"look.natural", "A stop brighter with a filmic curve.",
-     "RAW files are linear, so they look dark and flat as decoded. +1 stop and the filmic curve "
-     "give a neutral starting point."},
+     "RAW files are linear, so they look dark and flat as decoded. {raw.natural.exposure} and the "
+     "filmic curve give a neutral starting point."},
     {"look.original", "Nothing applied.",
      "The image as decoded: for RAW, linear light as the sensor recorded it (dark and flat); for "
      "JPEG and PNG, the photo as it is."},
     {"look.vivid", "More colour and contrast.",
-     "Saturation ×1.25 and contrast ×1.15 for RAW (×1.2 and ×1.1 for JPEG and PNG). RAW also gets "
-     "the +1 stop and filmic curve."},
+     "Saturation {raw.vivid.saturation} and contrast {raw.vivid.contrast} for RAW "
+     "({image.vivid.saturation} and {image.vivid.contrast} for JPEG and PNG). RAW also gets "
+     "{raw.vivid.exposure} and the filmic curve."},
     {"look.soft", "Gentler contrast, muted colour.",
-     "Saturation ×0.9 and lower contrast. For RAW the Reinhard curve rolls highlights off more "
-     "softly than filmic."},
+     "Saturation {raw.soft.saturation} and contrast {raw.soft.contrast} for RAW "
+     "({image.soft.saturation} and {image.soft.contrast} for JPEG and PNG). For RAW the Reinhard "
+     "curve rolls highlights off more softly than filmic."},
     {"look.bw", "Greyscale with a little extra contrast.",
-     "Saturation 0 removes colour but keeps each pixel's luminance. Contrast ×1.2 (RAW) or ×1.15 "
-     "(JPEG, PNG) stops the grey looking flat."},
+     "Saturation 0 removes colour but keeps each pixel's luminance. Contrast {raw.bw.contrast} "
+     "(RAW) or {image.bw.contrast} (JPEG, PNG) stops the grey looking flat."},
     {"look.reset", "Go back to the starting look.",
      "Sets the same four values as the first look in the list. One undo step."},
 
@@ -269,14 +276,68 @@ std::string grey_text(int percent) {
     return "18% grey becomes " + std::to_string(percent) + "%";
 }
 
+// {kind.id.field}: the value of one stage of one look, as the live lines format it.
+std::string look_token_value(std::string_view token, std::span<const Preset> raw,
+                             std::span<const Preset> image) {
+    const auto unknown = [&] { return std::logic_error("unknown token: " + std::string(token)); };
+    const std::size_t first = token.find('.');
+    const std::size_t last = token.rfind('.');
+    if (first == std::string_view::npos || first == last) {
+        throw unknown();
+    }
+    const std::string_view kind = token.substr(0, first);
+    const std::string_view id = token.substr(first + 1, last - first - 1);
+    const std::string_view field = token.substr(last + 1);
+    if (kind != "raw" && kind != "image") {
+        throw unknown();
+    }
+    for (const Preset& preset : kind == "raw" ? raw : image) {
+        if (preset.id != id) {
+            continue;
+        }
+        if (field == "exposure") {
+            return format_exposure(preset.settings.exposure_stops);
+        }
+        if (field == "saturation") {
+            return format_times(preset.settings.saturation);
+        }
+        if (field == "contrast") {
+            return format_times(preset.settings.contrast);
+        }
+        break;
+    }
+    throw unknown();
+}
+
+// The table with its tokens filled in, once. The details are all made before any view of them.
+const std::vector<Explanation>& expanded() {
+    static const std::vector<std::string> details = [] {
+        std::vector<std::string> out;
+        out.reserve(std::size(templates));
+        for (const Explanation& e : templates) {
+            out.push_back(expand_look_text(e.detail, presets_for(InputKind::raw),
+                                           presets_for(InputKind::image)));
+        }
+        return out;
+    }();
+    static const std::vector<Explanation> entries = [] {
+        std::vector<Explanation> out(std::begin(templates), std::end(templates));
+        for (std::size_t i = 0; i < out.size(); ++i) {
+            out[i].detail = details[i];
+        }
+        return out;
+    }();
+    return entries;
+}
+
 }  // namespace
 
 std::span<const Explanation> explanations() noexcept {
-    return table;
+    return expanded();
 }
 
 const Explanation* explanation_for(std::string_view id) noexcept {
-    for (const Explanation& e : table) {
+    for (const Explanation& e : expanded()) {
         if (e.id == id) {
             return &e;
         }
@@ -332,6 +393,25 @@ std::string explain_id(const Preset& preset) {
 
 std::span<const std::string_view> other_explain_ids() noexcept {
     return other_ids;
+}
+
+std::string expand_look_text(std::string_view text, std::span<const Preset> raw,
+                             std::span<const Preset> image) {
+    std::string out;
+    std::size_t at = 0;
+    while (true) {
+        const std::size_t open = text.find('{', at);
+        out += text.substr(at, open == std::string_view::npos ? open : open - at);
+        if (open == std::string_view::npos) {
+            return out;
+        }
+        const std::size_t close = text.find('}', open);
+        if (close == std::string_view::npos) {
+            throw std::logic_error("unclosed token in: " + std::string(text));
+        }
+        out += look_token_value(text.substr(open + 1, close - open - 1), raw, image);
+        at = close + 1;
+    }
 }
 
 std::string format_times(float value) {

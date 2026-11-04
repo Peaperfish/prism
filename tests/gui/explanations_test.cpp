@@ -4,7 +4,10 @@
 
 #include <cmath>
 #include <set>
+#include <span>
+#include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "prism/gui/stage_controls.hpp"
@@ -103,8 +106,9 @@ TEST(Explanations, MultiplicationUsesTheSignNotTheLetter) {
     EXPECT_EQ(format_times(1.2f), "×1.20");
 }
 
-// The look texts quote numbers; they must be the presets' numbers.
-TEST(Explanations, LookTextsQuoteThePresetsNumbers) {
+// A look's numbers are filled in from the recipes. What the texts still say in words must be true
+// of the looks.
+TEST(Explanations, LookTextsInWordsAgreeWithTheLooks) {
     const auto find = [](InputKind kind, std::string_view id) -> const Preset& {
         for (const Preset& p : presets_for(kind)) {
             if (p.id == id) return p;
@@ -112,17 +116,12 @@ TEST(Explanations, LookTextsQuoteThePresetsNumbers) {
         ADD_FAILURE() << id;
         return presets_for(kind).front();
     };
-    EXPECT_FLOAT_EQ(find(InputKind::raw, "vivid").settings.saturation, 1.25f);
-    EXPECT_FLOAT_EQ(find(InputKind::raw, "vivid").settings.contrast, 1.15f);
-    EXPECT_FLOAT_EQ(find(InputKind::image, "vivid").settings.saturation, 1.2f);
-    EXPECT_FLOAT_EQ(find(InputKind::image, "vivid").settings.contrast, 1.1f);
-    EXPECT_FLOAT_EQ(find(InputKind::raw, "soft").settings.saturation, 0.9f);
-    EXPECT_FLOAT_EQ(find(InputKind::raw, "bw").settings.contrast, 1.2f);
-    EXPECT_FLOAT_EQ(find(InputKind::image, "bw").settings.contrast, 1.15f);
-    EXPECT_FLOAT_EQ(find(InputKind::raw, "bw").settings.saturation, 0.0f);
-    EXPECT_FLOAT_EQ(find(InputKind::raw, "natural").settings.exposure_stops, 1.0f);
+    EXPECT_EQ(find(InputKind::raw, "natural").settings.exposure_stops, 1.0f);  // "A stop brighter"
     EXPECT_EQ(find(InputKind::raw, "natural").settings.curve, CurveKind::filmic);
+    EXPECT_EQ(find(InputKind::raw, "vivid").settings.curve, CurveKind::filmic);
     EXPECT_EQ(find(InputKind::raw, "soft").settings.curve, CurveKind::reinhard);
+    EXPECT_EQ(find(InputKind::raw, "bw").settings.saturation, 0.0f);  // "Saturation 0"
+    EXPECT_EQ(find(InputKind::image, "bw").settings.saturation, 0.0f);
     // ... and the ranges the curve texts quote.
     EXPECT_NE(explanation_for("curve.white")->detail.find("Range 1 to 16, default 4"),
               std::string_view::npos);
@@ -134,6 +133,51 @@ TEST(Explanations, LookTextsQuoteThePresetsNumbers) {
     EXPECT_FLOAT_EQ(curve_parameter(CurveKind::gamma)->min, 0.5f);
     EXPECT_FLOAT_EQ(curve_parameter(CurveKind::gamma)->max, 4.0f);
     EXPECT_FLOAT_EQ(curve_parameter(CurveKind::gamma)->default_value, 2.2f);
+}
+
+TEST(Explanations, LookDetailsShowTheRecipesNumbers) {
+    EXPECT_EQ(explanation_for("look.natural")->detail,
+              "RAW files are linear, so they look dark and flat as decoded. +1.00 stops and the "
+              "filmic curve give a neutral starting point.");
+    EXPECT_EQ(explanation_for("look.vivid")->detail,
+              "Saturation ×1.25 and contrast ×1.15 for RAW (×1.20 and ×1.10 for JPEG and PNG). RAW "
+              "also gets +1.00 stops and the filmic curve.");
+    EXPECT_EQ(explanation_for("look.soft")->detail,
+              "Saturation ×0.90 and contrast ×0.85 for RAW (×0.90 and ×0.90 for JPEG and PNG). For "
+              "RAW the Reinhard curve rolls highlights off more softly than filmic.");
+    EXPECT_EQ(explanation_for("look.bw")->detail,
+              "Saturation 0 removes colour but keeps each pixel's luminance. Contrast ×1.20 (RAW) "
+              "or ×1.15 (JPEG, PNG) stops the grey looking flat.");
+}
+
+TEST(Explanations, ChangingALookChangesTheNumbersInItsText) {
+    const auto copy = [](InputKind kind) {
+        const std::span<const Preset> presets = presets_for(kind);
+        return std::vector<Preset>(presets.begin(), presets.end());
+    };
+    std::vector<Preset> raw = copy(InputKind::raw);
+    std::vector<Preset> image = copy(InputKind::image);
+    for (Preset& p : raw) {
+        if (p.id == "vivid") {
+            p.settings.exposure_stops = -0.5f;
+            p.settings.saturation = 3.0f;
+            p.settings.contrast = 2.5f;
+        }
+    }
+    for (Preset& p : image) {
+        if (p.id == "vivid") {
+            p.settings.contrast = 0.75f;
+        }
+    }
+    EXPECT_EQ(expand_look_text("{raw.vivid.exposure}, {raw.vivid.saturation}, {raw.vivid.contrast}, "
+                               "{image.vivid.contrast}.",
+                               raw, image),
+              "-0.50 stops, ×3.00, ×2.50, ×0.75.");
+    EXPECT_EQ(expand_look_text("No tokens.", raw, image), "No tokens.");
+    for (const std::string_view bad : {"{raw.nothing.contrast}", "{raw.vivid.nothing}",
+                                       "{other.vivid.contrast}", "{vivid}", "{raw.vivid.contrast"}) {
+        EXPECT_THROW((void)expand_look_text(bad, raw, image), std::logic_error) << bad;
+    }
 }
 
 // --- Live lines: the numbers are the engine's ---------------------------------------------------

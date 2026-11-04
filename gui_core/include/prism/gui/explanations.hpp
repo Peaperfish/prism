@@ -123,6 +123,12 @@ struct LiveContext {
 [[nodiscard]] std::string live_line(std::string_view id, const EditSettings& settings,
                                     const LiveContext& context = {});
 
+// `text` with each {kind.id.field} token replaced by that look's number, formatted as the live
+// lines do: {raw.vivid.contrast} -> "×1.15", {raw.vivid.exposure} -> "+1.00 stops". The fields are
+// exposure, saturation and contrast. Throws std::logic_error for a token that names nothing.
+[[nodiscard]] std::string expand_look_text(std::string_view text, std::span<const Preset> raw,
+                                           std::span<const Preset> image);
+
 // "×1.20": a multiplier to two places, with the multiplication sign (new text uses × not x).
 [[nodiscard]] std::string format_times(float value);
 
