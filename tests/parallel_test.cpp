@@ -138,13 +138,24 @@ TEST(ParallelStages, ExposureMatchesSingleThreaded) {
 }
 
 TEST(ParallelStages, MatrixMatchesSingleThreaded) {
-    const prism::Matrix3 m = {1.05f, 0.03f, -0.01f, 0.01f, 1.0f, 0.0f, -0.02f, -0.02f, 0.94f};
-    prism::Image expected = make_linear_image();
-    prism::apply_matrix(expected, m, 1);
-    for (int threads : thread_counts()) {
-        prism::Image img = make_linear_image();
-        prism::apply_matrix(img, m, threads);
-        EXPECT_TRUE(same_bits(img.pixels, expected.pixels)) << threads << " threads";
+    // The first is a mild colour matrix; the second has large off-diagonal terms; the third has
+    // negative ones. Different coefficients round differently, so each is its own check.
+    const prism::Matrix3 matrices[] = {
+        {1.05f, 0.03f, -0.01f, 0.01f, 1.0f, 0.0f, -0.02f, -0.02f, 0.94f},
+        {0.6f, 0.3f, 0.2f, 0.25f, 0.55f, 0.35f, 0.15f, 0.4f, 0.7f},
+        {1.7f, -0.45f, -0.25f, -0.3f, 1.55f, -0.25f, -0.1f, -0.6f, 1.7f},
+    };
+    for (const prism::Matrix3& m : matrices) {
+        prism::Image expected = make_linear_image();
+        prism::apply_matrix(expected, m, 1);
+        for (int threads : thread_counts()) {
+            prism::Image img = make_linear_image();
+            prism::apply_matrix(img, m, threads);
+            EXPECT_TRUE(same_bits(img.pixels, expected.pixels))
+                << threads << " threads, matrix {" << m[0] << ", " << m[1] << ", " << m[2] << ", "
+                << m[3] << ", " << m[4] << ", " << m[5] << ", " << m[6] << ", " << m[7] << ", "
+                << m[8] << "}";
+        }
     }
 }
 

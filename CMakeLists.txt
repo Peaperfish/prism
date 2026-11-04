@@ -186,6 +186,15 @@ if(MSVC)
 else()
   target_compile_options(prism_warnings INTERFACE -Wall -Wextra -Wpedantic)
 endif()
+# GCC's default (-ffp-contract=fast, GNU mode) fuses a*b+c into one fused multiply-add wherever the
+# target has one, and does so differently in vectorised and scalar code. A pixel could then round
+# differently depending on which chunk it landed in, so threaded and single-threaded output
+# differed in bits (seen with GCC 15 on ubuntu-26.04). Clang's default only fuses within one
+# expression and MSVC does not fuse by default, so only GCC needs this. It rides on prism_warnings
+# because every target of ours already links that.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  target_compile_options(prism_warnings INTERFACE -ffp-contract=off)
+endif()
 
 add_subdirectory(third_party/stb)
 add_subdirectory(lib)

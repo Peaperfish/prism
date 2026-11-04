@@ -11,8 +11,10 @@ namespace prism {
 //   0  = automatic: one thread per hardware thread (std::thread::hardware_concurrency())
 //   1  = single-threaded, on the calling thread
 //   n  = at most n threads
-// Results are bit-identical whatever the thread count, because each pixel is computed by exactly
-// the same code; only *which* thread computes it changes.
+// Results are bit-identical whatever the thread count: each pixel depends only on itself, and
+// floating-point contraction is off (-ffp-contract=off on GCC, see the top-level CMakeLists.txt),
+// so the compiler can't round a pixel differently in vectorised and scalar code, which is what
+// the split into chunks changes.
 
 // Images smaller than this (about 1 MP) always run on one thread: starting and joining threads
 // costs tens of microseconds, which is more than the whole job takes on a small image.
