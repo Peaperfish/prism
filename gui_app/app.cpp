@@ -322,6 +322,7 @@ void App::open_now(const fs::path& path) {
     compare_stage_.reset();
     strip_.reset();
     strip_bands_.clear();
+    view_ = {};  // each photo starts whole
     explain_last_.clear();
     SDL_SetWindowTitle(window_, ("Prism - " + file_name(path)).c_str());
 }
@@ -1169,6 +1170,20 @@ void App::handle_shortcuts() {
     if (ImGui::Shortcut(ImGuiKey_T, ImGuiInputFlags_RouteGlobal)) {
         toggle_test_strip();  // T: the test strip, routed like J so typing never triggers it
     }
+    // Zoom: plain keys, routed like J and T. Cmd/Ctrl with + - 0 is the interface size, above.
+    if (global(ImGuiKey_F)) {
+        view_fit();
+    }
+    if (global(ImGuiKey_1)) {
+        view_actual_size();
+    }
+    if (global(ImGuiKey_Equal) || global(ImGuiMod_Shift | ImGuiKey_Equal) ||
+        global(ImGuiKey_KeypadAdd)) {
+        view_step(+1);
+    }
+    if (global(ImGuiKey_Minus) || global(ImGuiKey_KeypadSubtract)) {
+        view_step(-1);
+    }
 }
 
 void App::draw_menu() {
@@ -1243,6 +1258,25 @@ void App::draw_menu() {
         if (session_.has_file() && !strip_ && !gui::strip_available(viewed_stage_) &&
             ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled)) {
             ImGui::SetTooltip("%s", gui::strip_unavailable_hint());
+        }
+        ImGui::Separator();
+        const bool can_zoom = view_available();
+        const float zoom = can_zoom ? gui::view_zoom(view_, view_geometry_) : 1.0f;
+        const float fit = can_zoom ? gui::view_fit_zoom(view_geometry_) : 1.0f;
+        if (ImGui::MenuItem("Zoom In", "=", false,
+                            can_zoom && !gui::view_same_zoom(gui::view_step_zoom(zoom, fit, +1), zoom))) {
+            view_step(+1);
+        }
+        if (ImGui::MenuItem("Zoom Out", "-", false, can_zoom && !view_.fit)) {
+            view_step(-1);
+        }
+        if (ImGui::MenuItem("Zoom to Fit", "F", false, can_zoom && !view_.fit)) {
+            view_fit();
+        }
+        // Greyed out where it can't go: a photo so small that even its fit is above 100%.
+        if (ImGui::MenuItem("100% of Preview", "1", false,
+                            can_zoom && fit < 1.0f && !gui::view_same_zoom(zoom, 1.0f))) {
+            view_actual_size();
         }
         ImGui::EndMenu();
     }
@@ -1331,6 +1365,28 @@ void App::draw_canvas() {
     if (drag_over_ && session_.has_file()) {
         draw->AddRect(min, max, colours.drop_highlight, 0.0f, 0,
                   token_metrics().drop_line_active);
+    }
+}
+
+bool App::view_available() const {
+    return session_.has_file() && texture_.texture() != nullptr;
+}
+
+void App::view_fit() {
+    view_ = {};
+}
+
+void App::view_actual_size() {
+    if (view_available()) {
+        view_ = gui::view_zoomed_to(view_, view_geometry_, 1.0f);
+    }
+}
+
+void App::view_step(int direction) {
+    if (view_available()) {
+        const float next = gui::view_step_zoom(gui::view_zoom(view_, view_geometry_),
+                                               gui::view_fit_zoom(view_geometry_), direction);
+        view_ = gui::view_zoomed_to(view_, view_geometry_, next);
     }
 }
 

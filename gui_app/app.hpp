@@ -121,6 +121,11 @@ private:
     void handle_shortcuts();
     void draw_menu();
     void draw_canvas();
+    // Zoom. Keys and menu items act on the canvas as it was last drawn.
+    [[nodiscard]] bool view_available() const;
+    void view_fit();
+    void view_actual_size();
+    void view_step(int direction);  // > 0: in
     void draw_banner();
     // The test strip. Whether it is on and usable (strip_ is cleared when the viewed stage can't
     // show it).
