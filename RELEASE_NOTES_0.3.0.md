@@ -19,7 +19,7 @@ This release is about keeping a look, and about looking closer: save an edit as 
 
 ## Known limits
 
-- The apps are not signed or notarized yet, so macOS and Windows warn the first time you open them. ([#11](https://github.com/Peaperfish/prism/issues/11))
+- The apps are not signed or notarized yet, so macOS and Windows warn the first time you open them: see "Running the unsigned apps" below for the steps. ([#11](https://github.com/Peaperfish/prism/issues/11))
 - The preview is not colour-managed for wide-gamut (P3) displays. It is shown as sRGB.
 - **100% means 100% of the 2560 px preview, not of the file.** A pixel in the preview can stand for several file pixels, and Sample says so. An export always has every pixel. Zooming to the file's real pixels is planned. ([#37](https://github.com/Peaperfish/prism/issues/37))
 - Pinch to zoom has not been tested on real Windows or Linux hardware. The wheel with `Cmd` (macOS) or `Ctrl` (Windows and Linux) zooms everywhere.

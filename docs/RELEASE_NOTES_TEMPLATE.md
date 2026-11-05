@@ -8,8 +8,14 @@ Prism's desktop app, for macOS and Windows.
 - Opens PNG, JPEG and camera RAW files (.arw, .dng, .cr2, .cr3, .nef, .raf), from File > Open
   or by dropping a file on the window.
 - Shows a live preview that follows every slider as you drag it.
-- Simple mode: presets for RAW and for PNG/JPEG, and sliders for the main adjustments, with
+- Zoom and pan: zoom about the cursor, move the picture, fit it to the window or go to 100%.
+  Above 200% you see the pixels as squares.
+- Reads any pixel: the linear values, its share "of white's light" and how many stops it is
+  above or below middle grey, at the stage you are viewing.
+- Simple mode: looks for RAW and for PNG/JPEG, and sliders for the main adjustments, with
   undo and redo.
+- Recipes: save an edit as a small, readable text file (`.prism`) and load it on any photo. The
+  built-in looks are recipes too, and the app shows their numbers and their file.
 - Pipeline view: every stage in the order the light passes through it, with its controls. Turn
   stages on or off and click one to see the photo at that point.
 - Compare any two stages, including the original, side by side.
@@ -18,10 +24,11 @@ Prism's desktop app, for macOS and Windows.
 - Test strip: the photo in five bands at different exposures, to choose by eye.
 - A plain-language explanation of each control, with the numbers for its current value.
 - Exports the result as PNG or JPEG, and asks first if you would lose edits you haven't
-  exported.
+  exported or saved as a recipe.
 - Light and dark themes, following the system by default.
 - Preferences for the theme, the interface size and the panel width.
-- The command-line tool `prism` is included in both downloads.
+- The command-line tool `prism` is included in both downloads. It edits one photo or a whole
+  shoot at once with `--recipe` and `--out-dir`.
 
 ## Downloads
 
@@ -31,6 +38,12 @@ Prism's desktop app, for macOS and Windows.
 | `prism-{{VERSION}}-windows-x64.zip` | Windows 10 and 11, 64-bit |
 | `LibRaw-{{LIBRAW_VERSION}}-source.tar.gz` | LibRaw's source code, as used in this release |
 | `SHA256SUMS.txt` | SHA-256 checksums of the files above |
+
+## Checking the downloads
+
+`SHA256SUMS.txt` lists the SHA-256 checksum of each file. To check a download, run
+`shasum -a 256 -c SHA256SUMS.txt --ignore-missing` on macOS, or `Get-FileHash <file>` in
+PowerShell on Windows, and compare the result with the line for that file.
 
 ## Running the unsigned apps
 
@@ -44,20 +57,6 @@ scroll down to the message about Prism and click **Open Anyway**. After that it 
 **Windows:** extract the whole zip, then run `prism_gui.exe`. If Microsoft Defender SmartScreen
 says "Windows protected your PC", click **More info → Run anyway**. If Smart App Control is on
 (Windows 11), it blocks unsigned apps and there is no way to allow just Prism.
-
-## Known limitations
-
-- The apps are not signed or notarized yet, so macOS and Windows warn the first time you open
-  them.
-- The preview is not colour-managed for wide-gamut (P3) displays. It is shown as sRGB.
-- Zoom shows the 2560 px preview, not the file at full size: an export has every pixel. ([#37](https://github.com/Peaperfish/prism/issues/37))
-- File names in Chinese, Japanese or Korean show as `??` in the window (the file still opens
-  and exports correctly).
-- Opening a large RAW file freezes the window for a moment while it is decoded.
-- DNG files compressed with deflate or lossy JPEG don't open.
-- There is no Linux download yet.
-
-The open issues on GitHub list these and what else is planned.
 
 ## Coming next
 
