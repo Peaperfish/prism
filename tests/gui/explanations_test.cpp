@@ -329,6 +329,69 @@ TEST(LiveLines, TheLookLineNamesThePresetOrCustom) {
     EXPECT_EQ(live_line("look", s, context).substr(0, 8), "Custom: ");
 }
 
+const Preset& look(InputKind kind, std::string_view id) {
+    for (const Preset& p : presets_for(kind)) {
+        if (p.id == id) return p;
+    }
+    ADD_FAILURE() << id;
+    return presets_for(kind).front();
+}
+
+TEST(LookValues, EachBuiltInLookReadsLikeThis) {
+    const struct {
+        InputKind kind;
+        std::string_view id;
+        std::string_view line;
+    } rows[] = {
+        {InputKind::raw, "natural", "+1.00 stops, filmic"},
+        {InputKind::raw, "original", "no adjustments"},
+        {InputKind::raw, "vivid", "+1.00 stops, colour ×1.25, contrast ×1.15, filmic"},
+        {InputKind::raw, "soft", "+1.00 stops, colour ×0.90, contrast ×0.85, Reinhard (white 4)"},
+        {InputKind::raw, "bw", "+1.00 stops, black and white, contrast ×1.20, filmic"},
+        {InputKind::image, "original", "no adjustments"},
+        {InputKind::image, "vivid", "colour ×1.20, contrast ×1.10"},
+        {InputKind::image, "soft", "colour ×0.90, contrast ×0.90"},
+        {InputKind::image, "bw", "black and white, contrast ×1.15"},
+    };
+    std::size_t count = 0;
+    for (const auto& row : rows) {
+        EXPECT_EQ(look_values_line(look(row.kind, row.id).settings), row.line) << row.id;
+        ++count;
+    }
+    EXPECT_EQ(count, presets_for(InputKind::raw).size() + presets_for(InputKind::image).size());
+}
+
+TEST(LookValues, TheExplainLineSaysTheSame) {
+    for (const InputKind kind : {InputKind::image, InputKind::raw}) {
+        LiveContext context;
+        context.kind = kind;
+        for (const Preset& p : presets_for(kind)) {
+            EXPECT_EQ(live_line("look", p.settings, context),
+                      std::string(p.name) + ": " + look_values_line(p.settings))
+                << p.id;
+        }
+        EditSettings custom = presets_for(kind).front().settings;
+        custom.exposure_stops = 0.3f;
+        EXPECT_EQ(live_line("look", custom, context), "Custom: " + look_values_line(custom));
+    }
+}
+
+TEST(LookValues, AStageThatIsOffChangesNothing) {
+    EditSettings s = look(InputKind::raw, "vivid").settings;
+    s.saturation_on = false;
+    EXPECT_EQ(look_values_line(s), "+1.00 stops, contrast ×1.15, filmic");
+    s.exposure_on = s.contrast_on = s.curve_on = false;
+    EXPECT_EQ(look_values_line(s), "no adjustments");
+    EXPECT_EQ(matching_preset(InputKind::raw, s)->id, "original");
+}
+
+TEST(LookValues, AGammaCurveShowsItsNumber) {
+    EditSettings s;
+    s.curve = CurveKind::gamma;
+    s.gamma = 2.2f;
+    EXPECT_EQ(look_values_line(s), "gamma 2.2");
+}
+
 TEST(LiveLines, MatrixShowsTheFileNameOrNone) {
     EditSettings s;
     EXPECT_EQ(live_line("stage.matrix", s), "none");

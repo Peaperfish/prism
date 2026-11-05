@@ -123,6 +123,15 @@ struct LiveContext {
 [[nodiscard]] std::string live_line(std::string_view id, const EditSettings& settings,
                                     const LiveContext& context = {});
 
+// What a look does, in the words of the line under the Look menu. Only what changes the picture is
+// named, in pipeline order; a stage that is off counts as not changing it:
+//   Vivid:              "+1.00 stops, colour ×1.25, contrast ×1.15, filmic"
+//   saturation 0:       "+1.00 stops, black and white, contrast ×1.20, filmic"
+//   Reinhard:           "+1.00 stops, colour ×0.90, contrast ×0.85, Reinhard (white 4)"
+//   exposure 0, no curve: "colour ×1.20, contrast ×1.10"
+//   nothing at all:     "no adjustments"
+[[nodiscard]] std::string look_values_line(const EditSettings& settings);
+
 // `text` with each {kind.id.field} token replaced by that look's number, formatted as the live
 // lines do: {raw.vivid.contrast} -> "×1.15", {raw.vivid.exposure} -> "+1.00 stops". The fields are
 // exposure, saturation and contrast. Throws std::logic_error for a token that names nothing.

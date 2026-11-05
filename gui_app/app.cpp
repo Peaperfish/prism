@@ -2154,6 +2154,14 @@ void App::draw_presets() {
         ImGui::EndCombo();
     }
     describe(gui::explain::look);
+    if (current != nullptr) {
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TextUnformatted(gui::look_values_line(session_.settings()).c_str());
+        ImGui::PopStyleColor();
+        ImGui::PopTextWrapPos();
+        explain(gui::explain::look);
+    }
     draw_recipe_line();
     const gui::Preset& start = gui::default_preset(kind);
     if (&start != current) {

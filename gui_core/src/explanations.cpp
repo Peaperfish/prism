@@ -422,6 +422,28 @@ std::string grey_card_percent(CurveKind kind, const EditSettings& settings) {
     return std::to_string(grey_card(settings, kind)) + "%";
 }
 
+std::string look_values_line(const EditSettings& s) {
+    std::string line;
+    const auto add = [&](const std::string& part) {
+        line += (line.empty() ? "" : ", ") + part;
+    };
+    if (s.exposure_on && s.exposure_stops != 0.0f) {
+        add(format_exposure(s.exposure_stops));
+    }
+    if (s.saturation_on && s.saturation != 1.0f) {
+        add(s.saturation == 0.0f ? colour_text(s.saturation)
+                                 : "colour " + format_times(s.saturation));
+    }
+    if (s.contrast_on && s.contrast != 1.0f) {
+        add("contrast " + format_times(s.contrast));
+    }
+    if (s.curve_on && s.curve != CurveKind::none) {
+        add(s.curve == CurveKind::reinhard ? "Reinhard (white " + number_text(s.reinhard_white) + ")"
+                                           : stage_value_text(s, StageId::curve));
+    }
+    return line.empty() ? "no adjustments" : line;
+}
+
 std::string live_line(std::string_view id, const EditSettings& s, const LiveContext& context) {
     const Explanation* entry = explanation_for(id);
     if (entry == nullptr) {
@@ -433,14 +455,8 @@ std::string live_line(std::string_view id, const EditSettings& s, const LiveCont
             return {};
         case LiveKind::look: {
             const Preset* preset = matching_preset(context.kind, s);
-            const EditSettings neutral;
-            const float exposure_stops = s.exposure_on ? s.exposure_stops : neutral.exposure_stops;
-            const float saturation_value = s.saturation_on ? s.saturation : neutral.saturation;
-            const float contrast_value = s.contrast_on ? s.contrast : neutral.contrast;
             return (preset != nullptr ? std::string(preset->name) : std::string("Custom")) + ": " +
-                   format_exposure(exposure_stops) + ", colour " + format_times(saturation_value) +
-                   ", contrast " + format_times(contrast_value) + ", " +
-                   (s.curve_on ? stage_value_text(s, StageId::curve) : std::string("none"));
+                   look_values_line(s);
         }
         case LiveKind::brightness:
             return slider_prefix(positions.brightness) +
