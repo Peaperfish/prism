@@ -795,7 +795,7 @@ void App::update_preview() {
     // The pipeline view needs the report every frame. For the status bar's note it is enough once
     // the picture settles: not while a control is being dragged (that is what made the report
     // too dear for every drag frame), but at once for any other change and when a photo opens.
-    options.clip_report = (pipeline_open_ || !ImGui::IsAnyItemActive()) && !strip_;  // not with a strip
+    options.clip_report = (pipeline_open_ || !control_active()) && !strip_;  // not with a strip
     options.clip_mask = prefs_.clip_overlay;
     options.compare_stage = strip_ ? std::nullopt : gui::effective_compare(viewed_stage_, compare_stage_);
     options.test_strip = strip_;
@@ -1094,7 +1094,7 @@ void App::frame() {
                                                : explain_last_;
     popup_open_last_frame_ =
         ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
-    item_active_last_frame_ = ImGui::IsAnyItemActive();
+    item_active_last_frame_ = control_active();
     focused_window_last_frame_ = focused_window_this_frame_;
 }
 
@@ -1183,7 +1183,7 @@ void App::handle_shortcuts() {
     }
     // Not in the middle of a drag: History would end the drag's step, but the slider would keep
     // sending values that each became a step of their own.
-    if (ImGui::IsAnyItemActive()) {
+    if (control_active()) {
         return;
     }
     if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Z, ImGuiInputFlags_RouteGlobal)) {
@@ -1322,6 +1322,7 @@ void App::draw_menu() {
 
 void App::draw_canvas() {
     canvas_taken_.clear();
+    update_hand_key();
     ImDrawList* draw = ImGui::GetWindowDrawList();
     const ImVec2 min = ImGui::GetWindowPos();
     const ImVec2 size = ImGui::GetWindowSize();
@@ -1366,6 +1367,7 @@ void App::draw_canvas() {
                 draw_strip_bands(draw, at, shown);
             }
         }
+        update_hand_drag();
     } else if (!session_.has_file() && !pending_open_) {
         // Empty state: a dashed drop area with the one thing to do. It lights up while a file is
         // dragged over the window.
@@ -1458,6 +1460,52 @@ void App::apply_canvas_input() {
                                     gui::view_zoom(view_, view_geometry_) * pinch_factor_, cursor);
     }
     pinch_factor_ = 1.0f;
+}
+
+bool App::control_active() const {
+    return ImGui::IsAnyItemActive() && !canvas_press_;
+}
+
+void App::update_hand_key() {
+    const ImGuiIO& io = ImGui::GetIO();
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        canvas_press_ = false;
+        hand_drag_.release();
+    }
+    const bool hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
+    const bool claimed = gui::canvas_claims_space(hovered, io.WantTextInput, control_active());
+    if (claimed) {
+        // Every frame, not only once it is down: keyboard navigation reads it before this runs.
+        ImGui::SetKeyOwner(ImGuiKey_Space, ImGui::GetID("##canvas_hand"));
+    }
+    // Without an owner to ask for: a press on the canvas hides the keys from all but the press itself.
+    hand_key_held_ = claimed && ImGui::IsKeyDown(ImGuiKey_Space);
+}
+
+void App::update_hand_drag() {
+    const ImGuiIO& io = ImGui::GetIO();
+    const gui::ViewPoint cursor{io.MousePos.x, io.MousePos.y};
+    const bool on_canvas = ImGui::IsWindowHovered();  // the canvas itself, not a chip on it
+    const bool over_control = ImGui::IsAnyItemHovered();
+    if (on_canvas && !over_control && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        canvas_press_ = true;
+        if (hand_key_held_) {
+            hand_drag_.press(cursor, 0.0f);
+        } else if (gui::plain_drag_pans(view_.fit, strip_.has_value(), over_control)) {
+            // A plain drag is the hand for now; #22's brush will take plain drag later.
+            hand_drag_.press(cursor, io.MouseDragThreshold);
+        }
+        if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) &&
+            gui::double_click_zooms(strip_.has_value(), over_control, hand_key_held_)) {
+            view_ = gui::view_toggled(view_, view_geometry_, cursor);
+            hand_drag_.release();
+        }
+    } else if (const std::optional<gui::ViewPoint> moved = hand_drag_.move(cursor)) {
+        view_ = gui::view_panned_by(view_, view_geometry_, moved->x, moved->y);
+    }
+    if (hand_drag_.dragging() || (hand_key_held_ && !view_.fit)) {
+        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
+    }
 }
 
 void App::toggle_test_strip() {
@@ -1600,12 +1648,17 @@ void App::draw_strip_bands(ImDrawList* draw, ImVec2 at, ImVec2 shown) {
     const gui::ViewRect visible = gui::view_visible_rect(view_, view_geometry_);
 
     // One hit area over the part of the picture on the canvas; the band is found from the cursor.
-    const ImVec2 saved = ImGui::GetCursorScreenPos();
-    ImGui::SetCursorScreenPos(ImVec2(visible.min.x, visible.min.y));
-    const bool clicked = ImGui::InvisibleButton(
-        "##strip_bands", ImVec2(std::max(1.0f, visible.width()), std::max(1.0f, visible.height())));
-    const bool hovered = ImGui::IsItemHovered();
-    ImGui::SetCursorScreenPos(saved);
+    // Not while the hand is at work: the same press must not set the exposure.
+    bool clicked = false;
+    bool hovered = false;
+    if (!hand_key_held_ && !hand_drag_.pressed()) {
+        const ImVec2 saved = ImGui::GetCursorScreenPos();
+        ImGui::SetCursorScreenPos(ImVec2(visible.min.x, visible.min.y));
+        clicked = ImGui::InvisibleButton(
+            "##strip_bands", ImVec2(std::max(1.0f, visible.width()), std::max(1.0f, visible.height())));
+        hovered = ImGui::IsItemHovered();
+        ImGui::SetCursorScreenPos(saved);
+    }
     std::optional<int> hot;
     if (hovered) {
         const ImVec2 mouse = ImGui::GetIO().MousePos;
@@ -1790,21 +1843,24 @@ void App::draw_split(ImDrawList* draw, ImVec2 at, ImVec2 shown) {
 
     // Dragging: a strip around the divider, as tall as the picture. The cursor is put back after,
     // so the banner and badge below this lay out as before.
-    const ImVec2 saved = ImGui::GetCursorScreenPos();
-    const float strip = metrics.divider_strip;
-    ImGui::SetCursorScreenPos(ImVec2(split.divider_x - strip / 2, top));
-    ImGui::InvisibleButton("##split_divider", ImVec2(strip, std::max(1.0f, bottom - top)));
-    if (ImGui::IsItemHovered() || ImGui::IsItemActive()) {
-        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+    // It wins over a plain drag of the picture, but not over the hand already at work.
+    if (!hand_key_held_ && !hand_drag_.pressed()) {
+        const ImVec2 saved = ImGui::GetCursorScreenPos();
+        const float strip = metrics.divider_strip;
+        ImGui::SetCursorScreenPos(ImVec2(split.divider_x - strip / 2, top));
+        ImGui::InvisibleButton("##split_divider", ImVec2(strip, std::max(1.0f, bottom - top)));
+        if (ImGui::IsItemHovered() || ImGui::IsItemActive()) {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+        }
+        if (ImGui::IsItemActive()) {
+            split_fraction_ =
+                gui::split_fraction_from_x(ImGui::GetIO().MousePos.x, visible.min.x, visible.width());
+        }
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal) && !ImGui::IsItemActive()) {
+            ImGui::SetTooltip("Drag to move the divider");
+        }
+        ImGui::SetCursorScreenPos(saved);
     }
-    if (ImGui::IsItemActive()) {
-        split_fraction_ =
-            gui::split_fraction_from_x(ImGui::GetIO().MousePos.x, visible.min.x, visible.width());
-    }
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal) && !ImGui::IsItemActive()) {
-        ImGui::SetTooltip("Drag to move the divider");
-    }
-    ImGui::SetCursorScreenPos(saved);
 
     // One chip in each half's top corner, named by the stage each picture really shows.
     const float margin = metrics.divider_chip_margin;

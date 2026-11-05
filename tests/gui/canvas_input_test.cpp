@@ -102,6 +102,89 @@ TEST(ScrollLatch, ATimeThatRunsBackwardsStartsOver) {
     EXPECT_TRUE(latch.on_canvas(true, 900));
 }
 
+TEST(PlainDrag, PansOnlyWhenZoomedInWithNoStripAndNoControl) {
+    EXPECT_TRUE(plain_drag_pans(false, false, false));
+    EXPECT_FALSE(plain_drag_pans(true, false, false));   // at fit there is nowhere to go
+    EXPECT_FALSE(plain_drag_pans(false, true, false));   // the strip's click sets the exposure
+    EXPECT_FALSE(plain_drag_pans(false, false, true));   // the compare divider wins
+}
+
+TEST(DoubleClick, ZoomsExceptOnTheStripAControlOrWithTheHand) {
+    EXPECT_TRUE(double_click_zooms(false, false, false));
+    EXPECT_FALSE(double_click_zooms(true, false, false));
+    EXPECT_FALSE(double_click_zooms(false, true, false));
+    EXPECT_FALSE(double_click_zooms(false, false, true));
+}
+
+TEST(SpaceKey, IsClaimedOnlyOnAnIdleCanvas) {
+    EXPECT_TRUE(canvas_claims_space(true, false, false));
+    EXPECT_FALSE(canvas_claims_space(false, false, false));  // the cursor is elsewhere
+    EXPECT_FALSE(canvas_claims_space(true, true, false));    // typing a value
+    EXPECT_FALSE(canvas_claims_space(true, false, true));    // dragging a slider
+}
+
+TEST(HandDrag, NothingMovesUntilPressed) {
+    HandDrag drag;
+    EXPECT_FALSE(drag.pressed());
+    EXPECT_FALSE(drag.move({10.0f, 10.0f}).has_value());
+}
+
+TEST(HandDrag, WithNoThresholdItFollowsAtOnce) {
+    HandDrag drag;
+    drag.press({100.0f, 100.0f}, 0.0f);
+    EXPECT_TRUE(drag.dragging());
+    const std::optional<ViewPoint> d = drag.move({101.0f, 98.0f});
+    ASSERT_TRUE(d.has_value());
+    EXPECT_FLOAT_EQ(d->x, 1.0f);
+    EXPECT_FLOAT_EQ(d->y, -2.0f);
+}
+
+TEST(HandDrag, BelowTheThresholdNothingMoves) {
+    HandDrag drag;
+    drag.press({100.0f, 100.0f}, 6.0f);
+    EXPECT_FALSE(drag.move({103.0f, 103.0f}).has_value());  // 4.2 from the press
+    EXPECT_FALSE(drag.dragging());
+    EXPECT_TRUE(drag.pressed());
+}
+
+TEST(HandDrag, PastTheThresholdItCatchesUpWithTheHand) {
+    HandDrag drag;
+    drag.press({100.0f, 100.0f}, 6.0f);
+    (void)drag.move({103.0f, 103.0f});
+    const std::optional<ViewPoint> d = drag.move({110.0f, 100.0f});
+    ASSERT_TRUE(d.has_value());
+    EXPECT_FLOAT_EQ(d->x, 10.0f);  // from the press, not from the last position
+    EXPECT_FLOAT_EQ(d->y, 0.0f);
+    EXPECT_TRUE(drag.dragging());
+    const std::optional<ViewPoint> next = drag.move({111.0f, 100.0f});
+    ASSERT_TRUE(next.has_value());
+    EXPECT_FLOAT_EQ(next->x, 1.0f);  // and from then on, the change since the last
+}
+
+TEST(HandDrag, OnceDraggingItStaysSoNearThePress) {
+    HandDrag drag;
+    drag.press({100.0f, 100.0f}, 6.0f);
+    (void)drag.move({110.0f, 100.0f});
+    const std::optional<ViewPoint> d = drag.move({101.0f, 100.0f});
+    ASSERT_TRUE(d.has_value());
+    EXPECT_FLOAT_EQ(d->x, -9.0f);
+}
+
+TEST(HandDrag, ACursorThatStaysStillMovesNothing) {
+    HandDrag drag;
+    drag.press({100.0f, 100.0f}, 0.0f);
+    EXPECT_FALSE(drag.move({100.0f, 100.0f}).has_value());
+}
+
+TEST(HandDrag, ReleaseEndsIt) {
+    HandDrag drag;
+    drag.press({100.0f, 100.0f}, 0.0f);
+    drag.release();
+    EXPECT_FALSE(drag.pressed());
+    EXPECT_FALSE(drag.dragging());
+    EXPECT_FALSE(drag.move({120.0f, 100.0f}).has_value());
+}
+
 TEST(PinchScaleOf, MacosSendsTheChangeAndLinuxTheTotal) {
     EXPECT_EQ(pinch_scale_of(PointerPlatform::macos), PinchScale::per_event);
     EXPECT_EQ(pinch_scale_of(PointerPlatform::wayland), PinchScale::running_total);

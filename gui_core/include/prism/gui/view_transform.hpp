@@ -112,6 +112,10 @@ struct ViewPixel {
 [[nodiscard]] ViewState view_zoomed_to(const ViewState& s, const ViewGeometry& g,
                                        float zoom) noexcept;
 
+// A double-click: to 100% about `anchor`, or back to fit from 100%.
+[[nodiscard]] ViewState view_toggled(const ViewState& s, const ViewGeometry& g,
+                                     ViewPoint anchor) noexcept;
+
 // Moves the picture by this many screen units (dx > 0: the picture moves right).
 [[nodiscard]] ViewState view_panned_by(const ViewState& s, const ViewGeometry& g, float dx,
                                        float dy) noexcept;

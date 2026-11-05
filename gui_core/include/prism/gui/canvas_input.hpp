@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 
+#include "prism/gui/view_transform.hpp"
 #include "prism/gui/wheel_scaling.hpp"
 
 namespace prism::gui {
@@ -53,6 +55,39 @@ private:
     bool started_ = false;
     bool on_canvas_ = false;
     std::uint64_t last_ms_ = 0;
+};
+
+// Whether a plain drag on the canvas moves the picture: only when there is somewhere to move it to,
+// and never over a control (the compare divider) or on the test strip, whose click sets the exposure.
+[[nodiscard]] bool plain_drag_pans(bool fit, bool strip_on, bool over_control) noexcept;
+
+// Whether a double-click on the canvas toggles the zoom: not on the strip or a control.
+[[nodiscard]] bool double_click_zooms(bool strip_on, bool over_control, bool hand_held) noexcept;
+
+// Whether the canvas may take the Space key, which otherwise presses the widget with the keyboard
+// focus: only while the cursor is on it and nothing else is using the keyboard or the mouse.
+[[nodiscard]] bool canvas_claims_space(bool canvas_hovered, bool text_field_active,
+                                       bool control_active) noexcept;
+
+// A drag of the picture, from press to release. It moves nothing until the cursor is further than the
+// threshold from where it went down, and then catches up all at once, so the picture stays with the
+// hand. A threshold of 0 starts at once.
+class HandDrag {
+public:
+    void press(ViewPoint at, float threshold) noexcept;
+    // How far to move the picture for this cursor position, if at all.
+    [[nodiscard]] std::optional<ViewPoint> move(ViewPoint to) noexcept;
+    void release() noexcept;
+
+    [[nodiscard]] bool pressed() const noexcept { return pressed_; }
+    // Past the threshold: the picture is moving with the hand.
+    [[nodiscard]] bool dragging() const noexcept { return dragging_; }
+
+private:
+    bool pressed_ = false;
+    bool dragging_ = false;
+    float threshold_ = 0.0f;
+    ViewPoint last_;
 };
 
 // What a pinch's scale means. SDL's header says each event carries the change since the one before,

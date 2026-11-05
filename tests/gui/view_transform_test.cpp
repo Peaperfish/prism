@@ -379,6 +379,33 @@ TEST(ViewTransform, AZoomJustOffAStopStillMovesOn) {
     EXPECT_FLOAT_EQ(view_step_zoom(0.99999f, 0.5f, -1), 0.67f);
 }
 
+TEST(ViewTransform, ADoubleClickGoesTo100AndBack) {
+    const ViewGeometry g = geometry();
+    const ViewPoint anchor{520.0f, 420.0f};  // near enough the middle for 100% to keep it there
+    const ViewPoint under = view_screen_to_image(ViewState{}, g, anchor);
+    const ViewState in = view_toggled(ViewState{}, g, anchor);
+    EXPECT_FALSE(in.fit);
+    EXPECT_FLOAT_EQ(in.zoom, 1.0f);
+    const ViewPoint after = view_screen_to_image(in, g, anchor);
+    EXPECT_NEAR(after.x, under.x, 1.0f);
+    EXPECT_NEAR(after.y, under.y, 1.0f);
+    EXPECT_TRUE(view_toggled(in, g, anchor).fit);
+}
+
+TEST(ViewTransform, ADoubleClickFromAnotherZoomGoesTo100) {
+    const ViewGeometry g = geometry();
+    const ViewState s = view_toggled(zoomed(4.0f, 1280.0f, 853.0f), g, {480.0f, 400.0f});
+    EXPECT_FALSE(s.fit);
+    EXPECT_FLOAT_EQ(s.zoom, 1.0f);
+}
+
+TEST(ViewTransform, ADoubleClickOnATinyPhotoStaysAtFit) {
+    ViewGeometry g = geometry();
+    g.image_width = 100;
+    g.image_height = 80;
+    EXPECT_TRUE(view_toggled(ViewState{}, g, {480.0f, 400.0f}).fit);
+}
+
 TEST(ViewZoomLabel, SaysOfPreviewWhileThePreviewIsSmallerThanTheFile) {
     EXPECT_EQ(view_zoom_label(1.0f, 2560, 9566), "100% of preview");
     EXPECT_EQ(view_zoom_label(0.742f, 2560, 6000), "74% of preview");

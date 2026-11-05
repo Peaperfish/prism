@@ -167,6 +167,16 @@ ViewState view_zoomed_to(const ViewState& s, const ViewGeometry& g, float zoom) 
     return view_zoomed_to(s, g, zoom, {g.x + g.width / 2.0f, g.y + g.height / 2.0f});
 }
 
+ViewState view_toggled(const ViewState& s, const ViewGeometry& g, ViewPoint anchor) noexcept {
+    const ViewState from = view_settled(s, g);
+    if (!from.fit && view_same_zoom(from.zoom, 1.0f)) {
+        ViewState fit = from;
+        fit.fit = true;
+        return fit;
+    }
+    return view_zoomed_to(from, g, 1.0f, anchor);
+}
+
 ViewState view_panned_by(const ViewState& s, const ViewGeometry& g, float dx, float dy) noexcept {
     if (!has_picture(g)) {
         return s;

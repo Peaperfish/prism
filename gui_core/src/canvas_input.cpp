@@ -54,6 +54,48 @@ bool ScrollLatch::on_canvas(bool hovering_canvas, std::uint64_t now_ms) noexcept
     return on_canvas_;
 }
 
+bool plain_drag_pans(bool fit, bool strip_on, bool over_control) noexcept {
+    return !fit && !strip_on && !over_control;
+}
+
+bool double_click_zooms(bool strip_on, bool over_control, bool hand_held) noexcept {
+    return !strip_on && !over_control && !hand_held;
+}
+
+bool canvas_claims_space(bool canvas_hovered, bool text_field_active,
+                         bool control_active) noexcept {
+    return canvas_hovered && !text_field_active && !control_active;
+}
+
+void HandDrag::press(ViewPoint at, float threshold) noexcept {
+    pressed_ = true;
+    dragging_ = threshold <= 0.0f;
+    threshold_ = threshold;
+    last_ = at;
+}
+
+std::optional<ViewPoint> HandDrag::move(ViewPoint to) noexcept {
+    if (!pressed_) {
+        return std::nullopt;
+    }
+    const float dx = to.x - last_.x;
+    const float dy = to.y - last_.y;
+    if (!dragging_ && dx * dx + dy * dy < threshold_ * threshold_) {
+        return std::nullopt;
+    }
+    dragging_ = true;
+    last_ = to;
+    if (dx == 0.0f && dy == 0.0f) {
+        return std::nullopt;
+    }
+    return ViewPoint{dx, dy};
+}
+
+void HandDrag::release() noexcept {
+    pressed_ = false;
+    dragging_ = false;
+}
+
 PinchScale pinch_scale_of(PointerPlatform platform) noexcept {
     switch (platform) {
         case PointerPlatform::wayland:
