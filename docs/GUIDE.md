@@ -136,6 +136,33 @@ Dragging follows a few rules:
 
 Zoom is only a view: it is not saved, it can't be undone, it goes back to fit when you open another photo, `Esc` leaves it alone, and it does not affect export.
 
+### Read a pixel
+
+Press `I`, or choose **View → Sample Colour**, and point at the photo. A **Sample** block under the scopes reads the pixel under the cursor at the stage you are viewing. Click to pin that pixel: the block then stays on it while you change the photo, so you can watch one spot of sky as you move Exposure. While the cursor is over the picture, one more line says what is under it. There is one pin; another click moves it. `Esc` or `I` again leaves Sample mode and clears the pin.
+
+The numbers come from the same linear values the pipeline works on, not from the 8-bit picture, and they match the render exactly. For example:
+
+> R 1.210 G 1.050 B 0.860 (linear, 1.00 = white)
+> 107% of white's light, 2.6 stops above middle grey
+> Red and green are over white. Not lost yet: the Tone curve (filmic) brings them back under 1.00.
+> One preview pixel averages about 3.7×3.7 file pixels, so a small clipped highlight can hide in it.
+
+- **The values** are [linear light](#linear-light): 1.00 is white and 0 is black, and a value can go past either end until a stage cuts it off. At Output encode you also get the 8-bit sRGB codes the file will hold.
+- **"Of white's light"** is the pixel's luminance (0.2126 R + 0.7152 G + 0.0722 B) as a share of white. It is a measure of light, not of how bright the tone looks: middle grey is 18% of white's light, though it looks about halfway.
+- **Stops from middle grey** say where the pixel sits against an 18% grey card, in [stops](#stops). 0.36 is 1.0 stops above it and 0.09 is 1.0 stops below.
+- **From the Tone curve on**, 18% is no longer a grey card, because the curve has moved the values. So the block says the two things apart: "On screen 30% of white's light", which can't go above 100%, and "In the scene 0.7 stops above middle grey", taken from the Contrast stage.
+- **The last sentence** says if the pixel is over white, has no light, or is too saturated for sRGB, and which later stage brings it back or clips it. It uses the same test as the clipping marks (`J`) and the clipping note, so they never disagree.
+- **A preview pixel is an average.** The preview is smaller than a large file, so one preview pixel stands for several file pixels, and the block says how many. A pixel reading under white can still hide a small clipped highlight. Export uses every pixel.
+
+Point at a row and the Explain area says what it means.
+
+- **In a comparison**, the block shows both stages, the one you are viewing first.
+- **On the test strip**, it reads the band under the cursor with that band's exposure. You can't place a pin there, since a click on a band sets the exposure. A pin you already have stays.
+- **On the picture**, the pin is a small crosshair, or an outline of the pixel's square above 200%, and the pixel under the cursor has a fainter outline. If you zoom or move the pin off the canvas, its values say "(off screen)".
+- **Dragging and double-clicking** still move and zoom the picture. A drag doesn't pin, but a double-click's first click does move the pin.
+
+The pin is in the photo's pixels, so it stays put through zooming, moving, changing stage and re-decoding with a new camera matrix. Opening another photo clears it. Sample mode is only a view: it is not saved, it can't be undone, and it does not affect export.
+
 ### The test strip
 
 A darkroom test strip prints one frame in bands at different exposures, so you can pick by eye. Prism does the same on the screen: press `T`, click **Test strip** (next to Brightness, or in the Exposure row), or use **View → Test Strip**.
@@ -236,29 +263,30 @@ On macOS the main key is `Cmd`; on Windows and Linux it is `Ctrl`. This is every
 | Interface size back to Auto | `Cmd+0` | `Ctrl+0` |
 | Mark clipping on the photo | `J` | `J` |
 | Test strip on or off | `T` | `T` |
+| Sample mode on or off (read a pixel) | `I` | `I` |
 | Zoom in | `=` or `+` | `=` or `+` |
 | Zoom out | `-` | `-` |
 | Zoom to fit | `F` | `F` |
 | Zoom to 100% of the preview | `1` | `1` |
 | Move the picture while held, with a drag | `Space` | `Space` |
-| Step back: close the Preferences, About, notices, Recipe not loaded or View recipe window if it has the focus; otherwise the test strip, then the comparison, then the viewed stage | `Esc` | `Esc` |
+| Step back: close the Preferences, About, notices, Recipe not loaded or View recipe window if it has the focus; otherwise Sample mode, then the test strip, then the comparison, then the viewed stage | `Esc` | `Esc` |
 | Quit | `Cmd+Q` | `Ctrl+Q` |
 
 Notes:
 
 - The keypad's `+`, `-` and `0` also work with `Cmd`/`Ctrl` for the interface size, and its `+` and `-` alone for the zoom.
 - Undo, Redo, `J`, `T` and the zoom keys do nothing while you are dragging a slider.
-- `J`, `T`, the zoom keys and `Space` give way to a text field that has the keyboard, so typing a value never triggers them.
+- `J`, `T`, `I`, the zoom keys and `Space` give way to a text field that has the keyboard, so typing a value never triggers them.
 - `Esc` is also Cancel in the "unsaved edits" window, in the recipe save sheet (inside a text field, the first `Esc` only leaves the field), and in the "Saving…" window while a quit or open is waiting for the export.
-- In the menus: **File** has Open…, Export…, Load Recipe…, Save Recipe… and Quit (on Windows and Linux the menu shows `Ctrl+Q`; on macOS, Quit is in the **Prism** menu too). **Edit** has Undo, Redo and (on Windows and Linux) Preferences…. **View** has Bigger Interface, Smaller Interface, Interface Size: Auto, Test Strip, Zoom In, Zoom Out, Zoom to Fit and 100% of Preview. **Help → About Prism** is on Windows and Linux; on macOS, About and Preferences are in the **Prism** menu (**Prism → About Prism**, **Prism → Preferences…**).
+- In the menus: **File** has Open…, Export…, Load Recipe…, Save Recipe… and Quit (on Windows and Linux the menu shows `Ctrl+Q`; on macOS, Quit is in the **Prism** menu too). **Edit** has Undo, Redo and (on Windows and Linux) Preferences…. **View** has Bigger Interface, Smaller Interface, Interface Size: Auto, Test Strip, Sample Colour, Zoom In, Zoom Out, Zoom to Fit and 100% of Preview. **Help → About Prism** is on Windows and Linux; on macOS, About and Preferences are in the **Prism** menu (**Prism → About Prism**, **Prism → Preferences…**).
 
-Mouse and trackpad: click a stage row to view it; right-click a slider, or the Tone curve menu, to reset it; Ctrl-click (Cmd-click) a slider to type a value; drag the divider in a comparison; click a band in the test strip; drag the panel's left edge to resize the panel; pinch, scroll or use the wheel over the photo to zoom and move it, drag it when zoomed in, and double-click it to go between fit and 100% (see [Zoom and pan](#zoom-and-pan)).
+Mouse and trackpad: click a stage row to view it; right-click a slider, or the Tone curve menu, to reset it; Ctrl-click (Cmd-click) a slider to type a value; drag the divider in a comparison; click a band in the test strip; drag the panel's left edge to resize the panel; pinch, scroll or use the wheel over the photo to zoom and move it, drag it when zoomed in, and double-click it to go between fit and 100% (see [Zoom and pan](#zoom-and-pan)); in Sample mode, point at the photo to read a pixel and click to pin it (see [Read a pixel](#read-a-pixel)).
 
 ## How Prism thinks about light
 
 ### Stops
 
-A **stop** is a doubling or halving of the light. One stop more is twice the light, two stops is four times, minus one stop is half. It is the same unit as the aperture ring and the shutter speed dial. In Prism, Brightness and Exposure are in stops: +1 stop doubles every pixel, and each half stop is about 1.4×. That is why +50 on the Brightness slider is +1 stop, and Brightness +35 reads "+0.70 stops, 1.62× the light". Middle grey, the reflectance of a standard grey card, is 18% in linear light. Contrast works in stops around it.
+A **stop** is a doubling or halving of the light. One stop more is twice the light, two stops is four times, minus one stop is half. It is the same unit as the aperture ring and the shutter speed dial. In Prism, Brightness and Exposure are in stops: +1 stop doubles every pixel, and each half stop is about 1.4×. That is why +50 on the Brightness slider is +1 stop, and Brightness +35 reads "+0.70 stops, 1.62× the light". Middle grey, the reflectance of a standard grey card, is 18% in linear light. Contrast works in stops around it. To see where any part of your photo sits against it, [read a pixel](#read-a-pixel).
 
 ### Linear light
 
