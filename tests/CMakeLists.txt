@@ -46,6 +46,7 @@ target_compile_definitions(prism_tests PRIVATE PRISM_EXE="$<TARGET_FILE:prism>"
                                               PRISM_PROFILE_EXE="$<TARGET_FILE:prism_profile>"
                                               PRISM_CLI_DOC="${PROJECT_SOURCE_DIR}/docs/CLI.md"
                                               PRISM_RECIPE_DOC="${PROJECT_SOURCE_DIR}/docs/RECIPES.md"
+                                              PRISM_RECIPES_DIR="${PROJECT_SOURCE_DIR}/recipes"
                                               PRISM_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data"
                                               PRISM_GRADE_SAMPLE="${PROJECT_SOURCE_DIR}/samples/grade.txt")
 add_dependencies(prism_tests prism prism_profile)

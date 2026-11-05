@@ -10,13 +10,15 @@
 #include <vector>
 
 #include "prism/recipe.hpp"
+#include "prism/utf8_path.hpp"
 
 // Keeps docs/RECIPES.md in step with the parser:
 //   * the table under "## Every setting" lists exactly the keys of prism::recipe_format(), with
 //     the unit, values, default and version the table in lib/recipe.cpp gives them;
 //   * every example marked <!-- recipe: valid --> reads;
 //   * the example marked <!-- recipe: saved --> is exactly what write_recipe writes for it;
-//   * every example marked <!-- recipe: error line N: message --> gives that line and message.
+//   * every example marked <!-- recipe: error line N: message --> gives that line and message;
+//   * every example marked <!-- recipe: builtin kind/id --> is exactly the file recipes/kind/id.prism.
 // A marker applies to the ```toml block right after it.
 
 namespace {
@@ -218,9 +220,27 @@ TEST(RecipeDocs, EveryErrorExampleGivesItsLineAndMessage) {
     EXPECT_GE(count, 5);
 }
 
+TEST(RecipeDocs, TheBuiltInExampleIsExactlyTheFile) {
+    int count = 0;
+    const std::string prefix = "builtin ";
+    for (const Example& e : examples()) {
+        if (e.marker.rfind(prefix, 0) != 0) {
+            continue;
+        }
+        ++count;
+        const std::filesystem::path file =
+            std::filesystem::path(PRISM_RECIPES_DIR) /
+            prism::path_from_utf8(e.marker.substr(prefix.size()) + ".prism");
+        const std::string text = read_text(file);
+        EXPECT_FALSE(text.empty()) << e.marker;
+        EXPECT_EQ(e.text, text) << e.marker;
+    }
+    EXPECT_EQ(count, 1);
+}
+
 TEST(RecipeDocs, EveryMarkerIsOneTheTestsKnow) {
     for (const Example& e : examples()) {
-        EXPECT_TRUE(e.marker == "valid" || e.marker == "saved" ||
+        EXPECT_TRUE(e.marker == "valid" || e.marker == "saved" || e.marker == "builtin raw/vivid" ||
                     e.marker.rfind("error line ", 0) == 0)
             << e.marker;
     }

@@ -58,6 +58,10 @@ At the top of the panel, **Look** is a menu of starting points:
 
 A look is not hidden. It sets four things you can see in the Pipeline view: Exposure, Saturation, Contrast and the Tone curve. Pick one and then change any of them, and the menu reads **Custom**. A RAW file opens with Natural (one stop brighter, with the filmic curve), because a RAW file is linear and looks dark and flat as it comes from the sensor. A PNG or JPEG opens with Original, which changes nothing. **Reset to** *name* goes back to that starting look.
 
+While the menu names a look, a muted line under it says what the look does, for example "+1.00 stops, colour ×1.25, contrast ×1.15, filmic". It names only what changes the picture, so a PNG or JPEG look has no exposure or curve in it, and Original reads "no adjustments". **Custom** has no line.
+
+**View recipe**, under that line, opens the look as the [recipe](#recipes) it is: the file built into Prism, as text you can select, with a **Copy** button. The window keeps showing the look you opened it for, even if you then change the settings, and it does not stop you editing the photo. A built-in look leaves the colour matrix and the RAW options alone, as the window says.
+
 Under **Adjust** are three sliders, each from −100 to +100:
 
 | Slider | What it does | At the ends |
@@ -156,7 +160,7 @@ A **recipe** is a small text file, ending in `.prism`, that writes down an edit:
 **Saving.** **File → Save Recipe…** (`Cmd+Shift+S` or `Ctrl+Shift+S`), or **Save recipe…** in the Look section of the panel, first asks for two things:
 
 - **Name**, filled in for you: the recipe you loaded (with "(modified)" once you have changed something), or the look you picked, or empty with the hint "Name this look". The suggested file name is made from it.
-- **Description** (optional): one line on what the recipe is for.
+- **Description** (optional): one line on what the recipe is for, filled in from the recipe you loaded or the look you picked. If you keep both for a built-in look, the file you save is that look's file plus a `[matrix]` section.
 
 The sheet says what is saved: all five stages. The photo and the RAW decoding options (half size, camera matrix) are not in a recipe. `Esc` cancels; while you are typing in a field, the first `Esc` only leaves the field. **Save…** then opens the system's save dialog. It starts in the folder you last saved or loaded a recipe in (Prism remembers it in your [preferences](#preferences)), or next to the photo the first time. If you type a name without `.prism`, it is added. A banner says "Saved recipe *name*.prism." when it is written.
 
@@ -203,7 +207,7 @@ On macOS the main key is `Cmd`; on Windows and Linux it is `Ctrl`. This is every
 | Interface size back to Auto | `Cmd+0` | `Ctrl+0` |
 | Mark clipping on the photo | `J` | `J` |
 | Test strip on or off | `T` | `T` |
-| Step back: close the Preferences, About, notices or Recipe not loaded window if it has the focus; otherwise the test strip, then the comparison, then the viewed stage | `Esc` | `Esc` |
+| Step back: close the Preferences, About, notices, Recipe not loaded or View recipe window if it has the focus; otherwise the test strip, then the comparison, then the viewed stage | `Esc` | `Esc` |
 | Quit | `Cmd+Q` | `Ctrl+Q` |
 
 Notes:
@@ -275,4 +279,4 @@ The exact numbers behind what the app shows.
 - **Outside the sRGB gamut.** A pixel counts as too saturated for sRGB when it still has light (luminance above 0) but a channel is below −0.00015 in linear sRGB (half an 8-bit step at the dark end of the sRGB curve; smaller negatives round to 0 anyway). A pixel with no light is a shadow, not a gamut problem. "Pushed out" names the first stage with such colours (usually Colour matrix); "clips" names the first later stage that cuts negatives: Saturation if it runs, otherwise Tone curve, otherwise Output encode. Saturation limits its own result to the edge of the gamut rather than cutting it off, so that is not counted as a loss; only colours that arrive at Saturation already negative are.
 - **Marks on the photo.** Where a pixel is in several categories, highlights win over gamut, and gamut over shadows.
 - **Test strip labels.** The offsets are exact (a third of a stop is 1/3, not 0.33). A third of a stop is about 1.3× the light, half a stop about 1.4×, a whole stop 2×.
-- **Looks.** For RAW, every look except Original is +1 stop: Natural adds the filmic curve; Vivid adds the filmic curve, Saturation ×1.25 and Contrast ×1.15; Soft is Saturation ×0.9, Contrast ×0.85 and the Reinhard curve; Black & white is the filmic curve, Saturation 0 and Contrast ×1.2; Original changes nothing. For PNG and JPEG, no look adds a curve: Vivid is Saturation ×1.2 and Contrast ×1.1, Soft is ×0.9 and ×0.9, Black & white is Saturation 0 and Contrast ×1.15.
+- **Looks.** Each look's numbers are in its recipe file. RAW: [Natural](../recipes/raw/natural.prism), [Original](../recipes/raw/original.prism), [Vivid](../recipes/raw/vivid.prism), [Soft](../recipes/raw/soft.prism), [Black & white](../recipes/raw/bw.prism). PNG and JPEG: [Original](../recipes/image/original.prism), [Vivid](../recipes/image/vivid.prism), [Soft](../recipes/image/soft.prism), [Black & white](../recipes/image/bw.prism). [Why each look is what it is](../recipes/README.md).

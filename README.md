@@ -20,7 +20,7 @@ Mainstream photo editors often come with a subscription and a cloud catalog, hid
 
 1. **Free for personal use.** No subscription, no cloud, no catalog: open a file, edit it, export it. (See [Licences](#licences).)
 2. **It teaches as you go.** Every control should say in plain words what it does to the light, and you should be able to see each step happen. Since [0.2.0](https://github.com/Peaperfish/prism/milestone/1): a pipeline view, colour scopes and a test strip.
-3. **No black-box presets.** A look should be a readable recipe you can see and adjust. The plain-text [recipe format](docs/RECIPES.md) is defined, and the app saves and loads recipes ([Recipes](docs/GUIDE.md#recipes)); recipes on the command line, and the built-in presets rewritten as recipes, are planned for [0.3.0](https://github.com/Peaperfish/prism/milestone/3).
+3. **No black-box presets.** A look should be a readable recipe you can see and adjust. The plain-text [recipe format](docs/RECIPES.md) is defined, the app saves and loads recipes ([Recipes](docs/GUIDE.md#recipes)), the command line applies them, and the built-in looks are [recipes you can read](recipes/): the app shows each look's numbers and its file.
 4. **Physical controls.** You adjust light rather than apply effects. Exposure is already in stops; white balance in Kelvin, contrast as paper grades, and dodge and burn are planned for [0.4.0](https://github.com/Peaperfish/prism/milestone/4).
 
 ## Downloading and running Prism
@@ -230,7 +230,7 @@ prism_core (lib/)                            the pipeline, shared with the CLI
 | `histogram.hpp` | `StageHistogram`: 256-bin R, G, B and Rec. 709 luminance counts plus separate under-black (`< 0`) and over-white (`> 1`) clip counts per channel, computed from the stage's float image before the 8-bit sRGB encode (and fused with `encode_srgb8` in L1-sized slices on the preview worker) |
 | `scopes.hpp` | `Scopes`: RGB parade, Rec. 709 luma waveform and Cb/Cr vectorscope as 256 × 256 count grids, counted from the 8-bit sRGB bytes of the frame on screen (display scale) on a strided sample of at most 250k pixels. Computed on the render worker only when a scope is visible, so with scopes hidden the render costs the same as without them |
 | `clipping.hpp` | `ClipReport`: for every stage, the pixels of a sampled grid (at most 250,000) above 1.0, with no light (Y ≤ 0), and outside the sRGB gamut (Y > 0 with a channel below −0.00015), per channel, marked lost (the stage clamps) or recoverable, plus the first stage of each kind. `ClipRecorder` fills it while the pipeline runs; `compute_clip_mask` marks the out-of-range pixels of one stage; `describe_clipping` and `describe_gamut` word the result |
-| `presets.hpp` | Named looks (Natural, Original, Vivid, Soft, Black & white), different for RAW and PNG/JPEG. A preset sets only the look; settings that match no preset are "Custom" |
+| `presets.hpp` | Named looks (Natural, Original, Vivid, Soft, Black & white), different for RAW and PNG/JPEG. Read from the files in `recipes/`, which `builtin_looks.hpp` compiles in. A preset sets only the look; settings that match no preset are "Custom" |
 | `history.hpp` | Undo/redo of whole `EditSettings` snapshots. A slider drag, marked by `begin_gesture()` / `end_gesture()`, is one step; at most 100 steps |
 | `session.hpp` | The open photo: `open_file()` decodes it (RAW at half size), shrinks it with `prism::downscale` to a 2560 px preview base and frees the full image; errors come back as a kind plus a sentence for the user. `export_image()` decodes the file again at full size, runs the pipeline with a stop token and saves PNG or JPEG |
 | `preview_renderer.hpp` | A worker thread that re-renders the preview (up to `stop_after`) and its `StageHistogram` whenever the settings or viewed stage change. The newest request wins: it replaces one that hasn't started and stops the one in progress between stages (`std::stop_token`). The UI polls for finished 8-bit frames; nothing calls back into UI code |
@@ -267,7 +267,7 @@ v0.1.0 was a pre-release of the desktop app, and v0.2.0 is its first full releas
 - [The .prism recipe format](https://github.com/Peaperfish/prism/issues/17): plain text, versioned, documented, diffable
 - [Save and load recipes](https://github.com/Peaperfish/prism/issues/18) in the GUI
 - [Batch editing from the CLI](https://github.com/Peaperfish/prism/issues/19): `prism <files> --recipe <file>`
-- [The built-in presets as readable recipes](https://github.com/Peaperfish/prism/issues/20) that show their values
+- [The built-in presets as readable recipes](https://github.com/Peaperfish/prism/issues/20) that show their values *(done)*
 
 [**0.4.0 – Darkroom**](https://github.com/Peaperfish/prism/milestone/4): physical controls.
 

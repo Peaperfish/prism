@@ -2,7 +2,7 @@
 
 A recipe is a small text file, ending in `.prism`, that writes down an edit: how much exposure, which colour matrix, how much saturation and contrast, and which tone curve. It holds numbers only, not pixels, so the same recipe can be used on any photo. You can open it in any text editor, read exactly what it does, change a number, and send it to someone else. Nothing in it is hidden: a look is just its recipe.
 
-Contents: [A recipe by hand](#a-recipe-by-hand) · [As Prism saves it](#as-prism-saves-it) · [Every setting](#every-setting) · [Leaving stages out](#leaving-stages-out) · [The rules of the format](#the-rules-of-the-format) · [Versions](#versions) · [When a recipe has a mistake](#when-a-recipe-has-a-mistake)
+Contents: [A recipe by hand](#a-recipe-by-hand) · [As Prism saves it](#as-prism-saves-it) · [Every setting](#every-setting) · [Leaving stages out](#leaving-stages-out) · [The built-in looks](#the-built-in-looks) · [The rules of the format](#the-rules-of-the-format) · [Versions](#versions) · [When a recipe has a mistake](#when-a-recipe-has-a-mistake)
 
 ## A recipe by hand
 
@@ -112,6 +112,35 @@ So a recipe with only `[saturation]` changes the saturation and nothing else. Wi
 On the command line (`prism --recipe <file>`), each photo starts with no adjustments, so a stage left out of the recipe does nothing unless you also give a command-line flag for that stage. See [Recipes and batches](CLI.md#recipes-and-batches) in the command-line reference.
 
 A recipe never holds the photo it was made on, how you were viewing it, or the RAW decoding options (half size and the camera matrix), so applying one never makes Prism decode the file again.
+
+## The built-in looks
+
+The looks in Prism's Look menu are recipes too. The files are in [`recipes/`](../recipes/), one set for RAW files and one for PNG and JPEG, and [`recipes/README.md`](../recipes/README.md) says why each is what it is. Prism builds them into the app, and **View recipe** under the Look menu shows the one in use. This is Vivid for RAW files:
+
+<!-- recipe: builtin raw/vivid -->
+```toml
+# Prism recipe: edit settings in plain text. Prism rewrites these comments when it saves.
+# What each line means: https://github.com/Peaperfish/prism/blob/main/docs/RECIPES.md
+prism_recipe = 1  # recipe format version
+name = "Vivid"
+description = "More colour and contrast, closer to a camera JPEG"
+
+[exposure]
+stops = +1.0  # 2.00x the light
+
+[saturation]
+amount = 1.25  # 1.25x the colourfulness
+
+[contrast]
+amount = 1.15  # each stop near middle grey is 15% wider
+
+[curve]
+shape = "filmic"  # 18% grey becomes 13%
+```
+
+Each file has the same four stages: exposure, saturation, contrast and the tone curve. None has a `[matrix]`, so a look leaves the colour matrix alone, and like any recipe it says nothing about the RAW options.
+
+The files work like any other recipe, on the command line too: `prism photo.ARW --recipe recipes/raw/vivid.prism -o photo.jpg`. If you save a look with **Save Recipe…** without changing the name or description Prism suggests, you get the same file with one addition: a `[matrix]` section, because a saved recipe always has all five stages.
 
 ## The rules of the format
 
