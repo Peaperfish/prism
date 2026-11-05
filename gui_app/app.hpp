@@ -309,6 +309,8 @@ private:
     std::vector<CanvasWheelEvent> canvas_wheels_;
     gui::ScrollLatch scroll_latch_;
     gui::PointerPlatform pointer_platform_ = gui::PointerPlatform::other;
+    gui::PinchTracker pinch_{gui::PinchScale::per_event};  // set for the platform when constructed
+    float pinch_factor_ = 1.0f;                            // this frame's pinching, all told
     std::vector<gui::ViewRect> canvas_taken_;  // this frame's chips and notes on the canvas
 
     std::optional<std::filesystem::path> pending_open_;

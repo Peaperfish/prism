@@ -54,4 +54,28 @@ bool ScrollLatch::on_canvas(bool hovering_canvas, std::uint64_t now_ms) noexcept
     return on_canvas_;
 }
 
+PinchScale pinch_scale_of(PointerPlatform platform) noexcept {
+    switch (platform) {
+        case PointerPlatform::wayland:
+        case PointerPlatform::other:
+            return PinchScale::running_total;
+        case PointerPlatform::macos:
+        case PointerPlatform::windows:
+            break;
+    }
+    return PinchScale::per_event;
+}
+
+float PinchTracker::update(float scale) noexcept {
+    if (!(scale > 0.0f) || !std::isfinite(scale)) {
+        return 1.0f;
+    }
+    if (kind_ == PinchScale::per_event) {
+        return scale;
+    }
+    const float factor = scale / last_total_;
+    last_total_ = scale;
+    return factor;
+}
+
 }  // namespace prism::gui

@@ -160,6 +160,7 @@ App::App(SDL_Window* window, SDL_Renderer* renderer, DialogQueue& dialogs,
         pointer_platform_ = gui::PointerPlatform::wayland;
     }
 #endif
+    pinch_ = gui::PinchTracker(gui::pinch_scale_of(pointer_platform_));
     if (!prefs_file_.empty()) {
         prefs_ = gui::load_preferences(prefs_file_);  // the defaults if missing or unreadable
     }
@@ -959,6 +960,16 @@ void App::handle_event(const SDL_Event& event) {
             drag_over_ = false;
             take_drop();
             break;
+        // No check of the window: SDL's macOS backend sends these with windowID 0. And no pinch from
+        // ImGui: its backend doesn't look at them.
+        case SDL_EVENT_PINCH_BEGIN:
+            pinch_.begin();
+            break;
+        case SDL_EVENT_PINCH_UPDATE:
+            pinch_factor_ *= pinch_.update(event.pinch.scale);
+            break;
+        case SDL_EVENT_PINCH_END:
+            break;
         case SDL_EVENT_MOUSE_MOTION:
             // No motion events arrive during a system drag: the drag left without dropping.
             drag_over_ = false;
@@ -1319,7 +1330,8 @@ void App::draw_canvas() {
     draw->AddRectFilled(min, max, colours.canvas);  // neutral grey in both themes
     const float margin = token_metrics().canvas_margin;
     if (texture_.texture() == nullptr) {
-        canvas_wheels_.clear();  // nothing to scroll
+        canvas_wheels_.clear();  // nothing to scroll or pinch
+        pinch_factor_ = 1.0f;
     }
 
     if (texture_.texture() != nullptr) {
@@ -1440,6 +1452,12 @@ void App::apply_canvas_input() {
         }
     }
     canvas_wheels_.clear();
+    // SDL gives a pinch no position, so it goes about the cursor.
+    if (pinch_factor_ != 1.0f && hovered) {
+        view_ = gui::view_zoomed_to(view_, view_geometry_,
+                                    gui::view_zoom(view_, view_geometry_) * pinch_factor_, cursor);
+    }
+    pinch_factor_ = 1.0f;
 }
 
 void App::toggle_test_strip() {

@@ -55,4 +55,29 @@ private:
     std::uint64_t last_ms_ = 0;
 };
 
+// What a pinch's scale means. SDL's header says each event carries the change since the one before,
+// which is what its macOS backend sends; its Wayland backend passes on the protocol's scale "relative
+// to the initial finger position", and its X11 backend XInput's, taken to be the same (not checked).
+enum class PinchScale {
+    per_event,
+    running_total,
+};
+[[nodiscard]] PinchScale pinch_scale_of(PointerPlatform platform) noexcept;
+
+// Turns a pinch's events into the factor to multiply the zoom by, whichever kind the platform sends.
+class PinchTracker {
+public:
+    explicit PinchTracker(PinchScale kind) noexcept : kind_(kind) {}
+
+    // SDL_EVENT_PINCH_BEGIN. Its scale, like END's, is 0 and means nothing.
+    void begin() noexcept { last_total_ = 1.0f; }
+
+    // SDL_EVENT_PINCH_UPDATE: the factor for this event. 1 for a scale that can't be one.
+    [[nodiscard]] float update(float scale) noexcept;
+
+private:
+    PinchScale kind_;
+    float last_total_ = 1.0f;
+};
+
 }  // namespace prism::gui

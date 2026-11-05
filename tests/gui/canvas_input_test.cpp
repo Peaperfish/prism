@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <limits>
 
 namespace prism::gui {
 namespace {
@@ -99,6 +100,66 @@ TEST(ScrollLatch, ATimeThatRunsBackwardsStartsOver) {
     ScrollLatch latch;
     EXPECT_FALSE(latch.on_canvas(false, 1000));
     EXPECT_TRUE(latch.on_canvas(true, 900));
+}
+
+TEST(PinchScaleOf, MacosSendsTheChangeAndLinuxTheTotal) {
+    EXPECT_EQ(pinch_scale_of(PointerPlatform::macos), PinchScale::per_event);
+    EXPECT_EQ(pinch_scale_of(PointerPlatform::wayland), PinchScale::running_total);
+    EXPECT_EQ(pinch_scale_of(PointerPlatform::other), PinchScale::running_total);
+}
+
+TEST(PinchTracker, APerEventScaleIsTheFactor) {
+    PinchTracker pinch(PinchScale::per_event);
+    pinch.begin();
+    EXPECT_FLOAT_EQ(pinch.update(1.1f), 1.1f);
+    EXPECT_FLOAT_EQ(pinch.update(0.9f), 0.9f);
+}
+
+TEST(PinchTracker, ARunningTotalBecomesTheSameFactors) {
+    PinchTracker pinch(PinchScale::running_total);
+    pinch.begin();
+    EXPECT_FLOAT_EQ(pinch.update(1.1f), 1.1f);
+    EXPECT_FLOAT_EQ(pinch.update(1.21f), 1.1f);
+    EXPECT_FLOAT_EQ(pinch.update(1.21f), 1.0f);
+    EXPECT_FLOAT_EQ(pinch.update(0.605f), 0.5f);
+}
+
+TEST(PinchTracker, BothKindsReachTheSameZoom) {
+    const float changes[] = {1.05f, 1.2f, 0.9f, 1.3f, 0.75f};
+    PinchTracker per_event(PinchScale::per_event);
+    PinchTracker total(PinchScale::running_total);
+    per_event.begin();
+    total.begin();
+    float zoom_a = 1.0f;
+    float zoom_b = 1.0f;
+    float running = 1.0f;
+    for (const float change : changes) {
+        running *= change;
+        zoom_a *= per_event.update(change);
+        zoom_b *= total.update(running);
+    }
+    EXPECT_NEAR(zoom_a, zoom_b, 1e-5f);
+}
+
+TEST(PinchTracker, ANewGestureStartsItsTotalOver) {
+    PinchTracker pinch(PinchScale::running_total);
+    pinch.begin();
+    (void)pinch.update(2.0f);
+    pinch.begin();
+    EXPECT_FLOAT_EQ(pinch.update(1.5f), 1.5f);
+}
+
+TEST(PinchTracker, AScaleThatCantBeOneChangesNothing) {
+    for (const PinchScale kind : {PinchScale::per_event, PinchScale::running_total}) {
+        PinchTracker pinch(kind);
+        pinch.begin();
+        EXPECT_FLOAT_EQ(pinch.update(0.0f), 1.0f);
+        EXPECT_FLOAT_EQ(pinch.update(-1.0f), 1.0f);
+        EXPECT_FLOAT_EQ(pinch.update(std::nanf("")), 1.0f);
+        EXPECT_FLOAT_EQ(pinch.update(std::numeric_limits<float>::infinity()), 1.0f);
+        // And the total it was running stays usable.
+        EXPECT_FLOAT_EQ(pinch.update(2.0f), 2.0f);
+    }
 }
 
 }  // namespace
