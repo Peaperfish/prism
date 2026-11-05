@@ -632,5 +632,44 @@ TEST(ExplainAreaHeight, NeverTakesMoreThanAShortPanelsShare) {
     EXPECT_FLOAT_EQ(explain_area_height(set.metrics, set.type.small, 100.0f), 45.0f);
 }
 
+TEST(ExplainToShow, HoverBeatsFocusBeatsTheLastEntry) {
+    EXPECT_EQ(explain_to_show("a", "b", "c"), "a");
+    EXPECT_EQ(explain_to_show("", "b", "c"), "b");
+    EXPECT_EQ(explain_to_show("", "", "c"), "c");
+}
+
+TEST(ExplainToShow, NothingEverHoveredOrFocusedShowsTheHint) {
+    EXPECT_EQ(explain_to_show("", "", ""), "");
+}
+
+// The window's frame loop: the result becomes the next `last` when it is not empty.
+struct Frames {
+    std::string last;
+    std::string frame(std::string_view hovered, std::string_view focused) {
+        const std::string shown(explain_to_show(hovered, focused, last));
+        if (!shown.empty()) {
+            last = shown;
+        }
+        return shown;
+    }
+};
+
+TEST(ExplainToShow, AGapAfterAHoverKeepsTheHoveredEntry) {
+    Frames f;
+    EXPECT_EQ(f.frame("", ""), "");
+    EXPECT_EQ(f.frame("stage.exposure", ""), "stage.exposure");
+    EXPECT_EQ(f.frame("", ""), "stage.exposure");  // over a gap
+    EXPECT_EQ(f.frame("", ""), "stage.exposure");  // and still
+}
+
+TEST(ExplainToShow, FocusWinsOverAStaleHoverAndANewHoverWinsOverFocus) {
+    Frames f;
+    EXPECT_EQ(f.frame("stage.exposure", ""), "stage.exposure");
+    EXPECT_EQ(f.frame("", "stage.curve"), "stage.curve");  // the hover is stale: focus wins
+    EXPECT_EQ(f.frame("", ""), "stage.curve");             // a gap keeps it
+    EXPECT_EQ(f.frame("stage.matrix", "stage.curve"), "stage.matrix");  // a new hover wins
+    EXPECT_EQ(f.frame("", "stage.curve"), "stage.curve");
+}
+
 }  // namespace
 }  // namespace prism::gui

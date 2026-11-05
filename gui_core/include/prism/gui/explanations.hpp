@@ -75,6 +75,13 @@ struct Explanation {
 [[nodiscard]] float explain_area_height(const TokenMetrics& metrics, float small_line,
                                         float panel_height) noexcept;
 
+// Which entry the Explain area shows: the hovered one, else the focused one, else `last`, the
+// entry shown a moment ago (or the one just changed), so passing over a gap between controls
+// keeps showing what was under the cursor. Empty if there is none, and the window shows its hint.
+// The caller keeps the result as the next `last` when it is not empty.
+[[nodiscard]] std::string_view explain_to_show(std::string_view hovered, std::string_view focused,
+                                               std::string_view last) noexcept;
+
 // The ids of the controls that have their own enum or list...
 [[nodiscard]] std::string_view explain_id(StageId stage) noexcept;           // "stage.exposure"
 [[nodiscard]] std::string_view explain_id(SimpleControl control) noexcept;   // "simple.brightness"

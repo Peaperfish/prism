@@ -437,6 +437,14 @@ float explain_area_height(const TokenMetrics& metrics, float small_line,
     return std::min(panel_height * 0.45f, five_lines);
 }
 
+std::string_view explain_to_show(std::string_view hovered, std::string_view focused,
+                                 std::string_view last) noexcept {
+    if (!hovered.empty()) {
+        return hovered;
+    }
+    return !focused.empty() ? focused : last;
+}
+
 std::span<const std::string_view> other_explain_ids() noexcept {
     return other_ids;
 }

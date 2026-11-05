@@ -355,9 +355,10 @@ private:
     bool error_details_open_ = false;  // the banner's Details are unfolded
     std::string notice_;               // a short note that isn't an error, e.g. "Saved ..."
 
-    // The Explain area follows the hovered control, else the focused one, else the last one
-    // dragged or changed. The three are filled while a frame is drawn; the area shows the choice
-    // made at the end of the previous frame, so its size and text always agree within a frame.
+    // The Explain area follows the hovered control, else the focused one, else the last one shown
+    // (or dragged or changed), so a gap between controls keeps the entry just left. The three are
+    // filled while a frame is drawn; the area shows the choice made at the end of the previous
+    // frame, so its text agrees within a frame.
     std::string explain_hover_;
     std::string explain_focus_;
     std::string explain_last_;

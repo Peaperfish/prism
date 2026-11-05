@@ -15,6 +15,7 @@ This release is about keeping a look, and about looking closer: save an edit as 
 
 - On Linux, builds made from source with GCC 15 could give a photo processed on several threads slightly different numbers from one processed on a single thread. GCC builds now do each multiply and add separately, so every build gives the same result. The macOS and Windows downloads were never affected. ([#36](https://github.com/Peaperfish/prism/issues/36))
 - `Ctrl+Q` quits on Windows and Linux.
+- Scrolling to the bottom of the right-hand panel no longer makes it jump. The Explain area now keeps one height, and it keeps showing the control you just left when the cursor passes between two controls. ([#38](https://github.com/Peaperfish/prism/issues/38))
 
 ## Known limits
 

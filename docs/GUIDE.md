@@ -193,7 +193,7 @@ The histogram can be switched to a **Parade** (red, green and blue levels side b
 
 ### The Explain area
 
-At the foot of the panel, a box says in plain words what the control under the mouse does to the light. It has a one-line summary, a short detail, and a live line worked out for the current value. For example, Brightness at +35 reads "+35: +0.70 stops, 1.62× the light". It follows the control you hover over, else the focused one, else the last one you changed. It is at most about five lines tall and scrolls when a text is longer. Tooltips show just the summary, after the same short delay everywhere. You can switch the Explain area off in [Preferences](#preferences); tooltips stay.
+At the foot of the panel, a box says in plain words what the control under the mouse does to the light. It has a one-line summary, a short detail, and a live line worked out for the current value. For example, Brightness at +35 reads "+35: +0.70 stops, 1.62× the light". It follows the control you hover over, else the focused one, else the last one it showed, so moving across the gap between two controls keeps the text you were reading. It is always about five lines tall, so the panel above it never changes size, and it scrolls when a text is longer. Tooltips show just the summary, after the same short delay everywhere. You can switch the Explain area off in [Preferences](#preferences); tooltips stay.
 
 ### Undo and redo
 

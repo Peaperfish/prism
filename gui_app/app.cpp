@@ -1093,9 +1093,11 @@ void App::frame() {
         pending_open_shown_ = true;
     }
     // For Esc next frame: ImGui will have used the key on these before the app sees it.
-    explain_shown_ = !explain_hover_.empty() ? explain_hover_
-                     : !explain_focus_.empty() ? explain_focus_
-                                               : explain_last_;
+    // Hovered, else focused, else what was shown a moment ago: a gap between controls keeps
+    // showing the control the cursor just left. A control changed or dragged also sets
+    // explain_last_ (see explain()), so it stays when the cursor leaves it mid-drag.
+    explain_shown_ = std::string(gui::explain_to_show(explain_hover_, explain_focus_, explain_last_));
+    explain_last_ = explain_shown_;
     popup_open_last_frame_ =
         ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
     item_active_last_frame_ = control_active();
