@@ -19,7 +19,7 @@ Prism loads an image (PNG, JPEG or camera RAW), runs it through a simple colour 
 Mainstream photo editors often come with a subscription and a cloud catalog, hide what their sliders do, and sell looks as presets you can't read. Prism is built on four principles instead:
 
 1. **Free for personal use.** No subscription, no cloud, no catalog: open a file, edit it, export it. (See [Licences](#licences).)
-2. **It teaches as you go.** Every control should say in plain words what it does to the light, and you should be able to see each step happen. Since [0.2.0](https://github.com/Peaperfish/prism/milestone/1): a pipeline view, colour scopes and a test strip.
+2. **It teaches as you go.** Every control should say in plain words what it does to the light, and you should be able to see each step happen. Since [0.2.0](https://github.com/Peaperfish/prism/milestone/1): a pipeline view, colour scopes and a test strip. Since [0.3.0](https://github.com/Peaperfish/prism/milestone/3): zoom and pan, and a reader for the numbers of any pixel.
 3. **No black-box presets.** A look should be a readable recipe you can see and adjust. The plain-text [recipe format](docs/RECIPES.md) is defined, the app saves and loads recipes ([Recipes](docs/GUIDE.md#recipes)), the command line applies them, and the built-in looks are [recipes you can read](recipes/): the app shows each look's numbers and its file.
 4. **Physical controls.** You adjust light rather than apply effects. Exposure is already in stops; white balance in Kelvin, contrast as paper grades, and dodge and burn are planned for [0.4.0](https://github.com/Peaperfish/prism/milestone/4).
 
@@ -269,10 +269,12 @@ v0.1.0 was a pre-release of the desktop app, and v0.2.0 is its first full releas
 
 [**0.3.0 – Recipes**](https://github.com/Peaperfish/prism/milestone/3): readable, shareable recipes instead of black-box presets.
 
-- [The .prism recipe format](https://github.com/Peaperfish/prism/issues/17): plain text, versioned, documented, diffable
-- [Save and load recipes](https://github.com/Peaperfish/prism/issues/18) in the GUI
-- [Batch editing from the CLI](https://github.com/Peaperfish/prism/issues/19): `prism <files> --recipe <file>`
+- [The .prism recipe format](https://github.com/Peaperfish/prism/issues/17): plain text, versioned, documented, diffable *(done)*
+- [Save and load recipes](https://github.com/Peaperfish/prism/issues/18) in the GUI *(done)*
+- [Batch editing from the CLI](https://github.com/Peaperfish/prism/issues/19): `prism <files> --recipe <file>` *(done)*
 - [The built-in presets as readable recipes](https://github.com/Peaperfish/prism/issues/20) that show their values *(done)*
+- [Zoom and pan](https://github.com/Peaperfish/prism/issues/27) the preview, with the pixels shown as squares above 200% *(done)*
+- [Reading a pixel](https://github.com/Peaperfish/prism/issues/28): the linear values, its share of white's light and its stops from middle grey, at any stage *(done)*
 
 [**0.4.0 – Darkroom**](https://github.com/Peaperfish/prism/milestone/4): physical controls.
 
