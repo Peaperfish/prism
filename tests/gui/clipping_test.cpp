@@ -7,6 +7,7 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -746,5 +747,200 @@ TEST(ClippingPreview, RunningTheLaterStagesOnTheSampledGridGivesTheFullImagesNum
         const auto frame = prism::gui::render_preview(img, s, 1, {}, {}, info.id, options);
         ASSERT_TRUE(frame && frame->clips) << info.name;
         EXPECT_EQ(*frame->clips, expected) << info.name;
+    }
+}
+
+// --- One per-pixel range test --------------------------------------------------------------------
+
+namespace {
+
+using prism::gui::clip_mask_bits;
+using prism::gui::clip_mask_lost_bits;
+using prism::gui::CurveKind;
+using prism::gui::PixelRange;
+using prism::gui::pixel_range;
+
+// Every kind of pixel the test tells apart, and some ordinary ones around them.
+Image range_cases() {
+    const float inf = std::numeric_limits<float>::infinity();
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const float ceiling = 1.0f - prism::gui::file_ceiling_epsilon;
+    Image img;
+    img.pixels = {
+        0.5f,   0.4f,   0.3f,    // ordinary
+        0.0f,   0.0f,   0.0f,    // pure black
+        1.0f,   0.5f,   0.5f,    // at the ceiling
+        ceiling, ceiling, 1.0f,  // at the ceiling, all three
+        1.5f,   0.5f,   0.5f,    // over white
+        1.5f,   1.0f,   0.2f,    // over in one channel, at the ceiling in another
+        0.9f,   0.4f,   -0.22f,  // has light, out of gamut
+        0.9f,   0.4f,   -1e-4f,  // has light, negative within the tolerance
+        -0.5f,  0.1f,   0.1f,    // no light, one channel positive
+        -0.5f,  -0.1f,  -0.2f,   // no light, all negative
+        2.0f,   -1.0f,  0.5f,    // over white and no light
+        3.0f,   0.2f,   -0.5f,   // over white and out of gamut
+        inf,    0.1f,   0.1f,    // +infinity
+        -inf,   0.1f,   0.1f,    // -infinity
+        nan,    0.5f,   0.5f,    // NaN
+        0.5f,   nan,    -0.5f,   // NaN with a negative
+        -0.5f,  nan,    0.5f,    // a negative with NaN
+        0.18f,  0.18f,  0.18f,   // middle grey
+    };
+    img.width = static_cast<int>(img.pixels.size() / 3);
+    img.height = 1;
+    return img;
+}
+
+// The settings that clamp negatives at each place they can: Saturation, the Tone curve, or only
+// Output encode; and none that make any.
+std::vector<EditSettings> range_settings() {
+    EditSettings plain = with_exposure(0.5f);
+
+    EditSettings saturation = with_exposure(0.5f);
+    saturation.matrix = prism::gui::MatrixFile{{}, {1, 0, 0, 0, 1, 0, -0.3f, 0, 1}};
+    saturation.saturation = 1.2f;
+    saturation.contrast = 1.3f;
+    saturation.curve = CurveKind::filmic;
+
+    EditSettings curve = saturation;
+    curve.saturation_on = false;
+
+    EditSettings encode = curve;
+    encode.curve_on = false;
+
+    EditSettings all_off;
+    all_off.exposure_on = all_off.matrix_on = all_off.saturation_on = false;
+    all_off.contrast_on = all_off.curve_on = false;
+
+    return {plain, saturation, curve, encode, all_off, EditSettings{}};
+}
+
+// What the pipeline leaves in the pixels at `stage`, and what its clamping stages lost on the way,
+// worked out here with nothing but pixel_range.
+std::vector<std::uint8_t> mask_from_pixel_range(const Image& base, const EditSettings& s,
+                                                StageId stage) {
+    const std::size_t pixels = static_cast<std::size_t>(base.width) * base.height;
+    std::vector<std::uint8_t> bits(pixels, 0);
+    Image img = base;
+    if (stage != StageId::decode) {
+        bool clamped = false;
+        const prism::BeforeStageCallback before = [&](std::string_view name, const Image& input) {
+            const std::optional<StageId> id = prism::gui::stage_from_name(name);
+            if (id && !clamped &&
+                prism::gui::stage_clamps(*id, prism::gui::ClipDirection::shadows)) {
+                clamped = true;
+                for (std::size_t i = 0; i < pixels; ++i) {
+                    bits[i] |= clip_mask_lost_bits(pixel_range(input.pixels.data() + i * 3));
+                }
+            }
+        };
+        (void)prism::process(img, prism::gui::to_process_settings(s, stage), 1, {}, {}, before);
+    }
+    for (std::size_t i = 0; i < pixels; ++i) {
+        bits[i] |= clip_mask_bits(pixel_range(img.pixels.data() + i * 3), stage == StageId::decode);
+    }
+    return bits;
+}
+
+}  // namespace
+
+TEST(PixelRange, NamesEachChannelOutOfRange) {
+    const float inf = std::numeric_limits<float>::infinity();
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const auto of = [](float r, float g, float b) {
+        const float p[3] = {r, g, b};
+        return pixel_range(p);
+    };
+    EXPECT_EQ(of(0.5f, 0.5f, 0.5f), PixelRange{});
+    EXPECT_EQ(of(0.0f, 0.0f, 0.0f), PixelRange{});  // exactly black is not out of range
+    EXPECT_EQ(of(1.5f, 0.5f, 1.2f).over, 0b101);
+    EXPECT_EQ(of(1.0f, 0.5f, 0.5f).ceiling, 0b001);
+    EXPECT_EQ(of(1.0f, 0.5f, 0.5f).over, 0);
+    EXPECT_EQ(of(1.5f, 0.5f, 0.5f).ceiling, 0);  // above the band
+    EXPECT_EQ(of(-0.5f, 0.1f, 0.1f).low, 0b001);
+    EXPECT_EQ(of(-0.5f, 0.1f, 0.1f).gamut, 0);
+    EXPECT_EQ(of(0.9f, 0.4f, -0.22f).gamut, 0b100);
+    EXPECT_EQ(of(0.9f, 0.4f, -0.22f).low, 0);
+    EXPECT_EQ(of(0.9f, 0.4f, -1e-4f), PixelRange{});  // within half an 8-bit step
+    EXPECT_EQ(of(inf, 0.1f, 0.1f).over, 0b001);
+    EXPECT_EQ(of(nan, nan, nan), PixelRange{});
+    EXPECT_EQ(of(nan, 0.5f, -0.5f), PixelRange{});
+}
+
+TEST(PixelRange, MatchesTheClipMaskForEveryPixelAtEveryStage) {
+    const Image base = range_cases();
+    int settings_index = 0;
+    for (const EditSettings& s : range_settings()) {
+        for (const prism::gui::StageInfo& info : prism::gui::pipeline_stages()) {
+            prism::gui::PreviewOptions options;
+            options.clip_mask = true;
+            const std::optional<prism::gui::PreviewFrame> frame =
+                prism::gui::render_preview(base, s, 1, {}, {}, info.id, options);
+            ASSERT_TRUE(frame.has_value());
+            EXPECT_EQ(mask_from_pixel_range(base, s, info.id), frame->clip_mask)
+                << "settings " << settings_index << ", " << info.name;
+        }
+        ++settings_index;
+    }
+}
+
+TEST(PixelRange, APixelAnEarlierStageClippedStaysMarked) {
+    // The orange's blue goes negative at the matrix and Saturation clamps it, so its output is in
+    // range; the mask still marks it, and pixel_range of that stage's input says why.
+    EditSettings s = orange_matrix();
+    s.saturation = 1.2f;
+    const Image base = orange();
+    const std::optional<Image> after_matrix =
+        prism::gui::render_stage_image(base, s, StageId::matrix, 1);
+    const std::optional<Image> after_saturation =
+        prism::gui::render_stage_image(base, s, StageId::saturation, 1);
+    ASSERT_TRUE(after_matrix && after_saturation);
+    EXPECT_NE(pixel_range(after_matrix->pixels.data()).gamut, 0);
+    EXPECT_EQ(pixel_range(after_saturation->pixels.data()), PixelRange{});
+
+    const auto mask_at = [&](StageId stage) {
+        prism::gui::PreviewOptions options;
+        options.clip_mask = true;
+        return prism::gui::render_preview(base, s, 1, {}, {}, stage, options)->clip_mask;
+    };
+    for (const StageId stage : {StageId::saturation, StageId::contrast, StageId::curve,
+                                StageId::encode}) {
+        EXPECT_EQ(mask_at(stage)[0], prism::gui::clip_mask_gamut);
+        EXPECT_EQ(mask_from_pixel_range(base, s, stage), mask_at(stage));
+    }
+}
+
+TEST(PixelRange, MatchesTheReportsCounts) {
+    const Image base = range_cases();
+    for (const EditSettings& s : range_settings()) {
+        const ClipReport report = compute_clip_report(base, s, 1);
+        // Exposure, Colour matrix and Contrast never clamp, so their rows count their own output.
+        for (const StageId stage : {StageId::exposure, StageId::matrix, StageId::contrast}) {
+            const prism::gui::StageClip& row = report.at(stage);
+            if (!row.ran) {
+                continue;
+            }
+            const std::optional<Image> img = prism::gui::render_stage_image(base, s, stage, 1);
+            ASSERT_TRUE(img.has_value());
+            prism::gui::ClipCounts over;
+            prism::gui::ClipCounts under;
+            prism::gui::ClipCounts gamut;
+            const auto add = [](prism::gui::ClipCounts& counts, std::uint8_t channels) {
+                counts.red += (channels & 1u) != 0;
+                counts.green += (channels & 2u) != 0;
+                counts.blue += (channels & 4u) != 0;
+                counts.any += channels != 0;
+            };
+            for (int x = 0; x < base.width; ++x) {
+                const PixelRange r =
+                    pixel_range(img->pixels.data() + static_cast<std::size_t>(x) * 3);
+                add(over, r.over);
+                add(under, r.low);
+                add(gamut, r.gamut);
+            }
+            EXPECT_EQ(row.over, over);
+            EXPECT_EQ(row.under, under);
+            EXPECT_EQ(row.gamut, gamut);
+        }
     }
 }

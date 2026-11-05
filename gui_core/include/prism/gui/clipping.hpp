@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -65,6 +66,48 @@ inline constexpr float file_ceiling_epsilon = 1e-6f;
 // How far below 0 a channel must be, on a pixel with Y > 0, to count as out of gamut: half an
 // 8-bit step at the sRGB toe (0.5 / 255 / 12.92), below which the encoded value rounds to 0 anyway.
 inline constexpr float gamut_tolerance = 1.5e-4f;
+
+// How one pixel's values sit against 0 and 1. This is the one per-pixel test: the clip mask, the
+// clip report and the colour sampler all ask it, so they can never disagree. Each field has one bit
+// per channel: bit 0 red, bit 1 green, bit 2 blue.
+//   over:    above 1.0.
+//   ceiling: in [1.0 - file_ceiling_epsilon, 1.0]: at the file's ceiling, if this is Decode.
+//   low:     no light: the negative channels of a pixel with Y <= 0. A pure black pixel (0, 0, 0) has
+//            none: it is exactly black, nothing is out of range.
+//   gamut:   the channels below -gamut_tolerance of a pixel that has light (Y > 0).
+// Comparisons are false for NaN, so NaN counts as none of them; +-inf count.
+struct PixelRange {
+    std::uint8_t over = 0;
+    std::uint8_t ceiling = 0;
+    std::uint8_t low = 0;
+    std::uint8_t gamut = 0;
+
+    bool operator==(const PixelRange&) const = default;
+};
+
+// `p` points at a pixel's three channels. Inline because the mask asks for every pixel of a preview.
+[[nodiscard]] inline PixelRange pixel_range(const float* p) noexcept {
+    constexpr float ceiling = 1.0f - file_ceiling_epsilon;
+    PixelRange r;
+    // Only a pixel with a channel below 0 can be low or gamut, so the luminance is worked out for
+    // those alone; the rest, nearly every pixel, cost one min.
+    const float lowest = std::min(p[0], std::min(p[1], p[2]));
+    bool low = false;
+    bool gamut = false;
+    if (lowest < 0.0f) {
+        const float y = 0.2126f * p[0] + 0.7152f * p[1] + 0.0722f * p[2];
+        low = y <= 0.0f;
+        gamut = y > 0.0f && lowest < -gamut_tolerance;
+    }
+    for (int c = 0; c < 3; ++c) {
+        const auto bit = static_cast<std::uint8_t>(1u << c);
+        r.over |= p[c] > 1.0f ? bit : std::uint8_t{0};
+        r.ceiling |= p[c] >= ceiling && p[c] <= 1.0f ? bit : std::uint8_t{0};
+        r.low |= low && p[c] < 0.0f ? bit : std::uint8_t{0};
+        r.gamut |= gamut && p[c] < -gamut_tolerance ? bit : std::uint8_t{0};
+    }
+    return r;
+}
 
 // Whether `stage`, when it runs, clamps values in `direction`.
 [[nodiscard]] bool stage_clamps(StageId stage, ClipDirection direction) noexcept;
@@ -197,6 +240,21 @@ private:
 inline constexpr std::uint8_t clip_mask_high = 1;
 inline constexpr std::uint8_t clip_mask_low = 2;
 inline constexpr std::uint8_t clip_mask_gamut = 4;  // Y > 0 and a channel below -gamut_tolerance
+
+// The bits a stage about to clamp negatives would lose for this pixel (see mark_lost_negatives).
+[[nodiscard]] constexpr std::uint8_t clip_mask_lost_bits(const PixelRange& r) noexcept {
+    return static_cast<std::uint8_t>((r.low != 0 ? clip_mask_low : 0) |
+                                     (r.gamut != 0 ? clip_mask_gamut : 0));
+}
+
+// The mask's byte for a pixel, before any earlier stage's marks. With `file_ceiling` (for Decode),
+// "high" means at the file's ceiling or above it.
+[[nodiscard]] constexpr std::uint8_t clip_mask_bits(const PixelRange& r,
+                                                    bool file_ceiling = false) noexcept {
+    const bool high = r.over != 0 || (file_ceiling && r.ceiling != 0);
+    return static_cast<std::uint8_t>((high ? clip_mask_high : 0) | clip_mask_lost_bits(r));
+}
+
 // With `file_ceiling` (for Decode), "high" means at the file's ceiling, as counted at Decode.
 // `earlier`, if given and the same size, is OR-ed in: the pixels a previous stage lost (see
 // mark_lost_negatives), so they stay marked after the stage that clamped them.
