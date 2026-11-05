@@ -10,6 +10,7 @@
 #include <string_view>
 #include <vector>
 
+#include "prism/gui/pixel_sample.hpp"
 #include "prism/gui/stage_controls.hpp"
 #include "prism/image.hpp"
 #include "prism/pipeline.hpp"
@@ -528,6 +529,13 @@ TEST(LiveLines, LiveLinesHaveNoPlaceholdersAndUseTheTimesSign) {
     context.recipe = &loaded;
     context.preview_long_side = 2560;
     context.file_long_side = 9566;
+    Image pixel;
+    pixel.width = 1;
+    pixel.height = 1;
+    pixel.pixels = {0.4f, 0.3f, 0.2f};
+    const std::optional<PixelTrace> trace = sample_trace(pixel, s, 0, 0);
+    ASSERT_TRUE(trace.has_value());
+    context.sample = &*trace;
     for (const Explanation& e : explanations()) {
         const std::string line = live_line(e.id, s, context);
         EXPECT_EQ(line.find('{'), std::string::npos) << e.id;
@@ -541,6 +549,45 @@ TEST(LiveLines, LiveLinesHaveNoPlaceholdersAndUseTheTimesSign) {
             }
         }
     }
+}
+
+TEST(Explanations, TheSampleEntriesAvoidTheWordBrightness) {
+    for (const std::string_view id :
+         {explain::sample, explain::sample_values, explain::sample_light, explain::sample_range}) {
+        const Explanation* e = explanation_for(id);
+        ASSERT_NE(e, nullptr) << id;
+        EXPECT_EQ(e->summary.find("rightness"), std::string_view::npos) << id;
+        EXPECT_EQ(e->detail.find("rightness"), std::string_view::npos) << id;
+    }
+    EXPECT_EQ(explanation_for(explain::sample)->live, LiveKind::sample);
+    // The weights in the text are the ones the code uses.
+    EXPECT_NE(explanation_for(explain::sample_light)->detail.find("0.2126 R + 0.7152 G + 0.0722 B"),
+              std::string_view::npos);
+}
+
+TEST(LiveLines, TheSampleLineIsTheReadoutOfThePixel) {
+    Image pixel;
+    pixel.width = 1;
+    pixel.height = 1;
+    pixel.pixels = {0.42f, 0.27f, 0.19f};
+    const std::optional<PixelTrace> trace = sample_trace(pixel, EditSettings{}, 0, 0);
+    ASSERT_TRUE(trace.has_value());
+    LiveContext context;
+    EXPECT_EQ(live_line(explain::sample, EditSettings{}, context), "");  // nothing sampled yet
+    context.sample = &*trace;
+    context.viewed = StageId::encode;
+    EXPECT_EQ(live_line(explain::sample, EditSettings{}, context),
+              describe_sample(*trace, StageId::encode));
+    context.compare = StageId::decode;
+    context.preview_long_side = 2560;
+    context.file_long_side = 9566;
+    EXPECT_EQ(live_line(explain::sample, EditSettings{}, context),
+              describe_sample(*trace, StageId::encode, StageId::decode, {2560, 9566}));
+    // The same number of file pixels across as the zoom's own line.
+    const std::string zoom = live_line(explain::view_zoom, EditSettings{}, context);
+    EXPECT_NE(zoom.find("about 3.7 file pixels across"), std::string::npos);
+    EXPECT_NE(live_line(explain::sample, EditSettings{}, context).find("about 3.7×3.7 file pixels"),
+              std::string::npos);
 }
 
 }  // namespace

@@ -86,4 +86,43 @@ struct SampleStats {
 
 [[nodiscard]] SampleStats sample_stats(const PixelTrace& trace, StageId stage);
 
+// How many file pixels across one preview pixel stands for: the number in view.zoom's live line. 0
+// if either size is unknown.
+[[nodiscard]] double file_pixels_across(int preview_long_side, int file_long_side) noexcept;
+
+// The preview against the file, for the line about what one preview pixel averages.
+struct SampleScale {
+    int preview_long_side = 0;  // 0 if no photo
+    int file_long_side = 0;
+};
+
+// The readout, in the words a photographer uses, a row at a time so that a window can show each on
+// its own. Positions are in words ("2.6 stops above middle grey"); signs are for adjustments.
+struct SampleRows {
+    // "R 1.210 G 1.050 B 0.860 (linear, 1.00 = white)"; Output encode adds the sRGB codes:
+    // "Linear R 0.420 G 0.270 B 0.190 → sRGB 173 142 121"
+    std::string values;
+    // Before the Tone curve, 18% is a grey card: "107% of white's light, 2.6 stops above middle
+    // grey". From the Tone curve on it no longer is, so the light on screen and the stops in the
+    // scene (at Contrast) are said apart: "On screen 30% of white's light · In the scene 0.7 stops
+    // above middle grey". On screen means after the clamp to 0..1, so it never reads above 100%.
+    std::string light;
+    // SampleStats::fate.
+    std::string range;
+    // What one preview pixel averages, if the preview is smaller than the file; otherwise empty.
+    std::string average;
+};
+
+[[nodiscard]] SampleRows sample_rows(const PixelTrace& trace, StageId stage,
+                                     SampleScale scale = {});
+
+// What a stage's rows are headed with in a comparison: "Original", "After Exposure".
+[[nodiscard]] std::string sample_stage_title(StageId stage);
+
+// The rows joined with " · ". With `compare` (see effective_compare), one line per stage, the
+// viewed stage first, each with its title, and the average once at the end.
+[[nodiscard]] std::string describe_sample(const PixelTrace& trace, StageId viewed,
+                                          std::optional<StageId> compare = {},
+                                          SampleScale scale = {});
+
 }  // namespace prism::gui

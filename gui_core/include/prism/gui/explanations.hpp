@@ -47,7 +47,10 @@ enum class LiveKind {
     strip,        // how much light one band step is
     recipe,       // which stages the loaded recipe sets (needs the loaded recipe)
     preview_size, // the preview's size against the file's (needs both)
+    sample,       // the sampled pixel's readout (needs the trace)
 };
+
+struct PixelTrace;
 
 struct Explanation {
     std::string_view id;
@@ -100,6 +103,10 @@ inline constexpr std::string_view strip_line = "strip.line";
 inline constexpr std::string_view view_zoom = "view.zoom";
 inline constexpr std::string_view view_fit = "view.fit";
 inline constexpr std::string_view view_actual = "view.actual";
+inline constexpr std::string_view sample = "sample";
+inline constexpr std::string_view sample_values = "sample.values";
+inline constexpr std::string_view sample_light = "sample.light";
+inline constexpr std::string_view sample_range = "sample.range";
 inline constexpr std::string_view pref_theme = "pref.theme";
 inline constexpr std::string_view pref_size = "pref.size";
 inline constexpr std::string_view pref_panel = "pref.panel";
@@ -119,6 +126,7 @@ struct LiveContext {
     int preview_long_side = 0;             // the preview's longer side, in pixels; 0 if no photo
     int file_long_side = 0;                // the file's (see Session::file_width)
     bool file_size_exact = true;           // false: file_long_side is an estimate
+    const PixelTrace* sample = nullptr;    // the pixel the sampler is reading, if any
 };
 
 // The live line for `id` with these settings: numbers worked out with the engine's own maths

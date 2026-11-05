@@ -1,6 +1,7 @@
 #include "prism/gui/pixel_sample.hpp"
 
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <stdexcept>
 #include <string_view>
@@ -218,6 +219,119 @@ std::string fate_line(const PixelTrace& trace, StageId stage) {
     return text.empty() ? ends_up(trace) : text;
 }
 
+// `v` with `places` decimals, always with '.', whatever the locale. Negative only if it reads as
+// something other than zero.
+std::string fixed(float v, int places) {
+    char buffer[64];
+    const std::to_chars_result r = std::to_chars(buffer, buffer + sizeof buffer, std::fabs(v),
+                                                 std::chars_format::fixed, places);
+    const std::string digits = r.ec == std::errc{} ? std::string(buffer, r.ptr) : std::string("?");
+    const bool zero = digits.find_first_not_of("0.") == std::string::npos;
+    return (std::signbit(v) && !zero ? "-" : "") + digits;
+}
+
+// A channel: three decimals, or what it is instead of a number.
+std::string value_text(float v) {
+    if (std::isnan(v)) {
+        return "NaN";
+    }
+    if (std::isinf(v)) {
+        return v > 0.0f ? "∞" : "-∞";
+    }
+    const std::string text = fixed(v, 3);
+    // A channel under white never reads as white: 0.99995 would round to 1.000, which is the
+    // file's ceiling, where a clipped value sits. A value in the ceiling band, or above, reads as
+    // it is.
+    constexpr float ceiling = 1.0f - file_ceiling_epsilon;
+    return v < ceiling && text == "1.000" ? "0.999" : text;
+}
+
+std::string rgb_text(const std::array<float, 3>& rgb) {
+    return "R " + value_text(rgb[0]) + " G " + value_text(rgb[1]) + " B " + value_text(rgb[2]);
+}
+
+// "107%", "30%", "0.4%", "<0.1%": never rounding what light there is down to nothing. For Y > 0.
+std::string light_percent(float y) {
+    const double percent = 100.0 * static_cast<double>(y);
+    if (percent < 0.1) {
+        return "<0.1%";
+    }
+    return fixed(static_cast<float>(percent), percent < 0.95 ? 1 : 0) + "%";
+}
+
+// "107% of white's light", or what there is instead.
+std::string light_text(float y) {
+    if (std::isnan(y)) {
+        return "no reading of the light";
+    }
+    if (!(y > 0.0f)) {
+        return "no light";
+    }
+    return std::isinf(y) ? "far over white" : light_percent(y) + " of white's light";
+}
+
+// "2.6 stops above middle grey", "1.3 stops below middle grey", "at middle grey": a position, in
+// words. Signs are for adjustments. Empty when the light says it all (no light, NaN, infinity).
+std::string stops_text(const std::optional<float>& stops) {
+    if (!stops || std::isinf(*stops)) {
+        return {};
+    }
+    const std::string number = fixed(std::fabs(*stops), 1);
+    if (number == "0.0") {
+        return "at middle grey";
+    }
+    return number + (*stops > 0.0f ? " stops above middle grey" : " stops below middle grey");
+}
+
+// What the picture can show of a value: as Output encode leaves it, NaN being 0.
+float on_screen(float v) noexcept {
+    return v > 0.0f ? std::min(v, 1.0f) : 0.0f;
+}
+
+// The scene's light, from the Contrast stage: its stops, or what it has instead.
+std::string scene_text(const SampleStats& scene) {
+    const std::string stops = stops_text(scene.stops);
+    if (!stops.empty()) {
+        return stops;
+    }
+    return std::isnan(scene.luminance)   ? "no reading of the light"
+           : std::isinf(scene.luminance) ? "far over white"
+                                         : "no light";
+}
+
+std::string values_row(const PixelTrace& trace, StageId stage) {
+    const std::array<float, 3>& rgb = trace.at(stage).rgb;
+    if (stage != StageId::encode) {
+        return rgb_text(rgb) + " (linear, 1.00 = white)";
+    }
+    return "Linear " + rgb_text(rgb) + " → sRGB " + std::to_string(trace.srgb8[0]) + " " +
+           std::to_string(trace.srgb8[1]) + " " + std::to_string(trace.srgb8[2]);
+}
+
+std::string light_row(const PixelTrace& trace, StageId stage, const SampleStats& stats) {
+    const std::array<float, 3>& rgb = trace.at(stage).rgb;
+    if (before(stage, StageId::curve)) {
+        const std::string stops = stops_text(stats.stops);
+        return capitalised(light_text(stats.luminance)) + (stops.empty() ? "" : ", " + stops);
+    }
+    // 0.18 is no longer a grey card here. The scene's figure is from the last stage before it
+    // stopped being one.
+    const float shown = sample_luminance({on_screen(rgb[0]), on_screen(rgb[1]), on_screen(rgb[2])});
+    return "On screen " + light_text(shown) + " · In the scene " +
+           scene_text(sample_stats(trace, StageId::contrast));
+}
+
+// The line about what one preview pixel averages, or nothing if it stands for one file pixel.
+std::string average_text(const SampleScale& scale) {
+    const double across = file_pixels_across(scale.preview_long_side, scale.file_long_side);
+    const std::string number = fixed(static_cast<float>(across), 1);
+    if (across < 1.0 || number == "1.0") {
+        return {};
+    }
+    return "One preview pixel averages about " + number + "×" + number +
+           " file pixels, so a small clipped highlight can hide in it.";
+}
+
 }  // namespace
 
 std::optional<PixelTrace> sample_trace(const Image& base, const EditSettings& settings, int x,
@@ -317,6 +431,38 @@ SampleStats sample_stats(const PixelTrace& trace, StageId stage) {
     stats.clipped_in_file = trace.at(StageId::decode).range.ceiling;
     stats.fate = fate_line(trace, stage);
     return stats;
+}
+
+double file_pixels_across(int preview_long_side, int file_long_side) noexcept {
+    if (preview_long_side <= 0 || file_long_side <= 0) {
+        return 0.0;
+    }
+    return static_cast<double>(file_long_side) / static_cast<double>(preview_long_side);
+}
+
+SampleRows sample_rows(const PixelTrace& trace, StageId stage, SampleScale scale) {
+    const SampleStats stats = sample_stats(trace, stage);
+    return {values_row(trace, stage), light_row(trace, stage, stats), stats.fate,
+            average_text(scale)};
+}
+
+std::string sample_stage_title(StageId stage) {
+    return capitalised(stage_caption(stage));
+}
+
+std::string describe_sample(const PixelTrace& trace, StageId viewed, std::optional<StageId> compare,
+                            SampleScale scale) {
+    const auto stage_text = [&](const SampleRows& rows) {
+        return rows.values + " · " + rows.light + " · " + rows.range;
+    };
+    const SampleRows first = sample_rows(trace, viewed, scale);
+    compare = effective_compare(viewed, compare);
+    if (!compare) {
+        return stage_text(first) + (first.average.empty() ? "" : " · " + first.average);
+    }
+    return sample_stage_title(viewed) + ": " + stage_text(first) + "\n" +
+           sample_stage_title(*compare) + ": " + stage_text(sample_rows(trace, *compare)) +
+           (first.average.empty() ? "" : "\n" + first.average);
 }
 
 }  // namespace prism::gui

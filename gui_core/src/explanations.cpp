@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <vector>
 
+#include "prism/gui/pixel_sample.hpp"
 #include "prism/gui/stage_controls.hpp"
 #include "prism/pipeline.hpp"
 
@@ -210,6 +211,24 @@ constexpr Explanation templates[] = {
      "The sharpest this preview can look. A large file has more pixels than the preview: look at "
      "an export for those. Greyed out when the photo already fills the canvas above 100%."},
 
+    // --- Sample colour -------------------------------------------------------------------------
+    {"sample", "Read one pixel's values at the viewed stage (I).",
+     "Point at the photo to read a pixel, click to pin it. Dragging still moves the picture, and "
+     "a click on the strip still sets the exposure. Esc leaves. Values are the linear numbers, "
+     "not the 8-bit picture.",
+     LiveKind::sample},
+    {"sample.values", "The pixel's red, green and blue, in linear light.",
+     "1.00 is white and 0 is black. Values above 1 or below 0 stay as numbers until a stage cuts "
+     "them off. Output encode also shows the 8-bit sRGB codes the file gets."},
+    {"sample.light", "How much light the pixel holds, and how far from middle grey.",
+     "A share of white's light (0.2126 R + 0.7152 G + 0.0722 B) and stops from middle grey (18%). "
+     "After the Tone curve 18% is no longer a grey card, so the stops are the scene's, from "
+     "Contrast."},
+    {"sample.range", "Whether the pixel is out of range, and what becomes of it.",
+     "Over white, no light, or too saturated for sRGB: the same test as the clipping marks. It "
+     "names the later stage that brings a value back or clips it. A preview pixel is an average, "
+     "so a small clip can hide."},
+
     // --- Preferences -------------------------------------------------------------------------
     {"pref.theme", "Light, dark, or follow the system.",
      "The photo canvas stays neutral grey in both so your eyes judge the photo, not the frame."},
@@ -224,7 +243,7 @@ constexpr Explanation templates[] = {
 
 // Ids that have no enum of their own: the controls the window shows beyond the stages, Simple's
 // sliders, the curve kinds, the scopes and the presets.
-constexpr std::array<std::string_view, 29> other_ids{
+constexpr std::array<std::string_view, 33> other_ids{
     explain::look,         explain::look_reset,   explain::look_view_recipe,
     explain::recipe_load,  explain::recipe_save,
     explain::recipe_loaded, explain::recipe_name, explain::recipe_description,
@@ -233,6 +252,7 @@ constexpr std::array<std::string_view, 29> other_ids{
     explain::clip_dot,     explain::clip_summary, explain::clip_note,   explain::compare,
     explain::compare_swap, explain::viewing,      explain::strip,       explain::strip_line,
     explain::view_zoom,    explain::view_fit,     explain::view_actual,
+    explain::sample,       explain::sample_values, explain::sample_light, explain::sample_range,
     explain::pref_theme,   explain::pref_size,    explain::pref_panel,  explain::pref_explain,
 };
 
@@ -558,13 +578,19 @@ std::string live_line(std::string_view id, const EditSettings& s, const LiveCont
                 return "Preview and file are both " + file +
                        " px on the long side: each preview pixel is one file pixel";
             }
-            const double across = static_cast<double>(context.file_long_side) /
-                                  static_cast<double>(context.preview_long_side);
+            const double across =
+                file_pixels_across(context.preview_long_side, context.file_long_side);
             return "Preview " + preview + " px, file " +
                    (context.file_size_exact ? "" : "about ") + file +
                    " px on the long side: each preview pixel stands for about " +
                    printf_string("%.1f", across) + " file pixels across";
         }
+        case LiveKind::sample:
+            if (context.sample == nullptr) {
+                return {};
+            }
+            return describe_sample(*context.sample, context.viewed, context.compare,
+                                   {context.preview_long_side, context.file_long_side});
     }
     return {};
 }

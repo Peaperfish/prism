@@ -521,4 +521,196 @@ TEST(PixelSampleFate, ValuesInRangeClipNowhere) {
     EXPECT_EQ(stats_of(0.42f, 0.27f, 0.19f, filmic(), StageId::encode).fate, "Nothing clipped.");
 }
 
+// --- The readout
+// -----------------------------------------------------------------------------------
+
+TEST(SampleReadout, SkyAfterExposure) {
+    EditSettings s = filmic();
+    s.exposure_stops = 1.0f;
+    const PixelTrace sky = trace_of(one_pixel(0.605f, 0.525f, 0.43f), s, 0, 0);
+    EXPECT_EQ(describe_sample(sky, StageId::exposure),
+              "R 1.210 G 1.050 B 0.860 (linear, 1.00 = white) · 107% of white's light, 2.6 stops "
+              "above middle grey · Red and green are over white. Not lost yet: the Tone curve "
+              "(filmic) brings them back under 1.00.");
+}
+
+TEST(SampleReadout, SkinAtOutputEncode) {
+    const PixelTrace skin = trace_of(one_pixel(0.42f, 0.27f, 0.19f), EditSettings{}, 0, 0);
+    EXPECT_EQ(describe_sample(skin, StageId::encode),
+              "Linear R 0.420 G 0.270 B 0.190 → sRGB 173 142 121 · On screen 30% of white's light "
+              "· In the scene 0.7 stops above middle grey · Nothing clipped.");
+}
+
+TEST(SampleReadout, ASaturatedFlowerAfterColourMatrix) {
+    EditSettings s = orange_matrix();
+    s.saturation = 1.2f;
+    const PixelTrace flower = trace_of(one_pixel(0.9f, 0.4f, 0.05f), s, 0, 0);
+    EXPECT_EQ(
+        describe_sample(flower, StageId::matrix, std::nullopt, {2560, 9566}),
+        "R 0.900 G 0.400 B -0.220 (linear, 1.00 = white) · 46% of white's light, 1.4 stops "
+        "above middle grey · Too saturated for sRGB: blue is below 0. Still recoverable until "
+        "Saturation, which clips it, so the hue may shift. · One preview pixel averages about "
+        "3.7×3.7 file pixels, so a small clipped highlight can hide in it.");
+}
+
+TEST(SampleReadout, TheToneCurveSpeaksOfTheScreenAndTheScene) {
+    const PixelTrace trace = trace_of(one_pixel(0.42f, 0.27f, 0.19f), filmic(), 0, 0);
+    const std::string text = describe_sample(trace, StageId::curve);
+    EXPECT_EQ(text.rfind("R ", 0), 0u);
+    EXPECT_NE(text.find("On screen "), std::string::npos);
+    // The stops are the scene's, from Contrast, however far the curve moved the value.
+    EXPECT_NE(text.find("In the scene 0.7 stops above middle grey"), std::string::npos) << text;
+    EXPECT_EQ(text.find("sRGB"), std::string::npos);
+}
+
+TEST(SampleReadout, OnScreenNeverReadsAboveWhite) {
+    const PixelTrace trace = trace_of(one_pixel(2.0f, 2.0f, 2.0f), EditSettings{}, 0, 0);
+    const std::string text = describe_sample(trace, StageId::encode);
+    EXPECT_NE(text.find("sRGB 255 255 255 · On screen 100% of white's light"), std::string::npos)
+        << text;
+    EXPECT_NE(text.find("In the scene 3.5 stops above middle grey"), std::string::npos) << text;
+}
+
+TEST(SampleReadout, TheLightInAllItsForms) {
+    const auto text = [](float r, float g, float b) {
+        return describe_sample(trace_of(one_pixel(r, g, b), EditSettings{}, 0, 0),
+                               StageId::exposure);
+    };
+    EXPECT_NE(text(0.18f, 0.18f, 0.18f).find("18% of white's light, at middle grey"),
+              std::string::npos);
+    EXPECT_NE(text(0.09f, 0.09f, 0.09f).find("9% of white's light, 1.0 stops below middle grey"),
+              std::string::npos);
+    EXPECT_NE(text(0.004f, 0.004f, 0.004f).find("0.4% of white's light"), std::string::npos);
+    EXPECT_NE(text(0.0002f, 0.0002f, 0.0002f).find("<0.1% of white's light"), std::string::npos);
+    EXPECT_NE(text(0, 0, 0).find("No light · Nothing clipped."), std::string::npos)
+        << text(0, 0, 0);
+    EXPECT_NE(text(-0.5f, 0.1f, 0.1f).find("No light · No light: red is below 0."),
+              std::string::npos);
+}
+
+TEST(SampleReadout, PositionsInStopsAreWordsNotSigns) {
+    const auto light = [](float v) {
+        return sample_rows(trace_of(one_pixel(v, v, v), EditSettings{}, 0, 0), StageId::decode)
+            .light;
+    };
+    EXPECT_EQ(light(0.72f), "72% of white's light, 2.0 stops above middle grey");
+    EXPECT_EQ(light(0.09f), "9% of white's light, 1.0 stops below middle grey");
+    EXPECT_EQ(light(0.18f), "18% of white's light, at middle grey");
+    // The stops are the scene's on the later stages too, and just as unsigned.
+    const PixelTrace dark = trace_of(one_pixel(0.09f, 0.09f, 0.09f), filmic(), 0, 0);
+    EXPECT_NE(
+        sample_rows(dark, StageId::encode).light.find("In the scene 1.0 stops below middle grey"),
+        std::string::npos);
+}
+
+TEST(SampleReadout, TheRowsJoinIntoTheReadout) {
+    EditSettings s = filmic();
+    s.exposure_stops = 1.0f;
+    const PixelTrace sky = trace_of(one_pixel(0.605f, 0.525f, 0.43f), s, 0, 0);
+    const SampleScale scale{2560, 9566};
+    const SampleRows rows = sample_rows(sky, StageId::exposure, scale);
+    EXPECT_EQ(rows.values, "R 1.210 G 1.050 B 0.860 (linear, 1.00 = white)");
+    EXPECT_EQ(rows.light, "107% of white's light, 2.6 stops above middle grey");
+    EXPECT_EQ(rows.range, sample_stats(sky, StageId::exposure).fate);
+    EXPECT_EQ(rows.average,
+              "One preview pixel averages about 3.7×3.7 file pixels, so a small clipped highlight "
+              "can hide in it.");
+    EXPECT_EQ(describe_sample(sky, StageId::exposure, std::nullopt, scale),
+              rows.values + " · " + rows.light + " · " + rows.range + " · " + rows.average);
+    EXPECT_EQ(sample_rows(sky, StageId::exposure).average, "");
+
+    const SampleRows encode = sample_rows(sky, StageId::encode);
+    EXPECT_EQ(encode.values.rfind("Linear R ", 0), 0u);
+    EXPECT_NE(encode.values.find("→ sRGB "), std::string::npos);
+    EXPECT_EQ(encode.light.rfind("On screen ", 0), 0u);
+}
+
+TEST(SampleReadout, AChannelUnderWhiteNeverReadsAsWhite) {
+    const auto values = [](float r, float g, float b) {
+        return sample_rows(trace_of(one_pixel(r, g, b), EditSettings{}, 0, 0), StageId::decode)
+            .values;
+    };
+    // Would round to 1.000, but is under the file's ceiling band.
+    EXPECT_EQ(values(0.99995f, 0.9996f, 0.9994f), "R 0.999 G 0.999 B 0.999 (linear, 1.00 = white)");
+    // In the band (and at 1.0), it is what the file clipped, and reads so.
+    const float in_band = 1.0f - prism::gui::file_ceiling_epsilon / 2.0f;
+    EXPECT_EQ(values(1.0f, in_band, 0.9996f), "R 1.000 G 1.000 B 0.999 (linear, 1.00 = white)");
+    // Above it, the number is the number.
+    EXPECT_EQ(values(1.2f, 1.0004f, 1.0f), "R 1.200 G 1.000 B 1.000 (linear, 1.00 = white)");
+    // And the same at Output encode, where the values are shown linear.
+    EXPECT_EQ(sample_rows(trace_of(one_pixel(0.99995f, 1.2f, 1.0f), EditSettings{}, 0, 0),
+                          StageId::encode)
+                  .values,
+              "Linear R 0.999 G 1.200 B 1.000 → sRGB 255 255 255");
+}
+
+TEST(SampleReadout, AValueThatRoundsToZeroHasNoMinus) {
+    const std::string text = describe_sample(
+        trace_of(one_pixel(0.5f, -0.0001f, 0.5f), EditSettings{}, 0, 0), StageId::exposure);
+    EXPECT_EQ(text.rfind("R 0.500 G 0.000 B 0.500", 0), 0u) << text;
+}
+
+TEST(SampleReadout, ValuesThatAreNotNumbersSaySo) {
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const float inf = std::numeric_limits<float>::infinity();
+    const std::string not_a_number = describe_sample(
+        trace_of(one_pixel(nan, 0.5f, 0.5f), EditSettings{}, 0, 0), StageId::exposure);
+    EXPECT_EQ(not_a_number.rfind("R NaN G 0.500 B 0.500", 0), 0u) << not_a_number;
+    EXPECT_NE(not_a_number.find("No reading of the light"), std::string::npos) << not_a_number;
+    const std::string infinite = describe_sample(
+        trace_of(one_pixel(inf, 0.5f, 0.5f), EditSettings{}, 0, 0), StageId::encode);
+    EXPECT_NE(infinite.find("In the scene far over white"), std::string::npos) << infinite;
+}
+
+TEST(SampleReadout, AComparisonShowsBothStagesTheViewedOneFirst) {
+    EditSettings s = filmic();
+    s.exposure_stops = 1.0f;
+    const PixelTrace trace = trace_of(one_pixel(0.605f, 0.525f, 0.43f), s, 0, 0);
+    const std::string viewed_first =
+        describe_sample(trace, StageId::exposure, StageId::encode, {2560, 9566});
+    const std::size_t exposure = viewed_first.find("After Exposure: R 1.210");
+    const std::size_t encode = viewed_first.find("\nAfter Output encode: Linear R ");
+    const std::size_t average = viewed_first.find("\nOne preview pixel averages");
+    EXPECT_EQ(exposure, 0u) << viewed_first;
+    ASSERT_NE(encode, std::string::npos) << viewed_first;
+    ASSERT_NE(average, std::string::npos) << viewed_first;
+    EXPECT_LT(encode, average);
+
+    const std::string other_way = describe_sample(trace, StageId::encode, StageId::decode);
+    EXPECT_EQ(other_way.rfind("After Output encode: ", 0), 0u) << other_way;
+    EXPECT_NE(other_way.find("\nOriginal: R 0.605"), std::string::npos) << other_way;
+
+    // A stage compared with itself is no comparison.
+    EXPECT_EQ(describe_sample(trace, StageId::encode, StageId::encode),
+              describe_sample(trace, StageId::encode));
+}
+
+TEST(SampleReadout, OnlyAPreviewSmallerThanTheFileIsAnAverage) {
+    const PixelTrace trace = trace_of(one_pixel(0.5f, 0.5f, 0.5f), EditSettings{}, 0, 0);
+    const auto average = [&](int preview, int file) {
+        return describe_sample(trace, StageId::decode, std::nullopt, {preview, file})
+                   .find("averages") != std::string::npos;
+    };
+    EXPECT_TRUE(average(2560, 9566));
+    EXPECT_FALSE(average(1600, 1600));
+    EXPECT_FALSE(average(2000, 1600));  // an estimate of the file's size can come out below
+    EXPECT_FALSE(average(0, 0));
+    EXPECT_DOUBLE_EQ(file_pixels_across(2000, 4000), 2.0);
+    EXPECT_EQ(file_pixels_across(0, 4000), 0.0);
+}
+
+TEST(SampleReadout, TheWordBrightnessIsNeverUsed) {
+    const Image base = varied_image(37, 3);
+    for (const auto& [name, s] : varied_settings()) {
+        for (int x = 0; x < base.width; ++x) {
+            const PixelTrace trace = trace_of(base, s, x, 0);
+            for (const StageId stage : all_stages) {
+                const std::string text = describe_sample(trace, stage);
+                EXPECT_EQ(text.find("rightness"), std::string::npos) << text;
+                EXPECT_EQ(text.find('{'), std::string::npos) << text;
+            }
+        }
+    }
+}
+
 }  // namespace prism::gui
