@@ -34,7 +34,11 @@ public:
     // 1.0; `now_ms` is the event's time. Zero or negative font_size passes the delta unchanged.
     [[nodiscard]] WheelDelta scale(WheelDelta wheel, float font_size, std::uint64_t now_ms);
 
+    // Whether the last event given to scale() was a trackpad's.
+    [[nodiscard]] bool last_was_trackpad() const noexcept { return last_was_trackpad_; }
+
 private:
+    bool last_was_trackpad_ = false;
     bool seen_fractional_ = false;
     std::uint64_t last_fractional_ms_ = 0;
 };

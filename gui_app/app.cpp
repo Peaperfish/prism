@@ -150,6 +150,16 @@ App::App(SDL_Window* window, SDL_Renderer* renderer, DialogQueue& dialogs,
       scope_view_(renderer),
       prefs_file_(std::move(preferences_file)),
       display_scale_(content_scale(window)) {
+#if defined(__APPLE__)
+    pointer_platform_ = gui::PointerPlatform::macos;
+#elif defined(_WIN32)
+    pointer_platform_ = gui::PointerPlatform::windows;
+#else
+    if (const char* driver = SDL_GetCurrentVideoDriver(); driver != nullptr &&
+                                                          std::string_view(driver) == "wayland") {
+        pointer_platform_ = gui::PointerPlatform::wayland;
+    }
+#endif
     if (!prefs_file_.empty()) {
         prefs_ = gui::load_preferences(prefs_file_);  // the defaults if missing or unreadable
     }
@@ -1308,6 +1318,9 @@ void App::draw_canvas() {
     const Palette& colours = palette(theme());
     draw->AddRectFilled(min, max, colours.canvas);  // neutral grey in both themes
     const float margin = token_metrics().canvas_margin;
+    if (texture_.texture() == nullptr) {
+        canvas_wheels_.clear();  // nothing to scroll
+    }
 
     if (texture_.texture() != nullptr) {
         // Where the view puts the picture this frame: letterboxed at fit, and clipped to the
@@ -1319,6 +1332,7 @@ void App::draw_canvas() {
                           ImGui::GetIO().DisplayFramebufferScale.x,
                           texture_.width(),
                           texture_.height()};
+        apply_canvas_input();
         view_ = gui::view_settled(view_, view_geometry_);
         const gui::ViewPlacement placed = gui::view_placement(view_, view_geometry_);
         const ImVec2 at(placed.at.x, placed.at.y);
@@ -1400,6 +1414,32 @@ void App::view_step(int direction) {
                                                gui::view_fit_zoom(view_geometry_), direction);
         view_ = gui::view_zoomed_to(view_, view_geometry_, next);
     }
+}
+
+void App::canvas_wheel(gui::WheelDelta wheel, bool trackpad, std::uint64_t now_ms) {
+    canvas_wheels_.push_back({wheel, trackpad, now_ms});
+}
+
+void App::apply_canvas_input() {
+    const ImGuiIO& io = ImGui::GetIO();
+    // Over the canvas or a chip on it; a popup or a modal window above it hides it from this.
+    const bool hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
+    const gui::ViewPoint cursor{io.MousePos.x, io.MousePos.y};
+    const float pan_unit = gui::wheel_pan_unit(pointer_platform_) * display_scale_;
+    for (const CanvasWheelEvent& e : canvas_wheels_) {
+        if (!scroll_latch_.on_canvas(hovered, e.now_ms)) {
+            continue;
+        }
+        // On a Mac ImGui's Ctrl is the Cmd key.
+        const gui::CanvasScroll scroll = gui::canvas_scroll(e.wheel, e.trackpad, io.KeyCtrl, pan_unit);
+        if (scroll.kind == gui::CanvasScrollKind::pan) {
+            view_ = gui::view_panned_by(view_, view_geometry_, scroll.dx, scroll.dy);
+        } else if (scroll.kind == gui::CanvasScrollKind::zoom) {
+            view_ = gui::view_zoomed_to(view_, view_geometry_,
+                                        gui::view_zoom(view_, view_geometry_) * scroll.factor, cursor);
+        }
+    }
+    canvas_wheels_.clear();
 }
 
 void App::toggle_test_strip() {

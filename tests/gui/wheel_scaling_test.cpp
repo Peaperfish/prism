@@ -27,6 +27,19 @@ TEST(WheelScaling, SidewaysUsesItsOwnStep) {
     EXPECT_NEAR(out.x * 2.0f * font, 5.0f * prism::gui::trackpad_scroll_speed, 1e-3f);
 }
 
+TEST(WheelScaling, SaysWhetherTheLastEventWasATrackpads) {
+    WheelScaler scaler;
+    EXPECT_FALSE(scaler.last_was_trackpad());
+    (void)scaler.scale({0.0f, 1.0f}, font, 1000);
+    EXPECT_FALSE(scaler.last_was_trackpad());
+    (void)scaler.scale({0.0f, 0.3f}, font, 2000);
+    EXPECT_TRUE(scaler.last_was_trackpad());
+    (void)scaler.scale({0.0f, 1.0f}, font, 2000 + prism::gui::trackpad_memory_ms);
+    EXPECT_TRUE(scaler.last_was_trackpad());  // a trackpad's whole number
+    (void)scaler.scale({0.0f, 1.0f}, font, 2001 + prism::gui::trackpad_memory_ms);
+    EXPECT_FALSE(scaler.last_was_trackpad());  // too long after the last fraction: a wheel's notch
+}
+
 TEST(WheelScaling, WholeNumberMouseWheelPassesUnchanged) {
     WheelScaler scaler;
     const WheelDelta out = scaler.scale({0.0f, -1.0f}, font, 1000);

@@ -3,6 +3,7 @@
 #include <SDL3/SDL.h>
 
 #include <array>
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -13,6 +14,7 @@
 #include "preview_texture.hpp"
 #include "scope_view.hpp"
 #include "prism/gui/background_export.hpp"
+#include "prism/gui/canvas_input.hpp"
 #include "prism/gui/clip_note.hpp"
 #include "prism/gui/close_guard.hpp"
 #include "prism/gui/clipping.hpp"
@@ -54,6 +56,10 @@ public:
 
     // Every SDL event, after ImGui has seen it.
     void handle_event(const SDL_Event& event);
+
+    // A wheel event, with SDL's own deltas. It waits for the next frame, which knows whether the
+    // cursor is over the canvas.
+    void canvas_wheel(gui::WheelDelta wheel, bool trackpad, std::uint64_t now_ms);
 
     // Draws one frame. Called between ImGui::NewFrame() and ImGui::Render().
     void frame();
@@ -126,6 +132,8 @@ private:
     void view_fit();
     void view_actual_size();
     void view_step(int direction);  // > 0: in
+    // Applies what arrived since the last frame, if it belongs to the canvas.
+    void apply_canvas_input();
     // The zoom's chip: the number, Fit and 100%. Drawn last on the canvas, clear of canvas_taken_.
     void draw_zoom_chip();
     void draw_banner();
@@ -292,6 +300,15 @@ private:
 
     gui::ViewState view_;              // how the picture is zoomed and panned; a view, never an edit
     gui::ViewGeometry view_geometry_;  // the canvas and the picture, as of the last frame drawn
+    // The wheel events of this frame, and whose they are.
+    struct CanvasWheelEvent {
+        gui::WheelDelta wheel;
+        bool trackpad = false;
+        std::uint64_t now_ms = 0;
+    };
+    std::vector<CanvasWheelEvent> canvas_wheels_;
+    gui::ScrollLatch scroll_latch_;
+    gui::PointerPlatform pointer_platform_ = gui::PointerPlatform::other;
     std::vector<gui::ViewRect> canvas_taken_;  // this frame's chips and notes on the canvas
 
     std::optional<std::filesystem::path> pending_open_;

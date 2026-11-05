@@ -64,6 +64,7 @@ add_executable(prism_gui_core_tests
   gui/background_export_test.cpp
   gui/builtin_look_files_test.cpp
   gui/builtin_looks_test.cpp
+  gui/canvas_input_test.cpp
   gui/clip_note_test.cpp
   gui/clipping_test.cpp
   gui/close_guard_test.cpp

@@ -25,6 +25,7 @@ WheelDelta WheelScaler::scale(WheelDelta wheel, float font_size, std::uint64_t n
     }
     const bool trackpad = seen_fractional_ && now_ms >= last_fractional_ms_ &&
                           now_ms - last_fractional_ms_ <= trackpad_memory_ms;
+    last_was_trackpad_ = trackpad;
     if (!trackpad || font_size <= 0.0f) {
         return wheel;
     }
