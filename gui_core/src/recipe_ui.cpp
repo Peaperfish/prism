@@ -150,7 +150,7 @@ RecipeNameDefault suggest_recipe_name(const LoadedRecipe* loaded, InputKind kind
         }
     }
     if (const Preset* preset = matching_preset(kind, current)) {
-        return {std::string(preset->name), "", recipe_name_hint};
+        return {std::string(preset->name), std::string(preset->description), recipe_name_hint};
     }
     return {"", "", recipe_name_hint};
 }

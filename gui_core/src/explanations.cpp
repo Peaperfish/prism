@@ -64,7 +64,7 @@ constexpr Explanation templates[] = {
      "loaded or the look you picked."},
     {"recipe.description", "One optional line on what the recipe is for.",
      "Written as description in the file, and shown when you point at the recipe's name after "
-     "loading it. Leave it empty to write none."},
+     "loading it. Prism suggests the one the recipe or look has. Leave it empty to write none."},
 
     // --- Simple sliders ----------------------------------------------------------------------
     {"simple.brightness", "Lets in more or less light, in stops.",

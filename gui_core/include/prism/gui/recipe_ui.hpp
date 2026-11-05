@@ -114,7 +114,7 @@ inline constexpr std::string_view recipe_name_hint = "Name this look";
 //  - unchanged since a recipe was loaded: that recipe's name and description;
 //  - changed since then: "<name> (modified)" and its description (undone back past the load
 //    counts as no recipe, as for recipe_line);
-//  - the look of a built-in preset (matching_preset): the preset's name;
+//  - the look of a built-in preset (matching_preset): the preset's name and description;
 //  - otherwise empty, with the hint "Name this look".
 [[nodiscard]] RecipeNameDefault suggest_recipe_name(const LoadedRecipe* loaded, InputKind kind,
                                                     const EditSettings& current);

@@ -206,13 +206,52 @@ TEST(RecipeNameDefault, ChangedSinceLoadingAddsModifiedOnce) {
     EXPECT_EQ(modified_name(modified_name("Vivid")), "Vivid (modified)");
 }
 
-TEST(RecipeNameDefault, AMatchingBuiltInLookGivesItsName) {
+TEST(RecipeNameDefault, AMatchingBuiltInLookGivesItsNameAndDescription) {
     EditSettings s;
     const Preset& vivid = presets_for(InputKind::raw)[2];
     apply_preset(s, vivid);
     const RecipeNameDefault d = suggest_recipe_name(nullptr, InputKind::raw, s);
     EXPECT_EQ(d.name, vivid.name);
-    EXPECT_EQ(d.description, "");
+    EXPECT_EQ(d.description, vivid.description);
+}
+
+// `text` without its [matrix] section and the blank line after it.
+std::string without_matrix(const std::string& text) {
+    const std::size_t start = text.find("[matrix]\n");
+    if (start == std::string::npos) {
+        ADD_FAILURE() << "no [matrix] in:\n" << text;
+        return text;
+    }
+    const std::size_t end = text.find("\n\n", start);
+    if (end == std::string::npos) {
+        ADD_FAILURE() << "[matrix] is the last section in:\n" << text;
+        return text;
+    }
+    return text.substr(0, start) + text.substr(end + 2);
+}
+
+// What the sheet does when it is accepted as filled in: the file is the built-in one, plus the
+// [matrix] every saved recipe has.
+TEST(RecipeNameDefault, SavingAMatchedLookWritesItsFilePlusAMatrix) {
+    const auto check = [](InputKind kind, std::span<const BuiltinLookFile> files) {
+        const std::span<const Preset> presets = presets_for(kind);
+        ASSERT_EQ(presets.size(), files.size());
+        for (std::size_t i = 0; i < presets.size(); ++i) {
+            EditSettings plain;
+            apply_preset(plain, presets[i]);
+            EditSettings with_grade = plain;  // the matrix is the photo's, and is saved as it is
+            with_grade.matrix = MatrixFile{"grade.txt", identity_matrix};
+            for (const EditSettings& s : {plain, with_grade}) {
+                const RecipeNameDefault d = suggest_recipe_name(nullptr, kind, s);
+                Recipe recipe = recipe_from(s);
+                recipe.name = d.name;
+                recipe.description = d.description;
+                EXPECT_EQ(without_matrix(write_recipe(recipe)), files[i].text) << files[i].source;
+            }
+        }
+    };
+    check(InputKind::raw, builtin_raw_look_files());
+    check(InputKind::image, builtin_image_look_files());
 }
 
 TEST(RecipeNameDefault, OtherwiseItIsEmptyWithAHint) {
