@@ -76,6 +76,7 @@ struct Explanation {
 namespace explain {
 inline constexpr std::string_view look = "look";
 inline constexpr std::string_view look_reset = "look.reset";
+inline constexpr std::string_view look_view_recipe = "look.view_recipe";
 inline constexpr std::string_view recipe_load = "recipe.load";
 inline constexpr std::string_view recipe_save = "recipe.save";
 inline constexpr std::string_view recipe_loaded = "recipe.loaded";

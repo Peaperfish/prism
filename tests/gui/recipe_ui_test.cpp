@@ -2,8 +2,12 @@
 
 #include <gtest/gtest.h>
 
+#include <cstddef>
 #include <set>
+#include <span>
+#include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "prism/gui/file_types.hpp"
@@ -227,6 +231,45 @@ TEST(RecipeNameDefault, UndoneBackPastTheLoadCountsAsNoRecipe) {
     const LoadedRecipe loaded = load_into(history, complete_recipe(), "w.prism");
     ASSERT_TRUE(history.undo());
     EXPECT_EQ(suggest_recipe_name(&loaded, InputKind::raw, history.current()).name, "");
+}
+
+// --- A built-in look as a recipe -------------------------------------------------------------------
+
+TEST(LookRecipeView, ShowsTheEmbeddedFileOfEachLook) {
+    const auto check = [](InputKind kind, std::span<const BuiltinLookFile> files,
+                          std::string_view kind_words) {
+        const std::span<const Preset> presets = presets_for(kind);
+        ASSERT_EQ(presets.size(), files.size());
+        for (std::size_t i = 0; i < presets.size(); ++i) {
+            const LookRecipeView view = look_recipe_view(kind, presets[i]);
+            EXPECT_EQ(view.text, files[i].text) << files[i].source;
+            EXPECT_NE(view.title.find(presets[i].name), std::string::npos) << view.title;
+            EXPECT_NE(view.title.find(kind_words), std::string::npos) << view.title;
+            EXPECT_EQ(view.note,
+                      "A built-in look leaves the colour matrix and the RAW options alone.");
+        }
+    };
+    check(InputKind::raw, builtin_raw_look_files(), "RAW");
+    check(InputKind::image, builtin_image_look_files(), "PNG and JPEG");
+}
+
+TEST(LookRecipeView, ALookThatIsNotBuiltInHasNoFile) {
+    Preset other = presets_for(InputKind::raw).front();
+    other.id = "nothing";
+    EXPECT_THROW((void)look_recipe_view(InputKind::raw, other), std::logic_error);
+}
+
+TEST(LookRecipeView, TheTwoKindsOfVividAreDifferentFiles) {
+    const auto vivid = [](InputKind kind) -> const Preset& {
+        for (const Preset& p : presets_for(kind)) {
+            if (p.id == "vivid") return p;
+        }
+        throw std::logic_error("no vivid");
+    };
+    const LookRecipeView raw = look_recipe_view(InputKind::raw, vivid(InputKind::raw));
+    const LookRecipeView image = look_recipe_view(InputKind::image, vivid(InputKind::image));
+    EXPECT_NE(raw.text, image.text);
+    EXPECT_NE(raw.title, image.title);
 }
 
 // --- File names ---------------------------------------------------------------------------------

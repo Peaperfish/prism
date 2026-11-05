@@ -97,6 +97,7 @@ private:
     void show_recipe_load_dialog();
     void load_recipe_file(const std::filesystem::path& path, bool remember_folder);
     void draw_recipe_error();
+    void draw_look_recipe();
     // The files of a drop that has just ended.
     void take_drop();
     // The panel's Load recipe... / Save recipe... row, in the Look section.
@@ -260,6 +261,11 @@ private:
     bool recipe_error_open_ = false;
     bool recipe_error_focus_ = false;
     int recipe_error_centring_ = 0;  // frames left to keep it centred
+    // The View recipe window: the look it was opened for, and the same three as above.
+    gui::LookRecipeView look_recipe_;
+    bool look_recipe_open_ = false;
+    bool look_recipe_focus_ = false;
+    int look_recipe_centring_ = 0;
     bool quit_ = false;
     // The quit or open being held back, where it is, and (for an open) which file.
     enum class ClosePhase {

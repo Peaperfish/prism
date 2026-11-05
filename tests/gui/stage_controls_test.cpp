@@ -496,6 +496,29 @@ TEST(Escape, ImGuiOwnedThingsAndFocusedWindowsComeBeforeTheStrip) {
     EXPECT_EQ(escape_action(c), EscapeAction::none);
 }
 
+// ImGui-owned (text, popup, drag), then the focused window (Preferences, About, notices, Recipe not
+// loaded, View recipe), then the test strip, the comparison and the viewed stage.
+TEST(Escape, TheWholeOrderOnePressAtATime) {
+    EscapeContext c;
+    c.text_editing = c.popup_open = c.item_active = true;
+    c.window_focused = c.test_strip = c.comparing = c.viewing_earlier = true;
+    EXPECT_EQ(escape_action(c), EscapeAction::none);
+    c.text_editing = false;
+    EXPECT_EQ(escape_action(c), EscapeAction::none);
+    c.popup_open = false;
+    EXPECT_EQ(escape_action(c), EscapeAction::none);
+    c.item_active = false;  // e.g. the View recipe text let go of: the window is next
+    EXPECT_EQ(escape_action(c), EscapeAction::close_window);
+    c.window_focused = false;
+    EXPECT_EQ(escape_action(c), EscapeAction::clear_test_strip);
+    c.test_strip = false;
+    EXPECT_EQ(escape_action(c), EscapeAction::clear_compare);
+    c.comparing = false;
+    EXPECT_EQ(escape_action(c), EscapeAction::show_final);
+    c.viewing_earlier = false;
+    EXPECT_EQ(escape_action(c), EscapeAction::none);
+}
+
 TEST(Escape, FullSequenceFromStripToFinal) {
     EscapeContext c;
     c.test_strip = true;

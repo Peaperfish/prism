@@ -655,6 +655,58 @@ void App::draw_recipe_error() {
     ImGui::End();
 }
 
+// View recipe: a built-in look's file, to read and copy. A normal window, not modal, like "Recipe
+// not loaded", and Esc closes it the same way. Clicking into the text gives the first Esc to the
+// text, as for any field.
+void App::draw_look_recipe() {
+    if (!look_recipe_open_) {
+        return;
+    }
+    if (look_recipe_focus_) {
+        ImGui::SetNextWindowFocus();
+        look_recipe_focus_ = false;
+        look_recipe_centring_ = 3;
+    }
+    if (look_recipe_centring_ > 0) {
+        --look_recipe_centring_;
+        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always,
+                                ImVec2(0.5f, 0.5f));
+    }
+    // ###: the same window whichever look it shows.
+    const std::string title = look_recipe_.title + "###look_recipe";
+    if (!ImGui::Begin(title.c_str(), &look_recipe_open_,
+                      ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse |
+                          ImGuiWindowFlags_NoSavedSettings)) {
+        ImGui::End();
+        return;
+    }
+    note_if_focused(&look_recipe_open_);
+    // Sized to the text, but on a small window or at a large interface size it wraps and scrolls.
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const ImVec2 room = ImGui::GetMainViewport()->WorkSize;
+    const ImVec2 text = ImGui::CalcTextSize(look_recipe_.text.c_str());
+    const ImVec2 size(std::min(text.x + style.FramePadding.x * 2 + style.ScrollbarSize,
+                               room.x * 0.85f),
+                      std::min(text.y + ImGui::GetTextLineHeight() + style.FramePadding.y * 2,
+                               room.y * 0.65f));
+    // ReadOnly: ImGui never writes to the buffer, and selecting and Cmd/Ctrl+C still work.
+    ImGui::InputTextMultiline("##look_recipe_text", look_recipe_.text.data(),
+                              look_recipe_.text.size() + 1, size,
+                              ImGuiInputTextFlags_ReadOnly | ImGuiInputTextFlags_WordWrap);
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + size.x);
+    ImGui::TextDisabled("%s", look_recipe_.note.c_str());
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+    if (ImGui::Button("Copy")) {
+        ImGui::SetClipboardText(look_recipe_.text.c_str());
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Close")) {
+        look_recipe_open_ = false;
+    }
+    ImGui::End();
+}
+
 void App::draw_recipe_buttons() {
     ImGui::BeginDisabled(!recipes_available());
     const bool load = ImGui::SmallButton("Load recipe...");
@@ -999,6 +1051,7 @@ void App::frame() {
     draw_about();
     draw_notices();
     draw_recipe_error();
+    draw_look_recipe();
 
     if (pending_open_) {
         pending_open_shown_ = true;
@@ -2161,6 +2214,13 @@ void App::draw_presets() {
         ImGui::PopStyleColor();
         ImGui::PopTextWrapPos();
         explain(gui::explain::look);
+        const bool view = ImGui::SmallButton("View recipe");
+        describe(gui::explain::look_view_recipe, view);
+        if (view) {
+            look_recipe_ = gui::look_recipe_view(kind, *current);
+            look_recipe_open_ = true;
+            look_recipe_focus_ = true;
+        }
     }
     draw_recipe_line();
     const gui::Preset& start = gui::default_preset(kind);

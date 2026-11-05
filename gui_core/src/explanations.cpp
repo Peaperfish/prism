@@ -44,6 +44,9 @@ constexpr Explanation templates[] = {
      "(RAW) or {image.bw.contrast} (JPEG, PNG) stops the grey looking flat."},
     {"look.reset", "Go back to the starting look.",
      "Sets the same four values as the first look in the list. One undo step."},
+    {"look.view_recipe", "Read this look as the recipe file it is.",
+     "Opens the file built into Prism, the same format as a recipe you save. Select or copy any "
+     "of it. Reading it changes nothing, and it stays open if you change the photo's settings."},
 
     // --- Recipes -----------------------------------------------------------------------------
     {"recipe.load", "Apply a .prism recipe to this photo.",
@@ -209,8 +212,9 @@ constexpr Explanation templates[] = {
 
 // Ids that have no enum of their own: the controls the window shows beyond the stages, Simple's
 // sliders, the curve kinds, the scopes and the presets.
-constexpr std::array<std::string_view, 25> other_ids{
-    explain::look,         explain::look_reset,   explain::recipe_load, explain::recipe_save,
+constexpr std::array<std::string_view, 26> other_ids{
+    explain::look,         explain::look_reset,   explain::look_view_recipe,
+    explain::recipe_load,  explain::recipe_save,
     explain::recipe_loaded, explain::recipe_name, explain::recipe_description,
     explain::curve_white,  explain::curve_gamma_value,
     explain::scope_skin,   explain::chip_over,    explain::chip_under,  explain::clip_overlay,

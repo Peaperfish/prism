@@ -128,6 +128,20 @@ std::optional<std::string> RecipeTracker::line(const EditSettings& settings) con
     return recipe_line(*loaded_, settings);
 }
 
+LookRecipeView look_recipe_view(InputKind kind, const Preset& preset) {
+    const std::span<const BuiltinLookFile> files =
+        kind == InputKind::raw ? builtin_raw_look_files() : builtin_image_look_files();
+    for (const BuiltinLookFile& file : files) {
+        if (file.id == preset.id) {
+            return {std::string(preset.name) +
+                        (kind == InputKind::raw ? " recipe (RAW)" : " recipe (PNG and JPEG)"),
+                    std::string(file.text),
+                    "A built-in look leaves the colour matrix and the RAW options alone."};
+        }
+    }
+    throw std::logic_error("no built-in file for the look " + std::string(preset.id));
+}
+
 RecipeNameDefault suggest_recipe_name(const LoadedRecipe* loaded, InputKind kind,
                                       const EditSettings& current) {
     if (loaded != nullptr) {

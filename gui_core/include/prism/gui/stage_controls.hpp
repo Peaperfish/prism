@@ -113,12 +113,13 @@ struct EscapeContext {
     bool text_editing = false;   // a text field (or a slider typed into) has the keyboard
     bool popup_open = false;     // a popup, menu or combo list was open
     bool item_active = false;    // a slider was being dragged
-    bool window_focused = false;  // Preferences, About or Third-party notices has the focus
+    // Preferences, About, Third-party notices, Recipe not loaded or View recipe has the focus.
+    bool window_focused = false;
 };
 
 enum class EscapeAction {
     none,           // Esc belongs to something else, or there's nothing to back out of
-    close_window,   // close the focused Preferences / About / Third-party notices window
+    close_window,   // close the focused window (see EscapeContext::window_focused)
     clear_test_strip,  // turn the test strip off, keep the viewed stage
     clear_compare,  // first Esc: drop the comparison, keep the viewed stage
     show_final,     // second Esc: back to the final picture

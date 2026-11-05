@@ -86,6 +86,19 @@ private:
     std::optional<LoadedRecipe> loaded_;
 };
 
+// --- A built-in look as a recipe -------------------------------------------------------------------
+
+// What the View recipe window shows. It owns its text: the window keeps showing the look it was
+// opened for, whatever happens to the settings afterwards.
+struct LookRecipeView {
+    std::string title;  // the look's name and the kind of photo: the two kinds' files differ
+    std::string text;   // the embedded file, exactly (builtin_looks.hpp)
+    std::string note;
+};
+
+// `preset` must be one of presets_for(kind).
+[[nodiscard]] LookRecipeView look_recipe_view(InputKind kind, const Preset& preset);
+
 // --- Saving --------------------------------------------------------------------------------------
 
 // What the save sheet starts with.
