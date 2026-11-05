@@ -77,6 +77,7 @@ add_executable(prism_gui_core_tests
   gui/main_thread_queue_test.cpp
   gui/preferences_test.cpp
   gui/presets_test.cpp
+  gui/pixel_sample_test.cpp
   gui/preview_renderer_test.cpp
   gui/recipe_settings_test.cpp
   gui/recipe_ui_test.cpp

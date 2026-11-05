@@ -41,6 +41,7 @@ add_library(prism_gui_core STATIC
   src/live_preview.cpp
   src/preferences.cpp
   src/presets.cpp
+  src/pixel_sample.cpp
   src/preview_renderer.cpp
   src/recipe_settings.cpp
   src/recipe_ui.cpp
