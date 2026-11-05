@@ -86,6 +86,7 @@ add_executable(prism_gui_core_tests
   gui/stage_controls_test.cpp
   gui/test_strip_test.cpp
   gui/theme_tokens_test.cpp
+  gui/view_transform_test.cpp
   gui/wheel_scaling_test.cpp)
 target_link_libraries(prism_gui_core_tests PRIVATE prism_gui_core prism_warnings GTest::gtest_main)
 # The RAW tests use the synthetic DNG writer (synthetic_dng.hpp, which needs lib/tiff_reader.hpp).
