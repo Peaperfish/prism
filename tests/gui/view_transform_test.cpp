@@ -5,6 +5,10 @@
 #include <algorithm>
 #include <cmath>
 #include <utility>
+#include <vector>
+
+#include "prism/gui/layout.hpp"
+#include "prism/gui/test_strip.hpp"
 
 namespace prism::gui {
 namespace {
@@ -373,6 +377,80 @@ TEST(ViewTransform, SteppingInStopsAtTheMaximum) {
 TEST(ViewTransform, AZoomJustOffAStopStillMovesOn) {
     EXPECT_FLOAT_EQ(view_step_zoom(1.00001f, 0.5f, 1), 1.5f);
     EXPECT_FLOAT_EQ(view_step_zoom(0.99999f, 0.5f, -1), 0.67f);
+}
+
+// Compare: the divider divides the part of the picture on the canvas, wherever the picture is.
+TEST(ViewWithCompare, TheDividerStaysOnTheCanvasWhenZoomedIn) {
+    const ViewGeometry g = geometry();
+    const ViewRect canvas = view_canvas_rect(g);
+    for (const ViewState& s : {zoomed(4.0f, 300.0f, 300.0f), zoomed(4.0f, 2400.0f, 1600.0f)}) {
+        const ViewRect visible = view_visible_rect(s, g);
+        for (const float fraction : {0.05f, 0.5f, 0.95f}) {
+            const SplitLayout split = split_layout(visible.min.x, visible.width(), fraction);
+            EXPECT_GT(split.divider_x, canvas.min.x);
+            EXPECT_LT(split.divider_x, canvas.max.x);
+        }
+    }
+}
+
+TEST(ViewWithCompare, BothHalvesSeeTheSameImagePointAtTheDivider) {
+    const ViewGeometry g = geometry();
+    const ViewState s = zoomed(4.0f, 300.0f, 300.0f);
+    const ViewPlacement p = view_placement(s, g);
+    const ViewRect visible = view_visible_rect(s, g);
+    const SplitLayout split = split_layout(visible.min.x, visible.width(), 0.5f);
+    const float u_divider = (split.divider_x - p.at.x) / p.shown.x;
+    EXPECT_NEAR(u_divider * 2560.0f, view_screen_to_image(s, g, {split.divider_x, 400.0f}).x, 0.01f);
+}
+
+TEST(ViewWithCompare, AtFitTheDividerIsWhereItWas) {
+    const ViewGeometry g = geometry();
+    const ViewPlacement p = view_placement(ViewState{}, g);
+    const ViewRect visible = view_visible_rect(ViewState{}, g);
+    const SplitLayout before = split_layout(p.at.x, p.shown.x, 0.5f);
+    const SplitLayout now = split_layout(visible.min.x, visible.width(), 0.5f);
+    EXPECT_NEAR(now.divider_x, before.divider_x, 1.0f);
+}
+
+// The strip: the band under the cursor is found through the view, and a band that is partly off the
+// canvas has a corner on it for its label.
+TEST(ViewWithStrip, TheBandUnderTheCursorIsTheOneDrawnThere) {
+    const ViewGeometry g = geometry();
+    const ViewState s = zoomed(4.0f, 1900.0f, 800.0f);
+    const std::vector<StripRect> bands = strip_bands(g.image_width, g.image_height, 5);
+    for (int i = 0; i < 5; ++i) {
+        const StripRect& r = bands[static_cast<std::size_t>(i)];
+        const ViewPoint middle{static_cast<float>(r.x) + static_cast<float>(r.width) / 2,
+                               static_cast<float>(r.y) + static_cast<float>(r.height) / 2};
+        const ViewPoint screen = view_image_to_screen(s, g, middle);
+        const ViewPoint back = view_screen_to_image(s, g, screen);
+        EXPECT_EQ(strip_band_at(g.image_width, g.image_height, 5, back.x, back.y), i);
+    }
+}
+
+TEST(ViewWithStrip, AVisibleBandHasItsCornerOnTheCanvas) {
+    const ViewGeometry g = geometry();
+    const ViewState s = zoomed(4.0f, 1280.0f, 853.0f);  // the middle band only, or nearly
+    const ViewRect visible = view_visible_rect(s, g);
+    int on_canvas = 0;
+    for (const StripRect& r : strip_bands(g.image_width, g.image_height, 5)) {
+        const ViewPoint a = view_image_to_screen(
+            s, g, {static_cast<float>(r.x), static_cast<float>(r.y)});
+        const ViewPoint b = view_image_to_screen(s, g,
+                                                 {static_cast<float>(r.x + r.width),
+                                                  static_cast<float>(r.y + r.height)});
+        const ViewRect cut = view_intersect({a, b}, visible);
+        if (cut.empty()) {
+            continue;
+        }
+        ++on_canvas;
+        EXPECT_GE(cut.min.x, visible.min.x);
+        EXPECT_GE(cut.min.y, visible.min.y);
+        EXPECT_LE(cut.max.x, visible.max.x);
+        EXPECT_LE(cut.max.y, visible.max.y);
+    }
+    EXPECT_GE(on_canvas, 1);
+    EXPECT_LT(on_canvas, 5);
 }
 
 }  // namespace

@@ -1471,12 +1471,13 @@ void App::draw_strip_bands(ImDrawList* draw, ImVec2 at, ImVec2 shown) {
     const int image_h = texture_.height();
     const float sx = shown.x / static_cast<float>(image_w);
     const float sy = shown.y / static_cast<float>(image_h);
+    const gui::ViewRect visible = gui::view_visible_rect(view_, view_geometry_);
 
-    // One hit area over the whole picture; the band is found from the cursor.
+    // One hit area over the part of the picture on the canvas; the band is found from the cursor.
     const ImVec2 saved = ImGui::GetCursorScreenPos();
-    ImGui::SetCursorScreenPos(at);
-    const bool clicked =
-        ImGui::InvisibleButton("##strip_bands", ImVec2(std::max(1.0f, shown.x), std::max(1.0f, shown.y)));
+    ImGui::SetCursorScreenPos(ImVec2(visible.min.x, visible.min.y));
+    const bool clicked = ImGui::InvisibleButton(
+        "##strip_bands", ImVec2(std::max(1.0f, visible.width()), std::max(1.0f, visible.height())));
     const bool hovered = ImGui::IsItemHovered();
     ImGui::SetCursorScreenPos(saved);
     std::optional<int> hot;
@@ -1519,7 +1520,12 @@ void App::draw_strip_bands(ImDrawList* draw, ImVec2 at, ImVec2 shown) {
         }
     }
     if (hot) {
-        const auto [min, max] = screen(strip_bands_[static_cast<std::size_t>(*hot)].rect);
+        // Cut to the canvas, so that the outline of a band that runs off it still shows.
+        const auto [band_min, band_max] = screen(strip_bands_[static_cast<std::size_t>(*hot)].rect);
+        const gui::ViewRect on_canvas =
+            gui::view_intersect({{band_min.x, band_min.y}, {band_max.x, band_max.y}}, visible);
+        const ImVec2 min(on_canvas.min.x, on_canvas.min.y);
+        const ImVec2 max(on_canvas.max.x, on_canvas.max.y);
         const float edge = metrics.strip_hover_edge_width;
         draw->AddRectFilled(min, max, rgba(tokens.strip_hover_fill));
         draw->AddRect(ImVec2(min.x + edge / 2, min.y + edge / 2),
@@ -1532,7 +1538,15 @@ void App::draw_strip_bands(ImDrawList* draw, ImVec2 at, ImVec2 shown) {
         if (r.width <= 0 || r.height <= 0) {
             continue;
         }
-        const auto [min, max] = screen(r);
+        // In the band's corner on the canvas, so a band that is partly off it keeps its label.
+        const auto [band_min, band_max] = screen(r);
+        const gui::ViewRect on_canvas =
+            gui::view_intersect({{band_min.x, band_min.y}, {band_max.x, band_max.y}}, visible);
+        if (on_canvas.empty()) {
+            continue;
+        }
+        const ImVec2 min(on_canvas.min.x, on_canvas.min.y);
+        const ImVec2 max(on_canvas.max.x, on_canvas.max.y);
         const std::string label = gui::strip_label(strip_->step, count, i);
         const ImVec2 text = ImGui::CalcTextSize(label.c_str());
         const ImVec2 chip_min(min.x + metrics.strip_chip_margin, min.y + metrics.strip_chip_margin);
@@ -1595,27 +1609,32 @@ bool App::splitting() const {
 
 // The compare stage on the left, the viewed stage on the right, one picture size and position.
 // The divider is a whole pixel and both halves take their edge and their texture coordinate from
-// it, so they meet exactly.
+// it, so they meet exactly. It divides the part of the picture on the canvas, so zoomed in it stays
+// within reach and the picture slides under it.
 void App::draw_split(ImDrawList* draw, ImVec2 at, ImVec2 shown) {
     const Palette& colours = palette(theme());
     const float scale = ui_scale();
-    const gui::SplitLayout split = gui::split_layout(at.x, shown.x, split_fraction_);
-    const float top = at.y;
-    const float bottom = at.y + shown.y;
+    const gui::ViewRect visible = gui::view_visible_rect(view_, view_geometry_);
+    const gui::SplitLayout split = gui::split_layout(visible.min.x, visible.width(), split_fraction_);
+    const float top = visible.min.y;
+    const float bottom = visible.max.y;
+    const float image_top = at.y;
+    const float image_bottom = at.y + shown.y;
+    const float image_right = at.x + shown.x;
+    const float u_divider = shown.x > 0 ? (split.divider_x - at.x) / shown.x : 0.0f;
     const auto id = [](SDL_Texture* t) {
         return ImTextureRef(static_cast<ImTextureID>(reinterpret_cast<std::uintptr_t>(t)));
     };
-    draw->AddImage(id(texture_.compare_texture()), ImVec2(split.left_x0, top),
-                   ImVec2(split.divider_x, bottom), ImVec2(0.0f, 0.0f),
-                   ImVec2(split.u_divider, 1.0f));
-    draw->AddImage(id(texture_.texture()), ImVec2(split.divider_x, top),
-                   ImVec2(split.right_x1, bottom), ImVec2(split.u_divider, 0.0f),
-                   ImVec2(1.0f, 1.0f));
+    draw->AddImage(id(texture_.compare_texture()), ImVec2(at.x, image_top),
+                   ImVec2(split.divider_x, image_bottom), ImVec2(0.0f, 0.0f),
+                   ImVec2(u_divider, 1.0f));
+    draw->AddImage(id(texture_.texture()), ImVec2(split.divider_x, image_top),
+                   ImVec2(image_right, image_bottom), ImVec2(u_divider, 0.0f), ImVec2(1.0f, 1.0f));
     // The clipping overlay belongs to the viewed stage: only over its half.
     if (texture_.overlay() != nullptr && prefs_.clip_overlay &&
         clip_mask_width_ == texture_.width() && clip_mask_height_ == texture_.height()) {
-        draw->AddImage(id(texture_.overlay()), ImVec2(split.divider_x, top),
-                       ImVec2(split.right_x1, bottom), ImVec2(split.u_divider, 0.0f),
+        draw->AddImage(id(texture_.overlay()), ImVec2(split.divider_x, image_top),
+                       ImVec2(image_right, image_bottom), ImVec2(u_divider, 0.0f),
                        ImVec2(1.0f, 1.0f));
     }
 
@@ -1645,12 +1664,13 @@ void App::draw_split(ImDrawList* draw, ImVec2 at, ImVec2 shown) {
     const ImVec2 saved = ImGui::GetCursorScreenPos();
     const float strip = metrics.divider_strip;
     ImGui::SetCursorScreenPos(ImVec2(split.divider_x - strip / 2, top));
-    ImGui::InvisibleButton("##split_divider", ImVec2(strip, std::max(1.0f, shown.y)));
+    ImGui::InvisibleButton("##split_divider", ImVec2(strip, std::max(1.0f, bottom - top)));
     if (ImGui::IsItemHovered() || ImGui::IsItemActive()) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
     }
     if (ImGui::IsItemActive()) {
-        split_fraction_ = gui::split_fraction_from_x(ImGui::GetIO().MousePos.x, at.x, shown.x);
+        split_fraction_ =
+            gui::split_fraction_from_x(ImGui::GetIO().MousePos.x, visible.min.x, visible.width());
     }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal) && !ImGui::IsItemActive()) {
         ImGui::SetTooltip("Drag to move the divider");
