@@ -50,7 +50,7 @@ says "Windows protected your PC", click **More info → Run anyway**. If Smart A
 - The apps are not signed or notarized yet, so macOS and Windows warn the first time you open
   them.
 - The preview is not colour-managed for wide-gamut (P3) displays. It is shown as sRGB.
-- There is no zoom or pan yet.
+- Zoom shows the 2560 px preview, not the file at full size: an export has every pixel. ([#37](https://github.com/Peaperfish/prism/issues/37))
 - File names in Chinese, Japanese or Korean show as `??` in the window (the file still opens
   and exports correctly).
 - Opening a large RAW file freezes the window for a moment while it is decoded.

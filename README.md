@@ -198,7 +198,7 @@ Between the two outputs: mean CIE76 ΔE 5.7 (median 4.0, 95th percentile 16.7, m
 
 ## GUI
 
-A desktop app for macOS and Windows. `prism_gui` (`gui_app/`) is a window built with SDL3 and Dear ImGui; it is off by default and built with `-DPRISM_BUILD_GUI=ON` (see [Building the GUI](#building-the-gui)). How to use it is in the [user guide](docs/GUIDE.md): opening a photo, Simple mode, the Pipeline view, comparing stages, the test strip, clipping, the Explain area, export, every keyboard shortcut and the preferences. Packaging is done: see [Downloading and running Prism](#downloading-and-running-prism). What is planned is in the [Roadmap](#roadmap).
+A desktop app for macOS and Windows. `prism_gui` (`gui_app/`) is a window built with SDL3 and Dear ImGui; it is off by default and built with `-DPRISM_BUILD_GUI=ON` (see [Building the GUI](#building-the-gui)). How to use it is in the [user guide](docs/GUIDE.md): opening a photo, Simple mode, the Pipeline view, comparing stages, zoom and pan, the test strip, clipping, the Explain area, export, every keyboard shortcut and the preferences. Packaging is done: see [Downloading and running Prism](#downloading-and-running-prism). What is planned is in the [Roadmap](#roadmap).
 
 ### How the GUI measures things
 
@@ -208,6 +208,7 @@ The numbers behind what the guide describes, for people working on the code:
 - **Scopes.** The counts come from a sample of at most 250,000 pixels and are computed on the render worker only while a scope is shown.
 - **Clipping.** The counts come from a sample of at most 250,000 pixels and are computed on the render worker only while the Pipeline section is open. The overlay mask is computed only while the overlay is on. Decode counts any channel within 0.000001 of 1.0. The per-stage report for the status bar's clipping note is asked for whenever no control is being dragged, so dragging costs what it did before and the note settles when you let go.
 - **Gamut warning.** It is counted on the same sampled grid and in the same pass as the clipping, so it costs nothing extra. A pixel is outside the gamut when it has light (luminance `Y > 0`) but a channel is below −0.00015 in linear sRGB. It is counted at every stage the same way and independently of highlights and shadows.
+- **Zoom and pan.** They only change where the picture is drawn, on the GPU, so neither ever starts a render. Nothing about the view is in the settings, undo or a recipe. The zoom is in device pixels per preview pixel, and the picture's corner is on a whole device pixel. Above 100% it is the 2560 px preview enlarged, not more of the file. A RAW file's real size comes from LibRaw's metadata in the same open as the decode.
 - **Comparing stages.** Both halves come from one render with one set of settings, which runs to the later of the two stages and encodes the earlier picture as it passes. Comparing costs one extra 8-bit encode rather than a second render, and costs nothing while it is off.
 - **Explain area.** The texts live in `gui_core/src/explanations.cpp`, and a test checks that every stage, slider, curve, scope and look has one and that the live numbers match the engine.
 - **Preferences.** They are kept in `preferences.txt`, `key=value` lines next to ImGui's `imgui.ini` in the folder SDL picks for the app. The file is written atomically (a temporary file renamed over it).
@@ -241,6 +242,7 @@ prism_core (lib/)                            the pipeline, shared with the CLI
 | `explanations.hpp`, `clip_note.hpp`, `close_guard.hpp` | The Explain area's texts and live lines; the status bar's clipping note; and when unsaved edits matter and what each answer to the quit/open prompt does |
 | `preferences.hpp` | The app's own settings (theme, interface size, panel width, which scope is shown, whether explanations show): defaults, reading and writing the key=value file, clamping, and resolving "System" to light or dark |
 | `layout.hpp` | Window layout as pure functions: the panel's width for a given window and scale, and shortening a file name in the middle to fit the status bar |
+| `view_transform.hpp`, `canvas_input.hpp` | Zoom and pan as pure functions: fit, zoom about a point, pan limits, the mapping between screen and preview pixels, and what each wheel, pinch and drag does |
 | `file_types.hpp` | The file dialogs' filters (RAW only in a build with LibRaw), and the export file name: the suggested name next to the source, and the extension added if the user left it out |
 
 A full preview re-render (every stage plus the sRGB encode, 2560×1707 from a 61 MP image) takes 10 ms on 12 threads and 53 ms on one (`prism_bench`'s "preview render" row).

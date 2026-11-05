@@ -200,8 +200,8 @@ constexpr Explanation templates[] = {
 
     // --- Zoom --------------------------------------------------------------------------------
     {"view.zoom", "How large the preview is on the screen.",
-     "100% is one preview pixel on one pixel of your screen. An export always uses every pixel of "
-     "the file. Keys: = and -.",
+     "Pinch or use the wheel to zoom; scroll or drag to move. 100% is one preview pixel on one "
+     "screen pixel.",
      LiveKind::preview_size},
     {"view.fit", "Show the whole photo (F).",
      "The picture fills the canvas as far as it can and follows the window as it changes size. "

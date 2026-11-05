@@ -102,12 +102,39 @@ Below the sliders, the **Pipeline** section lists the stages the light goes thro
 At the top of the Pipeline section, **Compare with** shows a second point in the pipeline next to the one you are viewing. Choose **Original** (the file as decoded, before any edit) or any stage. The photo splits in two at the same size and position, so the halves line up:
 
 - the compared stage is on the **left**, the viewed stage on the **right**, each with a label in its corner;
-- **drag the divider** to move it (it stays between 5% and 95% of the width);
+- **drag the divider** to move it (it stays between 5% and 95% of the width of the picture on the canvas, so zoomed in it stays in reach and the picture moves under it);
 - **Swap** exchanges the halves;
 - **Off** (or choosing the viewed stage again) goes back to one picture;
 - `Esc` clears the comparison first, then the viewed stage.
 
 The histogram, scopes, clipping numbers and the `J` marks describe the viewed stage only, which is the right half (the marks are drawn over the right half). A comparison is only a view: it is not saved, it can't be undone, it goes back to Off when you open another photo, and it does not affect export.
+
+### Zoom and pan
+
+The photo opens fitted to the window. To look closer:
+
+| To | On a trackpad | With a mouse | Keys |
+|---|---|---|---|
+| Zoom in or out, about the cursor | pinch (or `Cmd` and scroll) | the wheel | |
+| Zoom in or out, about the middle | | | `=` or `+`, and `-` |
+| Move the picture | scroll with two fingers | drag it, or hold `Space` and drag | |
+| Fit the whole photo | | double-click at 100% | `F` |
+| Go to 100% of the preview | | double-click | `1` |
+
+On Windows and Linux the zoom key is `Ctrl`. Windows has no pinch of its own here: use `Ctrl` and the wheel.
+
+A chip in the corner of the canvas shows the zoom, with **Fit** and **100%** buttons. You can go from fit up to 800%. Past 200% the picture stops smoothing, so you see its pixels as squares. Zooming and moving never re-render the photo, so they stay smooth however heavy your edits are.
+
+**100% is 100% of the preview, not of the file.** The preview is at most 2560 pixels on its longer side. So the chip says "100% of preview", and one preview pixel sits on one pixel of your screen. Point at the chip and the Explain area tells you how this photo compares, for example "Preview 2560 px, file 9564 px on the long side: each preview pixel stands for about 3.7 file pixels across". The preview can't show you the file's finest detail, such as critical focus; an export always uses every pixel. If the file is no bigger than the preview, the chip just says "100%".
+
+Dragging follows a few rules:
+
+- A plain drag moves the picture only when you are zoomed in. It starts after a small movement, so a click stays a click.
+- The comparison's divider wins over a plain drag: press on it and you move the divider. Hold `Space` and drag to move the picture from anywhere.
+- `Space` belongs to the picture only while the cursor is over it and you aren't typing or using a control. Elsewhere it still presses the focused button.
+- Double-clicking does nothing on the test strip or the divider.
+
+Zoom is only a view: it is not saved, it can't be undone, it goes back to fit when you open another photo, `Esc` leaves it alone, and it does not affect export.
 
 ### The test strip
 
@@ -121,6 +148,8 @@ A darkroom test strip prints one frame in bands at different exposures, so you c
 - Press `J` to mark clipping in each band, to see which exposure starts to blow the highlights.
 - **Click a band** to use its exposure. This is one undo step; the strip stays on, centred on the new exposure. Clicking the middle band does nothing.
 
+The strip works zoomed in too: each band on the canvas keeps its label. A plain drag doesn't move the picture while the strip is on, because a click there sets the exposure; hold `Space` and drag instead.
+
 The strip needs the Exposure stage or a later one in view: while you are viewing Decode no edit shows, so the strip is greyed out, and a tooltip says why. Turning the strip on clears a comparison. `Esc`, the **×** button or `T` again turn it off. The strip is only a view: it is not saved, it can't be undone, it goes away when you open another photo, and **export is never affected**.
 
 ### Clipping
@@ -129,7 +158,7 @@ The strip needs the Exposure stage or a later one in view: while you are viewing
 
 - **In the Pipeline view**, each stage row shows a dot and a percentage when something is out of range: orange for **highlights** (brighter than white), blue for **shadows** (no light left), and violet for colours **too saturated for sRGB**. A **filled** dot means the stage cut those pixels off and the detail is gone. A **hollow** dot means they are out of range but a later stage may still bring them back. The percentages are hidden at 0.
 - **A line under the list** says where clipping starts and where it costs detail, for example "Highlights first clip at Exposure (2.1% of pixels); still recoverable until Output encode." or "Nothing clips." A second sentence appears only when there is something to say about colours too saturated for sRGB, for example "4.1% of colours are too saturated for sRGB after Colour matrix; Saturation clips them, so hues may shift."
-- **On the photo**: the **Show clipping on photo (J)** button under the histogram, or the `J` key, marks those pixels on the preview for the stage you are viewing: orange-red for brighter than white, blue for no light left, violet diagonal stripes (about 4 pixels wide, so the colour underneath stays visible) for too saturated for sRGB. A pixel that an earlier stage already cut off stays marked in later stages. It is off by default and Prism remembers the setting.
+- **On the photo**: the **Show clipping on photo (J)** button under the histogram, or the `J` key, marks those pixels on the preview for the stage you are viewing: orange-red for brighter than white, blue for no light left, violet diagonal stripes (about 4 preview pixels wide, so the colour underneath stays visible, and wider on screen as you zoom in) for too saturated for sRGB. A pixel that an earlier stage already cut off stays marked in later stages. It is off by default and Prism remembers the setting.
 - **The status-bar note.** Once a photo is open, the right end of the status bar says in a few words what clipped, with the same dot colours: "2.7% clipped in the file", "3% highlights clipped at Output encode" or "No clipping". Hover over it for the full sentence. It follows your edits and settles a moment after you stop dragging.
 - **The histogram's two indicators**, **Shadows** and **Highlights**, light up when any channel is below black or above white. Hover for the percentage in red, green and blue.
 
@@ -207,18 +236,23 @@ On macOS the main key is `Cmd`; on Windows and Linux it is `Ctrl`. This is every
 | Interface size back to Auto | `Cmd+0` | `Ctrl+0` |
 | Mark clipping on the photo | `J` | `J` |
 | Test strip on or off | `T` | `T` |
+| Zoom in | `=` or `+` | `=` or `+` |
+| Zoom out | `-` | `-` |
+| Zoom to fit | `F` | `F` |
+| Zoom to 100% of the preview | `1` | `1` |
+| Move the picture while held, with a drag | `Space` | `Space` |
 | Step back: close the Preferences, About, notices, Recipe not loaded or View recipe window if it has the focus; otherwise the test strip, then the comparison, then the viewed stage | `Esc` | `Esc` |
 | Quit | `Cmd+Q` | `Ctrl+Q` |
 
 Notes:
 
-- The keypad's `+`, `-` and `0` also work with `Cmd`/`Ctrl` for the interface size.
-- Undo, Redo, `J` and `T` do nothing while you are dragging a slider.
-- `J` and `T` give way to a text field that has the keyboard, so typing a value never triggers them.
+- The keypad's `+`, `-` and `0` also work with `Cmd`/`Ctrl` for the interface size, and its `+` and `-` alone for the zoom.
+- Undo, Redo, `J`, `T` and the zoom keys do nothing while you are dragging a slider.
+- `J`, `T`, the zoom keys and `Space` give way to a text field that has the keyboard, so typing a value never triggers them.
 - `Esc` is also Cancel in the "unsaved edits" window, in the recipe save sheet (inside a text field, the first `Esc` only leaves the field), and in the "Saving…" window while a quit or open is waiting for the export.
-- In the menus: **File** has Open…, Export…, Load Recipe…, Save Recipe… and Quit (on Windows and Linux the menu shows `Ctrl+Q`; on macOS, Quit is in the **Prism** menu too). **Edit** has Undo, Redo and (on Windows and Linux) Preferences…. **View** has Bigger Interface, Smaller Interface, Interface Size: Auto and Test Strip. **Help → About Prism** is on Windows and Linux; on macOS, About and Preferences are in the **Prism** menu (**Prism → About Prism**, **Prism → Preferences…**).
+- In the menus: **File** has Open…, Export…, Load Recipe…, Save Recipe… and Quit (on Windows and Linux the menu shows `Ctrl+Q`; on macOS, Quit is in the **Prism** menu too). **Edit** has Undo, Redo and (on Windows and Linux) Preferences…. **View** has Bigger Interface, Smaller Interface, Interface Size: Auto, Test Strip, Zoom In, Zoom Out, Zoom to Fit and 100% of Preview. **Help → About Prism** is on Windows and Linux; on macOS, About and Preferences are in the **Prism** menu (**Prism → About Prism**, **Prism → Preferences…**).
 
-Mouse and trackpad: click a stage row to view it; right-click a slider, or the Tone curve menu, to reset it; Ctrl-click (Cmd-click) a slider to type a value; drag the divider in a comparison; click a band in the test strip; drag the panel's left edge to resize the panel.
+Mouse and trackpad: click a stage row to view it; right-click a slider, or the Tone curve menu, to reset it; Ctrl-click (Cmd-click) a slider to type a value; drag the divider in a comparison; click a band in the test strip; drag the panel's left edge to resize the panel; pinch, scroll or use the wheel over the photo to zoom and move it, drag it when zoomed in, and double-click it to go between fit and 100% (see [Zoom and pan](#zoom-and-pan)).
 
 ## How Prism thinks about light
 

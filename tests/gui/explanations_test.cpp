@@ -471,6 +471,14 @@ TEST(LiveLines, TheStripStepIsTheFactorBetweenBands) {
     EXPECT_NE(live_line("strip", EditSettings{}, context).find("2.00×"), std::string::npos);
 }
 
+TEST(Explanations, TheZoomTextNamesEachGesture) {
+    const Explanation* zoom = explanation_for(explain::view_zoom);
+    ASSERT_NE(zoom, nullptr);
+    for (const char* word : {"Pinch", "wheel", "scroll", "drag"}) {
+        EXPECT_NE(zoom->detail.find(word), std::string_view::npos) << word;
+    }
+}
+
 TEST(LiveLines, ThePreviewSizeSaysHowManyFilePixelsEachStandsFor) {
     LiveContext context;
     context.preview_long_side = 2560;
