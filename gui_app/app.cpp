@@ -1029,8 +1029,10 @@ void App::frame() {
         draw_strip_bar(canvas);
         bar_height = ImGui::GetCursorPosY() - top;
     }
+    // NoScrollWithMouse too: the picture's hit areas must never make the canvas itself scroll.
     ImGui::BeginChild("canvas", ImVec2(canvas, std::max(1.0f, body_height - bar_height)),
-                      ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar);
+                      ImGuiChildFlags_None,
+                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     draw_canvas();
     draw_banner();
     draw_stage_badge();
@@ -1265,11 +1267,19 @@ void App::draw_canvas() {
     const float margin = token_metrics().canvas_margin;
 
     if (texture_.texture() != nullptr) {
-        // Fit the whole image into the canvas, keeping its aspect ratio, centred (letterboxed).
-        const float scale = std::min(size.x / static_cast<float>(texture_.width()),
-                                     size.y / static_cast<float>(texture_.height()));
-        const ImVec2 shown(texture_.width() * scale, texture_.height() * scale);
-        const ImVec2 at(min.x + (size.x - shown.x) / 2, min.y + (size.y - shown.y) / 2);
+        // Where the view puts the picture this frame: letterboxed at fit, and clipped to the
+        // canvas (the child window's clip rectangle) when zoomed in past it.
+        view_geometry_ = {min.x,
+                          min.y,
+                          size.x,
+                          size.y,
+                          ImGui::GetIO().DisplayFramebufferScale.x,
+                          texture_.width(),
+                          texture_.height()};
+        view_ = gui::view_settled(view_, view_geometry_);
+        const gui::ViewPlacement placed = gui::view_placement(view_, view_geometry_);
+        const ImVec2 at(placed.at.x, placed.at.y);
+        const ImVec2 shown(placed.shown.x, placed.shown.y);
         update_clip_overlay_texture();
         if (splitting()) {
             draw_split(draw, at, shown);

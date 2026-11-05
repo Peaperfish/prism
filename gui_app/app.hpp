@@ -25,6 +25,7 @@
 #include "prism/gui/session.hpp"
 #include "prism/gui/settings.hpp"
 #include "prism/gui/test_strip.hpp"
+#include "prism/gui/view_transform.hpp"
 
 namespace prism::gui_app {
 
@@ -281,6 +282,9 @@ private:
     ClosePhase close_phase_ = ClosePhase::none;
     std::optional<std::filesystem::path> close_open_path_;
     double last_render_ms_ = 0;
+
+    gui::ViewState view_;              // how the picture is zoomed and panned; a view, never an edit
+    gui::ViewGeometry view_geometry_;  // the canvas and the picture, as of the last frame drawn
 
     std::optional<std::filesystem::path> pending_open_;
     bool pending_open_shown_ = false;  // the "Opening ..." frame has been drawn
