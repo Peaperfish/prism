@@ -206,6 +206,9 @@ EscapeAction escape_action(const EscapeContext& c) noexcept {
     if (c.window_focused) {
         return EscapeAction::close_window;
     }
+    if (c.sampling) {
+        return EscapeAction::clear_sample;
+    }
     if (c.test_strip) {
         return EscapeAction::clear_test_strip;
     }

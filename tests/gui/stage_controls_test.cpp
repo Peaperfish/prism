@@ -532,3 +532,39 @@ TEST(Escape, FullSequenceFromStripToFinal) {
     c.viewing_earlier = false;
     EXPECT_EQ(escape_action(c), EscapeAction::none);
 }
+
+// Sample mode comes after what ImGui owns and the focused window, and before everything else.
+TEST(Escape, SampleModeIsLeftBeforeTheStripTheComparisonAndTheViewedStage) {
+    EscapeContext c;
+    c.sampling = c.test_strip = c.comparing = c.viewing_earlier = true;
+    EXPECT_EQ(escape_action(c), EscapeAction::clear_sample);
+    c.sampling = false;
+    EXPECT_EQ(escape_action(c), EscapeAction::clear_test_strip);
+    c.test_strip = false;
+    EXPECT_EQ(escape_action(c), EscapeAction::clear_compare);
+    c.comparing = false;
+    EXPECT_EQ(escape_action(c), EscapeAction::show_final);
+    c.viewing_earlier = false;
+    EXPECT_EQ(escape_action(c), EscapeAction::none);
+}
+
+TEST(Escape, AFocusedWindowAndWhatImGuiOwnsComeBeforeSampleMode) {
+    for (int which = 0; which < 4; ++which) {
+        EscapeContext c;
+        c.sampling = true;
+        c.text_editing = which == 0;
+        c.popup_open = which == 1;
+        c.item_active = which == 2;
+        c.window_focused = which == 3;
+        EXPECT_EQ(escape_action(c), which == 3 ? EscapeAction::close_window : EscapeAction::none)
+            << which;
+    }
+}
+
+TEST(Escape, SampleModeAloneIsOnePress) {
+    EscapeContext c;
+    c.sampling = true;
+    EXPECT_EQ(escape_action(c), EscapeAction::clear_sample);
+    c.sampling = false;
+    EXPECT_EQ(escape_action(c), EscapeAction::none);
+}

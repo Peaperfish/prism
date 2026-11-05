@@ -245,5 +245,170 @@ TEST(PinchTracker, AScaleThatCantBeOneChangesNothing) {
     }
 }
 
+TEST(SamplePixelAt, IsThePixelUnderThePoint) {
+    EXPECT_EQ(sample_pixel_at({0.0f, 0.0f}, 40, 30), (SamplePin{0, 0}));
+    EXPECT_EQ(sample_pixel_at({12.9f, 3.1f}, 40, 30), (SamplePin{12, 3}));
+    EXPECT_EQ(sample_pixel_at({39.99f, 29.99f}, 40, 30), (SamplePin{39, 29}));
+}
+
+TEST(SamplePixelAt, IsNothingOffThePicture) {
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    EXPECT_FALSE(sample_pixel_at({-0.5f, 3.0f}, 40, 30));  // would truncate to pixel 0
+    EXPECT_FALSE(sample_pixel_at({3.0f, -0.5f}, 40, 30));
+    EXPECT_FALSE(sample_pixel_at({40.0f, 3.0f}, 40, 30));
+    EXPECT_FALSE(sample_pixel_at({3.0f, 30.0f}, 40, 30));
+    EXPECT_FALSE(sample_pixel_at({nan, 3.0f}, 40, 30));
+    EXPECT_FALSE(sample_pixel_at({3.0f, nan}, 40, 30));
+    EXPECT_FALSE(sample_pixel_at({0.0f, 0.0f}, 0, 0));
+}
+
+TEST(SamplePress, CanPinOnlyInSampleModeOffTheStripAndControlsWithoutTheHand) {
+    EXPECT_TRUE(sample_press_can_pin(true, false, false, false));
+    EXPECT_FALSE(sample_press_can_pin(false, false, false, false));
+    EXPECT_FALSE(sample_press_can_pin(true, true, false, false));   // the strip's click: exposure
+    EXPECT_FALSE(sample_press_can_pin(true, false, true, false));   // the compare divider
+    EXPECT_FALSE(sample_press_can_pin(true, false, false, true));   // the hand
+}
+
+TEST(SampleClick, APressAndReleaseInPlaceIsAClick) {
+    SampleClick click;
+    click.press({10.0f, 10.0f}, 6.0f);
+    EXPECT_TRUE(click.release({10.0f, 10.0f}));
+}
+
+TEST(SampleClick, ATremorBelowTheThresholdIsStillAClick) {
+    SampleClick click;
+    click.press({10.0f, 10.0f}, 6.0f);
+    click.move({13.0f, 10.0f});
+    click.move({10.0f, 13.0f});
+    EXPECT_TRUE(click.release({11.0f, 11.0f}));
+}
+
+TEST(SampleClick, ADragIsNotAClickEvenIfItComesBack) {
+    SampleClick click;
+    click.press({10.0f, 10.0f}, 6.0f);
+    click.move({30.0f, 10.0f});
+    EXPECT_FALSE(click.release({10.0f, 10.0f}));
+}
+
+TEST(SampleClick, ADragFirstSeenAtTheReleaseIsNotAClick) {
+    SampleClick click;
+    click.press({10.0f, 10.0f}, 6.0f);
+    EXPECT_FALSE(click.release({30.0f, 10.0f}));
+}
+
+TEST(SampleClick, TheThresholdIsTheHandsOwn) {
+    // Both tell a click from a drag at the same distance.
+    SampleClick click;
+    HandDrag hand;
+    click.press({0.0f, 0.0f}, 6.0f);
+    hand.press({0.0f, 0.0f}, 6.0f);
+    EXPECT_FALSE(hand.move({5.9f, 0.0f}).has_value());
+    EXPECT_TRUE(click.release({5.9f, 0.0f}));
+    click.press({0.0f, 0.0f}, 6.0f);
+    EXPECT_TRUE(hand.move({6.0f, 0.0f}).has_value());
+    EXPECT_FALSE(click.release({6.0f, 0.0f}));
+}
+
+TEST(SampleClick, AReleaseWithoutAPressIsNotAClick) {
+    SampleClick click;
+    EXPECT_FALSE(click.release({10.0f, 10.0f}));
+    click.press({10.0f, 10.0f}, 6.0f);
+    EXPECT_TRUE(click.release({10.0f, 10.0f}));
+    EXPECT_FALSE(click.release({10.0f, 10.0f}));  // only once
+}
+
+TEST(SampleClick, TheSecondPressOfADoubleClickDoesNotPinAgain) {
+    SampleClick click;
+    click.press({10.0f, 10.0f}, 6.0f);
+    EXPECT_TRUE(click.release({10.0f, 10.0f}));
+    click.press({10.0f, 10.0f}, 6.0f);
+    click.cancel();  // it zooms
+    EXPECT_FALSE(click.release({10.0f, 10.0f}));
+}
+
+TEST(SampleClick, AClickAtFitPinsThoughADragThereMovesNothing) {
+    // At fit the hand isn't pressed, so the click can't be read from it.
+    EXPECT_FALSE(plain_drag_pans(true, false, false));
+    EXPECT_TRUE(sample_press_can_pin(true, false, false, false));
+    SampleClick click;
+    click.press({10.0f, 10.0f}, 6.0f);
+    EXPECT_TRUE(click.release({10.0f, 10.0f}));
+}
+
+TEST(SampleModeRules, DragAndDoubleClickKeepTheirOwnRules) {
+    // Nothing in those two rules knows about Sample mode: it can't take them away.
+    EXPECT_TRUE(plain_drag_pans(false, false, false));
+    EXPECT_TRUE(double_click_zooms(false, false, false));
+}
+
+TEST(SampleModeRules, TogglingLeavesAndClearsThePin) {
+    SampleMode mode;
+    EXPECT_FALSE(mode.on());
+    mode.toggle();
+    EXPECT_TRUE(mode.on());
+    mode.place({3, 4}, 40, 30);
+    EXPECT_EQ(mode.pin(), (SamplePin{3, 4}));
+    mode.toggle();
+    EXPECT_FALSE(mode.on());
+    EXPECT_FALSE(mode.pin());
+    mode.toggle();
+    EXPECT_FALSE(mode.pin());  // it doesn't come back
+}
+
+TEST(SampleModeRules, OneEscLeavesTheModeAndClearsThePin) {
+    SampleMode mode;
+    mode.toggle();
+    mode.place({3, 4}, 40, 30);
+    mode.leave();
+    EXPECT_FALSE(mode.on());
+    EXPECT_FALSE(mode.pin());
+}
+
+TEST(SampleModeRules, ThereIsOnePin) {
+    SampleMode mode;
+    mode.toggle();
+    mode.place({3, 4}, 40, 30);
+    mode.place({5, 6}, 40, 30);
+    EXPECT_EQ(mode.pin(), (SamplePin{5, 6}));
+}
+
+TEST(SampleModeRules, APinNeedsTheModeAndAPixelOnThePicture) {
+    SampleMode mode;
+    mode.place({3, 4}, 40, 30);
+    EXPECT_FALSE(mode.pin());  // the mode is off
+    mode.toggle();
+    mode.place({40, 4}, 40, 30);
+    mode.place({3, 30}, 40, 30);
+    mode.place({-1, 4}, 40, 30);
+    EXPECT_FALSE(mode.pin());
+}
+
+TEST(SampleModeRules, OpeningAFileClearsThePinEvenAtTheSameSize) {
+    SampleMode mode;
+    mode.toggle();
+    mode.place({3, 4}, 40, 30);
+    mode.opened();
+    mode.base_changed(40, 30);
+    EXPECT_FALSE(mode.pin());
+    EXPECT_TRUE(mode.on());
+}
+
+TEST(SampleModeRules, ANewSizeOfBaseClearsThePinAndARedecodeKeepsIt) {
+    SampleMode mode;
+    mode.toggle();
+    mode.place({3, 4}, 40, 30);
+    mode.base_changed(40, 30);  // a new camera matrix: the same pixels, re-decoded
+    EXPECT_EQ(mode.pin(), (SamplePin{3, 4}));
+    mode.base_changed(41, 30);
+    EXPECT_FALSE(mode.pin());
+    mode.place({3, 4}, 41, 30);
+    mode.base_changed(41, 31);
+    EXPECT_FALSE(mode.pin());
+    mode.place({3, 4}, 41, 31);
+    mode.base_changed(41, 31);
+    EXPECT_EQ(mode.pin(), (SamplePin{3, 4}));
+}
+
 }  // namespace
 }  // namespace prism::gui

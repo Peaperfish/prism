@@ -96,6 +96,71 @@ void HandDrag::release() noexcept {
     dragging_ = false;
 }
 
+std::optional<SamplePin> sample_pixel_at(ViewPoint image, int width, int height) noexcept {
+    // Written so that NaN is off the picture too.
+    if (!(image.x >= 0.0f) || !(image.y >= 0.0f) || !(image.x < static_cast<float>(width)) ||
+        !(image.y < static_cast<float>(height))) {
+        return std::nullopt;
+    }
+    return SamplePin{static_cast<int>(image.x), static_cast<int>(image.y)};
+}
+
+bool sample_press_can_pin(bool sampling, bool strip_on, bool over_control,
+                          bool hand_held) noexcept {
+    return sampling && !strip_on && !over_control && !hand_held;
+}
+
+void SampleClick::press(ViewPoint at, float threshold) noexcept {
+    drag_.press(at, threshold);
+}
+
+void SampleClick::move(ViewPoint to) noexcept {
+    (void)drag_.move(to);
+}
+
+void SampleClick::cancel() noexcept {
+    drag_.release();
+}
+
+bool SampleClick::release(ViewPoint at) noexcept {
+    move(at);  // a press and release can arrive in one frame, with no move between them
+    const bool click = drag_.pressed() && !drag_.dragging();
+    drag_.release();
+    return click;
+}
+
+void SampleMode::toggle() noexcept {
+    if (on_) {
+        leave();
+    } else {
+        on_ = true;
+    }
+}
+
+void SampleMode::leave() noexcept {
+    on_ = false;
+    pin_.reset();
+}
+
+void SampleMode::place(SamplePin pixel, int width, int height) noexcept {
+    if (!on_ || pixel.x < 0 || pixel.y < 0 || pixel.x >= width || pixel.y >= height) {
+        return;
+    }
+    pin_ = pixel;
+    width_ = width;
+    height_ = height;
+}
+
+void SampleMode::opened() noexcept {
+    pin_.reset();
+}
+
+void SampleMode::base_changed(int width, int height) noexcept {
+    if (width != width_ || height != height_) {
+        pin_.reset();
+    }
+}
+
 PinchScale pinch_scale_of(PointerPlatform platform) noexcept {
     switch (platform) {
         case PointerPlatform::wayland:

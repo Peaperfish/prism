@@ -107,6 +107,7 @@ void set_curve_parameter(EditSettings& s, float value);
 // What Esc does to the picture. All the flags describe the frame before the key arrived: by the time
 // the app sees the key, Dear ImGui has already used it to close a popup or end a drag.
 struct EscapeContext {
+    bool sampling = false;       // Sample mode is on
     bool test_strip = false;     // the exposure test strip is on
     bool comparing = false;      // a compare stage is in effect (see effective_compare)
     bool viewing_earlier = false;  // the viewed stage is not the final picture
@@ -120,6 +121,7 @@ struct EscapeContext {
 enum class EscapeAction {
     none,           // Esc belongs to something else, or there's nothing to back out of
     close_window,   // close the focused window (see EscapeContext::window_focused)
+    clear_sample,   // leave Sample mode and clear its pin, in one press
     clear_test_strip,  // turn the test strip off, keep the viewed stage
     clear_compare,  // first Esc: drop the comparison, keep the viewed stage
     show_final,     // second Esc: back to the final picture
@@ -127,9 +129,9 @@ enum class EscapeAction {
 
 // Esc backs out one level, whatever widget was used last, but never while it is closing a popup
 // (the Saving modal is one, so Esc can't dismiss it), ending a text edit or cancelling a drag. A
-// focused closable window takes the Esc itself, and then leaves the test strip, the comparison and
-// the viewed stage alone. Then, one level per press: the test strip, the comparison, the viewed
-// stage.
+// focused closable window takes the Esc itself, and then leaves Sample mode, the test strip, the
+// comparison and the viewed stage alone. Then, one level per press: Sample mode, the test strip, the
+// comparison, the viewed stage.
 [[nodiscard]] EscapeAction escape_action(const EscapeContext& c) noexcept;
 
 }  // namespace prism::gui
