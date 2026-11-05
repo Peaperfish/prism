@@ -132,6 +132,10 @@ private:
     void view_fit();
     void view_actual_size();
     void view_step(int direction);  // > 0: in
+    // Around the picture's AddImage calls: nearest sampling while the zoom shows pixels. Around those
+    // only, since the labels drawn after them must stay linear.
+    void begin_picture_sampling(ImDrawList* draw) const;
+    void end_picture_sampling(ImDrawList* draw) const;
     // Applies what arrived since the last frame, if it belongs to the canvas.
     void apply_canvas_input();
     // Space: whether the hand is held over the canvas. Called before the canvas's items.

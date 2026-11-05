@@ -1354,6 +1354,7 @@ void App::draw_canvas() {
         if (splitting()) {
             draw_split(draw, at, shown);
         } else {
+            begin_picture_sampling(draw);
             draw->AddImage(ImTextureRef(static_cast<ImTextureID>(
                                reinterpret_cast<std::uintptr_t>(texture_.texture()))),
                            at, ImVec2(at.x + shown.x, at.y + shown.y));
@@ -1363,6 +1364,7 @@ void App::draw_canvas() {
                                    reinterpret_cast<std::uintptr_t>(texture_.overlay()))),
                                at, ImVec2(at.x + shown.x, at.y + shown.y));
             }
+            end_picture_sampling(draw);
             if (strip_ && !strip_bands_.empty()) {
                 draw_strip_bands(draw, at, shown);
             }
@@ -1460,6 +1462,20 @@ void App::apply_canvas_input() {
                                     gui::view_zoom(view_, view_geometry_) * pinch_factor_, cursor);
     }
     pinch_factor_ = 1.0f;
+}
+
+// Dear ImGui's SDL_Renderer backend forces its own sampler on every draw, linear unless told, so the
+// texture's own scale mode would do nothing here.
+void App::begin_picture_sampling(ImDrawList* draw) const {
+    if (gui::view_shows_pixels(gui::view_zoom(view_, view_geometry_))) {
+        draw->AddCallback(ImGui::GetPlatformIO().DrawCallback_SetSamplerNearest, nullptr);
+    }
+}
+
+void App::end_picture_sampling(ImDrawList* draw) const {
+    if (gui::view_shows_pixels(gui::view_zoom(view_, view_geometry_))) {
+        draw->AddCallback(ImGui::GetPlatformIO().DrawCallback_SetSamplerLinear, nullptr);
+    }
 }
 
 bool App::control_active() const {
@@ -1807,6 +1823,7 @@ void App::draw_split(ImDrawList* draw, ImVec2 at, ImVec2 shown) {
     const auto id = [](SDL_Texture* t) {
         return ImTextureRef(static_cast<ImTextureID>(reinterpret_cast<std::uintptr_t>(t)));
     };
+    begin_picture_sampling(draw);
     draw->AddImage(id(texture_.compare_texture()), ImVec2(at.x, image_top),
                    ImVec2(split.divider_x, image_bottom), ImVec2(0.0f, 0.0f),
                    ImVec2(u_divider, 1.0f));
@@ -1819,6 +1836,7 @@ void App::draw_split(ImDrawList* draw, ImVec2 at, ImVec2 shown) {
                        ImVec2(image_right, image_bottom), ImVec2(u_divider, 0.0f),
                        ImVec2(1.0f, 1.0f));
     }
+    end_picture_sampling(draw);
 
     // The divider: a line with a dark edge so it shows on any picture, and a grip in its middle.
     const gui::TokenMetrics& metrics = token_metrics();

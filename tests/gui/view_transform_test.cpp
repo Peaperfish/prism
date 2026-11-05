@@ -406,6 +406,16 @@ TEST(ViewTransform, ADoubleClickOnATinyPhotoStaysAtFit) {
     EXPECT_TRUE(view_toggled(ViewState{}, g, {480.0f, 400.0f}).fit);
 }
 
+TEST(ViewTransform, PixelsShowOnlyAbove200Percent) {
+    EXPECT_FALSE(view_shows_pixels(0.5f));
+    EXPECT_FALSE(view_shows_pixels(1.0f));
+    EXPECT_FALSE(view_shows_pixels(2.0f));
+    EXPECT_FALSE(view_shows_pixels(2.00001f));  // 200% as far as anyone can tell
+    EXPECT_TRUE(view_shows_pixels(2.01f));
+    EXPECT_TRUE(view_shows_pixels(3.0f));
+    EXPECT_TRUE(view_shows_pixels(8.0f));
+}
+
 TEST(ViewZoomLabel, SaysOfPreviewWhileThePreviewIsSmallerThanTheFile) {
     EXPECT_EQ(view_zoom_label(1.0f, 2560, 9566), "100% of preview");
     EXPECT_EQ(view_zoom_label(0.742f, 2560, 6000), "74% of preview");

@@ -129,6 +129,10 @@ struct ViewPixel {
 // stop has been reached, or a fit that happens to be 100%.
 [[nodiscard]] bool view_same_zoom(float a, float b) noexcept;
 
+// Whether to draw the picture with nearest sampling: past 200% its pixels should show as pixels, for
+// someone looking at what one holds, rather than as a blur.
+[[nodiscard]] bool view_shows_pixels(float zoom) noexcept;
+
 // The zoom as the canvas shows it: "75% of preview" while the preview has fewer pixels than the file,
 // because 100% then isn't the file at full size, and plain "75%" when it holds them all.
 [[nodiscard]] std::string view_zoom_label(float zoom, int preview_long_side, int file_long_side);
