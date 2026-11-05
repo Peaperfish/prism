@@ -71,6 +71,12 @@ public:
     // The size the file was decoded at when opened (half the sensor size for RAW).
     [[nodiscard]] int decoded_width() const noexcept { return decoded_width_; }
     [[nodiscard]] int decoded_height() const noexcept { return decoded_height_; }
+    // The size of the file itself: what an export would start from. For a RAW file it comes from
+    // the file's metadata; if that can't be read, or the decode may differ from it, it is an
+    // estimate and file_size_exact() is false. For a PNG or JPEG it is the decoded size.
+    [[nodiscard]] int file_width() const noexcept { return file_width_; }
+    [[nodiscard]] int file_height() const noexcept { return file_height_; }
+    [[nodiscard]] bool file_size_exact() const noexcept { return file_size_exact_; }
 
     // The image previews are rendered from: never changed once made, so it can be shared with the
     // preview thread. A new one replaces it when another file is opened or the RAW camera matrix
@@ -111,6 +117,9 @@ private:
     InputKind kind_ = InputKind::image;
     int decoded_width_ = 0;
     int decoded_height_ = 0;
+    int file_width_ = 0;
+    int file_height_ = 0;
+    bool file_size_exact_ = true;
     std::shared_ptr<const Image> preview_base_;
     std::optional<Matrix3> preview_camera_matrix_;  // what preview_base_ was decoded with
     History history_;

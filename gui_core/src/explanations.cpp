@@ -198,6 +198,18 @@ constexpr Explanation templates[] = {
      "Each band is one step more or less light than its neighbour. A third of a stop is about "
      "1.3×, half a stop about 1.4×, a whole stop 2×."},
 
+    // --- Zoom --------------------------------------------------------------------------------
+    {"view.zoom", "How large the preview is on the screen.",
+     "100% is one preview pixel on one pixel of your screen. An export always uses every pixel of "
+     "the file. Keys: = and -.",
+     LiveKind::preview_size},
+    {"view.fit", "Show the whole photo (F).",
+     "The picture fills the canvas as far as it can and follows the window as it changes size. "
+     "Only the view changes, not the photo."},
+    {"view.actual", "One preview pixel on one screen pixel (1).",
+     "The sharpest this preview can look. A large file has more pixels than the preview: look at "
+     "an export for those. Greyed out when the photo already fills the canvas above 100%."},
+
     // --- Preferences -------------------------------------------------------------------------
     {"pref.theme", "Light, dark, or follow the system.",
      "The photo canvas stays neutral grey in both so your eyes judge the photo, not the frame."},
@@ -212,7 +224,7 @@ constexpr Explanation templates[] = {
 
 // Ids that have no enum of their own: the controls the window shows beyond the stages, Simple's
 // sliders, the curve kinds, the scopes and the presets.
-constexpr std::array<std::string_view, 26> other_ids{
+constexpr std::array<std::string_view, 29> other_ids{
     explain::look,         explain::look_reset,   explain::look_view_recipe,
     explain::recipe_load,  explain::recipe_save,
     explain::recipe_loaded, explain::recipe_name, explain::recipe_description,
@@ -220,6 +232,7 @@ constexpr std::array<std::string_view, 26> other_ids{
     explain::scope_skin,   explain::chip_over,    explain::chip_under,  explain::clip_overlay,
     explain::clip_dot,     explain::clip_summary, explain::clip_note,   explain::compare,
     explain::compare_swap, explain::viewing,      explain::strip,       explain::strip_line,
+    explain::view_zoom,    explain::view_fit,     explain::view_actual,
     explain::pref_theme,   explain::pref_size,    explain::pref_panel,  explain::pref_explain,
 };
 
@@ -534,6 +547,23 @@ std::string live_line(std::string_view id, const EditSettings& s, const LiveCont
             const char* name = divisor == 3 ? "1/3 stop" : divisor == 2 ? "1/2 stop" : "1 stop";
             return std::string("Steps of ") + name + ": each band is " +
                    printf_string("%.2f", std::exp2(1.0 / divisor)) + "× the light of the one before";
+        }
+        case LiveKind::preview_size: {
+            if (context.preview_long_side <= 0 || context.file_long_side <= 0) {
+                return {};
+            }
+            const std::string preview = std::to_string(context.preview_long_side);
+            const std::string file = std::to_string(context.file_long_side);
+            if (context.preview_long_side >= context.file_long_side && context.file_size_exact) {
+                return "Preview and file are both " + file +
+                       " px on the long side: each preview pixel is one file pixel";
+            }
+            const double across = static_cast<double>(context.file_long_side) /
+                                  static_cast<double>(context.preview_long_side);
+            return "Preview " + preview + " px, file " +
+                   (context.file_size_exact ? "" : "about ") + file +
+                   " px on the long side: each preview pixel stands for about " +
+                   printf_string("%.1f", across) + " file pixels across";
         }
     }
     return {};

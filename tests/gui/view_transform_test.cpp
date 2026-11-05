@@ -379,6 +379,81 @@ TEST(ViewTransform, AZoomJustOffAStopStillMovesOn) {
     EXPECT_FLOAT_EQ(view_step_zoom(0.99999f, 0.5f, -1), 0.67f);
 }
 
+TEST(ViewZoomLabel, SaysOfPreviewWhileThePreviewIsSmallerThanTheFile) {
+    EXPECT_EQ(view_zoom_label(1.0f, 2560, 9566), "100% of preview");
+    EXPECT_EQ(view_zoom_label(0.742f, 2560, 6000), "74% of preview");
+    EXPECT_EQ(view_zoom_label(4.0f, 2560, 2561), "400% of preview");
+}
+
+TEST(ViewZoomLabel, IsPlainWhenThePreviewIsTheWholeFile) {
+    EXPECT_EQ(view_zoom_label(1.0f, 2560, 2560), "100%");
+    EXPECT_EQ(view_zoom_label(1.6f, 800, 800), "160%");
+}
+
+const ViewRect chip_canvas{{100.0f, 50.0f}, {900.0f, 650.0f}};
+
+TEST(ViewChip, GoesInTheBottomRightCorner) {
+    const std::optional<ViewPoint> at = view_chip_position(chip_canvas, 200.0f, 30.0f, 12.0f, {});
+    ASSERT_TRUE(at.has_value());
+    EXPECT_FLOAT_EQ(at->x, 900.0f - 12.0f - 200.0f);
+    EXPECT_FLOAT_EQ(at->y, 650.0f - 12.0f - 30.0f);
+}
+
+TEST(ViewChip, StaysPutForWhatIsNotInItsWay) {
+    // "Rendering..." in the bottom left corner, on the same line.
+    const std::vector<ViewRect> taken{{{112.0f, 610.0f}, {300.0f, 638.0f}}};
+    const std::optional<ViewPoint> at = view_chip_position(chip_canvas, 200.0f, 30.0f, 12.0f, taken);
+    ASSERT_TRUE(at.has_value());
+    EXPECT_FLOAT_EQ(at->y, 608.0f);
+}
+
+TEST(ViewChip, MovesUpPastWhatIsInItsWay) {
+    const std::vector<ViewRect> taken{{{112.0f, 610.0f}, {800.0f, 638.0f}}};
+    const std::optional<ViewPoint> at = view_chip_position(chip_canvas, 200.0f, 30.0f, 12.0f, taken);
+    ASSERT_TRUE(at.has_value());
+    EXPECT_FLOAT_EQ(at->y, 610.0f - 12.0f - 30.0f);
+}
+
+TEST(ViewChip, MovesPastSeveralInAnyOrder) {
+    const std::vector<ViewRect> taken{{{700.0f, 500.0f}, {800.0f, 560.0f}},
+                                      {{700.0f, 600.0f}, {800.0f, 630.0f}}};
+    const std::optional<ViewPoint> at = view_chip_position(chip_canvas, 200.0f, 30.0f, 12.0f, taken);
+    ASSERT_TRUE(at.has_value());
+    EXPECT_FLOAT_EQ(at->y, 500.0f - 12.0f - 30.0f);
+}
+
+TEST(ViewChip, NeverOverlapsWhatItWasGiven) {
+    // The five stacked labels of a portrait photo's strip, the chip about as wide at 200%.
+    std::vector<ViewRect> taken;
+    for (int i = 0; i < 5; ++i) {
+        const float top = 60.0f + static_cast<float>(i) * 118.0f;
+        taken.push_back({{112.0f, top}, {560.0f, top + 56.0f}});
+    }
+    taken.push_back({{112.0f, 590.0f}, {380.0f, 638.0f}});  // Rendering...
+    const float width = 520.0f;
+    const float height = 36.0f;
+    const std::optional<ViewPoint> at = view_chip_position(chip_canvas, width, height, 12.0f, taken);
+    ASSERT_TRUE(at.has_value());
+    for (const ViewRect& r : taken) {
+        const ViewRect chip{*at, {at->x + width, at->y + height}};
+        EXPECT_TRUE(view_intersect(chip, r).empty());
+    }
+}
+
+TEST(ViewChip, NothingIfThereIsNoRoom) {
+    EXPECT_FALSE(view_chip_position(chip_canvas, 900.0f, 30.0f, 12.0f, {}).has_value());
+    EXPECT_FALSE(view_chip_position(chip_canvas, 200.0f, 700.0f, 12.0f, {}).has_value());
+    const std::vector<ViewRect> whole{chip_canvas};
+    EXPECT_FALSE(view_chip_position(chip_canvas, 200.0f, 30.0f, 12.0f, whole).has_value());
+}
+
+TEST(ViewChip, IgnoresEmptyRects) {
+    const std::vector<ViewRect> taken{{{700.0f, 610.0f}, {700.0f, 610.0f}}};
+    const std::optional<ViewPoint> at = view_chip_position(chip_canvas, 200.0f, 30.0f, 12.0f, taken);
+    ASSERT_TRUE(at.has_value());
+    EXPECT_FLOAT_EQ(at->y, 608.0f);
+}
+
 // Compare: the divider divides the part of the picture on the canvas, wherever the picture is.
 TEST(ViewWithCompare, TheDividerStaysOnTheCanvasWhenZoomedIn) {
     const ViewGeometry g = geometry();

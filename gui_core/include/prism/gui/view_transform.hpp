@@ -1,6 +1,8 @@
 #pragma once
 
 #include <optional>
+#include <span>
+#include <string>
 
 namespace prism::gui {
 
@@ -122,5 +124,15 @@ struct ViewPixel {
 // True if the two zooms would read as the same number and draw the same size: the zoom after a
 // stop has been reached, or a fit that happens to be 100%.
 [[nodiscard]] bool view_same_zoom(float a, float b) noexcept;
+
+// The zoom as the canvas shows it: "75% of preview" while the preview has fewer pixels than the file,
+// because 100% then isn't the file at full size, and plain "75%" when it holds them all.
+[[nodiscard]] std::string view_zoom_label(float zoom, int preview_long_side, int file_long_side);
+
+// Where the zoom's chip of this size goes: the canvas's bottom right corner, `margin` from its edges,
+// moved up past anything of `taken` in its way. Nothing if it doesn't fit without covering them.
+[[nodiscard]] std::optional<ViewPoint> view_chip_position(const ViewRect& canvas, float width,
+                                                          float height, float margin,
+                                                          std::span<const ViewRect> taken) noexcept;
 
 }  // namespace prism::gui

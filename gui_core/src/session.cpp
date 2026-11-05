@@ -122,8 +122,10 @@ MaybeError Session::open_file(const fs::path& path) {
 
     EditSettings settings;
     apply_preset(settings, default_preset(kind));
+    RawDimensions full;
     RawOptions raw;
     raw.half_size = true;
+    raw.full_size = &full;
     std::variant<Image, Error> decoded = decode(path, kind, raw, options_.threads);
     if (Error* e = std::get_if<Error>(&decoded)) {
         return std::move(*e);
@@ -141,6 +143,16 @@ MaybeError Session::open_file(const fs::path& path) {
     kind_ = kind;
     decoded_width_ = img.width;
     decoded_height_ = img.height;
+    file_width_ = img.width;
+    file_height_ = img.height;
+    file_size_exact_ = true;
+    if (kind == InputKind::raw) {
+        // Half size is about half the sensor's width and height: the estimate if the file won't say.
+        const bool known = full.width > 0;
+        file_width_ = known ? full.width : img.width * 2;
+        file_height_ = known ? full.height : img.height * 2;
+        file_size_exact_ = known && full.exact;
+    }
     preview_camera_matrix_.reset();
     history_.reset(settings);
     return std::nullopt;

@@ -74,6 +74,15 @@ TEST(Raw, DecodeRgb16RejectsWrongSize) {
 
 // Without LibRaw a RAW file must give an error that says why, not stb's "unknown image type".
 // With LibRaw, a missing file must still be reported as a RAW load error from LibRaw.
+TEST(Raw, TheFullSizeOfAMissingFileIsLeftAlone) {
+    prism::RawDimensions size;
+    prism::RawOptions options;
+    options.full_size = &size;
+    EXPECT_THROW((void)prism::load_raw("no_such_file.arw", options), std::runtime_error);
+    EXPECT_EQ(size.width, 0);
+    EXPECT_EQ(size.height, 0);
+}
+
 TEST(Raw, MissingRawFileGivesClearError) {
     const fs::path path = fs::path(testing::TempDir()) / "prism_does_not_exist.ARW";
     try {
@@ -174,6 +183,24 @@ TEST(RawSyntheticDng, HalfSizeHalvesTheDimensions) {
 }
 
 // With an identity matrix LibRaw outputs camera RGB, which for this file is already linear sRGB.
+TEST(RawSyntheticDng, AHalfSizeDecodeReportsTheFullSize) {
+    if (!prism::raw_support_available()) {
+        GTEST_SKIP() << "Prism was built without LibRaw";
+    }
+    const fs::path path = write_synthetic_dng(u8"");
+    prism::RawDimensions size;
+    prism::RawOptions options;
+    options.half_size = true;
+    options.full_size = &size;
+    const prism::Image half = prism::load_raw(path, options);
+    const prism::Image full = prism::load_raw(path);
+    EXPECT_EQ(half.width, full.width / 2);
+    EXPECT_EQ(size.width, full.width);
+    EXPECT_EQ(size.height, full.height);
+    EXPECT_TRUE(size.exact);
+    fs::remove(path);
+}
+
 TEST(RawSyntheticDng, IdentityCameraMatrixGivesTheSameGrey) {
     const fs::path path = write_synthetic_dng(u8"");
     prism::RawOptions options;
@@ -259,6 +286,19 @@ protected:
 
     fs::path path_;
 };
+
+// The metadata must agree with what a full decode really gives, rotation included.
+TEST_F(RawFile, AHalfSizeDecodeReportsTheFullDecodesSize) {
+    prism::RawDimensions size;
+    prism::RawOptions options;
+    options.half_size = true;
+    options.full_size = &size;
+    (void)prism::load_raw(path_, options);
+    const prism::Image full = prism::load_raw(path_);
+    EXPECT_EQ(size.width, full.width);
+    EXPECT_EQ(size.height, full.height);
+    EXPECT_TRUE(size.exact);
+}
 
 }  // namespace
 

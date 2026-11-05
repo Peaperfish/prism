@@ -81,6 +81,13 @@ void overlay_text(ImDrawList* draw, const Palette& colours, ImVec2 pos, const st
     draw->AddText(ImVec2(pos.x + pad, pos.y + pad), colours.overlay_text, text.c_str());
 }
 
+// The rectangle overlay_text covers.
+gui::ViewRect overlay_rect(ImVec2 pos, const std::string& text) {
+    const ImVec2 size = ImGui::CalcTextSize(text.c_str());
+    const float pad = token_metrics().overlay_padding;
+    return {{pos.x, pos.y}, {pos.x + size.x + 2 * pad, pos.y + size.y + 2 * pad}};
+}
+
 // A "Details" line with a thin chevron (right when closed, down when open) instead of ImGui's
 // filled tree arrow. The whole line is the click area. True while open.
 bool details_toggle(const char* label, bool* open) {
@@ -1037,6 +1044,7 @@ void App::frame() {
     draw_canvas();
     draw_banner();
     draw_stage_badge();
+    draw_zoom_chip();
     ImGui::EndChild();
     ImGui::EndGroup();
     ImGui::SameLine(0.0f, 0.0f);
@@ -1292,6 +1300,7 @@ void App::draw_menu() {
 }
 
 void App::draw_canvas() {
+    canvas_taken_.clear();
     ImDrawList* draw = ImGui::GetWindowDrawList();
     const ImVec2 min = ImGui::GetWindowPos();
     const ImVec2 size = ImGui::GetWindowSize();
@@ -1355,13 +1364,16 @@ void App::draw_canvas() {
         ImGui::PopStyleColor();
     }
 
+    const ImVec2 note_at(min.x + margin, max.y - margin - 2 * ImGui::GetFontSize());
+    const std::string opening = pending_open_ ? "Opening " + file_name(*pending_open_) + "..." : "";
+    const std::string rendering = "Rendering...";
     if (pending_open_) {
-        overlay_text(draw, colours, ImVec2(min.x + margin, max.y - margin - 2 * ImGui::GetFontSize()),
-                     "Opening " + file_name(*pending_open_) + "...");
+        overlay_text(draw, colours, note_at, opening);
     } else if (preview_.rendering()) {
-        overlay_text(draw, colours, ImVec2(min.x + margin, max.y - margin - 2 * ImGui::GetFontSize()),
-                     "Rendering...");
+        overlay_text(draw, colours, note_at, rendering);
     }
+    // Kept clear even between renders, so the zoom's chip doesn't jump each time the note shows.
+    canvas_taken_.push_back(overlay_rect(note_at, pending_open_ ? opening : rendering));
     if (drag_over_ && session_.has_file()) {
         draw->AddRect(min, max, colours.drop_highlight, 0.0f, 0,
                   token_metrics().drop_line_active);
@@ -1606,6 +1618,9 @@ void App::draw_strip_bands(ImDrawList* draw, ImVec2 at, ImVec2 shown) {
         const std::string label = gui::strip_label(strip_->step, count, i);
         const ImVec2 text = ImGui::CalcTextSize(label.c_str());
         const ImVec2 chip_min(min.x + metrics.strip_chip_margin, min.y + metrics.strip_chip_margin);
+        canvas_taken_.push_back(gui::view_intersect(
+            {{chip_min.x, chip_min.y}, {chip_min.x + text.x + 2 * pad, chip_min.y + text.y + pad}},
+            {{min.x, min.y}, {max.x, max.y}}));
         draw->PushClipRect(min, max, true);
         draw->AddRectFilled(chip_min, ImVec2(chip_min.x + text.x + 2 * pad, chip_min.y + text.y + pad),
                             rgba(tokens.strip_chip_bg), metrics.overlay_rounding);
@@ -1741,11 +1756,17 @@ void App::draw_split(ImDrawList* draw, ImVec2 at, ImVec2 shown) {
     draw->PushClipRect(ImVec2(split.left_x0, top), ImVec2(split.divider_x, bottom), true);
     overlay_text(draw, colours, ImVec2(split.left_x0 + margin, top + margin), left_text);
     draw->PopClipRect();
+    canvas_taken_.push_back(
+        gui::view_intersect(overlay_rect(ImVec2(split.left_x0 + margin, top + margin), left_text),
+                            {{split.left_x0, top}, {split.divider_x, bottom}}));
     const float right_width = ImGui::CalcTextSize(right_text.c_str()).x + 2 * pad;
     draw->PushClipRect(ImVec2(split.divider_x, top), ImVec2(split.right_x1, bottom), true);
     overlay_text(draw, colours, ImVec2(split.right_x1 - margin - right_width, top + margin),
                  right_text);
     draw->PopClipRect();
+    canvas_taken_.push_back(gui::view_intersect(
+        overlay_rect(ImVec2(split.right_x1 - margin - right_width, top + margin), right_text),
+        {{split.divider_x, top}, {split.right_x1, bottom}}));
 }
 
 void App::draw_banner() {
@@ -1784,6 +1805,8 @@ void App::draw_banner() {
         error_details_open_ = false;
     }
     ImGui::EndChild();
+    canvas_taken_.push_back({{ImGui::GetItemRectMin().x, ImGui::GetItemRectMin().y},
+                             {ImGui::GetItemRectMax().x, ImGui::GetItemRectMax().y}});
     ImGui::PopStyleColor(3);
 }
 
@@ -1819,8 +1842,80 @@ void App::draw_stage_badge() {
         explain_hover_ = std::string(gui::explain::viewing);
     }
     ImGui::EndChild();
+    canvas_taken_.push_back({{ImGui::GetItemRectMin().x, ImGui::GetItemRectMin().y},
+                             {ImGui::GetItemRectMax().x, ImGui::GetItemRectMax().y}});
     ImGui::PopStyleVar();
     ImGui::PopStyleColor(3);
+}
+
+void App::draw_zoom_chip() {
+    if (!view_available()) {
+        return;
+    }
+    const gui::TokenMetrics& metrics = token_metrics();
+    const Palette& colours = palette(theme());
+    const float zoom = gui::view_zoom(view_, view_geometry_);
+    const float fit = gui::view_fit_zoom(view_geometry_);
+    const std::string label = gui::view_zoom_label(
+        zoom, std::max(texture_.width(), texture_.height()),
+        std::max(session_.file_width(), session_.file_height()));
+
+    ImGui::PushFont(nullptr, token_type().small);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
+                        ImVec2(metrics.selector_pad, ImGui::GetStyle().FramePadding.y * 0.5f));
+    const float pad = metrics.overlay_padding;
+    const float gap = ImGui::GetStyle().ItemSpacing.x;
+    const float frame_pad = ImGui::GetStyle().FramePadding.x;
+    const float label_width = ImGui::CalcTextSize(label.c_str()).x;
+    const float buttons_width = ImGui::CalcTextSize("Fit").x + ImGui::CalcTextSize("100%").x +
+                                4 * frame_pad + 2 * gap;
+    const float height = ImGui::GetFrameHeight() + 2 * pad;
+    // The number and both buttons; on a canvas with no room for those, the number alone; and with
+    // no room for that, nothing (the keys and the View menu still work).
+    const gui::ViewRect canvas = gui::view_canvas_rect(view_geometry_);
+    bool with_buttons = true;
+    float width = label_width + buttons_width + 2 * pad;
+    std::optional<gui::ViewPoint> at =
+        gui::view_chip_position(canvas, width, height, metrics.canvas_margin, canvas_taken_);
+    if (!at) {
+        with_buttons = false;
+        width = label_width + 2 * pad;
+        at = gui::view_chip_position(canvas, width, height, metrics.canvas_margin, canvas_taken_);
+    }
+    if (at) {
+        ImGui::SetCursorScreenPos(ImVec2(at->x, at->y));
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, colours.overlay_background);
+        ImGui::PushStyleColor(ImGuiCol_Text, colours.overlay_text);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(pad, pad));
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, metrics.overlay_rounding);
+        ImGui::BeginChild("zoom_chip", ImVec2(width, height),
+                          ImGuiChildFlags_AlwaysUseWindowPadding,
+                          ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(label.c_str());
+        describe(gui::explain::view_zoom);
+        if (with_buttons) {
+            ImGui::SameLine();
+            ImGui::BeginDisabled(view_.fit);
+            if (ImGui::Button("Fit")) {
+                view_fit();
+            }
+            ImGui::EndDisabled();
+            describe(gui::explain::view_fit);
+            ImGui::SameLine();
+            ImGui::BeginDisabled(fit >= 1.0f || gui::view_same_zoom(zoom, 1.0f));
+            if (ImGui::Button("100%")) {
+                view_actual_size();
+            }
+            ImGui::EndDisabled();
+            describe(gui::explain::view_actual);
+        }
+        ImGui::EndChild();
+        ImGui::PopStyleVar(2);
+        ImGui::PopStyleColor(2);
+    }
+    ImGui::PopStyleVar();
+    ImGui::PopFont();
 }
 
 void App::draw_splitter(float canvas_width, float width, float height, float available) {
@@ -1873,6 +1968,11 @@ App::ExplainText App::explain_text() const {
     context.clips = note_report_ ? &*note_report_ : nullptr;
     context.strip_step = strip_ ? strip_->step : strip_step_;
     context.recipe = recipes_.current();
+    if (texture_.texture() != nullptr) {
+        context.preview_long_side = std::max(texture_.width(), texture_.height());
+        context.file_long_side = std::max(session_.file_width(), session_.file_height());
+        context.file_size_exact = session_.file_size_exact();
+    }
     return {std::string(e->summary), std::string(e->detail),
             gui::live_line(explain_shown_, session_.settings(), context)};
 }

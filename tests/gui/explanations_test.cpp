@@ -471,6 +471,38 @@ TEST(LiveLines, TheStripStepIsTheFactorBetweenBands) {
     EXPECT_NE(live_line("strip", EditSettings{}, context).find("2.00×"), std::string::npos);
 }
 
+TEST(LiveLines, ThePreviewSizeSaysHowManyFilePixelsEachStandsFor) {
+    LiveContext context;
+    context.preview_long_side = 2560;
+    context.file_long_side = 9566;
+    EXPECT_EQ(live_line(explain::view_zoom, EditSettings{}, context),
+              "Preview 2560 px, file 9566 px on the long side: each preview pixel stands for about "
+              "3.7 file pixels across");
+}
+
+TEST(LiveLines, AnEstimatedFileSizeSaysAbout) {
+    LiveContext context;
+    context.preview_long_side = 2560;
+    context.file_long_side = 6000;
+    context.file_size_exact = false;
+    EXPECT_EQ(live_line(explain::view_zoom, EditSettings{}, context),
+              "Preview 2560 px, file about 6000 px on the long side: each preview pixel stands for "
+              "about 2.3 file pixels across");
+}
+
+TEST(LiveLines, APreviewOfTheWholeFileSaysOneToOne) {
+    LiveContext context;
+    context.preview_long_side = 1600;
+    context.file_long_side = 1600;
+    EXPECT_EQ(live_line(explain::view_zoom, EditSettings{}, context),
+              "Preview and file are both 1600 px on the long side: each preview pixel is one file "
+              "pixel");
+}
+
+TEST(LiveLines, ThePreviewSizeIsEmptyWithoutAPhoto) {
+    EXPECT_EQ(live_line(explain::view_zoom, EditSettings{}, LiveContext{}), "");
+}
+
 TEST(LiveLines, LiveLinesHaveNoPlaceholdersAndUseTheTimesSign) {
     EditSettings s = with_brightness(12);
     apply_simple_control(s, SimpleControl::contrast, -33);
@@ -486,6 +518,8 @@ TEST(LiveLines, LiveLinesHaveNoPlaceholdersAndUseTheTimesSign) {
     recipe.saturation = RecipeSaturation{0.9f, true};
     const LoadedRecipe loaded = make_loaded_recipe(recipe, "r.prism", s, s);
     context.recipe = &loaded;
+    context.preview_long_side = 2560;
+    context.file_long_side = 9566;
     for (const Explanation& e : explanations()) {
         const std::string line = live_line(e.id, s, context);
         EXPECT_EQ(line.find('{'), std::string::npos) << e.id;

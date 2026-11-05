@@ -15,6 +15,14 @@ namespace prism {
 // other input. Unlike a PNG or JPEG it has no tone curve baked in, so it looks darker and flatter
 // than the camera's own JPEG of the same shot; that is expected, and what --curve is for.
 
+// The size a full-size decode of a RAW file has, after rotation. `exact` is false if the decode may
+// come out a different size (non-square sensor pixels get stretched).
+struct RawDimensions {
+    int width = 0;
+    int height = 0;
+    bool exact = true;
+};
+
 struct RawOptions {
     // LibRaw's half-size mode: each 2x2 block of sensor pixels becomes one RGB pixel, so no
     // demosaicing is needed. About half the width and height and several times faster; good for
@@ -27,6 +35,10 @@ struct RawOptions {
     // matrix converts it to linear sRGB instead, e.g. one from your own calibration. Like
     // --matrix it is row-major and applied with apply_matrix; see README for what it must map.
     std::optional<Matrix3> camera_matrix;
+
+    // If set, receives the file's full size, read from its metadata when load_raw opens it, also for
+    // a half-size decode. Left as it is if the file can't be opened or doesn't say.
+    RawDimensions* full_size = nullptr;
 };
 
 // True if the extension is one of the RAW formats Prism hands to LibRaw: .arw (Sony), .dng,

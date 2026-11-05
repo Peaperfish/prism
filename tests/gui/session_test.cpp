@@ -118,6 +118,9 @@ TEST(Session, OpensAPngWithItsDefaultPreset) {
     EXPECT_EQ(session.kind(), InputKind::image);
     EXPECT_EQ(session.decoded_width(), 300);
     EXPECT_EQ(session.decoded_height(), 200);
+    EXPECT_EQ(session.file_width(), 300);
+    EXPECT_EQ(session.file_height(), 200);
+    EXPECT_TRUE(session.file_size_exact());
     // Smaller than 2560 px: the preview base is the image itself.
     EXPECT_EQ(bits(*session.preview_base()), bits(prism::load_image(png)));
     EXPECT_EQ(prism::gui::matching_preset(InputKind::image, session.settings())->id, "original");
@@ -188,6 +191,10 @@ TEST(Session, OpensARawFileAtHalfSizeOrSaysWhyNot) {
     ASSERT_EQ(e, std::nullopt) << e->message << " / " << e->details;
     EXPECT_EQ(session.kind(), InputKind::raw);
     EXPECT_EQ(session.decoded_width(), prism_test::synthetic_dng_size / 2);
+    // The file's own size, from its metadata, though only half of it was decoded.
+    EXPECT_EQ(session.file_width(), prism_test::synthetic_dng_size);
+    EXPECT_EQ(session.file_height(), prism_test::synthetic_dng_size);
+    EXPECT_TRUE(session.file_size_exact());
     EXPECT_EQ(session.preview_base()->width, prism_test::synthetic_dng_size / 2);
     EXPECT_EQ(prism::gui::matching_preset(InputKind::raw, session.settings())->id, "natural");
     fs::remove(dng);
@@ -202,6 +209,7 @@ TEST(Session, AnotherFileStartsOverWithItsOwnDefault) {
     ASSERT_EQ(session.open_file(b), std::nullopt);
     EXPECT_EQ(session.path(), b);
     EXPECT_EQ(session.decoded_width(), 20);
+    EXPECT_EQ(session.file_width(), 20);
     EXPECT_EQ(session.settings(), EditSettings{});
     EXPECT_FALSE(session.history().can_undo());
     fs::remove(a);

@@ -126,6 +126,8 @@ private:
     void view_fit();
     void view_actual_size();
     void view_step(int direction);  // > 0: in
+    // The zoom's chip: the number, Fit and 100%. Drawn last on the canvas, clear of canvas_taken_.
+    void draw_zoom_chip();
     void draw_banner();
     // The test strip. Whether it is on and usable (strip_ is cleared when the viewed stage can't
     // show it).
@@ -290,6 +292,7 @@ private:
 
     gui::ViewState view_;              // how the picture is zoomed and panned; a view, never an edit
     gui::ViewGeometry view_geometry_;  // the canvas and the picture, as of the last frame drawn
+    std::vector<gui::ViewRect> canvas_taken_;  // this frame's chips and notes on the canvas
 
     std::optional<std::filesystem::path> pending_open_;
     bool pending_open_shown_ = false;  // the "Opening ..." frame has been drawn

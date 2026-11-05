@@ -144,6 +144,14 @@ Image load_raw(const std::filesystem::path& path, const RawOptions& options, int
     // outside the ANSI code page open too. tests/raw_test.cpp checks that with a synthetic DNG
     // under a non-ASCII name, which the Windows CI job (LibRaw built from source) runs.
     check(raw->open_file(path.c_str()), path, "open");
+    if (const libraw_image_sizes_t& sizes = raw->imgdata.sizes;
+        options.full_size != nullptr && sizes.width > 0 && sizes.height > 0) {
+        // Flips 5 and 6 are the quarter turns, as dcraw_make_mem_image applies them below.
+        const bool swapped = (sizes.flip & 4) != 0;
+        options.full_size->width = swapped ? sizes.height : sizes.width;
+        options.full_size->height = swapped ? sizes.width : sizes.height;
+        options.full_size->exact = sizes.pixel_aspect == 1.0;
+    }
     check(raw->unpack(), path, "unpack");
     check(raw->dcraw_process(), path, "processing");
 

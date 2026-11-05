@@ -46,6 +46,7 @@ enum class LiveKind {
     compare,      // the two halves' captions
     strip,        // how much light one band step is
     recipe,       // which stages the loaded recipe sets (needs the loaded recipe)
+    preview_size, // the preview's size against the file's (needs both)
 };
 
 struct Explanation {
@@ -96,6 +97,9 @@ inline constexpr std::string_view compare_swap = "compare.swap";
 inline constexpr std::string_view viewing = "viewing";
 inline constexpr std::string_view strip = "strip";
 inline constexpr std::string_view strip_line = "strip.line";
+inline constexpr std::string_view view_zoom = "view.zoom";
+inline constexpr std::string_view view_fit = "view.fit";
+inline constexpr std::string_view view_actual = "view.actual";
 inline constexpr std::string_view pref_theme = "pref.theme";
 inline constexpr std::string_view pref_size = "pref.size";
 inline constexpr std::string_view pref_panel = "pref.panel";
@@ -112,6 +116,9 @@ struct LiveContext {
     const ClipReport* clips = nullptr;
     StripStep strip_step = strip_default_step;
     const LoadedRecipe* recipe = nullptr;  // the recipe loaded onto the photo, if any
+    int preview_long_side = 0;             // the preview's longer side, in pixels; 0 if no photo
+    int file_long_side = 0;                // the file's (see Session::file_width)
+    bool file_size_exact = true;           // false: file_long_side is an estimate
 };
 
 // The live line for `id` with these settings: numbers worked out with the engine's own maths
@@ -119,6 +126,8 @@ struct LiveContext {
 //   simple.brightness at +35:  "+35: +0.70 stops, 1.62× the light"
 //   simple.contrast at +50:    "+50: ×1.22, each stop near middle grey is 22% wider"
 //   curve.gamma at 2.2:        "gamma 2.2: 18% grey becomes 46%"
+//   view.zoom on a 61 MP RAW:  "Preview 2560 px, file 9566 px on the long side: each preview pixel
+//                               stands for about 3.7 file pixels across"
 // Empty for an unknown id and for entries without one. The slider positions are derived from the
 // settings (simple_from), so a stage that is off reads as 0 here exactly as on its slider.
 [[nodiscard]] std::string live_line(std::string_view id, const EditSettings& settings,

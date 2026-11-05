@@ -202,4 +202,37 @@ bool view_same_zoom(float a, float b) noexcept {
     return std::fabs(a - b) <= same_zoom_tolerance;
 }
 
+std::string view_zoom_label(float zoom, int preview_long_side, int file_long_side) {
+    const std::string percent = std::to_string(std::lround(zoom * 100.0f)) + "%";
+    return preview_long_side < file_long_side ? percent + " of preview" : percent;
+}
+
+std::optional<ViewPoint> view_chip_position(const ViewRect& canvas, float width, float height,
+                                            float margin,
+                                            std::span<const ViewRect> taken) noexcept {
+    const float left = canvas.max.x - margin - width;
+    if (left < canvas.min.x + margin) {
+        return std::nullopt;
+    }
+    float top = canvas.max.y - margin - height;
+    bool moved = true;
+    while (moved) {
+        moved = false;
+        if (top < canvas.min.y + margin) {
+            return std::nullopt;
+        }
+        for (const ViewRect& r : taken) {
+            // A margin's clearance from whatever is there. Each move goes strictly upwards, so this
+            // ends.
+            const bool across = left < r.max.x + margin && left + width > r.min.x - margin;
+            const bool down = top < r.max.y + margin && top + height > r.min.y - margin;
+            if (!r.empty() && across && down) {
+                top = r.min.y - margin - height;
+                moved = true;
+            }
+        }
+    }
+    return ViewPoint{left, top};
+}
+
 }  // namespace prism::gui
