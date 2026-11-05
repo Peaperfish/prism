@@ -5,6 +5,7 @@
 #include <cmath>
 #include <stdexcept>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "prism/gui/stage_controls.hpp"
@@ -321,6 +322,15 @@ std::string light_row(const PixelTrace& trace, StageId stage, const SampleStats&
            scene_text(sample_stats(trace, StageId::contrast));
 }
 
+// The light as the rows say it at `stage`, without the position in stops: at the Tone curve and
+// after, what the screen can show.
+float light_at(const PixelTrace& trace, StageId stage) noexcept {
+    const std::array<float, 3>& rgb = trace.at(stage).rgb;
+    return before(stage, StageId::curve)
+               ? sample_luminance(rgb)
+               : sample_luminance({on_screen(rgb[0]), on_screen(rgb[1]), on_screen(rgb[2])});
+}
+
 // The line about what one preview pixel averages, or nothing if it stands for one file pixel.
 std::string average_text(const SampleScale& scale) {
     const double across = file_pixels_across(scale.preview_long_side, scale.file_long_side);
@@ -446,6 +456,11 @@ SampleRows sample_rows(const PixelTrace& trace, StageId stage, SampleScale scale
             average_text(scale)};
 }
 
+std::string sample_cursor_line(const PixelTrace& trace, StageId stage) {
+    return "Under the cursor: " + rgb_text(trace.at(stage).rgb) + " · " +
+           capitalised(light_text(light_at(trace, stage)));
+}
+
 std::string sample_stage_title(StageId stage) {
     return capitalised(stage_caption(stage));
 }
@@ -463,6 +478,34 @@ std::string describe_sample(const PixelTrace& trace, StageId viewed, std::option
     return sample_stage_title(viewed) + ": " + stage_text(first) + "\n" +
            sample_stage_title(*compare) + ": " + stage_text(sample_rows(trace, *compare)) +
            (first.average.empty() ? "" : "\n" + first.average);
+}
+
+const PixelTrace* SampleCache::read(std::shared_ptr<const Image> base, const EditSettings& settings,
+                                    const std::optional<TestStrip>& strip, StageId viewed,
+                                    std::optional<StageId> compare, int x, int y) {
+    Key key{std::move(base), settings, strip, viewed, compare, x, y};
+    if (key_ && *key_ == key) {
+        return current();
+    }
+    ++computes_;
+    trace_.reset();
+    if (key.base) {
+        try {
+            trace_ = sample_trace(
+                *key.base,
+                sample_settings(settings, strip, viewed, key.base->width, key.base->height, x, y),
+                x, y);
+        } catch (const std::invalid_argument&) {
+            // Remembered too: asking again gives the same answer until the settings change.
+        }
+    }
+    key_ = std::move(key);
+    return current();
+}
+
+void SampleCache::clear() noexcept {
+    key_.reset();
+    trace_.reset();
 }
 
 }  // namespace prism::gui

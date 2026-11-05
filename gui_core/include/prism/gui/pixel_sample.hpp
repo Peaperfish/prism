@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -116,6 +117,11 @@ struct SampleRows {
 [[nodiscard]] SampleRows sample_rows(const PixelTrace& trace, StageId stage,
                                      SampleScale scale = {});
 
+// The one line for the pixel under the cursor while another one is pinned:
+//   "Under the cursor: R 0.420 G 0.270 B 0.190 · 30% of white's light"
+// From the Tone curve on, the light is what the screen can show, as in the light row.
+[[nodiscard]] std::string sample_cursor_line(const PixelTrace& trace, StageId stage);
+
 // What a stage's rows are headed with in a comparison: "Original", "After Exposure".
 [[nodiscard]] std::string sample_stage_title(StageId stage);
 
@@ -124,5 +130,44 @@ struct SampleRows {
 [[nodiscard]] std::string describe_sample(const PixelTrace& trace, StageId viewed,
                                           std::optional<StageId> compare = {},
                                           SampleScale scale = {});
+
+// One pixel's trace, kept until something it depends on changes, so that a still cursor costs
+// nothing however many frames go by. One per pixel on show.
+class SampleCache {
+public:
+    // The trace of pixel (x, y), with the settings sample_settings gives. Computes it only if the
+    // pixel, the base, the settings, the viewed stage, the compare stage or the strip differ from
+    // the last call. Nothing for a pixel off the picture, and for settings that can't be rendered
+    // (the preview says why; a readout must not take the window down).
+    [[nodiscard]] const PixelTrace* read(std::shared_ptr<const Image> base,
+                                         const EditSettings& settings,
+                                         const std::optional<TestStrip>& strip, StageId viewed,
+                                         std::optional<StageId> compare, int x, int y);
+
+    // The last read's result, without looking at anything.
+    [[nodiscard]] const PixelTrace* current() const noexcept { return trace_ ? &*trace_ : nullptr; }
+
+    // Forgets the trace and lets go of the base.
+    void clear() noexcept;
+
+    // How many traces it has computed, ever.
+    [[nodiscard]] std::uint64_t computes() const noexcept { return computes_; }
+
+private:
+    struct Key {
+        std::shared_ptr<const Image> base;
+        EditSettings settings;
+        std::optional<TestStrip> strip;
+        StageId viewed = final_stage;
+        std::optional<StageId> compare;
+        int x = 0;
+        int y = 0;
+
+        bool operator==(const Key&) const = default;
+    };
+    std::optional<Key> key_;
+    std::optional<PixelTrace> trace_;
+    std::uint64_t computes_ = 0;
+};
 
 }  // namespace prism::gui

@@ -104,9 +104,16 @@ struct SamplePin {
     bool operator==(const SamplePin&) const = default;
 };
 
-// The pixel under a point in image coordinates (view_screen_to_image), if it is on the picture.
-[[nodiscard]] std::optional<SamplePin> sample_pixel_at(ViewPoint image, int width,
-                                                       int height) noexcept;
+// Where a pixel's marker goes on the screen.
+struct SampleMarker {
+    bool on_canvas = false;  // its middle is on the canvas: otherwise there is nothing to draw
+    ViewPoint centre;
+    ViewRect square;         // the pixel itself
+    bool shows_square = false;  // above 200% the pixel can be outlined; below it, a crosshair
+};
+
+[[nodiscard]] SampleMarker sample_marker(const ViewState& s, const ViewGeometry& g,
+                                         SamplePin pixel) noexcept;
 
 // Whether a press on the canvas can become a pin: only in Sample mode, not on a control, not with the
 // hand held (that press is a drag from the start), and not on the test strip, whose click sets the
@@ -130,13 +137,15 @@ private:
     HandDrag drag_;
 };
 
-// Whether Sample mode is on, and its one pin. Pins are in image pixels, so they stay on the same
-// spot of the photo through zooming and panning. The stage and the settings don't matter to them
-// either: only another picture does. Leaving the mode clears the pin.
+// Whether Sample mode is on, its one pin, and the last pixel the cursor read, which stays on show
+// when the cursor leaves the picture, so that the rows can be pointed at. These are in image pixels,
+// so they stay on the same spot of the photo through zooming and panning. The stage and the settings
+// don't matter to them either: only another picture does. Leaving the mode clears them.
 class SampleMode {
 public:
     [[nodiscard]] bool on() const noexcept { return on_; }
     [[nodiscard]] const std::optional<SamplePin>& pin() const noexcept { return pin_; }
+    [[nodiscard]] const std::optional<SamplePin>& last_read() const noexcept { return last_read_; }
 
     void toggle() noexcept;  // I, or View > Sample Colour
     void leave() noexcept;   // Esc (EscapeAction::clear_sample)
@@ -145,16 +154,20 @@ public:
     // pixel is off the picture.
     void place(SamplePin pixel, int width, int height) noexcept;
 
-    // A file was opened: the pin goes, even if the new picture has the same size.
+    // The cursor is over `pixel` of a width x height base. The same conditions as place().
+    void read(SamplePin pixel, int width, int height) noexcept;
+
+    // A file was opened: the pin and the last read go, even if the new picture has the same size.
     void opened() noexcept;
 
-    // The base is now width x height. The pin goes if that isn't what it was placed on; it stays
-    // through a re-decode of the same size (a new camera matrix).
+    // The base is now width x height. The pin and the last read go if that isn't what they were on;
+    // they stay through a re-decode of the same size (a new camera matrix).
     void base_changed(int width, int height) noexcept;
 
 private:
     bool on_ = false;
     std::optional<SamplePin> pin_;
+    std::optional<SamplePin> last_read_;
     int width_ = 0;
     int height_ = 0;
 };

@@ -341,6 +341,10 @@ void App::open_now(const fs::path& path) {
     strip_.reset();
     strip_bands_.clear();
     view_ = {};  // each photo starts whole
+    sample_.opened();
+    sample_click_.cancel();
+    sample_pin_trace_.clear();
+    sample_hover_trace_.clear();
     explain_last_.clear();
     SDL_SetWindowTitle(window_, ("Prism - " + file_name(path)).c_str());
 }
@@ -1156,6 +1160,7 @@ void App::handle_shortcuts() {
     // has the keyboard focus, so Esc did nothing until the picture was clicked.
     if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
         gui::EscapeContext esc;
+        esc.sampling = sample_.on();
         esc.test_strip = strip_.has_value();
         esc.comparing = gui::effective_compare(viewed_stage_, compare_stage_).has_value();
         esc.viewing_earlier = viewed_stage_ != gui::final_stage;
@@ -1166,6 +1171,9 @@ void App::handle_shortcuts() {
         switch (gui::escape_action(esc)) {
             case gui::EscapeAction::close_window:
                 *focused_window_last_frame_ = false;  // the window's own open flag
+                break;
+            case gui::EscapeAction::clear_sample:
+                clear_sample();
                 break;
             case gui::EscapeAction::clear_test_strip:
                 strip_.reset();
@@ -1198,6 +1206,9 @@ void App::handle_shortcuts() {
     }
     if (ImGui::Shortcut(ImGuiKey_T, ImGuiInputFlags_RouteGlobal)) {
         toggle_test_strip();  // T: the test strip, routed like J so typing never triggers it
+    }
+    if (ImGui::Shortcut(ImGuiKey_I, ImGuiInputFlags_RouteGlobal)) {
+        toggle_sample();  // I: the sampler, routed like J and T
     }
     // Zoom: plain keys, routed like J and T. Cmd/Ctrl with + - 0 is the interface size, above.
     if (global(ImGuiKey_F)) {
@@ -1288,6 +1299,10 @@ void App::draw_menu() {
             ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled)) {
             ImGui::SetTooltip("%s", gui::strip_unavailable_hint());
         }
+        if (ImGui::MenuItem("Sample Colour", "I", sample_.on(),
+                            session_.has_file() || sample_.on())) {
+            toggle_sample();
+        }
         ImGui::Separator();
         const bool can_zoom = view_available();
         const float zoom = can_zoom ? gui::view_zoom(view_, view_geometry_) : 1.0f;
@@ -1322,6 +1337,7 @@ void App::draw_menu() {
 
 void App::draw_canvas() {
     canvas_taken_.clear();
+    sample_hover_.reset();
     update_hand_key();
     ImDrawList* draw = ImGui::GetWindowDrawList();
     const ImVec2 min = ImGui::GetWindowPos();
@@ -1370,6 +1386,8 @@ void App::draw_canvas() {
             }
         }
         update_hand_drag();
+        update_sample_cursor();
+        draw_sample_markers(draw);
     } else if (!session_.has_file() && !pending_open_) {
         // Empty state: a dashed drop area with the one thing to do. It lights up while a file is
         // dragged over the window.
@@ -1408,6 +1426,7 @@ void App::draw_canvas() {
         draw->AddRect(min, max, colours.drop_highlight, 0.0f, 0,
                   token_metrics().drop_line_active);
     }
+    update_sample_traces();
 }
 
 bool App::view_available() const {
@@ -1505,6 +1524,11 @@ void App::update_hand_drag() {
     const bool over_control = ImGui::IsAnyItemHovered();
     if (on_canvas && !over_control && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         canvas_press_ = true;
+        if (gui::sample_press_can_pin(sample_.on(), strip_.has_value(), over_control,
+                                      hand_key_held_)) {
+            // Its own record of the press: at fit, where a drag moves nothing, the hand isn't pressed.
+            sample_click_.press(cursor, io.MouseDragThreshold);
+        }
         if (hand_key_held_) {
             hand_drag_.press(cursor, 0.0f);
         } else if (gui::plain_drag_pans(view_.fit, strip_.has_value(), over_control)) {
@@ -1515,13 +1539,220 @@ void App::update_hand_drag() {
             gui::double_click_zooms(strip_.has_value(), over_control, hand_key_held_)) {
             view_ = gui::view_toggled(view_, view_geometry_, cursor);
             hand_drag_.release();
+            sample_click_.cancel();
         }
-    } else if (const std::optional<gui::ViewPoint> moved = hand_drag_.move(cursor)) {
-        view_ = gui::view_panned_by(view_, view_geometry_, moved->x, moved->y);
+    } else {
+        sample_click_.move(cursor);
+        if (const std::optional<gui::ViewPoint> moved = hand_drag_.move(cursor)) {
+            view_ = gui::view_panned_by(view_, view_geometry_, moved->x, moved->y);
+        }
+    }
+    if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && sample_click_.release(cursor)) {
+        const std::shared_ptr<const Image> base = session_.preview_base();
+        const std::optional<gui::ViewPixel> pixel = gui::view_pixel_at(view_, view_geometry_, cursor);
+        if (base && pixel && base->width == texture_.width() && base->height == texture_.height()) {
+            sample_.place({pixel->x, pixel->y}, base->width, base->height);
+        }
     }
     if (hand_drag_.dragging() || (hand_key_held_ && !view_.fit)) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
     }
+}
+
+void App::toggle_sample() {
+    if (sample_.on()) {
+        clear_sample();
+    } else if (session_.has_file()) {
+        sample_.toggle();
+    }
+}
+
+void App::clear_sample() {
+    sample_.leave();
+    sample_click_.cancel();
+    sample_hover_.reset();
+    sample_pin_trace_.clear();
+    sample_hover_trace_.clear();
+}
+
+void App::update_sample_cursor() {
+    if (!sample_.on()) {
+        return;
+    }
+    const std::shared_ptr<const Image> base = session_.preview_base();
+    // The strip's whole picture is one item, and a band can be read; any other item is a control.
+    if (!base || base->width != texture_.width() || base->height != texture_.height() ||
+        !ImGui::IsWindowHovered() || (ImGui::IsAnyItemHovered() && !strip_)) {
+        return;
+    }
+    const ImVec2 mouse = ImGui::GetIO().MousePos;
+    if (const std::optional<gui::ViewPixel> pixel =
+            gui::view_pixel_at(view_, view_geometry_, {mouse.x, mouse.y})) {
+        sample_hover_ = gui::SamplePin{pixel->x, pixel->y};
+        sample_.read(*sample_hover_, base->width, base->height);
+    }
+}
+
+void App::update_sample_traces() {
+    if (!sample_.on()) {
+        return;
+    }
+    const std::shared_ptr<const Image> base = session_.preview_base();
+    if (!base) {
+        return;
+    }
+    sample_.base_changed(base->width, base->height);
+    if (base->width != texture_.width() || base->height != texture_.height()) {
+        return;  // the picture on screen isn't of this base yet: its pixels mean something else
+    }
+    const std::optional<gui::StageId> compare =
+        strip_ ? std::nullopt : gui::effective_compare(viewed_stage_, compare_stage_);
+    const auto read = [&](gui::SampleCache& cache, gui::SamplePin pixel) {
+        (void)cache.read(base, session_.settings(), strip_, viewed_stage_, compare, pixel.x, pixel.y);
+    };
+    if (sample_.pin()) {
+        read(sample_pin_trace_, *sample_.pin());
+    } else {
+        sample_pin_trace_.clear();
+    }
+    // With a pin the cursor's pixel only matters while it is on the picture. Without one the block
+    // keeps the last pixel read, so that its rows are still there to point at.
+    if (sample_hover_) {
+        read(sample_hover_trace_, *sample_hover_);
+    } else if (!sample_.pin() && sample_.last_read()) {
+        read(sample_hover_trace_, *sample_.last_read());
+    }
+}
+
+const gui::PixelTrace* App::sample_on_show() const {
+    if (!sample_.on()) {
+        return nullptr;
+    }
+    if (sample_.pin()) {
+        return sample_pin_trace_.current();
+    }
+    return sample_.last_read() ? sample_hover_trace_.current() : nullptr;
+}
+
+gui::SampleScale App::sample_scale() const {
+    return {std::max(texture_.width(), texture_.height()),
+            std::max(session_.file_width(), session_.file_height())};
+}
+
+// White on a dark edge, so that it shows on any picture, in either theme: the picture's colours
+// are not the theme's. Nothing of it depends on the interface's colours for that reason.
+void App::draw_sample_markers(ImDrawList* draw) const {
+    if (!sample_.on()) {
+        return;
+    }
+    const float scale = ui_scale();
+    const float line = std::max(1.0f, std::round(scale));
+    const auto outline = [&](const gui::SampleMarker& m, ImU32 light, ImU32 dark) {
+        // A pixel smaller than the marker could be seen at still gets a marker that can.
+        const float least = 5.0f * scale;
+        const float grow_x = std::max(0.0f, (least - m.square.width()) / 2);
+        const float grow_y = std::max(0.0f, (least - m.square.height()) / 2);
+        const ImVec2 min(m.square.min.x - grow_x - line / 2, m.square.min.y - grow_y - line / 2);
+        const ImVec2 max(m.square.max.x + grow_x + line / 2, m.square.max.y + grow_y + line / 2);
+        draw->AddRect(ImVec2(min.x - line, min.y - line), ImVec2(max.x + line, max.y + line), dark,
+                      0.0f, 0, line);
+        draw->AddRect(min, max, light, 0.0f, 0, line);
+    };
+    const auto crosshair = [&](const gui::SampleMarker& m, ImU32 light, ImU32 dark) {
+        const float gap = 2.0f * scale;
+        const float arm = 7.0f * scale;
+        const ImVec2 c(m.centre.x, m.centre.y);
+        const auto arms = [&](ImU32 colour, float width, float extra) {
+            draw->AddLine(ImVec2(c.x - arm - extra, c.y), ImVec2(c.x - gap + extra, c.y), colour, width);
+            draw->AddLine(ImVec2(c.x + gap - extra, c.y), ImVec2(c.x + arm + extra, c.y), colour, width);
+            draw->AddLine(ImVec2(c.x, c.y - arm - extra), ImVec2(c.x, c.y - gap + extra), colour, width);
+            draw->AddLine(ImVec2(c.x, c.y + gap - extra), ImVec2(c.x, c.y + arm + extra), colour, width);
+        };
+        arms(dark, 3.0f * line, line);
+        arms(light, line, 0.0f);
+    };
+    if (sample_hover_ && sample_hover_ != sample_.pin()) {
+        const gui::SampleMarker m = gui::sample_marker(view_, view_geometry_, *sample_hover_);
+        if (m.on_canvas) {
+            outline(m, IM_COL32(255, 255, 255, 130), IM_COL32(0, 0, 0, 90));
+        }
+    }
+    if (sample_.pin()) {
+        const gui::SampleMarker m = gui::sample_marker(view_, view_geometry_, *sample_.pin());
+        if (m.on_canvas) {
+            const ImU32 light = IM_COL32(255, 255, 255, 255);
+            const ImU32 dark = IM_COL32(0, 0, 0, 200);
+            if (m.shows_square) {
+                outline(m, light, dark);
+            } else {
+                crosshair(m, light, dark);
+            }
+        }
+    }
+}
+
+void App::draw_sample_block() {
+    if (!sample_.on()) {
+        return;
+    }
+    section_text("Sample");
+    explain(gui::explain::sample);
+    const gui::TokenColours& c = token_colours();
+    const ImVec4 text(c.text.r, c.text.g, c.text.b, c.text.a);
+    const ImVec4 muted(c.text_muted.r, c.text_muted.g, c.text_muted.b, c.text_muted.a);
+    ImGui::PushFont(nullptr, token_type().small);
+    ImGui::PushTextWrapPos(0.0f);
+    const auto explained_row = [&](const std::string& line, std::string_view id,
+                                   const ImVec4& colour) {
+        // The whole width of the panel answers to the pointer, not only where the text is, so a
+        // short row like "Nothing clipped." is as easy to point at as a long one.
+        const ImVec2 start = ImGui::GetCursorScreenPos();
+        const float width = ImGui::GetContentRegionAvail().x;
+        ImGui::PushStyleColor(ImGuiCol_Text, colour);
+        ImGui::TextUnformatted(line.c_str());
+        ImGui::PopStyleColor();
+        const ImVec2 end = ImGui::GetItemRectMax();
+        if (ImGui::IsWindowHovered() &&
+            ImGui::IsMouseHoveringRect(start, ImVec2(start.x + width, end.y))) {
+            explain_hover_ = std::string(id);
+        }
+    };
+    if (const gui::PixelTrace* trace = sample_on_show()) {
+        const std::optional<gui::StageId> compare =
+            strip_ ? std::nullopt : gui::effective_compare(viewed_stage_, compare_stage_);
+        const bool off_screen = sample_.pin() && !gui::sample_marker(view_, view_geometry_,
+                                                                     *sample_.pin()).on_canvas;
+        const auto stage_rows = [&](gui::StageId stage, const gui::SampleRows& rows) {
+            if (compare) {
+                ImGui::PushFont(fonts().semibold, token_type().small);
+                explained_row(gui::sample_stage_title(stage), gui::explain::sample, text);
+                ImGui::PopFont();
+            }
+            explained_row(rows.values + (off_screen ? " (off screen)" : ""),
+                          gui::explain::sample_values, text);
+            explained_row(rows.light, gui::explain::sample_light, text);
+            explained_row(rows.range, gui::explain::sample_range, text);
+        };
+        const gui::SampleRows viewed = gui::sample_rows(*trace, viewed_stage_, sample_scale());
+        stage_rows(viewed_stage_, viewed);
+        if (compare) {
+            stage_rows(*compare, gui::sample_rows(*trace, *compare));
+        }
+        if (!viewed.average.empty()) {
+            explained_row(viewed.average, gui::explain::sample_range, muted);
+        }
+        if (sample_.pin() && sample_hover_) {
+            if (const gui::PixelTrace* under = sample_hover_trace_.current()) {
+                explained_row(gui::sample_cursor_line(*under, viewed_stage_),
+                              gui::explain::sample_values, muted);
+            }
+        }
+    } else {
+        explained_row("Point at the photo to read a pixel; click to pin it.", gui::explain::sample,
+                      muted);
+    }
+    ImGui::PopTextWrapPos();
+    ImGui::PopFont();
 }
 
 void App::toggle_test_strip() {
@@ -2105,6 +2336,7 @@ App::ExplainText App::explain_text() const {
         context.file_long_side = std::max(session_.file_width(), session_.file_height());
         context.file_size_exact = session_.file_size_exact();
     }
+    context.sample = sample_on_show();
     return {std::string(e->summary), std::string(e->detail),
             gui::live_line(explain_shown_, session_.settings(), context)};
 }
@@ -2237,6 +2469,7 @@ void App::draw_panel() {
     ImGui::EndDisabled();
 
     draw_histogram();
+    draw_sample_block();
 
     section_text("Look");
     draw_presets();

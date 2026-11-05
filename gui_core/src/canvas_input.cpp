@@ -96,13 +96,17 @@ void HandDrag::release() noexcept {
     dragging_ = false;
 }
 
-std::optional<SamplePin> sample_pixel_at(ViewPoint image, int width, int height) noexcept {
-    // Written so that NaN is off the picture too.
-    if (!(image.x >= 0.0f) || !(image.y >= 0.0f) || !(image.x < static_cast<float>(width)) ||
-        !(image.y < static_cast<float>(height))) {
-        return std::nullopt;
-    }
-    return SamplePin{static_cast<int>(image.x), static_cast<int>(image.y)};
+SampleMarker sample_marker(const ViewState& s, const ViewGeometry& g, SamplePin pixel) noexcept {
+    const auto x = static_cast<float>(pixel.x);
+    const auto y = static_cast<float>(pixel.y);
+    SampleMarker marker;
+    marker.square = {view_image_to_screen(s, g, {x, y}),
+                     view_image_to_screen(s, g, {x + 1.0f, y + 1.0f})};
+    marker.centre = view_image_to_screen(s, g, {x + 0.5f, y + 0.5f});
+    const std::optional<ViewPixel> under = view_pixel_at(s, g, marker.centre);
+    marker.on_canvas = under.has_value();
+    marker.shows_square = view_shows_pixels(view_zoom(s, g));
+    return marker;
 }
 
 bool sample_press_can_pin(bool sampling, bool strip_on, bool over_control,
@@ -140,6 +144,7 @@ void SampleMode::toggle() noexcept {
 void SampleMode::leave() noexcept {
     on_ = false;
     pin_.reset();
+    last_read_.reset();
 }
 
 void SampleMode::place(SamplePin pixel, int width, int height) noexcept {
@@ -151,13 +156,24 @@ void SampleMode::place(SamplePin pixel, int width, int height) noexcept {
     height_ = height;
 }
 
+void SampleMode::read(SamplePin pixel, int width, int height) noexcept {
+    if (!on_ || pixel.x < 0 || pixel.y < 0 || pixel.x >= width || pixel.y >= height) {
+        return;
+    }
+    last_read_ = pixel;
+    width_ = width;
+    height_ = height;
+}
+
 void SampleMode::opened() noexcept {
     pin_.reset();
+    last_read_.reset();
 }
 
 void SampleMode::base_changed(int width, int height) noexcept {
     if (width != width_ || height != height_) {
         pin_.reset();
+        last_read_.reset();
     }
 }
 

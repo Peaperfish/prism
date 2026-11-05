@@ -22,6 +22,7 @@
 #include "prism/gui/histogram.hpp"
 #include "prism/gui/layout.hpp"
 #include "prism/gui/live_preview.hpp"
+#include "prism/gui/pixel_sample.hpp"
 #include "prism/gui/preferences.hpp"
 #include "prism/gui/recipe_ui.hpp"
 #include "prism/gui/session.hpp"
@@ -142,6 +143,17 @@ private:
     void update_hand_key();
     // A press, drag or double-click on the canvas. Called after its items, to see if they took it.
     void update_hand_drag();
+    // Sample mode. Which pixel the cursor reads, then the traces of what is on show; called every
+    // frame after the canvas's items.
+    void toggle_sample();
+    void clear_sample();
+    void update_sample_cursor();
+    void update_sample_traces();
+    void draw_sample_markers(ImDrawList* draw) const;
+    void draw_sample_block();
+    // The trace the Sample block shows: the pin's, else the last pixel the cursor read.
+    [[nodiscard]] const gui::PixelTrace* sample_on_show() const;
+    [[nodiscard]] gui::SampleScale sample_scale() const;
     // A control is being used. Dear ImGui also counts a press on a window's empty space as an active
     // item, and a press on the canvas isn't a control: with it the render would stop asking for the
     // clip report, and render once more on release.
@@ -324,6 +336,11 @@ private:
     gui::PinchTracker pinch_{gui::PinchScale::per_event};  // set for the platform when constructed
     float pinch_factor_ = 1.0f;                            // this frame's pinching, all told
     gui::HandDrag hand_drag_;
+    gui::SampleMode sample_;
+    gui::SampleClick sample_click_;
+    std::optional<gui::SamplePin> sample_hover_;  // the pixel under the cursor this frame
+    gui::SampleCache sample_pin_trace_;
+    gui::SampleCache sample_hover_trace_;
     bool hand_key_held_ = false;   // Space is down and the canvas has it
     bool canvas_press_ = false;    // the left button went down on the canvas itself, and is still down
     std::vector<gui::ViewRect> canvas_taken_;  // this frame's chips and notes on the canvas

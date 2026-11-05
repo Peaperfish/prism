@@ -245,21 +245,54 @@ TEST(PinchTracker, AScaleThatCantBeOneChangesNothing) {
     }
 }
 
-TEST(SamplePixelAt, IsThePixelUnderThePoint) {
-    EXPECT_EQ(sample_pixel_at({0.0f, 0.0f}, 40, 30), (SamplePin{0, 0}));
-    EXPECT_EQ(sample_pixel_at({12.9f, 3.1f}, 40, 30), (SamplePin{12, 3}));
-    EXPECT_EQ(sample_pixel_at({39.99f, 29.99f}, 40, 30), (SamplePin{39, 29}));
+namespace {
+
+// A 100x100 canvas at the origin, showing a 40x30 picture, on a display of one device pixel per
+// screen unit.
+ViewGeometry sample_geometry() {
+    return {0.0f, 0.0f, 100.0f, 100.0f, 1.0f, 40, 30};
 }
 
-TEST(SamplePixelAt, IsNothingOffThePicture) {
-    const float nan = std::numeric_limits<float>::quiet_NaN();
-    EXPECT_FALSE(sample_pixel_at({-0.5f, 3.0f}, 40, 30));  // would truncate to pixel 0
-    EXPECT_FALSE(sample_pixel_at({3.0f, -0.5f}, 40, 30));
-    EXPECT_FALSE(sample_pixel_at({40.0f, 3.0f}, 40, 30));
-    EXPECT_FALSE(sample_pixel_at({3.0f, 30.0f}, 40, 30));
-    EXPECT_FALSE(sample_pixel_at({nan, 3.0f}, 40, 30));
-    EXPECT_FALSE(sample_pixel_at({3.0f, nan}, 40, 30));
-    EXPECT_FALSE(sample_pixel_at({0.0f, 0.0f}, 0, 0));
+}  // namespace
+
+TEST(SampleMarkerPlace, StaysOnItsPixelThroughZoomAndPan) {
+    const ViewGeometry g = sample_geometry();
+    ViewState s;
+    const auto pixel_under = [&](ViewPoint at) { return view_pixel_at(s, g, at); };
+    const SamplePin pin{12, 7};
+    SampleMarker m = sample_marker(s, g, pin);
+    EXPECT_TRUE(m.on_canvas);
+    EXPECT_EQ(pixel_under(m.centre), (ViewPixel{12, 7}));
+
+    s = view_zoomed_to(s, g, 4.0f, m.centre);
+    m = sample_marker(s, g, pin);
+    EXPECT_TRUE(m.on_canvas);
+    EXPECT_EQ(pixel_under(m.centre), (ViewPixel{12, 7}));
+    EXPECT_FLOAT_EQ(m.square.max.x - m.square.min.x, 4.0f);
+    EXPECT_FLOAT_EQ(m.square.max.y - m.square.min.y, 4.0f);
+
+    s = view_panned_by(s, g, 8.0f, -4.0f);
+    m = sample_marker(s, g, pin);
+    EXPECT_EQ(pixel_under(m.centre), (ViewPixel{12, 7}));
+}
+
+TEST(SampleMarkerPlace, AnOutlineOnlyAbove200Percent) {
+    // A picture bigger than the canvas, so that its fit is below 100%.
+    const ViewGeometry g{0.0f, 0.0f, 100.0f, 100.0f, 1.0f, 400, 300};
+    ViewState s;
+    EXPECT_FALSE(sample_marker(s, g, {200, 150}).shows_square);
+    s = view_zoomed_to(s, g, 2.0f);
+    EXPECT_FALSE(sample_marker(s, g, {200, 150}).shows_square);
+    s = view_zoomed_to(s, g, 2.5f);
+    EXPECT_TRUE(sample_marker(s, g, {200, 150}).shows_square);
+}
+
+TEST(SampleMarkerPlace, IsOffTheCanvasWhenPannedAway) {
+    const ViewGeometry g = sample_geometry();
+    ViewState s = view_zoomed_to(ViewState{}, g, 8.0f, ViewPoint{50.0f, 50.0f});
+    EXPECT_TRUE(sample_marker(s, g, {20, 15}).on_canvas);
+    EXPECT_FALSE(sample_marker(s, g, {0, 0}).on_canvas);
+    EXPECT_FALSE(sample_marker(s, g, {39, 29}).on_canvas);
 }
 
 TEST(SamplePress, CanPinOnlyInSampleModeOffTheStripAndControlsWithoutTheHand) {
@@ -408,6 +441,27 @@ TEST(SampleModeRules, ANewSizeOfBaseClearsThePinAndARedecodeKeepsIt) {
     mode.place({3, 4}, 41, 31);
     mode.base_changed(41, 31);
     EXPECT_EQ(mode.pin(), (SamplePin{3, 4}));
+}
+
+TEST(SampleModeRules, TheLastReadStaysUntilAnotherPictureOrLeaving) {
+    SampleMode mode;
+    mode.read({1, 2}, 40, 30);
+    EXPECT_FALSE(mode.last_read());  // the mode is off
+    mode.toggle();
+    mode.read({40, 2}, 40, 30);
+    EXPECT_FALSE(mode.last_read());  // off the picture
+    mode.read({1, 2}, 40, 30);
+    EXPECT_EQ(mode.last_read(), (SamplePin{1, 2}));
+    mode.base_changed(40, 30);
+    EXPECT_EQ(mode.last_read(), (SamplePin{1, 2}));
+    mode.base_changed(41, 30);
+    EXPECT_FALSE(mode.last_read());
+    mode.read({1, 2}, 41, 30);
+    mode.opened();
+    EXPECT_FALSE(mode.last_read());
+    mode.read({1, 2}, 41, 30);
+    mode.leave();
+    EXPECT_FALSE(mode.last_read());
 }
 
 }  // namespace

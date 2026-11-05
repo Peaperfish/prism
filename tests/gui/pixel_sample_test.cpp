@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -711,6 +712,138 @@ TEST(SampleReadout, TheWordBrightnessIsNeverUsed) {
             }
         }
     }
+}
+
+TEST(SampleReadout, TheLineForTheCursorIsShort) {
+    const PixelTrace trace = trace_of(one_pixel(0.42f, 0.27f, 0.19f), EditSettings{}, 0, 0);
+    EXPECT_EQ(sample_cursor_line(trace, StageId::exposure),
+              "Under the cursor: R 0.420 G 0.270 B 0.190 · 30% of white's light");
+    const PixelTrace over = trace_of(one_pixel(2.0f, 2.0f, 2.0f), EditSettings{}, 0, 0);
+    EXPECT_EQ(sample_cursor_line(over, StageId::exposure),
+              "Under the cursor: R 2.000 G 2.000 B 2.000 · 200% of white's light");
+    // As in the light row, the screen can't show more than white.
+    EXPECT_EQ(sample_cursor_line(over, StageId::encode),
+              "Under the cursor: R 2.000 G 2.000 B 2.000 · 100% of white's light");
+    const PixelTrace black = trace_of(one_pixel(0, 0, 0), EditSettings{}, 0, 0);
+    EXPECT_EQ(sample_cursor_line(black, StageId::exposure),
+              "Under the cursor: R 0.000 G 0.000 B 0.000 · No light");
+}
+
+// --- The cache
+// -------------------------------------------------------------------------------------
+
+namespace {
+
+std::shared_ptr<const Image> shared_image(int width, int height) {
+    return std::make_shared<const Image>(varied_image(width, height));
+}
+
+}  // namespace
+
+TEST(SampleCache, AskingAgainComputesNothing) {
+    SampleCache cache;
+    const auto base = shared_image(8, 8);
+    const EditSettings s = filmic();
+    const PixelTrace* first =
+        cache.read(base, s, std::nullopt, StageId::encode, std::nullopt, 2, 3);
+    ASSERT_NE(first, nullptr);
+    EXPECT_EQ(first->x, 2);
+    EXPECT_EQ(first->y, 3);
+    EXPECT_EQ(cache.computes(), 1u);
+    for (int frame = 0; frame < 100; ++frame) {
+        EXPECT_EQ(cache.read(base, s, std::nullopt, StageId::encode, std::nullopt, 2, 3), first);
+    }
+    EXPECT_EQ(cache.computes(), 1u);
+    EXPECT_EQ(cache.current(), first);
+}
+
+TEST(SampleCache, EachThingItDependsOnComputesOnce) {
+    SampleCache cache;
+    const auto base = shared_image(40, 8);
+    EditSettings s = filmic();
+    std::optional<TestStrip> strip;
+    StageId viewed = StageId::encode;
+    std::optional<StageId> compare;
+    int x = 2;
+    std::shared_ptr<const Image> shown = base;
+    std::uint64_t expected = 0;
+    const auto read_twice = [&] {
+        (void)cache.read(shown, s, strip, viewed, compare, x, 3);
+        (void)cache.read(shown, s, strip, viewed, compare, x, 3);
+        ++expected;
+        EXPECT_EQ(cache.computes(), expected);
+    };
+    read_twice();
+    x = 3;
+    read_twice();  // the pixel
+    s.exposure_stops = 0.5f;
+    read_twice();  // the settings
+    viewed = StageId::exposure;
+    read_twice();  // the viewed stage
+    compare = StageId::decode;
+    read_twice();  // the comparison
+    compare.reset();
+    strip = TestStrip{};
+    read_twice();  // the strip
+    strip.reset();
+    shown = shared_image(40, 8);
+    read_twice();  // another base, even with the same pixels: a re-decode
+}
+
+TEST(SampleCache, TheTraceFollowsTheSettings) {
+    SampleCache cache;
+    const auto base = std::make_shared<const Image>(one_pixel(0.25f, 0.25f, 0.25f));
+    EditSettings s;
+    s.exposure_stops = 1.0f;
+    EXPECT_FLOAT_EQ(cache.read(base, s, std::nullopt, StageId::encode, std::nullopt, 0, 0)
+                        ->at(StageId::exposure)
+                        .rgb[0],
+                    0.5f);
+    s.exposure_stops = 2.0f;
+    EXPECT_FLOAT_EQ(cache.read(base, s, std::nullopt, StageId::encode, std::nullopt, 0, 0)
+                        ->at(StageId::exposure)
+                        .rgb[0],
+                    1.0f);
+}
+
+TEST(SampleCache, ABandReadsWithItsOwnSettings) {
+    SampleCache cache;
+    const auto base = shared_image(40, 3);
+    EditSettings s;
+    const TestStrip strip{StripStep::whole, strip_default_count};
+    const PixelTrace* first = cache.read(base, s, strip, StageId::encode, std::nullopt, 0, 0);
+    ASSERT_NE(first, nullptr);
+    // Band 0 of five, whole stops: two stops down.
+    const float* p = pixel_of(*base, 0, 0);
+    EXPECT_FLOAT_EQ(first->at(StageId::exposure).rgb[0], p[0] / 4.0f);
+}
+
+TEST(SampleCache, NothingToReadIsNotAnError) {
+    SampleCache cache;
+    const auto base = shared_image(8, 8);
+    EXPECT_EQ(cache.read(base, EditSettings{}, std::nullopt, StageId::encode, std::nullopt, 8, 0),
+              nullptr);
+    EXPECT_EQ(
+        cache.read(nullptr, EditSettings{}, std::nullopt, StageId::encode, std::nullopt, 0, 0),
+        nullptr);
+    EditSettings invalid;
+    invalid.saturation = 12.0f;
+    EXPECT_EQ(cache.read(base, invalid, std::nullopt, StageId::encode, std::nullopt, 0, 0),
+              nullptr);
+    EXPECT_EQ(cache.current(), nullptr);
+}
+
+TEST(SampleCache, ClearForgetsTheTraceAndTheBase) {
+    SampleCache cache;
+    auto base = shared_image(8, 8);
+    const std::weak_ptr<const Image> watch = base;
+    (void)cache.read(base, EditSettings{}, std::nullopt, StageId::encode, std::nullopt, 0, 0);
+    base.reset();
+    EXPECT_FALSE(watch.expired());
+    cache.clear();
+    EXPECT_TRUE(watch.expired());
+    EXPECT_EQ(cache.current(), nullptr);
+    EXPECT_EQ(cache.computes(), 1u);  // it counts for ever
 }
 
 }  // namespace prism::gui
