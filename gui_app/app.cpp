@@ -2341,30 +2341,6 @@ App::ExplainText App::explain_text() const {
             gui::live_line(explain_shown_, session_.settings(), context)};
 }
 
-// The height the Explain area needs for its text at `width`, never more than `max_height`.
-float App::explain_height(float width, float max_height) const {
-    const gui::TokenMetrics& m = token_metrics();
-    const ExplainText text = explain_text();
-    const float wrap = std::max(1.0f, width - 2 * m.explain_pad.x - 2 * m.window_border);
-    float height = 2 * m.explain_pad.y + 2 * m.window_border;
-    int parts = 0;
-    const auto add = [&](const std::string& s, ImFont* font) {
-        if (s.empty()) {
-            return;
-        }
-        ImGui::PushFont(font, token_type().small);
-        height += ImGui::CalcTextSize(s.c_str(), nullptr, false, wrap).y;
-        ImGui::PopFont();
-        if (parts++ > 0) {
-            height += m.explain_gap;
-        }
-    };
-    add(text.summary, fonts().semibold);
-    add(text.detail, nullptr);
-    add(text.live, nullptr);
-    return std::min(height, max_height);
-}
-
 void App::draw_explain_area(float width, float height) {
     const gui::TokenMetrics& m = token_metrics();
     const gui::TokenColours& c = token_colours();
@@ -2403,18 +2379,16 @@ void App::draw_panel_column(float height) {
     const float width = ImGui::GetContentRegionAvail().x;
     const bool explaining = prefs_.show_explanations && session_.has_file();
     const float spacing = ImGui::GetStyle().ItemSpacing.y;
-    // About five lines of Small text (and never more than 45% of a very short panel); a longer
-    // text scrolls inside the area.
-    float cap = height * 0.45f;
+    // A fixed height (about five lines of Small text): it must not follow the text shown, or the
+    // panel above it changes size as the cursor crosses the controls (#38). A longer text
+    // scrolls inside the area.
+    float explain_h = 0.0f;
     if (explaining) {
-        const gui::TokenMetrics& m = token_metrics();
         ImGui::PushFont(nullptr, token_type().small);
         const float line = ImGui::GetTextLineHeight();
         ImGui::PopFont();
-        cap = std::min(cap, 2 * m.explain_pad.y + 2 * m.window_border + gui::explain_max_lines * line +
-                                (gui::explain_max_lines - 1) * m.explain_gap);
+        explain_h = gui::explain_area_height(token_metrics(), line, height);
     }
-    const float explain_h = explaining ? explain_height(width, cap) : 0.0f;
     ImGui::BeginGroup();
     ImGui::BeginChild("panel",
                       ImVec2(width, std::max(1.0f, height - (explaining ? explain_h + spacing : 0.0f))),

@@ -12,6 +12,7 @@
 
 #include "prism/gui/pixel_sample.hpp"
 #include "prism/gui/stage_controls.hpp"
+#include "prism/gui/theme_tokens.hpp"
 #include "prism/image.hpp"
 #include "prism/pipeline.hpp"
 
@@ -588,6 +589,47 @@ TEST(LiveLines, TheSampleLineIsTheReadoutOfThePixel) {
     EXPECT_NE(zoom.find("about 3.7 file pixels across"), std::string::npos);
     EXPECT_NE(live_line(explain::sample, EditSettings{}, context).find("about 3.7×3.7 file pixels"),
               std::string::npos);
+}
+
+// The Explain area's height at an interface size, whichever entry `id` is shown ("" is the
+// hint). The height takes no text, so `id` is deliberately unused: this is the whole of what the
+// window can ask of it.
+float area_height_for(std::string_view /*id*/, float scale, float panel_height) {
+    const TokenSet& set = token_set(Theme::dark);
+    const TokenMetrics m = scaled(set.metrics, scale);
+    const float line = scaled(set.type, scale).small;
+    return explain_area_height(m, line, panel_height);
+}
+
+TEST(ExplainAreaHeight, IsTheSameForEveryEntryAndTheHintAtEveryInterfaceSize) {
+    for (const float scale : {0.75f, 1.0f, 2.0f}) {
+        const float hint = area_height_for("", scale, 2000.0f);
+        EXPECT_GT(hint, 0.0f) << scale;
+        for (const Explanation& e : explanations()) {
+            EXPECT_EQ(area_height_for(e.id, scale, 2000.0f), hint) << e.id << " at " << scale;
+        }
+        for (const std::string_view id : other_explain_ids()) {
+            EXPECT_EQ(area_height_for(id, scale, 2000.0f), hint) << id << " at " << scale;
+        }
+    }
+}
+
+TEST(ExplainAreaHeight, IsFiveLinesAndGrowsWithTheInterfaceSize) {
+    const TokenSet& set = token_set(Theme::dark);
+    float previous = 0.0f;
+    for (const float scale : {0.75f, 1.0f, 2.0f}) {
+        const TokenMetrics m = scaled(set.metrics, scale);
+        const float line = scaled(set.type, scale).small;
+        const float h = explain_area_height(m, line, 5000.0f);
+        EXPECT_FLOAT_EQ(h, 2 * m.explain_pad.y + 2 * m.window_border + 5 * line + 4 * m.explain_gap);
+        EXPECT_GT(h, previous);
+        previous = h;
+    }
+}
+
+TEST(ExplainAreaHeight, NeverTakesMoreThanAShortPanelsShare) {
+    const TokenSet& set = token_set(Theme::dark);
+    EXPECT_FLOAT_EQ(explain_area_height(set.metrics, set.type.small, 100.0f), 45.0f);
 }
 
 }  // namespace

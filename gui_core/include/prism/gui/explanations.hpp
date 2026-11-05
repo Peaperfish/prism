@@ -12,6 +12,7 @@
 #include "prism/gui/recipe_ui.hpp"
 #include "prism/gui/settings.hpp"
 #include "prism/gui/test_strip.hpp"
+#include "prism/gui/theme_tokens.hpp"
 
 namespace prism::gui {
 
@@ -64,6 +65,15 @@ struct Explanation {
 
 // The entry for `id` ("simple.brightness", "stage.curve", "look.vivid", ...), or nullptr.
 [[nodiscard]] const Explanation* explanation_for(std::string_view id) noexcept;
+
+// The height of the Explain area while explanations are on: room for explain_max_lines lines of
+// Small text (`small_line` is one line's height) plus the padding, border and gaps, all already
+// scaled to the interface size, and never more than 45% of a very short panel (`panel_height`).
+// It does not depend on which entry is shown: a height that followed the text made the scrolling
+// panel above it grow and shrink as the cursor crossed the controls, and at the bottom of the
+// panel that moved the content under a still cursor (#38). A longer text scrolls inside the area.
+[[nodiscard]] float explain_area_height(const TokenMetrics& metrics, float small_line,
+                                        float panel_height) noexcept;
 
 // The ids of the controls that have their own enum or list...
 [[nodiscard]] std::string_view explain_id(StageId stage) noexcept;           // "stage.exposure"

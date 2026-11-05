@@ -1,5 +1,6 @@
 #include "prism/gui/explanations.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -426,6 +427,14 @@ std::string_view explain_id(ScopeChoice scope) noexcept {
 
 std::string explain_id(const Preset& preset) {
     return "look." + std::string(preset.id);
+}
+
+float explain_area_height(const TokenMetrics& metrics, float small_line,
+                         float panel_height) noexcept {
+    const float five_lines = 2 * metrics.explain_pad.y + 2 * metrics.window_border +
+                             explain_max_lines * small_line +
+                             (explain_max_lines - 1) * metrics.explain_gap;
+    return std::min(panel_height * 0.45f, five_lines);
 }
 
 std::span<const std::string_view> other_explain_ids() noexcept {

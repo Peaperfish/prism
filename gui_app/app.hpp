@@ -196,7 +196,6 @@ private:
         std::string live;
     };
     [[nodiscard]] ExplainText explain_text() const;
-    [[nodiscard]] float explain_height(float width, float max_height) const;
     void draw_explain_area(float width, float height);
     void draw_histogram();
     void draw_histogram_graph(const gui::StageHistogram& h, float avail_w);
