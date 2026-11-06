@@ -230,7 +230,7 @@ void space_before_section() {
     }
 }
 
-bool section_text(const char* text, const char* action) {
+bool section_text(const char* text, const char* action, bool* title_hovered) {
     // The title in the semi-bold face, small and quiet, with no rule under it: the headers name
     // groups, the controls beneath them are what the eye should land on. An optional action sits
     // at the right as plain muted text.
@@ -241,6 +241,9 @@ bool section_text(const char* text, const char* action) {
     ImGui::PushFont(loaded_fonts.semibold, section_size);
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted(text);
+    if (title_hovered != nullptr) {
+        *title_hovered = ImGui::IsItemHovered();
+    }
     ImGui::PopFont();
     if (action != nullptr) {
         ImGui::PushFont(loaded_fonts.regular, section_size);

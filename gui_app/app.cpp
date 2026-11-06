@@ -12,6 +12,7 @@
 #include "active_control.hpp"
 #include "imgui.h"
 #include "imgui_internal.h"  // ClearActiveID: Esc leaves a text field without undoing the typing
+#include "light_path.hpp"
 #include "macos_menu.hpp"
 #include "theme.hpp"
 #include "widgets.hpp"
@@ -2019,7 +2020,7 @@ void App::draw_strip_bands(ImDrawList* draw, ImVec2 at, ImVec2 shown) {
     }
 }
 
-// The Test strip toggle that sits beside Brightness, in Adjust and in the Exposure stage's row.
+// The Test strip toggle that sits beside Brightness, in Adjust.
 void App::draw_strip_button() {
     const bool on = strip_.has_value();
     const bool available = gui::strip_available(viewed_stage_);
@@ -2602,7 +2603,7 @@ void App::draw_panel() {
                        "value.");
     ImGui::PopStyleColor();
 
-    draw_pipeline();
+    draw_light_path_panel();
 }
 
 void App::draw_histogram() {
@@ -2902,20 +2903,10 @@ void App::draw_presets() {
     draw_recipe_line();
 }
 
+// One of the Adjust section's three sliders: it edits the same field as its stage's row, through
+// the same conversions, so the two always agree.
 void App::draw_simple_slider(const char* label, gui::SimpleControl control) {
-    draw_slider(label, control, false);
-}
-
-// One of Simple's three sliders, or (in_stage_row) the same slider in its stage's row in the
-// pipeline: both edit the same EditSettings field through the same conversions, so they always
-// agree. In a stage row the value is shown in its own units ("+0.70 stops"), and a stage that is
-// off is greyed out and cannot be moved.
-void App::draw_slider(const char* label, gui::SimpleControl control, bool in_stage_row) {
-    const gui::StageId stage = gui::stage_of(control);
-    // A stage that is off sits at 0 in both places, since that is what it does to the picture; its
-    // row's text still gives the value it will come back with.
     const gui::EditSettings& shown = session_.settings();
-    const bool enabled = !in_stage_row || gui::stage_enabled(shown, stage);
     const gui::SimpleControls positions = gui::simple_from(shown);
     const gui::SimpleOutOfRange beyond = gui::outside_simple_range(shown);
     float value = 0;
@@ -2936,54 +2927,27 @@ void App::draw_slider(const char* label, gui::SimpleControl control, bool in_sta
     }
 
     ImGui::PushID(label);
-    if (in_stage_row) {
-        gui::EditSettings stored = shown;
-        gui::set_stage_enabled(stored, stage, true);
-        std::string text = gui::stage_value_text(stored, stage);
-        if (!enabled) {
-            text += " when on";
-        }
-        // The value in the regular face at full strength; for a stage that is off, in the muted
-        // colour (which is checked for contrast) rather than the dimmed look of a disabled item.
-        if (!enabled) {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-        }
-        ImGui::TextUnformatted(text.c_str());
-        if (!enabled) {
-            ImGui::PopStyleColor();
-        }
-        if (custom) {
-            ImGui::SameLine();
-            ImGui::TextDisabled("(beyond the slider)");
-        }
-        if (control == gui::SimpleControl::brightness) {
-            ImGui::SameLine();
-            draw_strip_button();
-        }
-    } else {
-        if (control == gui::SimpleControl::brightness) {
-            ImGui::AlignTextToFramePadding();
-        }
-        ImGui::TextUnformatted(label);
-        if (control == gui::SimpleControl::brightness) {
-            ImGui::SameLine();
-            draw_strip_button();
-        }
-        if (custom) {
-            // Set beyond the slider's range (e.g. in Advanced mode): shown at its end until moved.
-            ImGui::SameLine();
-            ImGui::TextDisabled("(custom)");
-        }
-        // The value at the right end of the label's line rather than on the slider, where it would
-        // sit on top of the grab at 0.
-        char text[16];
-        std::snprintf(text, sizeof text, "%+.0f", static_cast<double>(value));
-        ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetCursorPosX() +
-                                                             ImGui::GetContentRegionAvail().x -
-                                                             ImGui::CalcTextSize(text).x));
-        ImGui::TextUnformatted(text);
+    if (control == gui::SimpleControl::brightness) {
+        ImGui::AlignTextToFramePadding();
     }
-    ImGui::BeginDisabled(!enabled);
+    ImGui::TextUnformatted(label);
+    if (control == gui::SimpleControl::brightness) {
+        ImGui::SameLine();
+        draw_strip_button();
+    }
+    if (custom) {
+        // Set beyond the slider's range: shown at its end until moved.
+        ImGui::SameLine();
+        ImGui::TextDisabled("(custom)");
+    }
+    // The value at the right end of the label's line rather than on the slider, where it would
+    // sit on top of the grab at 0.
+    char text[16];
+    std::snprintf(text, sizeof text, "%+.0f", static_cast<double>(value));
+    ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetCursorPosX() +
+                                                         ImGui::GetContentRegionAvail().x -
+                                                         ImGui::CalcTextSize(text).x));
+    ImGui::TextUnformatted(text);
     ImGui::SetNextItemWidth(-FLT_MIN);
     // Ctrl/Cmd-click still types a value.
     const bool changed =
@@ -2993,417 +2957,84 @@ void App::draw_slider(const char* label, gui::SimpleControl control, bool in_sta
     gui::apply_simple_control(edited, control, value);
     // A drag updates the preview every frame but becomes one undo step, on release.
     report(gui::apply_slider_frame(session_, frame, edited));
-    explain(in_stage_row ? gui::explain_id(stage) : gui::explain_id(control), changed);
+    explain(gui::explain_id(control), changed);
 
     if (ImGui::BeginPopupContextItem("reset")) {
-        const std::string neutral =
-            in_stage_row ? gui::stage_value_text(gui::EditSettings{}, stage) : "0";
-        if (ImGui::MenuItem(("Reset to " + neutral).c_str())) {
+        if (ImGui::MenuItem("Reset to 0")) {
             gui::EditSettings s = session_.settings();
             gui::apply_simple_control(s, control, 0);
             report(session_.set_settings(s));
         }
         ImGui::EndPopup();
     }
-    ImGui::EndDisabled();
     ImGui::PopID();
 }
 
-// The dots and percentages at the right of a stage's row: highlights above white, shadows with no
-// light, and colours outside sRGB, each hidden at 0. A filled dot means the stage clamped them (the
-// detail is gone), a hollow one that they are out of range but a later stage may still bring them
-// back. True if the mouse is over them (and their tooltip was shown).
-bool App::draw_stage_clip_indicator(const gui::StageClip& clip, ImVec2 row_min, ImVec2 row_max,
-                                    float baseline) {
-    if (!clips_ || !clip.ran) {
-        return false;
-    }
-    const Palette& colours = palette(theme());
-    const float s = ui_scale();
-    ImDrawList* draw = ImGui::GetWindowDrawList();
-    const std::uint64_t total = clips_->sample_count;
+void App::draw_light_path_panel() {
+    const std::string file_kind = gui::file_kind_label(session_.path());
+    LightPathData data;
+    data.view = gui::light_path_view({session_.settings(), session_.kind(), file_kind,
+                                      viewed_stage_, compare_stage_,
+                                      clips_ ? &*clips_ : nullptr});
+    data.theme = theme();
+    data.strip_on = strip_.has_value();
+    data.strip_available = gui::strip_available(viewed_stage_);
+    data.strip_hint = gui::strip_unavailable_hint();
 
-    struct Mark {
-        const gui::ClipCounts* counts;
-        gui::ClipFate fate;
-        ImU32 colour;
-        const char* what;
-        const char* recoverable_note;  // nullptr: the general wording
-        const char* lost_note;
+    LightPathCallbacks cb;
+    cb.view_stage = [this](gui::StageId stage) { viewed_stage_ = stage; };
+    cb.set_stage_on = [this](gui::StageId stage, bool on) {
+        gui::EditSettings s = session_.settings();
+        gui::set_stage_enabled(s, stage, on);
+        report(session_.set_settings(s));  // one undo step in History
     };
-    const Mark marks[] = {
-        {&clip.over, clip.over_fate, colours.clip_highlights_fill,
-         clip.stage == gui::StageId::decode ? "Highlights at white" : "Highlights above white",
-         nullptr, nullptr},
-        {&clip.under, clip.under_fate, colours.clip_shadows_fill, "Shadows below black", nullptr,
-         nullptr},
-        {&clip.gamut, clip.gamut_fate, colours.clip_gamut_fill, "Colours outside sRGB",
-         "Colours more saturated than the screen and file can show. They get clipped later and "
-         "their hue can shift.",
-         "Clipped here: these colours were more saturated than the screen and file can show, so "
-         "their hue can shift."},
+    cb.slider = [this](gui::SimpleControl control, float position, const gui::SliderFrame& frame) {
+        gui::EditSettings edited = session_.settings();
+        gui::apply_simple_control(edited, control, position);
+        // A drag updates the preview every frame but becomes one undo step, on release.
+        report(gui::apply_slider_frame(session_, frame, edited));
     };
-
-    const float radius = token_metrics().dot_radius;
-    const float gap = token_metrics().dot_gap;
-    const float between = token_metrics().dot_between;
-    const float inset = token_metrics().dot_inset;
-    ImGui::PushFont(nullptr, token_type().small);
-    // The percentages stand on the row name's baseline, and the dots are centred on the height of
-    // their digits.
-    const float text_top = baseline - ImGui::GetFontBaked()->Ascent;
-    const float cy = baseline - ImGui::GetFontSize() * 0.36f;
-    float right = row_max.x - inset;
-    float left = right;
-    // Drawn right to left (the last in the array is first here), so highlights end up on the left
-    // and the percentages line up across rows.
-    for (int i = 2; i >= 0; --i) {
-        const Mark& m = marks[i];
-        if (m.fate == gui::ClipFate::none) {
-            continue;
-        }
-        const std::string text = gui::format_clip_percent(m.counts->any, total);
-        const ImVec2 size = ImGui::CalcTextSize(text.c_str());
-        const float text_x = right - size.x;
-        draw->AddText(ImVec2(text_x, text_top), ImGui::GetColorU32(ImGuiCol_Text),
-                      text.c_str());
-        const ImVec2 centre(text_x - gap - radius, cy);
-        if (m.fate == gui::ClipFate::lost) {
-            draw->AddCircleFilled(centre, radius, m.colour);
-        } else {
-            draw->AddCircle(centre, radius - 0.75f * s, m.colour, 0, 1.75f * s);
-        }
-        left = centre.x - radius;
-        right = left - between;
-    }
-    ImGui::PopFont();
-    if (left >= row_max.x - inset) {
-        return false;  // nothing drawn
-    }
-
-    const bool hovered = ImGui::IsMouseHoveringRect(ImVec2(left - 4.0f * s, row_min.y),
-                                                    ImVec2(row_max.x, row_max.y)) &&
-                         ImGui::IsWindowHovered();
-    // The same delay as every tooltip: the mouse must rest on this row's dots. (They are not an
-    // item of their own, so ImGui's own hover timer can't be used.)
-    if (!hovered && dot_hover_stage_ == clip.stage) {
-        dot_hover_stage_.reset();
-    } else if (hovered && dot_hover_stage_ != clip.stage) {
-        dot_hover_stage_ = clip.stage;
-        dot_hover_since_ = ImGui::GetTime();
-    }
-    if (hovered && ImGui::GetTime() - dot_hover_since_ >= ImGui::GetStyle().HoverDelayNormal) {
-        ImGui::BeginTooltip();
-        for (const Mark& m : marks) {
-            if (m.fate == gui::ClipFate::none) {
-                continue;
-            }
-            ImGui::Text("%s: %s of pixels", m.what,
-                        gui::format_clip_percent(m.counts->any, total).c_str());
-            const char* note =
-                m.fate != gui::ClipFate::lost
-                    ? (m.recoverable_note ? m.recoverable_note
-                                          : "Out of range, but a later stage may still bring them "
-                                            "back.")
-                : m.lost_note ? m.lost_note
-                : clip.stage == gui::StageId::decode
-                    ? "Already clipped in the file: no edit can bring them back."
-                    : "Clipped here: this stage cut them off, so the detail is gone.";
-            ImGui::PushTextWrapPos(token_metrics().tooltip_wrap);
-            ImGui::TextDisabled("%s", note);
-            ImGui::PopTextWrapPos();
-        }
-        ImGui::Separator();
-        ImGui::TextDisabled("Filled dot: detail lost here.  Hollow dot: still recoverable.");
-        ImGui::TextDisabled("Orange: above white.  Blue: below black.");
-        ImGui::TextDisabled("Violet: too saturated for sRGB.");
-        ImGui::EndTooltip();
-    }
-    return hovered;
-}
-
-// One plain line under the pipeline view about where clipping starts and where it costs detail.
-void App::draw_clipping_summary() {
-    if (!clips_ || strip_ || !session_.has_file()) {
-        return;
-    }
-    ImGui::Spacing();
-    ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextUnformatted(gui::describe_clipping(*clips_).c_str());
-    explain(gui::explain::clip_summary);
-    const bool hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal);
-    const std::string gamut = gui::describe_gamut(*clips_);
-    if (!gamut.empty()) {
-        ImGui::Spacing();
-        ImGui::TextUnformatted(gamut.c_str());
-    }
-    ImGui::PopTextWrapPos();
-    if (hovered) {
-        ImGui::SetTooltip("%s", std::string(gui::explanation_for(gui::explain::clip_summary)->summary).c_str());
-    }
-}
-
-// The colour matrix's file name, "recipe matrix", or "none". Read-only: a matrix comes from a
-// recipe.
-void App::draw_matrix_name() {
-    const gui::EditSettings& s = session_.settings();
-    const std::string text = gui::stage_value_text(s, gui::StageId::matrix);
-    const auto measure = [](std::string_view t) {
-        return ImGui::CalcTextSize(t.data(), t.data() + t.size()).x;
+    cb.reset_slider = [this](gui::SimpleControl control) {
+        gui::EditSettings s = session_.settings();
+        gui::apply_simple_control(s, control, 0);
+        report(session_.set_settings(s));
     };
-    const bool dim = !s.matrix || !s.matrix_on;
-    if (dim) {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-    }
-    ImGui::TextUnformatted(
-        gui::ellipsize_middle(text, ImGui::GetContentRegionAvail().x, measure).c_str());
-    if (dim) {
-        ImGui::PopStyleColor();
-    }
-    if (s.matrix && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
-        ImGui::SetTooltip("%s", s.matrix->path.empty() ? "From a recipe that names no file."
-                                                       : utf8(s.matrix->path).c_str());
-    }
-}
-
-// The tone curve's kind and its one number (gamma, or Reinhard's white point). A change of kind is
-// one undo step; the number is a slider like the others. Greyed out and fixed while the stage is
-// off.
-void App::draw_curve_controls() {
-    const gui::EditSettings& current = session_.settings();
-    ImGui::BeginDisabled(!current.curve_on);
-
-    ImGui::SetNextItemWidth(-FLT_MIN);
-    if (styled_begin_combo("##curve", std::string(gui::curve_kind_name(current.curve)).c_str())) {
-        for (const gui::CurveKind kind : gui::curve_kinds) {
-            if (ImGui::Selectable(std::string(gui::curve_kind_name(kind)).c_str(),
-                                  kind == current.curve)) {
-                gui::EditSettings s = current;
-                gui::set_curve_kind(s, kind);
-                report(session_.set_settings(s));
-            }
-            explain(gui::explain_id(kind));
-        }
-        ImGui::EndCombo();
-    }
-    explain(gui::explain_id(gui::StageId::curve));
-    if (ImGui::BeginPopupContextItem("reset_kind")) {
-        if (ImGui::MenuItem("Reset to None")) {
-            gui::EditSettings s = current;
-            gui::set_curve_kind(s, gui::CurveKind::none);
+    cb.set_curve_kind = [this](gui::CurveKind kind) {
+        gui::EditSettings s = session_.settings();
+        gui::set_curve_kind(s, kind);
+        report(session_.set_settings(s));
+    };
+    cb.curve_parameter = [this](float value, const gui::SliderFrame& frame) {
+        gui::EditSettings edited = session_.settings();
+        gui::set_curve_parameter(edited, value);
+        report(gui::apply_slider_frame(session_, frame, edited));
+    };
+    cb.reset_curve_parameter = [this] {
+        gui::EditSettings s = session_.settings();
+        if (const std::optional<gui::CurveParameter> p = gui::curve_parameter(s.curve)) {
+            gui::set_curve_parameter(s, p->default_value);
             report(session_.set_settings(s));
         }
-        ImGui::EndPopup();
-    }
-
-    if (const std::optional<gui::CurveParameter> p = gui::curve_parameter(current.curve)) {
-        // Label and value on their own line, as for Simple's sliders, not on top of the grab. The
-        // slider moves a position (gui_core maps it to the value, in ratios for Reinhard), so it
-        // takes no typed input: that would be a position, not the value.
-        const float value = gui::curve_parameter_value(current);
-        // Text keeps its full alpha even while the controls are disabled, in the muted colour.
-        ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 1.0f);
-        if (!current.curve_on) {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    };
+    cb.toggle_strip = [this] { toggle_test_strip(); };
+    cb.set_compare = [this](std::optional<gui::StageId> stage) {
+        compare_stage_ = stage;
+        if (stage) {
+            strip_.reset();  // a comparison and a strip don't mix
         }
-        ImGui::TextUnformatted(std::string(p->label).c_str());
-        char text[16];
-        std::snprintf(text, sizeof text, "%.2f", static_cast<double>(value));
-        ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetCursorPosX() +
-                                                             ImGui::GetContentRegionAvail().x -
-                                                             ImGui::CalcTextSize(text).x));
-        ImGui::TextUnformatted(text);
-        if (!current.curve_on) {
-            ImGui::PopStyleColor();
+    };
+    cb.swap_compare = [this] {
+        if (const std::optional<gui::StageId> shown =
+                gui::effective_compare(viewed_stage_, compare_stage_)) {
+            compare_stage_ = viewed_stage_;
+            viewed_stage_ = *shown;
+            strip_.reset();
         }
-        ImGui::PopStyleVar();
-        float position = gui::curve_slider_position(*p, value);
-        ImGui::SetNextItemWidth(-FLT_MIN);
-        const bool changed =
-            styled_slider("##curve_parameter", &position, 0.0f, 1.0f,
-                          gui::curve_slider_position(*p, p->default_value),
-                          ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput);
-        const gui::SliderFrame frame{ImGui::IsItemActivated(), changed, ImGui::IsItemDeactivated()};
-        gui::EditSettings edited = current;
-        // Unmoved, the value stays exactly as stored rather than going through the mapping.
-        gui::set_curve_parameter(edited, changed ? gui::curve_value_at(*p, position) : value);
-        report(gui::apply_slider_frame(session_, frame, edited));
-        explain(current.curve == gui::CurveKind::gamma ? gui::explain::curve_gamma_value
-                                                       : gui::explain::curve_white,
-                changed);
-        if (ImGui::BeginPopupContextItem("reset_parameter")) {
-            char neutral[16];
-            std::snprintf(neutral, sizeof neutral, "Reset to %g",
-                          static_cast<double>(p->default_value));
-            if (ImGui::MenuItem(neutral)) {
-                gui::EditSettings s = session_.settings();
-                gui::set_curve_parameter(s, p->default_value);
-                report(session_.set_settings(s));
-            }
-            ImGui::EndPopup();
-        }
-    }
-    ImGui::EndDisabled();
-}
-
-// "Compare with": Off, Original or a stage, and Swap. The viewed stage is the right half of the
-// split, the chosen one the left half. Choosing the viewed stage itself is the same as Off.
-void App::draw_compare_controls() {
-    const std::optional<gui::StageId> shown = gui::effective_compare(viewed_stage_, compare_stage_);
-    const float swap_width =
-        ImGui::CalcTextSize("Swap").x + ImGui::GetStyle().FramePadding.x * 2;
-    // Swap on the label's row, right-aligned, so the combo below has the whole width and a name
-    // like "after Output encode" fits.
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted("Compare with");
-    ImGui::SameLine(ImGui::GetContentRegionMax().x - swap_width);
-    ImGui::BeginDisabled(!shown);
-    if (ImGui::Button("Swap") && shown) {
-        const gui::StageId was_viewed = viewed_stage_;
-        viewed_stage_ = *shown;
-        compare_stage_ = was_viewed;
-        strip_.reset();
-    }
-    ImGui::EndDisabled();
-    describe(gui::explain::compare_swap);
-    ImGui::SetNextItemWidth(-FLT_MIN);
-    const std::string current = shown ? gui::stage_caption(*shown) : std::string("Off");
-    if (styled_begin_combo("##compare_with", current.c_str())) {
-        if (ImGui::Selectable("Off", !shown)) {
-            compare_stage_.reset();
-        }
-        for (const gui::StageInfo& stage : gui::pipeline_stages()) {
-            const bool is_viewed = stage.id == viewed_stage_;
-            const std::string caption = gui::stage_caption(stage.id);
-            if (ImGui::Selectable(caption.c_str(), shown == stage.id)) {
-                if (is_viewed) {
-                    compare_stage_.reset();  // comparing a stage with itself: Off
-                } else {
-                    compare_stage_ = stage.id;
-                    strip_.reset();  // a comparison and a strip don't mix
-                }
-            }
-        }
-        ImGui::EndCombo();
-    }
-    describe(gui::explain::compare);
-}
-
-void App::draw_pipeline() {
-    // The per-stage clipping is only worked out while this section is open.
-    section_header("Pipeline", &pipeline_open_);
-    if (!pipeline_open_) {
-        return;
-    }
-    draw_compare_controls();
-    if (strip_) {
-        ImGui::TextDisabled("Test strip on: the clipping dots are hidden.");
-    }
-
-    const ImGuiStyle& style = ImGui::GetStyle();
-    const float row_h = ImGui::GetFrameHeight();
-    const float box = switch_size().x;
-    // The name starts after the switch (or the gap where there is none); what hangs under it, the
-    // value and its control, lines up with it.
-    const float inset = style.ItemInnerSpacing.x;
-    const float name_indent = inset + box + style.ItemInnerSpacing.x;
-    for (const gui::StageInfo& stage : gui::pipeline_stages()) {
-        ImGui::PushID(static_cast<int>(stage.id));
-        const bool enabled = gui::stage_enabled(session_.settings(), stage.id);
-        const bool selected = viewed_stage_ == stage.id;
-
-        // The row is one hit area across the panel's width, drawn with its own highlight so that
-        // it covers the switch too; the switch, submitted over it, takes its own clicks.
-        const ImVec2 row_pos = ImGui::GetCursorScreenPos();
-        const float row_w = ImGui::GetContentRegionAvail().x;
-        ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0, 0, 0, 0));
-        ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0, 0, 0, 0));
-        ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(0, 0, 0, 0));
-        ImGui::SetNextItemAllowOverlap();
-        if (ImGui::Selectable("##row", selected, ImGuiSelectableFlags_AllowOverlap,
-                              ImVec2(0.0f, row_h))) {
-            viewed_stage_ = stage.id;
-        }
-        ImGui::PopStyleColor(3);
-        const ImVec2 row_min = ImGui::GetItemRectMin();
-        const ImVec2 row_max = ImVec2(row_pos.x + row_w, row_pos.y + row_h);
-        const bool row_over =
-            ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(row_min, row_max);
-        if (selected || row_over) {
-            const gui::TokenColours& tokens = token_colours();
-            const gui::Rgba& fill = selected ? tokens.control_active : tokens.control_hovered;
-            ImGui::GetWindowDrawList()->AddRectFilled(
-                row_min, row_max, ImGui::GetColorU32(ImVec4(fill.r, fill.g, fill.b, fill.a)),
-                style.FrameRounding);
-        }
-        const bool row_hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal);
-        explain(gui::explain_id(stage.id));
-
-        ImGui::SetCursorScreenPos(ImVec2(
-            row_pos.x + inset, row_pos.y + std::round((row_h - switch_size().y) * 0.5f)));
-        if (stage.can_toggle) {
-            bool on = enabled;
-            if (styled_switch("##on", &on)) {
-                gui::EditSettings s = session_.settings();
-                gui::set_stage_enabled(s, stage.id, on);
-                report(session_.set_settings(s));  // one undo step in History
-            }
-            describe(gui::explain_id(stage.id));
-        } else {
-            ImGui::Dummy(ImVec2(box, row_h));
-        }
-        // Back to the row's top: the switch is centred lower than the name's line starts.
-        ImGui::SetCursorScreenPos(
-            ImVec2(row_pos.x + inset + box + style.ItemInnerSpacing.x, row_pos.y));
-
-        // The name in the semi-bold face, in the muted colour when the stage is off.
-        std::string name(stage.name);
-        if (!enabled) {
-            name += " (off)";
-            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-        }
-        ImGui::PushFont(fonts().semibold, token_type().body);
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted(name.c_str());
-        // Where the name's letters sit: the dots and percentages at the row's right share it.
-        const float name_baseline = ImGui::GetItemRectMin().y + ImGui::GetFontBaked()->Ascent;
-        ImGui::PopFont();
-        if (!enabled) {
-            ImGui::PopStyleColor();
-        }
-
-        const bool over_indicator =
-            clips_ && !strip_ && draw_stage_clip_indicator(clips_->at(stage.id), row_min, row_max, name_baseline);
-        if (over_indicator) {
-            explain_hover_ = std::string(gui::explain::clip_dot);
-        } else if (row_hovered) {
-            ImGui::SetTooltip("%s",
-                              std::string(gui::explanation_for(gui::explain_id(stage.id))->summary).c_str());
-        }
-        if (gui::hidden_by_view(session_.settings(), stage.id, viewed_stage_, compare_stage_)) {
-            // An edit after the viewed stage changes the photo but not what is on screen.
-            ImGui::Indent(name_indent);
-            ImGui::PushTextWrapPos(0.0f);
-            ImGui::TextDisabled("%s", gui::view_hint(viewed_stage_, compare_stage_).c_str());
-            ImGui::PopTextWrapPos();
-            ImGui::Unindent(name_indent);
-        }
-        if (const std::optional<gui::SimpleControl> slider = gui::stage_slider(stage.id)) {
-            ImGui::Indent(name_indent);
-            draw_slider(std::string(stage.slug).c_str(), *slider, true);
-            ImGui::Unindent(name_indent);
-        } else if (stage.id == gui::StageId::matrix || stage.id == gui::StageId::curve) {
-            ImGui::Indent(name_indent);
-            if (stage.id == gui::StageId::matrix) {
-                draw_matrix_name();
-            } else {
-                draw_curve_controls();
-            }
-            ImGui::Unindent(name_indent);
-        }
-        ImGui::PopID();
-    }
-    draw_clipping_summary();
+    };
+    cb.explain = [this](std::string_view id, bool changed) { explain(id, changed); };
+    cb.describe = [this](std::string_view id) { describe(id); };
+    cb.hover = [this](std::string_view id) { explain_hover_ = std::string(id); };
+    draw_light_path(data, cb);
 }
 
 void App::draw_status_bar(float height) {

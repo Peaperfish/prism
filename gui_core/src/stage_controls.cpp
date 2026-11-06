@@ -177,24 +177,6 @@ bool stage_after_view(StageId stage, StageId viewed, std::optional<StageId> comp
     return static_cast<int>(stage) > static_cast<int>(furthest_shown(viewed, compare));
 }
 
-bool hidden_by_view(const EditSettings& s, StageId stage, StageId viewed,
-                    std::optional<StageId> compare) {
-    if (static_cast<int>(stage) <= static_cast<int>(furthest_shown(viewed, compare)) ||
-        !stage_enabled(s, stage)) {
-        return false;
-    }
-    switch (stage) {
-        case StageId::exposure: return s.exposure_stops != 0.0f;
-        case StageId::matrix: return s.matrix && s.matrix->values != identity_matrix;
-        case StageId::saturation: return s.saturation != 1.0f;
-        case StageId::contrast: return s.contrast != 1.0f;
-        case StageId::curve: return s.curve != CurveKind::none;
-        case StageId::decode:
-        case StageId::encode: return false;
-    }
-    return false;
-}
-
 std::string view_hint(StageId viewed, std::optional<StageId> compare) {
     if (effective_compare(viewed, compare)) {
         return "Not visible here: the furthest stage shown is after " +

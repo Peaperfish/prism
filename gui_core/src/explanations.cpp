@@ -180,8 +180,12 @@ constexpr Explanation templates[] = {
      LiveKind::clip_note},
 
     // --- Compare and the viewed stage --------------------------------------------------------
+    {"light_path", "Every stage the light goes through, in order.",
+     "Click a row to see the picture after that stage. Right-click a slider to reset it. "
+     "Ctrl-click (Cmd-click on Mac) to type a value.",
+     LiveKind::none},
     {"compare", "Show two points in the pipeline side by side.",
-     "The stage you click in the list is the right half; “Compare with” picks the left half. "
+     "The stage you click in the Light path is the right half; Compare picks the left half. "
      "Original is the file before any edit.",
      LiveKind::compare},
     {"compare.swap", "Swap the two halves.",
@@ -244,14 +248,15 @@ constexpr Explanation templates[] = {
 
 // Ids that have no enum of their own: the controls the window shows beyond the stages, Simple's
 // sliders, the curve kinds, the scopes and the presets.
-constexpr std::array<std::string_view, 33> other_ids{
+constexpr std::array<std::string_view, 34> other_ids{
     explain::look,         explain::look_reset,   explain::look_view_recipe,
     explain::recipe_load,  explain::recipe_save,
     explain::recipe_loaded, explain::recipe_name, explain::recipe_description,
     explain::curve_white,  explain::curve_gamma_value,
     explain::scope_skin,   explain::chip_over,    explain::chip_under,  explain::clip_overlay,
     explain::clip_dot,     explain::clip_summary, explain::clip_note,   explain::compare,
-    explain::compare_swap, explain::viewing,      explain::strip,       explain::strip_line,
+    explain::compare_swap, explain::viewing,      explain::light_path,  explain::strip,
+    explain::strip_line,
     explain::view_zoom,    explain::view_fit,     explain::view_actual,
     explain::sample,       explain::sample_values, explain::sample_light, explain::sample_range,
     explain::pref_theme,   explain::pref_size,    explain::pref_panel,  explain::pref_explain,

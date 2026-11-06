@@ -45,9 +45,9 @@ struct TokenColours {
     Rgba control_border;
     // The one coloured thing: the Export button and the viewed stage's dot. accent_active is its
     // hovered and pressed colour; accent_ring is the viewed dot's border (the accent itself in
-    // Dark, darker in Light, where the accent is too pale for 3:1 on the panel); text_on_accent is
-    // the label on the Export button.
-    Rgba accent, accent_active, accent_ring, text_on_accent;
+    // Dark, darker in Light, where the accent is too pale for 3:1 on the panel), accent_glow the
+    // soft halo around it; text_on_accent is the label on the Export button.
+    Rgba accent, accent_active, accent_ring, accent_glow, text_on_accent;
     // Sliders and switches: the empty track, the filled part (and a switch that is on), the
     // thumb's border, the rail the stage dots sit on, and the wash behind the viewed stage's row.
     Rgba track, fill, thumb_border, rail, view_bg;

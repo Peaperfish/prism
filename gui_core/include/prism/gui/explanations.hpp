@@ -115,6 +115,7 @@ inline constexpr std::string_view clip_note = "clip.note";
 inline constexpr std::string_view compare = "compare";
 inline constexpr std::string_view compare_swap = "compare.swap";
 inline constexpr std::string_view viewing = "viewing";
+inline constexpr std::string_view light_path = "light_path";
 inline constexpr std::string_view strip = "strip";
 inline constexpr std::string_view strip_line = "strip.line";
 inline constexpr std::string_view view_zoom = "view.zoom";

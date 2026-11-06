@@ -14,14 +14,17 @@ namespace prism::gui_app {
 
 // A thin track with the fill colour from `neutral` to the value, a centre tick when `neutral` is
 // inside the range, and a white round thumb. `neutral` is
-// the value that does nothing (0 for brightness, the default for a curve parameter), so the fill
-// does not always start at the left end. Like ImGui::SliderFloat with an empty format; the item
+// the value that does nothing (0 for Exposure's position, the left end for a curve's number), so
+// the fill does not always start at the left end. Like ImGui::SliderFloat with an empty format; the item
 // is the last item afterwards (IsItemActivated, BeginPopupContextItem...). Set the width first
 // with SetNextItemWidth.
 bool styled_slider(const char* id, float* value, float min, float max, float neutral,
                    ImGuiSliderFlags flags = 0);
 bool styled_slider_int(const char* id, int* value, int min, int max, int neutral,
                        ImGuiSliderFlags flags = 0);
+
+// A slider's height with the current font.
+[[nodiscard]] float slider_height();
 
 // A small rounded box, vertically centred on its label (or alone, for an empty or "##" label):
 // the frame colour with an outline when off, the accent with a white tick when on. Like
@@ -43,9 +46,13 @@ bool styled_switch(const char* id, bool* value);
 // Tab move focus between them, Space and Enter select). The text size is the same in both states
 // and the tab widths never depend on the state, so nothing reflows. Returns true when another tab
 // was chosen (*current is set). `after_item(i)` is called right after tab i is submitted, so the
-// caller can hook the last item (explain, tooltips). The row takes the available width.
+// caller can hook the last item (explain, tooltips). The row takes `width`, or the available width
+// if that is 0.
 bool segmented(const char* id, std::span<const char* const> labels, int* current,
-               const std::function<void(int)>& after_item = {});
+               const std::function<void(int)>& after_item = {}, float width = 0.0f);
+
+// The height of a segmented control: its tabs and the well's padding.
+[[nodiscard]] float segmented_height();
 
 // The same, round, with a dot: ImGui::RadioButton.
 bool styled_radio(const char* label, int* current, int value);

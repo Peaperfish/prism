@@ -29,22 +29,29 @@ foreach(face Regular SemiBold)
 endforeach()
 configure_file(fonts.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/fonts.cpp @ONLY)
 
+# What can be drawn without the app or a window, in a library of its own so that
+# prism_gui_app_tests can drive it with a headless ImGui.
+add_library(prism_gui_panels STATIC
+  active_control.cpp
+  ${CMAKE_CURRENT_BINARY_DIR}/fonts.cpp
+  light_path.cpp
+  theme.cpp
+  widgets.cpp)
+target_include_directories(prism_gui_panels PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(prism_gui_panels PUBLIC prism_gui_core imgui PRIVATE prism_warnings)
+
 # WIN32: a Windows GUI program, started without a console window. SDL_main.h still gives main()
 # UTF-8 arguments (main.cpp). MACOSX_BUNDLE: on macOS it is Prism.app (see below).
 add_executable(prism_gui WIN32 MACOSX_BUNDLE
-  active_control.cpp
   app.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/about_info.cpp
-  ${CMAKE_CURRENT_BINARY_DIR}/fonts.cpp
   file_dialogs.cpp
   main.cpp
   preview_texture.cpp
-  scope_view.cpp
-  theme.cpp
-  widgets.cpp)
+  scope_view.cpp)
 target_include_directories(prism_gui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-target_link_libraries(prism_gui PRIVATE prism_gui_core imgui SDL3::SDL3 prism_warnings)
+target_link_libraries(prism_gui PRIVATE prism_gui_panels prism_gui_core imgui SDL3::SDL3 prism_warnings)
 
 # The placeholder icon, drawn by the build (packaging/make_icon.cpp): no image file in the repo.
 add_executable(prism_make_icon ${PROJECT_SOURCE_DIR}/packaging/make_icon.cpp)

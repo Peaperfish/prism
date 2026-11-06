@@ -1,9 +1,11 @@
 #include <gtest/gtest.h>
 
-#include <array>
-#include <cmath>
+#include <cstddef>
 #include <filesystem>
+#include <iterator>
 #include <optional>
+#include <string>
+#include <vector>
 
 #include "prism/gui/explanations.hpp"
 #include "prism/gui/light_path.hpp"

@@ -302,38 +302,15 @@ TEST(StageCurve, GammaSliderIsLinearAndRoundTrips) {
 
 // --- Viewing vs. editing ---------------------------------------------------------------------
 
-TEST(StageHint, OnlyLaterNonNeutralStagesThatAreOnAreHidden) {
-    EditSettings s;
-    for (const auto& info : prism::gui::pipeline_stages()) {
-        EXPECT_FALSE(prism::gui::hidden_by_view(s, info.id, StageId::decode)) << info.slug;
+TEST(StageHint, OnlyStagesAfterTheViewedOneAreAfterTheView) {
+    const auto& stages = prism::gui::pipeline_stages();
+    for (const auto& viewed : stages) {
+        for (const auto& info : stages) {
+            EXPECT_EQ(prism::gui::stage_after_view(info.id, viewed.id),
+                      static_cast<int>(info.id) > static_cast<int>(viewed.id))
+                << info.slug << " viewing " << viewed.slug;
+        }
     }
-    s.saturation = 1.3f;
-    EXPECT_TRUE(prism::gui::hidden_by_view(s, StageId::saturation, StageId::exposure));
-    EXPECT_TRUE(prism::gui::hidden_by_view(s, StageId::saturation, StageId::matrix));
-    EXPECT_FALSE(prism::gui::hidden_by_view(s, StageId::saturation, StageId::saturation));
-    EXPECT_FALSE(prism::gui::hidden_by_view(s, StageId::saturation, StageId::contrast));
-    EXPECT_FALSE(prism::gui::hidden_by_view(s, StageId::saturation, StageId::encode));
-    EXPECT_FALSE(prism::gui::hidden_by_view(s, StageId::contrast, StageId::exposure));  // neutral
-
-    s.saturation_on = false;
-    EXPECT_FALSE(prism::gui::hidden_by_view(s, StageId::saturation, StageId::exposure));
-}
-
-TEST(StageHint, CoversExposureMatrixContrastAndCurveToo) {
-    EditSettings s;
-    s.exposure_stops = 1.0f;
-    s.contrast = 1.2f;
-    s.curve = CurveKind::filmic;
-    EXPECT_TRUE(prism::gui::hidden_by_view(s, StageId::exposure, StageId::decode));
-    EXPECT_TRUE(prism::gui::hidden_by_view(s, StageId::contrast, StageId::saturation));
-    EXPECT_TRUE(prism::gui::hidden_by_view(s, StageId::curve, StageId::contrast));
-    EXPECT_FALSE(prism::gui::hidden_by_view(s, StageId::curve, StageId::curve));
-
-    s.matrix = prism::gui::MatrixFile{"identity.txt", prism::identity_matrix};
-    EXPECT_FALSE(prism::gui::hidden_by_view(s, StageId::matrix, StageId::exposure));
-    s.matrix->values[0] = 0.5f;
-    EXPECT_TRUE(prism::gui::hidden_by_view(s, StageId::matrix, StageId::exposure));
-    EXPECT_FALSE(prism::gui::hidden_by_view(s, StageId::decode, StageId::decode));
 }
 
 TEST(StageHint, Text) {
@@ -344,28 +321,24 @@ TEST(StageHint, Text) {
 }
 
 TEST(StageHint, WhileComparingTheFurthestStageShownDecides) {
-    EditSettings s;
-    s.exposure_stops = 1.0f;
-    s.saturation = 1.3f;
-    s.contrast = 1.2f;
-    // Viewing Exposure, comparing with Output encode: everything is shown, nothing is hidden.
+    // Viewing Exposure, comparing with Output encode: everything is shown.
     for (const auto& info : prism::gui::pipeline_stages()) {
-        EXPECT_FALSE(prism::gui::hidden_by_view(s, info.id, StageId::exposure, StageId::encode));
+        EXPECT_FALSE(prism::gui::stage_after_view(info.id, StageId::exposure, StageId::encode));
     }
     // Compare with Saturation: Contrast is after both pictures, Saturation is not.
-    EXPECT_FALSE(prism::gui::hidden_by_view(s, StageId::saturation, StageId::exposure,
-                                            StageId::saturation));
-    EXPECT_TRUE(prism::gui::hidden_by_view(s, StageId::contrast, StageId::exposure,
-                                           StageId::saturation));
+    EXPECT_FALSE(prism::gui::stage_after_view(StageId::saturation, StageId::exposure,
+                                              StageId::saturation));
+    EXPECT_TRUE(prism::gui::stage_after_view(StageId::contrast, StageId::exposure,
+                                             StageId::saturation));
     // A compare stage before the viewed one changes nothing: the viewed stage is the furthest.
-    EXPECT_TRUE(prism::gui::hidden_by_view(s, StageId::contrast, StageId::saturation,
-                                           StageId::decode));
-    EXPECT_FALSE(prism::gui::hidden_by_view(s, StageId::saturation, StageId::saturation,
-                                            StageId::decode));
+    EXPECT_TRUE(prism::gui::stage_after_view(StageId::contrast, StageId::saturation,
+                                             StageId::decode));
+    EXPECT_FALSE(prism::gui::stage_after_view(StageId::saturation, StageId::saturation,
+                                              StageId::decode));
     // The viewed stage as compare, and Off, are the old rule.
-    EXPECT_TRUE(prism::gui::hidden_by_view(s, StageId::saturation, StageId::exposure,
-                                           StageId::exposure));
-    EXPECT_TRUE(prism::gui::hidden_by_view(s, StageId::saturation, StageId::exposure));
+    EXPECT_TRUE(prism::gui::stage_after_view(StageId::saturation, StageId::exposure,
+                                             StageId::exposure));
+    EXPECT_TRUE(prism::gui::stage_after_view(StageId::saturation, StageId::exposure));
     EXPECT_EQ(prism::gui::furthest_shown(StageId::exposure, StageId::curve), StageId::curve);
     EXPECT_EQ(prism::gui::furthest_shown(StageId::curve, StageId::exposure), StageId::curve);
     EXPECT_EQ(prism::gui::furthest_shown(StageId::matrix), StageId::matrix);

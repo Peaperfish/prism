@@ -98,13 +98,6 @@ void set_curve_parameter(EditSettings& s, float value);
 [[nodiscard]] bool stage_after_view(StageId stage, StageId viewed,
                                     std::optional<StageId> compare = {}) noexcept;
 
-// True when `stage` changes the photo but comes after the furthest stage on screen (`viewed`, or
-// `compare` if that is later), so no picture shows it: the stage is on and not neutral
-// (exposure 0, saturation 1, contrast 1, no matrix or identity matrix, no curve). Stages up to and
-// including that one are never hidden, and Decode and Output encode never are.
-[[nodiscard]] bool hidden_by_view(const EditSettings& s, StageId stage, StageId viewed,
-                                  std::optional<StageId> compare = {});
-
 // "Not visible here: you're viewing after Exposure." While comparing, the same for the furthest
 // stage shown: "Not visible here: the furthest stage shown is after Exposure."
 [[nodiscard]] std::string view_hint(StageId viewed, std::optional<StageId> compare = {});

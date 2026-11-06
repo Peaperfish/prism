@@ -172,7 +172,7 @@ private:
     void draw_strip_bands(ImDrawList* draw, ImVec2 at, ImVec2 shown);
     // Makes the histogram and scopes those of band `band` of the frame on screen.
     void show_strip_band(int band);
-    // The Test strip button of the Brightness slider (Adjust and the Exposure stage row).
+    // The Test strip button of the Brightness slider, in Adjust.
     void draw_strip_button();
     void draw_stage_badge();
     // True while the canvas shows two halves: a compare stage is set and its picture has arrived.
@@ -204,17 +204,10 @@ private:
     void draw_clip_overlay_button();
     void toggle_clip_overlay();
     void update_clip_overlay_texture();
-    // `baseline` is the screen y of the row name's baseline.
-    bool draw_stage_clip_indicator(const gui::StageClip& clip, ImVec2 row_min, ImVec2 row_max,
-                                   float baseline);
-    void draw_clipping_summary();
     void draw_presets();
     void draw_simple_slider(const char* label, gui::SimpleControl control);
-    void draw_slider(const char* label, gui::SimpleControl control, bool in_stage_row);
-    void draw_matrix_name();
-    void draw_curve_controls();
-    void draw_compare_controls();
-    void draw_pipeline();
+    // The Light path section: its data and callbacks, for draw_light_path to draw.
+    void draw_light_path_panel();
     void draw_status_bar(float height);
     // The clipping note at the right end of the status bar (#31); `width` is the room it may use.
     void draw_clip_note(float width);
@@ -262,9 +255,6 @@ private:
     std::optional<gui::ClipNote> clip_note_;
     std::optional<gui::ClipReport> note_report_;
     bool last_frame_had_clips_ = false;
-    // Which row's clipping dots the mouse is on, and since when (for their tooltip's delay).
-    std::optional<gui::StageId> dot_hover_stage_;
-    double dot_hover_since_ = 0;
     bool pipeline_open_ = true;
     // The clip mask of the frame on screen (empty: none), and what the overlay texture was made
     // from, to rebuild it when the mask or the theme changes.

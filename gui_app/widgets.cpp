@@ -79,6 +79,11 @@ void draw_slider(float t, float t_neutral) {
                     hair());
 }
 
+// The row is mock(16) tall: the frame is the font plus twice the vertical padding.
+float slider_padding_y() {
+    return std::max(0.0f, std::round((mock(16.0f) - ImGui::GetFontSize()) * 0.5f));
+}
+
 // Hides ImGui's own drawing of the slider (frame and grab) while it handles the interaction.
 struct HiddenSliderLook {
     HiddenSliderLook() {
@@ -88,10 +93,7 @@ struct HiddenSliderLook {
             ImGui::PushStyleColor(c, none);
         }
         ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, std::round(mock(14.0f)));
-        // The row is mock(16) tall: the frame is the font plus twice the vertical padding.
-        ImGui::PushStyleVar(
-            ImGuiStyleVar_FramePadding,
-            ImVec2(0.0f, std::max(0.0f, std::round((mock(16.0f) - ImGui::GetFontSize()) * 0.5f))));
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0f, slider_padding_y()));
     }
     ~HiddenSliderLook() {
         ImGui::PopStyleVar(2);
@@ -171,6 +173,10 @@ bool box_control(const char* label, bool on, bool round, bool* pressed_out) {
 
 }  // namespace
 
+float slider_height() {
+    return ImGui::GetFontSize() + 2 * slider_padding_y();
+}
+
 ImVec2 switch_size() {
     return ImVec2(std::round(mock(26.0f)), std::round(mock(15.0f)));
 }
@@ -217,8 +223,12 @@ bool styled_switch(const char* id, bool* value) {
     return pressed;
 }
 
+float segmented_height() {
+    return std::round(mock(26.0f)) + 2 * std::round(mock(2.0f));
+}
+
 bool segmented(const char* id, std::span<const char* const> labels, int* current,
-               const std::function<void(int)>& after_item) {
+               const std::function<void(int)>& after_item, float wanted_width) {
     ImGuiWindow* window = ImGui::GetCurrentWindow();
     const int count = static_cast<int>(labels.size());
     if (window->SkipItems || count == 0) {
@@ -228,7 +238,8 @@ bool segmented(const char* id, std::span<const char* const> labels, int* current
     const float pad = std::round(mock(2.0f));
     const float gap = std::round(mock(2.0f));
     const float tab_h = std::round(mock(26.0f));
-    const float width = std::max(1.0f, ImGui::GetContentRegionAvail().x);
+    const float width =
+        std::max(1.0f, wanted_width > 0.0f ? wanted_width : ImGui::GetContentRegionAvail().x);
     const float tab_w = std::max(
         1.0f, std::floor((width - 2 * pad - gap * static_cast<float>(count - 1)) / count));
     const ImVec2 origin = window->DC.CursorPos;
