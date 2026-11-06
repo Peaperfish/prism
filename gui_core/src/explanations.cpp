@@ -121,15 +121,16 @@ constexpr Explanation templates[] = {
      LiveKind::gamma},
 
     // --- Histogram and scopes ----------------------------------------------------------------
-    {"scope.histogram", "How many pixels sit at each brightness.",
-     "Black on the left, white on the right, of the 8-bit result at the stage you are viewing. "
-     "Grey is luminance; red, green and blue lines are the channels.",
+    {"scope.histogram", "How many pixels sit at each level, from black to white.",
+     "Black on the left, white on the right, at the stage you are viewing. Grey is luminance; red, "
+     "green and blue overlap towards white. A corner triangle lights when any pixel is out of "
+     "range at that end.",
      LiveKind::viewing},
-    {"scope.parade", "Each colour channel's brightness, side by side.",
-     "Left to right across the photo, red, green and blue panels show how bright that channel is "
+    {"scope.parade", "Each colour channel's level, side by side.",
+     "Left to right across the photo, red, green and blue panels show the level of that channel "
      "at each column. Equal heights mean neutral. The lines mark 5%, 18% and 50% of white's light.",
      LiveKind::viewing},
-    {"scope.waveform", "Brightness of each part of the photo.",
+    {"scope.waveform", "How much light each part of the photo holds.",
      "Horizontal position matches the photo; the vertical axis is Rec. 709 luma, 0 at the bottom "
      "and 255 at the top. A stronger trace means more pixels there. The lines mark 5%, 18% and 50% "
      "of white's light.",

@@ -152,9 +152,10 @@ jobs:
           PRISM_REQUIRE_RAW: ${{ matrix.libraw == 'ON' && '1' || '0' }}
         run: ctest --test-dir build -C ${{ matrix.build_type }} --output-on-failure --parallel 4
 
-  # The desktop app (PRISM_BUILD_GUI=ON: SDL3 + Dear ImGui), build only: a runner has no display
-  # to open the window on, and the GUI's logic is tested without one in every job above
-  # (prism_gui_core_tests). Separate from the matrix above so those jobs don't download SDL.
+  # The desktop app (PRISM_BUILD_GUI=ON: SDL3 + Dear ImGui). These jobs build it and also build and
+  # run its headless tests (prism_gui_app_tests), which need no window: a runner has no display to
+  # open the app on. The GUI's logic is tested in every job above (prism_gui_core_tests). Separate
+  # from the matrix above so those jobs don't download SDL.
   gui:
     name: GUI build (${{ matrix.name }})
     runs-on: ${{ matrix.os }}

@@ -561,6 +561,83 @@ TEST(Explanations, TheSampleEntriesAvoidTheWordBrightness) {
               std::string_view::npos);
 }
 
+// Prism's wording is "N% of white's light", never this word: no explanation may use it, in any
+// casing, in its text or in a live line for any of these settings.
+TEST(Explanations, NoTextEverSaysBrightness) {
+    const auto lower = [](std::string_view text) {
+        std::string out(text);
+        for (char& c : out) {
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
+        return out;
+    };
+    const auto clean = [&](std::string_view text) {
+        return lower(text).find("brightness") == std::string::npos;
+    };
+    ASSERT_FALSE(clean("How many pixels sit at each BrightNess."));  // the check itself works
+
+    std::vector<EditSettings> settings(1);
+    settings.push_back(with_exposure_at(40));
+    settings.push_back(with_exposure_at(-100));
+    for (const CurveKind kind :
+         {CurveKind::none, CurveKind::gamma, CurveKind::reinhard, CurveKind::filmic}) {
+        EditSettings s;
+        apply_simple_control(s, SimpleControl::contrast, 33);
+        apply_simple_control(s, SimpleControl::colour, -50);
+        set_curve_kind(s, kind);
+        settings.push_back(s);
+    }
+    EditSettings all_off;
+    all_off.exposure_on = false;
+    settings.push_back(all_off);
+
+    StageHistogram h;
+    h.pixel_count = 1000;
+    h.any_under_black = 5;
+    h.any_over_white = 70;
+    h.red_clips = {5, 70};
+    Image base;
+    base.width = 2;
+    base.height = 1;
+    base.pixels = {1.0f, 0.5f, 0.2f, 0.4f, 0.3f, 0.2f};
+    EditSettings pushed;
+    pushed.exposure_stops = 2.0f;
+    const ClipReport report = compute_clip_report(base, pushed, 1);
+    Recipe recipe;
+    recipe.saturation = RecipeSaturation{0.9f, true};
+    const LoadedRecipe loaded = make_loaded_recipe(recipe, "r.prism", pushed, pushed);
+    const std::optional<PixelTrace> trace = sample_trace(base, pushed, 0, 0);
+    ASSERT_TRUE(trace.has_value());
+
+    std::vector<LiveContext> contexts(1);
+    for (const InputKind kind : {InputKind::image, InputKind::raw}) {
+        for (const StageId viewed : {StageId::decode, StageId::exposure, final_stage}) {
+            LiveContext context;
+            context.kind = kind;
+            context.viewed = viewed;
+            context.compare = StageId::decode;
+            context.histogram = &h;
+            context.clips = &report;
+            context.recipe = &loaded;
+            context.preview_long_side = 2560;
+            context.file_long_side = 9566;
+            context.sample = &*trace;
+            contexts.push_back(context);
+        }
+    }
+
+    for (const Explanation& e : explanations()) {
+        EXPECT_TRUE(clean(e.summary)) << e.id << ": " << e.summary;
+        EXPECT_TRUE(clean(e.detail)) << e.id << ": " << e.detail;
+        for (const EditSettings& s : settings) {
+            for (const LiveContext& context : contexts) {
+                const std::string line = live_line(e.id, s, context);
+                EXPECT_TRUE(clean(line)) << e.id << ": " << line;
+            }
+        }
+    }
+}
+
 TEST(LiveLines, TheSampleLineIsTheReadoutOfThePixel) {
     Image pixel;
     pixel.width = 1;
