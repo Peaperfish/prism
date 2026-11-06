@@ -17,6 +17,7 @@
 #include "prism/gui/explanations.hpp"
 #include "prism/gui/file_types.hpp"
 #include "prism/gui/layout.hpp"
+#include "prism/gui/photo_format.hpp"
 #include "prism/gui/presets.hpp"
 #include "prism/gui/recipe_settings.hpp"
 #include "prism/gui/slider_gesture.hpp"
@@ -3449,33 +3450,55 @@ void App::draw_status_bar(float height) {
         return;
     }
     const bool raw = session_.kind() == gui::InputKind::raw;
-    std::string details = "  |  " + std::to_string(session_.decoded_width()) + " x " +
-                          std::to_string(session_.decoded_height()) +
-                          (raw ? "  |  RAW, half-size preview" : "");
-    if (texture_.texture() != nullptr) {
-        details += "  |  preview " + std::to_string(texture_.width()) + " x " +
-                   std::to_string(texture_.height()) + ", " +
-                   std::to_string(static_cast<int>(std::lround(last_render_ms_))) + " ms";
-    }
-    // The file name gives way first (shortened in the middle, keeping its extension), then the
-    // details, so the line never runs off the window's edge.
+    const std::string separator = " \xc2\xb7 ";
+    const std::string size_text = std::to_string(session_.decoded_width()) + " \xc3\x97 " +
+                                  std::to_string(session_.decoded_height());
+    const std::string details = separator + size_text + separator + gui::file_kind_label(session_.path());
+    const std::string camera = gui::camera_line(session_.photo_info());
     const auto measure = [](std::string_view s) {
         return ImGui::CalcTextSize(s.data(), s.data() + s.size()).x;
     };
+    const float gap = ImGui::GetStyle().ItemSpacing.x;
     const float total = std::max(1.0f, window_width - 2 * pad);
-    const float note_room =
-        clip_note_ ? std::min(clip_note_width(*clip_note_), total * 0.5f) + ImGui::GetStyle().ItemSpacing.x
-                   : 0.0f;
-    const float width = std::max(1.0f, total - note_room);
-    const float name_width = std::max(width - measure(details), width * 0.3f);
-    const std::string status =
-        gui::ellipsize_middle(gui::ellipsize_middle(file_name(session_.path()), name_width,
-                                                    measure) +
-                                  details,
-                              width, measure);
+    const float note_natural = clip_note_ ? clip_note_width(*clip_note_) : 0.0f;
+    const float note_room = clip_note_ ? std::min(note_natural, total * 0.5f) + gap : 0.0f;
+    const std::string name = file_name(session_.path());
+
+    // The camera group sits at the bar's centre; it is shown only when it clears the whole left
+    // group and the clip note on both sides, so that it never overlaps either.
+    const float camera_width = camera.empty() ? 0.0f : measure(camera);
+    const float camera_x = std::round((window_width - camera_width) * 0.5f);
+    const bool show_camera =
+        !camera.empty() && camera_x >= pad + measure(name + details) + gap * 2 &&
+        camera_x + camera_width <= window_width - pad - (clip_note_ ? note_natural : 0.0f) - gap * 2;
+
+    // The file name gives way first (shortened in the middle, keeping its extension), so the line
+    // never runs off the window's edge or into the camera group.
+    const float left_room =
+        show_camera ? camera_x - pad - gap : std::max(1.0f, total - note_room);
+    const float name_width = std::max(left_room - measure(details), left_room * 0.3f);
+    const std::string status = gui::ellipsize_middle(
+        gui::ellipsize_middle(name, name_width, measure) + details, left_room, measure);
     ImGui::TextDisabled("%s", status.c_str());
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
-        ImGui::SetTooltip("%s", utf8(session_.path()).c_str());
+        std::string tip = utf8(session_.path());
+        if (texture_.texture() != nullptr) {
+            tip += "\nPreview " + std::to_string(texture_.width()) + " \xc3\x97 " +
+                   std::to_string(texture_.height()) + ", " +
+                   std::to_string(static_cast<int>(std::lround(last_render_ms_))) + " ms";
+        }
+        if (raw) {
+            tip += "\nRAW, half-size preview";
+        }
+        ImGui::SetTooltip("%s", tip.c_str());
+    }
+    if (show_camera) {
+        ImGui::SetCursorScreenPos(ImVec2(top_left.x + camera_x, ImGui::GetItemRectMin().y));
+        ImGui::TextDisabled("%s", camera.c_str());
+        const std::string tip = gui::camera_tooltip(session_.photo_info());
+        if (!tip.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
+            ImGui::SetTooltip("%s", tip.c_str());
+        }
     }
     if (clip_note_) {
         draw_clip_note(note_room);
