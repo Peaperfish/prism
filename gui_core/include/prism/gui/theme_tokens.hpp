@@ -137,8 +137,9 @@ struct TokenMetrics {
     // The 1 px line between regions (at least one pixel is drawn).
     float hair_width;
     // The panel's header (Undo, Redo, Export): its height, the icon buttons' side and corner
-    // radius, the icon drawn in them, the Export button's side padding.
-    float header_height, header_button, header_button_rounding, header_icon, export_pad_x;
+    // radius, the icon drawn in them, the Export button's height and side padding.
+    float header_height, header_button, header_button_rounding, header_icon, export_height,
+        export_pad_x;
     // The status bar's height.
     float status_height;
     // The panel's padding (sides and top, then bottom), the gap between sections, and the gap

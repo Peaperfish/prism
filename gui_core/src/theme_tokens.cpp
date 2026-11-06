@@ -82,11 +82,12 @@ constexpr TokenMetrics darkroom_metrics{
     .explain_gap = mock_points(4),
     .prompt_wrap = 360,
     .hair_width = 1,
-    .header_height = mock_points(52),
-    .header_button = mock_points(32),
+    .header_height = mock_points(44),
+    .header_button = mock_points(28),
     .header_button_rounding = mock_points(7),
-    .header_icon = mock_points(17),
-    .export_pad_x = mock_points(16),
+    .header_icon = mock_points(16),
+    .export_height = mock_points(26),
+    .export_pad_x = mock_points(12),
     .status_height = mock_points(30),
     .panel_pad = {mock_points(14), mock_points(14)},
     .panel_pad_bottom = mock_points(18),
@@ -343,6 +344,7 @@ TokenMetrics scaled(const TokenMetrics& m, float s) {
     r.header_button = m.header_button * s;
     r.header_button_rounding = m.header_button_rounding * s;
     r.header_icon = m.header_icon * s;
+    r.export_height = m.export_height * s;
     r.export_pad_x = m.export_pad_x * s;
     r.status_height = m.status_height * s;
     r.panel_pad = m.panel_pad * s;

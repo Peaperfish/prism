@@ -2521,6 +2521,8 @@ void App::draw_panel_header(float width, float height) {
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     const float button = std::round(m.header_button);
     const float top = origin.y + std::round((height - hair() - button) * 0.5f);
+    const float export_h = std::round(m.export_height);
+    const float export_top = origin.y + std::round((height - hair() - export_h) * 0.5f);
     const std::string mod = ImGui::GetIO().ConfigMacOSXBehaviors ? "Cmd" : "Ctrl";
 
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
@@ -2555,16 +2557,16 @@ void App::draw_panel_header(float width, float height) {
 
     // Export: accent fill, dark semi-bold label.
     const char* const label = "Export\xe2\x80\xa6";
-    ImGui::PushFont(fonts().semibold, token_type().body);
+    ImGui::PushFont(fonts().semibold, token_type().section);
     const float export_width = std::round(ImGui::CalcTextSize(label).x + 2 * m.export_pad_x);
-    ImGui::SetCursorScreenPos(ImVec2(origin.x + width - m.panel_pad.x - export_width, top));
+    ImGui::SetCursorScreenPos(ImVec2(origin.x + width - m.panel_pad.x - export_width, export_top));
     ImGui::PushStyleColor(ImGuiCol_Button, vec(c.accent));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, vec(c.accent_active));
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, vec(c.accent_active));
     ImGui::PushStyleColor(ImGuiCol_Text, vec(c.text_on_accent));
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, m.header_button_rounding);
     ImGui::BeginDisabled(dialog_open_ || exporter_.busy());
-    if (ImGui::Button(label, ImVec2(export_width, button))) {
+    if (ImGui::Button(label, ImVec2(export_width, export_h))) {
         show_save_dialog();
     }
     ImGui::EndDisabled();

@@ -251,7 +251,7 @@ TEST(ThemeTokens, TypeSizesAreAsDesigned) {
 
 // Every field of TokenMetrics is a float or two; a field added without teaching scaled() about it
 // would not scale, so the size is pinned here.
-static_assert(sizeof(TokenMetrics) == 98 * sizeof(float));
+static_assert(sizeof(TokenMetrics) == 99 * sizeof(float));
 
 TEST(ThemeTokens, EverySizeScalesLinearlyWithTheInterfaceScale) {
     for (const TokenSet& set : token_sets()) {
@@ -289,7 +289,11 @@ TEST(ThemeTokens, MockupSizesAreSixteenThirteenthsAndScaleLinearly) {
         EXPECT_FLOAT_EQ(set.type.tiny, mock_points(11.5f)) << label(set);
         EXPECT_FLOAT_EQ(set.type.explain_title, mock_points(12.5f)) << label(set);
         EXPECT_FLOAT_EQ(set.metrics.plot_height, mock_points(132.0f)) << label(set);
-        EXPECT_FLOAT_EQ(set.metrics.header_height, mock_points(52.0f)) << label(set);
+        EXPECT_FLOAT_EQ(set.metrics.header_height, mock_points(44.0f)) << label(set);
+        EXPECT_FLOAT_EQ(set.metrics.header_button, mock_points(28.0f)) << label(set);
+        EXPECT_FLOAT_EQ(set.metrics.header_icon, mock_points(16.0f)) << label(set);
+        EXPECT_FLOAT_EQ(set.metrics.export_height, mock_points(26.0f)) << label(set);
+        EXPECT_FLOAT_EQ(set.metrics.export_pad_x, mock_points(12.0f)) << label(set);
         EXPECT_FLOAT_EQ(set.metrics.status_height, mock_points(30.0f)) << label(set);
         EXPECT_FLOAT_EQ(set.metrics.zoom_chip_rounding, mock_points(8.0f)) << label(set);
         EXPECT_FLOAT_EQ(set.metrics.zoom_chip_margin.x, mock_points(16.0f)) << label(set);
