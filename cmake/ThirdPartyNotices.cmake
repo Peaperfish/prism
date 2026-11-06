@@ -153,6 +153,8 @@ endif()
 
 # --- Inter (the interface font) -----------------------------------------------------------------
 if(PRISM_BUILD_GUI)
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+               ${PROJECT_SOURCE_DIR}/third_party/fonts/inter/OFL.txt)
   file(READ ${PROJECT_SOURCE_DIR}/third_party/fonts/inter/OFL.txt prism_inter_licence)
   string(STRIP "${prism_inter_licence}" prism_inter_licence)
   list(APPEND PRISM_THIRD_PARTY_COMPONENTS "Inter 4.1|SIL OFL 1.1")
@@ -166,6 +168,8 @@ ${prism_inter_licence}")
 endif()
 
 # --- stb (image files) --------------------------------------------------------------------------
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+             ${PROJECT_SOURCE_DIR}/third_party/stb/stb_image.h)
 file(READ ${PROJECT_SOURCE_DIR}/third_party/stb/stb_image.h prism_stb)
 string(FIND "${prism_stb}" "ALTERNATIVE A - MIT License" prism_at)
 string(SUBSTRING "${prism_stb}" ${prism_at} -1 prism_stb)

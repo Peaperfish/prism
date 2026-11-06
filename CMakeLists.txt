@@ -7,6 +7,8 @@ project(prism
 
 # Prism's copyright line, from the "Required Notice:" in LICENSE.md (PolyForm asks that it go with
 # every copy): for the About window, the macOS Info.plist and the Windows version resource.
+# Read at configure time, so a change to it re-runs CMake.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/LICENSE.md)
 file(STRINGS ${PROJECT_SOURCE_DIR}/LICENSE.md PRISM_REQUIRED_NOTICE REGEX "^Required Notice:" LIMIT_COUNT 1)
 if(NOT PRISM_REQUIRED_NOTICE)
   message(FATAL_ERROR "LICENSE.md has no 'Required Notice:' line")

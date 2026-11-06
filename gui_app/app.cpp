@@ -1245,19 +1245,19 @@ void App::draw_menu() {
         return;
     }
     if (ImGui::BeginMenu("File")) {
-        if (ImGui::MenuItem("Open...", shortcut_label("O").c_str(), false, !dialog_open_)) {
+        if (ImGui::MenuItem("Open…", shortcut_label("O").c_str(), false, !dialog_open_)) {
             show_open_dialog();
         }
-        if (ImGui::MenuItem("Export...", shortcut_label("E").c_str(), false,
+        if (ImGui::MenuItem("Export…", shortcut_label("E").c_str(), false,
                             session_.has_file() && !dialog_open_ && !exporter_.busy())) {
             show_save_dialog();
         }
         ImGui::Separator();
-        if (ImGui::MenuItem("Load Recipe...", shortcut_label("Shift+O").c_str(), false,
+        if (ImGui::MenuItem("Load Recipe…", shortcut_label("Shift+O").c_str(), false,
                             recipes_available())) {
             show_recipe_load_dialog();
         }
-        if (ImGui::MenuItem("Save Recipe...", shortcut_label("Shift+S").c_str(), false,
+        if (ImGui::MenuItem("Save Recipe…", shortcut_label("Shift+S").c_str(), false,
                             recipes_available())) {
             begin_save_recipe();
         }
@@ -1283,7 +1283,7 @@ void App::draw_menu() {
         }
         if (native_prefs_event_ == 0) {  // otherwise it's in the macOS app menu
             ImGui::Separator();
-            if (ImGui::MenuItem("Preferences...", shortcut_label(",").c_str())) {
+            if (ImGui::MenuItem("Preferences…", shortcut_label(",").c_str())) {
                 prefs_open_ = true;
             }
         }
