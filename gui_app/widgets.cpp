@@ -162,6 +162,52 @@ bool box_control(const char* label, bool on, bool round, bool* pressed_out) {
 
 }  // namespace
 
+ImVec2 switch_size() {
+    return ImVec2(std::round(mock(26.0f)), std::round(mock(15.0f)));
+}
+
+bool styled_switch(const char* id, bool* value) {
+    ImGuiWindow* window = ImGui::GetCurrentWindow();
+    if (window->SkipItems) {
+        return false;
+    }
+    const gui::TokenColours& colours = token_colours();
+    const ImGuiID item_id = window->GetID(id);
+    const ImVec2 size = switch_size();
+    const ImRect bb(window->DC.CursorPos,
+                    ImVec2(window->DC.CursorPos.x + size.x, window->DC.CursorPos.y + size.y));
+    ImGui::ItemSize(bb);
+    if (!ImGui::ItemAdd(bb, item_id)) {
+        return false;
+    }
+    bool hovered = false;
+    bool held = false;
+    const bool pressed = ImGui::ButtonBehavior(bb, item_id, &hovered, &held);
+    if (pressed) {
+        *value = !*value;
+        ImGui::MarkItemEdited(item_id);
+    }
+
+    ImDrawList* draw = window->DrawList;
+    const bool on = *value;
+    const float radius = std::round(mock(8.0f));
+    draw->AddRectFilled(bb.Min, bb.Max, colour_u32(on ? colours.fill : colours.track), radius);
+    if (hovered || held) {
+        // A wash of the text colour over the track: the same size, so nothing moves.
+        gui::Rgba wash = colours.text;
+        wash.a = held ? 0.16f : 0.08f;
+        draw->AddRectFilled(bb.Min, bb.Max, colour_u32(wash), radius);
+    }
+    const float knob = std::round(mock(11.0f));
+    const float inset = std::round(mock(2.0f));
+    const float knob_x = on ? bb.Max.x - inset - knob : bb.Min.x + inset;
+    const float knob_y = bb.Min.y + std::round((size.y - knob) * 0.5f);
+    draw->AddCircleFilled(ImVec2(knob_x + knob * 0.5f, knob_y + knob * 0.5f), knob * 0.5f,
+                          colour_u32(colours.panel), 0);
+    ImGui::RenderNavCursor(bb, item_id, ImGuiNavRenderCursorFlags_None, radius);
+    return pressed;
+}
+
 bool styled_checkbox(const char* label, bool* value) {
     bool pressed = false;
     if (!box_control(label, *value, false, &pressed)) {
