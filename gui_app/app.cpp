@@ -731,37 +731,21 @@ void App::draw_look_recipe() {
     ImGui::End();
 }
 
-void App::draw_recipe_buttons() {
-    ImGui::BeginDisabled(!recipes_available());
-    const bool load = ImGui::SmallButton("Load recipe...");
-    describe(gui::explain::recipe_load);
-    ImGui::SameLine();
-    const bool save = ImGui::SmallButton("Save recipe...");
-    describe(gui::explain::recipe_save);
-    ImGui::EndDisabled();
-    if (load) {
-        show_recipe_load_dialog();
-    } else if (save) {
-        begin_save_recipe();
-    }
-}
-
+// Under the Look dropdown while a recipe is loaded: which stages it sets, and its description as a
+// tooltip. The recipe's name is on the dropdown itself.
 void App::draw_recipe_line() {
-    const std::optional<std::string> line = recipes_.line(session_.settings());
-    if (!line) {
+    if (!recipes_.line(session_.settings())) {
         return;
     }
     const gui::LoadedRecipe& loaded = *recipes_.current();
     ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextUnformatted(("Recipe: " + *line).c_str());
-    explain(gui::explain::recipe_loaded);
-    if (!loaded.description.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
-        ImGui::SetTooltip("%s", loaded.description.c_str());
-    }
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
     ImGui::TextUnformatted(gui::stages_line(loaded.stages).c_str());
     ImGui::PopStyleColor();
     explain(gui::explain::recipe_loaded);
+    if (!loaded.description.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
+        ImGui::SetTooltip("%s", loaded.description.c_str());
+    }
     ImGui::PopTextWrapPos();
 }
 
@@ -2622,9 +2606,7 @@ void App::draw_panel() {
     draw_histogram();
     draw_sample_block();
 
-    section_text("Look");
     draw_presets();
-    draw_recipe_buttons();
 
     section_text("Adjust");
     draw_simple_slider("Brightness", gui::SimpleControl::brightness);
@@ -2892,12 +2874,43 @@ void App::draw_clip_overlay_button() {
     describe(gui::explain::clip_overlay);
 }
 
+// The Look section: its header (with "Reset to <default look>" at the right while the settings
+// are not the default look), and one full-width dropdown. The dropdown shows the look's name, the
+// loaded recipe ("Recipe: name"), or "Custom"; its list holds the looks, then the recipe actions.
 void App::draw_presets() {
     const gui::InputKind kind = session_.kind();
     const gui::Preset* current = gui::matching_preset(kind, session_.settings());
-    const std::string shown = current != nullptr ? std::string(current->name) : "Custom";
+    const gui::Preset& start = gui::default_preset(kind);
+
+    const std::string reset_text = "Reset to " + std::string(start.name);
+    const bool reset = section_text("Look", &start != current ? reset_text.c_str() : nullptr);
+    if (&start != current) {
+        describe(gui::explain::look_reset, reset);
+    }
+    if (reset) {
+        gui::EditSettings s = session_.settings();
+        gui::apply_preset(s, start);
+        report(session_.set_settings(s));
+    }
+
+    // A loaded recipe names the button, unless the settings are exactly a built-in look the
+    // recipe is not (a look picked after loading it).
+    const std::optional<std::string> recipe = recipes_.line(session_.settings());
+    const bool recipe_shown =
+        recipe && (current == nullptr || session_.settings() == recipes_.current()->after);
+    const std::string shown = recipe_shown ? "Recipe: " + *recipe
+                              : current != nullptr ? std::string(current->name)
+                                                   : "Custom";
+    const gui::TokenMetrics& m = token_metrics();
     ImGui::SetNextItemWidth(-FLT_MIN);
-    if (styled_begin_combo("##preset", shown.c_str())) {
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
+                        ImVec2(m.control_pad_x, std::max(0.0f, std::round((m.control_height -
+                                                                          ImGui::GetFontSize()) * 0.5f))));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, m.control_rounding);
+    const bool open = styled_begin_combo("##preset", shown.c_str());
+    ImGui::PopStyleVar(2);
+    describe(gui::explain::look);
+    if (open) {
         for (const gui::Preset& preset : gui::presets_for(kind)) {
             if (ImGui::Selectable(std::string(preset.name).c_str(), &preset == current)) {
                 gui::EditSettings s = session_.settings();
@@ -2906,35 +2919,30 @@ void App::draw_presets() {
             }
             describe(gui::explain_id(preset));
         }
-        ImGui::EndCombo();
-    }
-    describe(gui::explain::look);
-    if (current != nullptr) {
-        ImGui::PushTextWrapPos(0.0f);
-        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-        ImGui::TextUnformatted(gui::look_values_line(session_.settings()).c_str());
-        ImGui::PopStyleColor();
-        ImGui::PopTextWrapPos();
-        explain(gui::explain::look);
-        const bool view = ImGui::SmallButton("View recipe");
+        ImGui::Separator();
+        ImGui::BeginDisabled(current == nullptr);
+        const bool view = ImGui::Selectable("View recipe\xe2\x80\xa6");
+        ImGui::EndDisabled();
         describe(gui::explain::look_view_recipe, view);
-        if (view) {
+        if (view && current != nullptr) {
             look_recipe_ = gui::look_recipe_view(kind, *current);
             look_recipe_open_ = true;
             look_recipe_focus_ = true;
         }
+        ImGui::BeginDisabled(!recipes_available());
+        const bool load = ImGui::Selectable("Load recipe\xe2\x80\xa6");
+        describe(gui::explain::recipe_load);
+        const bool save = ImGui::Selectable("Save recipe\xe2\x80\xa6");
+        describe(gui::explain::recipe_save);
+        ImGui::EndDisabled();
+        if (load) {
+            show_recipe_load_dialog();
+        } else if (save) {
+            begin_save_recipe();
+        }
+        ImGui::EndCombo();
     }
     draw_recipe_line();
-    const gui::Preset& start = gui::default_preset(kind);
-    if (&start != current) {
-        const bool reset = ImGui::Button(("Reset to " + std::string(start.name)).c_str());
-        describe(gui::explain::look_reset, reset);
-        if (reset) {
-            gui::EditSettings s = session_.settings();
-            gui::apply_preset(s, start);
-            report(session_.set_settings(s));
-        }
-    }
 }
 
 void App::draw_simple_slider(const char* label, gui::SimpleControl control) {

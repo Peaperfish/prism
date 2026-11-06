@@ -109,7 +109,6 @@ private:
     // The files of a drop that has just ended.
     void take_drop();
     // The panel's Load recipe... / Save recipe... row, in the Look section.
-    void draw_recipe_buttons();
     // "Recipe: <name>" under the Look menu, and what it sets, while the settings are still its.
     void draw_recipe_line();
     void take_dialog_results();
