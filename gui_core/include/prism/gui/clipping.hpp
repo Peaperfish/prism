@@ -129,7 +129,7 @@ struct ClipCounts {
     bool operator==(const ClipCounts&) const = default;
 };
 
-// One row of the pipeline view. `over` counts values above 1.0 and `under` the negative channels
+// One stage of the report. `over` counts values above 1.0 and `under` the negative channels
 // of pixels with Y <= 0
 // (at Decode, `over` counts values at the file's ceiling, in [1.0 - file_ceiling_epsilon, 1.0]:
 // lost; with none, values above 1.0: recoverable).

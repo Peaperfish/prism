@@ -167,7 +167,7 @@ enum class SimpleControl { brightness, contrast, colour };
 // Sets only the field behind `control` from its slider position (clamped to [-100, +100]) and
 // turns only that stage on. Unlike apply_simple, the other two fields stay exactly as they are,
 // even when they lie beyond their own sliders' ends or their stages are off: moving Exposure's
-// must not quietly clamp a saturation of 3 set in Advanced mode.
+// slider must not quietly clamp a saturation of 3 that a recipe set.
 void apply_simple_control(EditSettings& s, SimpleControl control, float position);
 
 }  // namespace prism::gui

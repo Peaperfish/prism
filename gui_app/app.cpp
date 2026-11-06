@@ -777,17 +777,18 @@ void App::take_export_result() {
 }
 
 void App::update_preview() {
-    // Scopes, the per-stage clipping and the clip mask are only computed while they are on screen
-    // (the pipeline view open, the overlay on); the histogram comes with every frame.
+    // Scopes and the clip mask are only computed while they are on screen (the overlay on); the
+    // histogram and the per-stage clipping come with every frame.
     if (strip_ && !gui::strip_available(viewed_stage_)) {
         strip_.reset();  // the Decode stage shows no edit, so there is nothing to vary
     }
     gui::PreviewOptions options;
     options.scopes = prefs_.scope != gui::ScopeChoice::histogram;
-    // The pipeline view needs the report every frame. For the status bar's note it is enough once
-    // the picture settles: not while a control is being dragged (that is what made the report
-    // too dear for every drag frame), but at once for any other change and when a photo opens.
-    options.clip_report = (pipeline_open_ || !control_active()) && !strip_;  // not with a strip
+    // The Light path is on screen whenever a photo is open, and shows every stage's clipping, so
+    // it needs the report also during a drag: a stage's marks follow its slider. It costs about
+    // 4.6 ms on a 2560 preview, once per render started, not per UI frame. Not with a strip, whose
+    // bands each have their own light.
+    options.clip_report = !strip_;
     options.clip_mask = prefs_.clip_overlay;
     options.compare_stage = strip_ ? std::nullopt : gui::effective_compare(viewed_stage_, compare_stage_);
     options.test_strip = strip_;

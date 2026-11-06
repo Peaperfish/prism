@@ -8,7 +8,7 @@
 
 namespace prism::gui {
 
-// What the pipeline view shows and edits in each stage's row. Everything the window needs to know
+// What the Light path shows and edits in each stage's row. Everything the window needs to know
 // about those controls is here, so it can be tested without one.
 //
 // Exposure, Saturation and Contrast are edited with one slider each (the ranges and conversions are
