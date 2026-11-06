@@ -36,6 +36,7 @@ add_library(prism_gui_core STATIC
   src/explanations.cpp
   src/file_types.cpp
   src/histogram.cpp
+  src/histogram_paint.cpp
   src/history.cpp
   src/layout.cpp
   src/light_path.cpp
