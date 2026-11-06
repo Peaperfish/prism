@@ -58,8 +58,8 @@ struct MatrixFile {
 
 enum class CurveKind { none, gamma, reinhard, filmic };
 
-// Everything the GUI edits, as plain values. Simple and Advanced mode both edit this one object
-// (Simple's sliders are a view of three of its fields, see below), and it is what undo/redo
+// Everything the GUI edits, as plain values. The controls all edit this one object (the three
+// stage sliders are a view of three of its fields, see below), and it is what undo/redo
 // stores and what the preview worker gets a copy of. A plain value type: copying it to another
 // thread shares nothing, so no lock is needed for the settings themselves.
 //
@@ -120,10 +120,10 @@ void set_stage_enabled(EditSettings& s, StageId id, bool enabled) noexcept;
 [[nodiscard]] ProcessSettings to_process_settings(const EditSettings& s,
                                                   StageId stop_after = final_stage);
 
-// --- Simple mode ---------------------------------------------------------------------------------
+// --- The stage sliders ---------------------------------------------------------------------------
 //
-// Simple mode shows three sliders from -100 to +100, each an invertible map onto one field of
-// EditSettings (plan section 7), so switching between Simple and Advanced changes nothing:
+// Exposure, Saturation and Contrast have sliders from -100 to +100, each an invertible map onto one
+// field of EditSettings (plan section 7):
 //
 //   brightness b -> exposure_stops = b / 50          (-2 to +2 stops; 50 = +1 stop)
 //   contrast   c -> contrast       = 1.5^(c / 100)   (0.667 to 1.5; geometric, so -50 and +50
@@ -145,7 +145,7 @@ struct SimpleControls {
     bool operator==(const SimpleControls&) const = default;
 };
 
-// Where Simple's sliders sit for these settings, each clamped to [-100, +100].
+// Where the sliders sit for these settings, each clamped to [-100, +100].
 [[nodiscard]] SimpleControls simple_from(const EditSettings& s);
 
 // Which fields the sliders cannot show exactly (they are at the slider's end instead).
@@ -161,12 +161,12 @@ struct SimpleOutOfRange {
 // Advanced-only and stay as they are.
 void apply_simple(EditSettings& s, const SimpleControls& c);
 
-// One of Simple's sliders, for when the user moves just that one.
+// One of the sliders, for when the user moves just that one.
 enum class SimpleControl { brightness, contrast, colour };
 
 // Sets only the field behind `control` from its slider position (clamped to [-100, +100]) and
 // turns only that stage on. Unlike apply_simple, the other two fields stay exactly as they are,
-// even when they lie beyond their own sliders' ends or their stages are off: moving Brightness
+// even when they lie beyond their own sliders' ends or their stages are off: moving Exposure's
 // must not quietly clamp a saturation of 3 set in Advanced mode.
 void apply_simple_control(EditSettings& s, SimpleControl control, float position);
 

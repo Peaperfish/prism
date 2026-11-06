@@ -2020,39 +2020,6 @@ void App::draw_strip_bands(ImDrawList* draw, ImVec2 at, ImVec2 shown) {
     }
 }
 
-// The Test strip toggle that sits beside Brightness, in Adjust.
-void App::draw_strip_button() {
-    const bool on = strip_.has_value();
-    const bool available = gui::strip_available(viewed_stage_);
-    const float line_height = ImGui::GetFrameHeight();
-    ImGui::PushFont(nullptr, token_type().small);
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
-                        ImVec2(token_metrics().selector_pad, ImGui::GetStyle().FramePadding.y * 0.5f));
-    // Centred on the line of the label beside it (as tall as a frame).
-    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (line_height - ImGui::GetFrameHeight()) / 2);
-    ImGui::BeginDisabled(!on && !available);
-    if (on) {
-        ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-    }
-    if (ImGui::Button("Test strip")) {
-        toggle_test_strip();
-    }
-    if (on) {
-        ImGui::PopStyleColor();
-    }
-    ImGui::EndDisabled();
-    ImGui::PopStyleVar();
-    ImGui::PopFont();
-    if (!on && !available) {
-        explain(gui::explain::strip);
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled)) {
-            ImGui::SetTooltip("%s", gui::strip_unavailable_hint());
-        }
-    } else {
-        describe(gui::explain::strip);
-    }
-}
-
 bool App::splitting() const {
     return texture_.texture() != nullptr && texture_.compare_texture() != nullptr &&
            texture_.compare_width() == texture_.width() &&
@@ -2594,15 +2561,6 @@ void App::draw_panel() {
 
     draw_presets();
 
-    section_text("Adjust");
-    draw_simple_slider("Brightness", gui::SimpleControl::brightness);
-    draw_simple_slider("Contrast", gui::SimpleControl::contrast);
-    draw_simple_slider("Colour", gui::SimpleControl::colour);
-    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-    ImGui::TextWrapped("Right-click a slider to reset it. Ctrl-click (Cmd-click on Mac) to type a "
-                       "value.");
-    ImGui::PopStyleColor();
-
     draw_light_path_panel();
 }
 
@@ -2901,73 +2859,6 @@ void App::draw_presets() {
         ImGui::EndCombo();
     }
     draw_recipe_line();
-}
-
-// One of the Adjust section's three sliders: it edits the same field as its stage's row, through
-// the same conversions, so the two always agree.
-void App::draw_simple_slider(const char* label, gui::SimpleControl control) {
-    const gui::EditSettings& shown = session_.settings();
-    const gui::SimpleControls positions = gui::simple_from(shown);
-    const gui::SimpleOutOfRange beyond = gui::outside_simple_range(shown);
-    float value = 0;
-    bool custom = false;
-    switch (control) {
-        case gui::SimpleControl::brightness:
-            value = positions.brightness;
-            custom = beyond.brightness;
-            break;
-        case gui::SimpleControl::contrast:
-            value = positions.contrast;
-            custom = beyond.contrast;
-            break;
-        case gui::SimpleControl::colour:
-            value = positions.colour;
-            custom = beyond.colour;
-            break;
-    }
-
-    ImGui::PushID(label);
-    if (control == gui::SimpleControl::brightness) {
-        ImGui::AlignTextToFramePadding();
-    }
-    ImGui::TextUnformatted(label);
-    if (control == gui::SimpleControl::brightness) {
-        ImGui::SameLine();
-        draw_strip_button();
-    }
-    if (custom) {
-        // Set beyond the slider's range: shown at its end until moved.
-        ImGui::SameLine();
-        ImGui::TextDisabled("(custom)");
-    }
-    // The value at the right end of the label's line rather than on the slider, where it would
-    // sit on top of the grab at 0.
-    char text[16];
-    std::snprintf(text, sizeof text, "%+.0f", static_cast<double>(value));
-    ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetCursorPosX() +
-                                                         ImGui::GetContentRegionAvail().x -
-                                                         ImGui::CalcTextSize(text).x));
-    ImGui::TextUnformatted(text);
-    ImGui::SetNextItemWidth(-FLT_MIN);
-    // Ctrl/Cmd-click still types a value.
-    const bool changed =
-        styled_slider("##slider", &value, gui::simple_min, gui::simple_max, 0.0f);
-    const gui::SliderFrame frame{ImGui::IsItemActivated(), changed, ImGui::IsItemDeactivated()};
-    gui::EditSettings edited = session_.settings();
-    gui::apply_simple_control(edited, control, value);
-    // A drag updates the preview every frame but becomes one undo step, on release.
-    report(gui::apply_slider_frame(session_, frame, edited));
-    explain(gui::explain_id(control), changed);
-
-    if (ImGui::BeginPopupContextItem("reset")) {
-        if (ImGui::MenuItem("Reset to 0")) {
-            gui::EditSettings s = session_.settings();
-            gui::apply_simple_control(s, control, 0);
-            report(session_.set_settings(s));
-        }
-        ImGui::EndPopup();
-    }
-    ImGui::PopID();
 }
 
 void App::draw_light_path_panel() {

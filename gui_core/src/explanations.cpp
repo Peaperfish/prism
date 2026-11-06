@@ -68,21 +68,6 @@ constexpr Explanation templates[] = {
      "Written as description in the file, and shown when you point at the recipe's name after "
      "loading it. Prism suggests the one the recipe or look has. Leave it empty to write none."},
 
-    // --- Simple sliders ----------------------------------------------------------------------
-    {"simple.brightness", "Lets in more or less light, in stops.",
-     "Every pixel is multiplied by the same amount, in linear light, like opening or closing the "
-     "aperture. +50 on this slider is +1 stop, which doubles the light.",
-     LiveKind::brightness},
-    {"simple.contrast", "Pushes tones apart around middle grey.",
-     "Above middle grey (18%) tones get brighter and below it darker; negative values do the "
-     "reverse. Middle grey does not move. The effect fades beyond about 2 stops, so extremes are "
-     "not crushed.",
-     LiveKind::contrast},
-    {"simple.colour", "Makes colours stronger or weaker.",
-     "Each pixel's colour moves away from, or towards, the grey of the same brightness. "
-     "Brightness stays the same. -100 is black and white, +100 doubles the distance from grey.",
-     LiveKind::colour},
-
     // --- Pipeline stages ---------------------------------------------------------------------
     {"stage.decode", "The file turned into linear light.",
      "JPEG and PNG have their sRGB curve undone. RAW is demosaiced with the camera's white "
@@ -95,7 +80,7 @@ constexpr Explanation templates[] = {
      "A 3×3 table: each output channel is a weighted sum of the input red, green and blue, in "
      "linear light. Used to calibrate camera colour or apply a grade. Load one with a recipe.",
      LiveKind::matrix},
-    {"stage.saturation", "Colourfulness, brightness unchanged.",
+    {"stage.saturation", "Colourfulness, the pixel's luminance unchanged.",
      "Each channel moves away from the pixel's luminance (0.2126 R + 0.7152 G + 0.0722 B). A "
      "colour that would go below zero stops at the most saturated version sRGB can show, so hues "
      "do not shift.",
@@ -182,7 +167,7 @@ constexpr Explanation templates[] = {
     // --- Compare and the viewed stage --------------------------------------------------------
     {"light_path", "Every stage the light goes through, in order.",
      "Click a row to see the picture after that stage. Right-click a slider to reset it. "
-     "Ctrl-click (Cmd-click on Mac) to type a value.",
+     "Ctrl-click (Cmd-click on Mac) to type its position, from -100 to 100.",
      LiveKind::none},
     {"compare", "Show two points in the pipeline side by side.",
      "The stage you click in the Light path is the right half; Compare picks the left half. "
@@ -246,8 +231,8 @@ constexpr Explanation templates[] = {
      "summary."},
 };
 
-// Ids that have no enum of their own: the controls the window shows beyond the stages, Simple's
-// sliders, the curve kinds, the scopes and the presets.
+// Ids that have no enum of their own: the controls the window shows beyond the stages, the curve
+// kinds, the scopes and the presets.
 constexpr std::array<std::string_view, 34> other_ids{
     explain::look,         explain::look_reset,   explain::look_view_recipe,
     explain::recipe_load,  explain::recipe_save,
@@ -266,10 +251,6 @@ std::string printf_string(const char* format, double a) {
     char buffer[64];
     std::snprintf(buffer, sizeof buffer, format, a);
     return buffer;
-}
-
-std::string slider_prefix(float position) {
-    return printf_string("%+.0f", static_cast<double>(position)) + ": ";
 }
 
 // 18% grey through one of the engine's own tone curves, as a whole percent.
@@ -401,15 +382,6 @@ std::string_view explain_id(StageId stage) noexcept {
     return {};
 }
 
-std::string_view explain_id(SimpleControl control) noexcept {
-    switch (control) {
-        case SimpleControl::brightness: return "simple.brightness";
-        case SimpleControl::contrast: return "simple.contrast";
-        case SimpleControl::colour: return "simple.colour";
-    }
-    return {};
-}
-
 std::string_view explain_id(CurveKind kind) noexcept {
     switch (kind) {
         case CurveKind::none: return "curve.none";
@@ -508,7 +480,6 @@ std::string live_line(std::string_view id, const EditSettings& s, const LiveCont
     if (entry == nullptr) {
         return {};
     }
-    const SimpleControls positions = simple_from(s);
     switch (entry->live) {
         case LiveKind::none:
             return {};
@@ -517,15 +488,6 @@ std::string live_line(std::string_view id, const EditSettings& s, const LiveCont
             return (preset != nullptr ? std::string(preset->name) : std::string("Custom")) + ": " +
                    look_values_line(s);
         }
-        case LiveKind::brightness:
-            return slider_prefix(positions.brightness) +
-                   stops_and_factor(s.exposure_on ? s.exposure_stops : 0.0f);
-        case LiveKind::contrast:
-            return slider_prefix(positions.contrast) +
-                   contrast_text(s.contrast_on ? s.contrast : 1.0f);
-        case LiveKind::colour:
-            return slider_prefix(positions.colour) +
-                   colour_text(s.saturation_on ? s.saturation : 1.0f);
         case LiveKind::exposure:
             return if_off(s, StageId::exposure, stops_and_factor(s.exposure_stops));
         case LiveKind::matrix:

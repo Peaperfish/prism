@@ -12,7 +12,7 @@ namespace prism::gui {
 
 namespace {
 
-// Contrast's Simple mapping: contrast = base^(slider / 100).
+// Contrast's slider mapping: contrast = base^(slider / 100).
 constexpr float simple_contrast_base = 1.5f;
 
 // The shortest decimal text that reads back as exactly `v` (std::to_chars guarantees that).
@@ -69,8 +69,7 @@ constexpr StageInfo stages[] = {
      "a grade.",
      true},
     {StageId::saturation, "saturation", "Saturation",
-     "Saturation: scales each pixel's colourfulness around its luminance without changing its "
-     "brightness.",
+     "Saturation: scales each pixel's colourfulness around its luminance, which stays as it is.",
      true},
     {StageId::contrast, "contrast", "Contrast",
      "Contrast: widens or narrows the spread of light in stops around middle grey with a smooth "

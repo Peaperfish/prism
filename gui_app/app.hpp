@@ -172,8 +172,6 @@ private:
     void draw_strip_bands(ImDrawList* draw, ImVec2 at, ImVec2 shown);
     // Makes the histogram and scopes those of band `band` of the frame on screen.
     void show_strip_band(int band);
-    // The Test strip button of the Brightness slider, in Adjust.
-    void draw_strip_button();
     void draw_stage_badge();
     // True while the canvas shows two halves: a compare stage is set and its picture has arrived.
     [[nodiscard]] bool splitting() const;
@@ -205,7 +203,6 @@ private:
     void toggle_clip_overlay();
     void update_clip_overlay_texture();
     void draw_presets();
-    void draw_simple_slider(const char* label, gui::SimpleControl control);
     // The Light path section: its data and callbacks, for draw_light_path to draw.
     void draw_light_path_panel();
     void draw_status_bar(float height);

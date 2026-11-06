@@ -22,8 +22,6 @@ namespace {
 constexpr StageId all_stages[] = {StageId::decode,     StageId::exposure, StageId::matrix,
                                   StageId::saturation, StageId::contrast, StageId::curve,
                                   StageId::encode};
-constexpr SimpleControl all_controls[] = {SimpleControl::brightness, SimpleControl::contrast,
-                                          SimpleControl::colour};
 constexpr ScopeChoice all_scopes[] = {ScopeChoice::histogram, ScopeChoice::parade,
                                       ScopeChoice::waveform, ScopeChoice::vectorscope};
 
@@ -31,7 +29,6 @@ constexpr ScopeChoice all_scopes[] = {ScopeChoice::histogram, ScopeChoice::parad
 std::set<std::string> reachable_ids() {
     std::set<std::string> ids;
     for (const StageId s : all_stages) ids.insert(std::string(explain_id(s)));
-    for (const SimpleControl c : all_controls) ids.insert(std::string(explain_id(c)));
     for (const CurveKind k : curve_kinds) ids.insert(std::string(explain_id(k)));
     for (const ScopeChoice s : all_scopes) ids.insert(std::string(explain_id(s)));
     for (const InputKind kind : {InputKind::image, InputKind::raw}) {
@@ -61,7 +58,6 @@ TEST(Explanations, IdsOfTheEnumsAreDistinct) {
     std::set<std::string> ids;
     int count = 0;
     for (const StageId s : all_stages) { ids.insert(std::string(explain_id(s))); ++count; }
-    for (const SimpleControl c : all_controls) { ids.insert(std::string(explain_id(c))); ++count; }
     for (const CurveKind k : curve_kinds) { ids.insert(std::string(explain_id(k))); ++count; }
     for (const ScopeChoice s : all_scopes) { ids.insert(std::string(explain_id(s))); ++count; }
     EXPECT_EQ(static_cast<int>(ids.size()), count);
@@ -184,22 +180,22 @@ TEST(Explanations, ChangingALookChangesTheNumbersInItsText) {
 
 // --- Live lines: the numbers are the engine's ---------------------------------------------------
 
-EditSettings with_brightness(float position) {
+EditSettings with_exposure_at(float position) {
     EditSettings s;
     apply_simple_control(s, SimpleControl::brightness, position);
     return s;
 }
 
-TEST(LiveLines, BrightnessIsStopsAndTheFactorOnTheLight) {
-    EXPECT_EQ(live_line("simple.brightness", with_brightness(35)), "+35: +0.70 stops, 1.62× the light");
-    EXPECT_EQ(live_line("simple.brightness", with_brightness(50)), "+50: +1.00 stops, 2.00× the light");
-    EXPECT_EQ(live_line("simple.brightness", with_brightness(-50)), "-50: -1.00 stops, 0.50× the light");
-    EXPECT_EQ(live_line("simple.brightness", EditSettings{}), "+0: +0.00 stops, 1.00× the light");
+TEST(LiveLines, ExposureIsStopsAndTheFactorOnTheLight) {
+    EXPECT_EQ(live_line("stage.exposure", with_exposure_at(35)), "+0.70 stops, 1.62× the light");
+    EXPECT_EQ(live_line("stage.exposure", with_exposure_at(50)), "+1.00 stops, 2.00× the light");
+    EXPECT_EQ(live_line("stage.exposure", with_exposure_at(-50)), "-1.00 stops, 0.50× the light");
+    EXPECT_EQ(live_line("stage.exposure", EditSettings{}), "+0.00 stops, 1.00× the light");
 }
 
-TEST(LiveLines, BrightnessFactorMatchesTheEngineOnAPixel) {
+TEST(LiveLines, ExposureFactorMatchesTheEngineOnAPixel) {
     for (const float position : {-80.0f, -35.0f, 10.0f, 35.0f, 90.0f}) {
-        const EditSettings s = with_brightness(position);
+        const EditSettings s = with_exposure_at(position);
         Image img;
         img.width = 1;
         img.height = 1;
@@ -207,8 +203,8 @@ TEST(LiveLines, BrightnessFactorMatchesTheEngineOnAPixel) {
         exposure(img, s.exposure_stops, 1);
         char expected[32];
         std::snprintf(expected, sizeof expected, "%.2f× the light", img.pixels[0] / 0.25f);
-        EXPECT_NE(live_line("simple.brightness", s).find(expected), std::string::npos)
-            << position << ": " << live_line("simple.brightness", s);
+        EXPECT_NE(live_line("stage.exposure", s).find(expected), std::string::npos)
+            << position << ": " << live_line("stage.exposure", s);
     }
 }
 
@@ -216,12 +212,12 @@ TEST(LiveLines, ContrastIsOnePointFiveToTheSliderOverAHundred) {
     EditSettings s;
     apply_simple_control(s, SimpleControl::contrast, 50);
     EXPECT_NEAR(s.contrast, std::pow(1.5, 0.5), 1e-6);
-    EXPECT_EQ(live_line("simple.contrast", s), "+50: ×1.22, each stop near middle grey is 22% wider");
+    EXPECT_EQ(live_line("stage.contrast", s), "×1.22, each stop near middle grey is 22% wider");
     apply_simple_control(s, SimpleControl::contrast, -100);
-    EXPECT_EQ(live_line("simple.contrast", s),
-              "-100: ×0.67, each stop near middle grey is 33% narrower");
+    EXPECT_EQ(live_line("stage.contrast", s),
+              "×0.67, each stop near middle grey is 33% narrower");
     apply_simple_control(s, SimpleControl::contrast, 0);
-    EXPECT_EQ(live_line("simple.contrast", s), "+0: ×1.00, no change");
+    EXPECT_EQ(live_line("stage.contrast", s), "×1.00, no change");
 }
 
 // "Each stop near middle grey is N% wider" is the engine's slope at 0.18.
@@ -234,17 +230,17 @@ TEST(LiveLines, ContrastPercentIsTheEnginesSlopeAtMiddleGrey) {
         const double lo = std::log2(contrast_reference(static_cast<float>(0.18 * std::exp2(-h)), s.contrast) / 0.18);
         const double slope = (hi - lo) / (2 * h);
         const long pct = std::lround(std::fabs(slope - 1.0) * 100.0);
-        EXPECT_NE(live_line("simple.contrast", s).find(std::to_string(pct) + "% "), std::string::npos)
-            << position << ": slope " << slope << " in " << live_line("simple.contrast", s);
+        EXPECT_NE(live_line("stage.contrast", s).find(std::to_string(pct) + "% "), std::string::npos)
+            << position << ": slope " << slope << " in " << live_line("stage.contrast", s);
     }
 }
 
 TEST(LiveLines, ColourIsTheScaleSaturationUses) {
     EditSettings s;
     apply_simple_control(s, SimpleControl::colour, 20);
-    EXPECT_EQ(live_line("simple.colour", s), "+20: ×1.20 colour");
+    EXPECT_EQ(live_line("stage.saturation", s), "×1.20 colour");
     apply_simple_control(s, SimpleControl::colour, -100);
-    EXPECT_EQ(live_line("simple.colour", s), "-100: black and white");
+    EXPECT_EQ(live_line("stage.saturation", s), "black and white");
     // The engine: a colour's distance from its luminance is scaled by the same number.
     EditSettings scaled;
     apply_simple_control(scaled, SimpleControl::colour, 40);
@@ -255,20 +251,19 @@ TEST(LiveLines, ColourIsTheScaleSaturationUses) {
     const float y = 0.2126f * 0.5f + 0.7152f * 0.3f + 0.0722f * 0.2f;
     saturation(img, scaled.saturation, 1);
     EXPECT_NEAR((img.pixels[0] - y) / (0.5f - y), 1.4f, 1e-4f);
-    EXPECT_NE(live_line("simple.colour", scaled).find("×1.40"), std::string::npos);
+    EXPECT_NE(live_line("stage.saturation", scaled).find("×1.40"), std::string::npos);
 }
 
-TEST(LiveLines, AStageThatIsOffReadsAsZeroOnTheSliderAndSaysSoInItsRow) {
-    EditSettings s = with_brightness(35);
+TEST(LiveLines, AStageThatIsOffSaysSoInItsRow) {
+    EditSettings s = with_exposure_at(35);
     s.exposure_on = false;
-    EXPECT_EQ(live_line("simple.brightness", s), "+0: +0.00 stops, 1.00× the light");
     EXPECT_EQ(live_line("stage.exposure", s),
               "Off, so no change. When on: +0.70 stops, 1.62× the light");
     s.exposure_on = true;
     EXPECT_EQ(live_line("stage.exposure", s), "+0.70 stops, 1.62× the light");
 }
 
-TEST(LiveLines, StageRowsAgreeWithTheSlidersLines) {
+TEST(LiveLines, TheSlidersMoveWhatTheRowsSay) {
     EditSettings s;
     apply_simple_control(s, SimpleControl::contrast, 30);
     apply_simple_control(s, SimpleControl::colour, -20);
@@ -514,7 +509,7 @@ TEST(LiveLines, ThePreviewSizeIsEmptyWithoutAPhoto) {
 }
 
 TEST(LiveLines, LiveLinesHaveNoPlaceholdersAndUseTheTimesSign) {
-    EditSettings s = with_brightness(12);
+    EditSettings s = with_exposure_at(12);
     apply_simple_control(s, SimpleControl::contrast, -33);
     set_curve_kind(s, CurveKind::reinhard);
     StageHistogram h;

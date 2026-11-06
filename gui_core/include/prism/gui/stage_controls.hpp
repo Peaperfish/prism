@@ -11,10 +11,8 @@ namespace prism::gui {
 // What the pipeline view shows and edits in each stage's row. Everything the window needs to know
 // about those controls is here, so it can be tested without one.
 //
-// Exposure, Saturation and Contrast are edited with the same three sliders as Simple's Brightness,
-// Colour and Contrast (same range, same conversions in settings.hpp), so the two can never
-// disagree: a stage's slider is Simple's slider for that field, and apply_simple_control changes
-// only that field.
+// Exposure, Saturation and Contrast are edited with one slider each (the ranges and conversions are
+// in settings.hpp); apply_simple_control changes only that slider's field.
 
 // The slider that edits `stage`, or nothing for the stages without one.
 [[nodiscard]] std::optional<SimpleControl> stage_slider(StageId stage) noexcept;

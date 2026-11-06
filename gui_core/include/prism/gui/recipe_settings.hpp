@@ -8,7 +8,7 @@ namespace prism::gui {
 // Recipes (prism/recipe.hpp) and the GUI's EditSettings.
 //
 // A recipe holds the five edit stages with their switches. It does not hold where the photo came
-// from, how it is being viewed, Simple mode's slider positions (they are worked out from the
+// from, how it is being viewed, the sliders' positions (they are worked out from the
 // settings) or the RAW options (raw_half_size, raw_camera_matrix), which describe how the file is
 // decoded rather than the look. So applying a recipe never makes the file decode again.
 //

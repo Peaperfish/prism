@@ -28,9 +28,6 @@ inline constexpr std::size_t explain_detail_max = 220;
 enum class LiveKind {
     none,
     look,         // the current look: preset name, exposure, colour, contrast, curve
-    brightness,   // Simple's Brightness: slider position, stops, the factor on the light
-    contrast,     // Simple's Contrast
-    colour,       // Simple's Colour
     exposure,     // the Exposure row: stops and factor
     matrix,       // the matrix file's name, or none
     saturation,   // the Saturation row
@@ -63,7 +60,7 @@ struct Explanation {
 // Every entry, in display order.
 [[nodiscard]] std::span<const Explanation> explanations() noexcept;
 
-// The entry for `id` ("simple.brightness", "stage.curve", "look.vivid", ...), or nullptr.
+// The entry for `id` ("stage.curve", "curve.filmic", "look.vivid", ...), or nullptr.
 [[nodiscard]] const Explanation* explanation_for(std::string_view id) noexcept;
 
 // The height of the Explain area while explanations are on: room for explain_max_lines lines of
@@ -84,7 +81,6 @@ struct Explanation {
 
 // The ids of the controls that have their own enum or list...
 [[nodiscard]] std::string_view explain_id(StageId stage) noexcept;           // "stage.exposure"
-[[nodiscard]] std::string_view explain_id(SimpleControl control) noexcept;   // "simple.brightness"
 [[nodiscard]] std::string_view explain_id(CurveKind kind) noexcept;          // "curve.filmic"
 [[nodiscard]] std::string_view explain_id(ScopeChoice scope) noexcept;       // "scope.parade"
 [[nodiscard]] std::string explain_id(const Preset& preset);                  // "look.vivid"
@@ -149,13 +145,12 @@ struct LiveContext {
 
 // The live line for `id` with these settings: numbers worked out with the engine's own maths
 // (exposure's 2^stops, contrast's curve, saturation's scale, the tone curves), e.g.
-//   simple.brightness at +35:  "+35: +0.70 stops, 1.62× the light"
-//   simple.contrast at +50:    "+50: ×1.22, each stop near middle grey is 22% wider"
+//   stage.exposure at +0.70:   "+0.70 stops, 1.62× the light"
+//   stage.contrast at 1.22:    "×1.22, each stop near middle grey is 22% wider"
 //   curve.gamma at 2.2:        "gamma 2.2: 18% grey becomes 46%"
 //   view.zoom on a 61 MP RAW:  "Preview 2560 px, file 9566 px on the long side: each preview pixel
 //                               stands for about 3.7 file pixels across"
-// Empty for an unknown id and for entries without one. The slider positions are derived from the
-// settings (simple_from), so a stage that is off reads as 0 here exactly as on its slider.
+// Empty for an unknown id and for entries without one.
 [[nodiscard]] std::string live_line(std::string_view id, const EditSettings& settings,
                                     const LiveContext& context = {});
 
