@@ -12,7 +12,7 @@ Contents: [prism](#prism) · [Options of prism](#options-of-prism) · [Recipes a
 prism <input>... [-o <output> | --out-dir <dir>] [--histogram <file>] [options]
 ```
 
-`prism` loads `<input>`, applies the options you give, and writes `<output>`. The input is a PNG, a JPEG or a camera RAW file (`.arw`, `.dng`, `.cr2`, `.cr3`, `.nef`, `.raf`, in any case). The output is `.png`, `.jpg` or `.jpeg`, chosen by the extension of the name you give with `-o`. JPEGs are saved at quality 95. If `<output>` exists, it is replaced.
+`prism` loads `<input>`, applies the options you give, and writes `<output>`. The input is a PNG, a JPEG, a camera RAW file (`.arw`, `.dng`, `.cr2`, `.cr3`, `.nef`, `.raf`, in any case) or, on macOS only, an iPhone HEIC photo (`.heic`, `.heif`). The output is `.png`, `.jpg` or `.jpeg`, chosen by the extension of the name you give with `-o`. JPEGs are saved at quality 95. If `<output>` exists, it is replaced.
 
 - At least one input file must be given. Every argument that doesn't start with `-` and isn't the value of an option is an input. Several inputs need `--out-dir` (see `--out-dir` below).
 - At least one of `-o`, `--out-dir` and `--histogram` is required. With only `--histogram`, the whole pipeline still runs and the histogram shows the processed result, but no image is written. That is a quick way to check clipping before you export.

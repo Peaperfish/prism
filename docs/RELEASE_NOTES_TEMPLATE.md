@@ -2,7 +2,7 @@ Prism's desktop app, for macOS and Windows.
 
 ## What it does
 
-- Opens PNG, JPEG and camera RAW files (.arw, .dng, .cr2, .cr3, .nef, .raf), from File > Open
+- Opens PNG, JPEG, HEIC/HEIF (macOS only) and camera RAW files (.arw, .dng, .cr2, .cr3, .nef, .raf), from File > Open
   or by dropping a file on the window.
 - Shows a live preview that follows every slider as you drag it.
 - Zoom and pan: zoom about the cursor, move the picture, fit it to the window or go to 100%.

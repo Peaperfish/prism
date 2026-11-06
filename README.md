@@ -8,7 +8,7 @@ A small, fast command-line photo tool written in modern C++.
 
 **Documentation:** the [user guide](docs/GUIDE.md) covers the desktop app, from first launch to export, with every keyboard shortcut and a page on how Prism thinks about light. The [command-line reference](docs/CLI.md) covers every option of `prism` and `prism_profile`. [Recipes](docs/RECIPES.md) describes the `.prism` recipe file: an edit written down as plain text.
 
-Prism loads an image (PNG, JPEG or camera RAW), runs it through a simple colour pipeline (exposure, a 3×3 colour matrix and a tone curve), and writes the result back out. It's a learning project for working directly with pixel buffers, colour maths and performance in C++20.
+Prism loads an image (PNG, JPEG, camera RAW or, on macOS, HEIC), runs it through a simple colour pipeline (exposure, a 3×3 colour matrix and a tone curve), and writes the result back out. It's a learning project for working directly with pixel buffers, colour maths and performance in C++20.
 
 > 🚧 Work in progress.
 
@@ -44,6 +44,7 @@ Both include RAW support, and nothing needs installing beside them. The apps are
 - [x] Tone curves (gamma, filmic)
 - [x] Histogram output (R, G, B and luma image, plus clipping summary)
 - [x] RAW support (via [LibRaw](https://www.libraw.org): .arw, .dng, .cr2, .cr3, .nef, .raf; optional)
+- [x] HEIC/HEIF photos (.heic, .heif; macOS only, decoded by Apple ImageIO)
 - [x] Multithreaded processing (standard library threads, no dependencies)
 - [x] Camera matrices from camera profiles (`prism_profile`: LightCraft JSON, DNG files and DCP camera profiles)
 - [x] Colour sampler in the GUI: read any pixel's linear values at any stage, with stops from middle grey and what becomes of a clipped value
