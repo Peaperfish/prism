@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <initializer_list>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -221,6 +222,32 @@ TEST(Heic, LoadsTheFixtureOrSaysItNeedsMacOS) {
     }
 }
 
+// load_photo and load_image send .heic to the same decoder on every system; nothing skipped.
+TEST(Heic, LoadPhotoDispatchesHeicFilesOrSaysItNeedsMacOS) {
+    if (prism::heic_support_available()) {
+        const prism::Photo photo = prism::load_photo(fixture(6));
+        EXPECT_EQ(photo.image.width, prism_test::quadrant_height);
+        EXPECT_EQ(photo.image.height, prism_test::quadrant_width);
+        EXPECT_EQ(photo.info.orientation, 6);
+        EXPECT_EQ(prism::load_image(fixture(6)).pixels, photo.image.pixels);
+    } else {
+        using Load = void (*)(const fs::path&);
+        for (const Load load :
+             std::initializer_list<Load>{[](const fs::path& p) { (void)prism::load_photo(p); },
+                                         [](const fs::path& p) { (void)prism::load_image(p); }}) {
+            try {
+                load(fixture(1));
+                FAIL() << "expected an exception";
+            } catch (const std::runtime_error& e) {
+                const std::string message = e.what();
+                EXPECT_NE(message.find("macOS"), std::string::npos) << message;
+                EXPECT_NE(message.find("HEIC photos can only be opened on macOS in this version "
+                                       "of Prism."), std::string::npos) << message;
+            }
+        }
+    }
+}
+
 #ifdef __APPLE__
 
 TEST(Heic, SupportIsAvailableOnMacOS) {
@@ -296,6 +323,16 @@ TEST(Heic, DamagedCopiesOfTheFixtureThrowNamingTheFile) {
             EXPECT_NE(message.find("cannot decode"), std::string::npos) << message;
             EXPECT_NE(message.find(name), std::string::npos) << message;
         }
+    }
+}
+
+// load_photo and load_image reach the same decoder: a damaged file throws there too.
+TEST(Heic, LoadPhotoAndLoadImageThrowOnDamagedCopiesOfTheFixture) {
+    const ScratchDir dir;
+    for (const fs::path& path : prism_test::write_damaged_heic_copies(fixture(1), dir.path())) {
+        SCOPED_TRACE(prism::utf8(path.filename()));
+        EXPECT_THROW((void)prism::load_photo(path), std::runtime_error);
+        EXPECT_THROW((void)prism::load_image(path), std::runtime_error);
     }
 }
 

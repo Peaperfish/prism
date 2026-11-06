@@ -35,8 +35,8 @@ void print_usage(const char* program) {
               << "Usage: " << program
               << " <input>... [-o <output> | --out-dir <dir>] [--histogram <file>] [options]\n"
               << "\n"
-              << "Loads <input> (PNG, JPEG or camera RAW: .arw .dng .cr2 .cr3 .nef .raf) and\n"
-              << "writes <output> (.png, .jpg or .jpeg).\n"
+              << "Loads <input> (PNG, JPEG, camera RAW: .arw .dng .cr2 .cr3 .nef .raf, or on\n"
+              << "macOS HEIC: .heic .heif) and writes <output> (.png, .jpg or .jpeg).\n"
               << "At least one of -o, --out-dir and --histogram is required.\n"
               << "\n"
               << "Several photos:\n"

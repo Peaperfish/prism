@@ -14,6 +14,8 @@
 #endif
 
 #include "env_var.hpp"
+#include "heic_damage.hpp"
+#include "prism/heic.hpp"
 #include "prism/image.hpp"
 #include "prism/version.hpp"
 #include "run_command.hpp"
@@ -253,6 +255,46 @@ TEST(Cli, AJpegWithOrientation6RendersUpright) {
     EXPECT_EQ(out.height, prism_test::quadrant_width);
     fs::remove(input);
     fs::remove(output);
+}
+
+// No skip: on macOS the HEIC photo is rendered upright, elsewhere the tool says it needs macOS.
+TEST(Cli, AHeicWithOrientation6RendersUprightOrSaysItNeedsMacOS) {
+    const fs::path input = fs::path(PRISM_TEST_DATA) / "heic" / "quadrants_o6.heic";
+    const fs::path output = temp_file("heic_upright.png");
+    const RunResult r = run_prism(quoted(input) + " -o " + quoted(output));
+    if (prism::heic_support_available()) {
+        EXPECT_EQ(r.exit_code, 0) << r.output;
+        ASSERT_TRUE(fs::exists(output));
+        const prism::Image out = prism::load_image(output);
+        EXPECT_EQ(out.width, prism_test::quadrant_height);
+        EXPECT_EQ(out.height, prism_test::quadrant_width);
+    } else {
+        EXPECT_NE(r.exit_code, 0);
+        EXPECT_TRUE(contains(r.output, "macOS")) << r.output;
+        EXPECT_FALSE(fs::exists(output));
+    }
+    std::error_code ec;
+    fs::remove(output, ec);
+}
+
+// A truncated or scrambled HEIC makes the tool fail, not write a black picture.
+TEST(Cli, DamagedCopiesOfAHeicFailWithoutWritingAnOutput) {
+    if (!prism::heic_support_available()) {
+        GTEST_SKIP() << "HEIC photos open on macOS only";
+    }
+    const fs::path dir = temp_file("damaged");
+    fs::create_directories(dir);
+    const fs::path source = fs::path(PRISM_TEST_DATA) / "heic" / "quadrants_o1.heic";
+    const fs::path output = temp_file("damaged.png");
+    for (const fs::path& path : prism_test::write_damaged_heic_copies(source, dir)) {
+        SCOPED_TRACE(path.filename().string());
+        const RunResult r = run_prism(quoted(path) + " -o " + quoted(output));
+        EXPECT_NE(r.exit_code, 0) << r.output;
+        EXPECT_FALSE(fs::exists(output));
+    }
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::remove(output, ec);
 }
 
 // Runs only with PRISM_TEST_RAW set; see raw_test.cpp. Half size keeps it quick.

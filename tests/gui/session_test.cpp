@@ -15,9 +15,11 @@
 #include <unistd.h>  // getpid
 #endif
 
+#include "heic_damage.hpp"
 #include "prism/gui/presets.hpp"
 #include "prism/gui/session.hpp"
 #include "prism/gui/settings.hpp"
+#include "prism/heic.hpp"
 #include "prism/image.hpp"
 #include "prism/process.hpp"
 #include "prism/raw.hpp"
@@ -145,7 +147,9 @@ TEST(Session, RejectsFilesItCannotOpenWithClearMessages) {
     MaybeError e = session.open_file(temp_file("photo.tiff"));
     ASSERT_TRUE(e);
     EXPECT_EQ(e->kind, ErrorKind::unsupported_format);
-    EXPECT_TRUE(contains(e->message, "Prism opens PNG, JPEG and camera RAW files")) << e->message;
+    EXPECT_TRUE(contains(e->message, "Prism opens PNG, JPEG")) << e->message;
+    EXPECT_TRUE(contains(e->message, "camera RAW files")) << e->message;
+    EXPECT_EQ(contains(e->message, "HEIC"), prism::heic_support_available()) << e->message;
     EXPECT_TRUE(contains(e->message, "photo.tiff' isn't one of them")) << e->message;
 
     e = session.open_file(temp_file("missing.jpg"));
@@ -234,6 +238,72 @@ TEST(Session, OpensAJpegUprightWithItsPhotoInfo) {
     EXPECT_EQ(session.photo_info().iso, 400);
     EXPECT_EQ(session.photo_info().orientation, 6);
     fs::remove(jpg);
+}
+
+namespace {
+fs::path heic_fixture(int orientation) {
+    return fs::path(PRISM_TEST_DATA) / "heic" /
+           ("quadrants_o" + std::to_string(orientation) + ".heic");
+}
+}  // namespace
+
+// No skip: with ImageIO the HEIC opens, without it the error says why.
+TEST(Session, OpensAHeicOnMacOSAndSaysSoElsewhere) {
+    Session session;
+    const MaybeError e = session.open_file(heic_fixture(6));
+    if (!prism::heic_support_available()) {
+        ASSERT_TRUE(e);
+        EXPECT_EQ(e->kind, ErrorKind::unsupported_format);
+        EXPECT_EQ(e->message, "HEIC photos can only be opened on macOS in this version of Prism.");
+        EXPECT_FALSE(session.has_file());
+        return;
+    }
+    ASSERT_EQ(e, std::nullopt);
+    EXPECT_EQ(session.kind(), InputKind::image);
+    // Stored 64 x 32 with Orientation 6: the photo comes out upright, 32 x 64.
+    EXPECT_EQ(session.decoded_width(), prism_test::quadrant_height);
+    EXPECT_EQ(session.decoded_height(), prism_test::quadrant_width);
+    EXPECT_EQ(session.file_width(), prism_test::quadrant_height);
+    EXPECT_EQ(session.file_height(), prism_test::quadrant_width);
+    EXPECT_EQ(session.preview_base()->width, prism_test::quadrant_height);
+    EXPECT_EQ(session.photo_info().orientation, 6);
+}
+
+TEST(Session, ADamagedHeicIsAnUnreadableFileNotACrash) {
+    if (!prism::heic_support_available()) {
+        GTEST_SKIP() << "HEIC photos open on macOS only";
+    }
+    const fs::path junk = write_text("junk.heic", "this is not a HEIC photo");
+    Session session;
+    const MaybeError e = session.open_file(junk);
+    ASSERT_TRUE(e);
+    EXPECT_EQ(e->kind, ErrorKind::unreadable);
+    EXPECT_TRUE(contains(e->message, "not really a HEIC photo")) << e->message;
+    EXPECT_FALSE(e->details.empty());
+    fs::remove(junk);
+}
+
+// A truncated or scrambled HEIC must not open as a black picture: the error is the damaged-file
+// one and no photo is kept.
+TEST(Session, DamagedCopiesOfAHeicAreUnreadableAndKeepNoPhoto) {
+    if (!prism::heic_support_available()) {
+        GTEST_SKIP() << "HEIC photos open on macOS only";
+    }
+    const fs::path dir = temp_file("damaged");
+    fs::create_directories(dir);
+    for (const fs::path& path : prism_test::write_damaged_heic_copies(heic_fixture(1), dir)) {
+        SCOPED_TRACE(path.filename().string());
+        Session session;
+        const MaybeError e = session.open_file(path);
+        ASSERT_TRUE(e);
+        EXPECT_EQ(e->kind, ErrorKind::unreadable);
+        EXPECT_TRUE(contains(e->message, "not really a HEIC photo")) << e->message;
+        EXPECT_FALSE(e->details.empty());
+        EXPECT_FALSE(session.has_file());
+        EXPECT_TRUE(session.photo_info().empty());
+    }
+    std::error_code ec;
+    fs::remove_all(dir, ec);
 }
 
 TEST(Session, PhotoInfoIsReplacedByTheNextOpen) {

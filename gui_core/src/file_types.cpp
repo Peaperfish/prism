@@ -1,5 +1,6 @@
 #include "prism/gui/file_types.hpp"
 
+#include "prism/heic.hpp"
 #include "prism/raw.hpp"
 #include "prism/utf8_path.hpp"
 
@@ -27,6 +28,9 @@ std::string lowercase_extension(const fs::path& path) {
 
 std::string open_filter_pattern() {
     std::string pattern = "png;jpg;jpeg";
+    if (heic_support_available()) {
+        pattern += ";heic;heif";  // what is_heic_file() accepts
+    }
     if (raw_support_available()) {
         pattern += ";arw;dng;cr2;cr3;nef;raf";  // what is_raw_file() accepts
     }

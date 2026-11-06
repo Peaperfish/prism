@@ -22,6 +22,7 @@
 #include "prism/gui/slider_gesture.hpp"
 #include "prism/gui/stage_controls.hpp"
 #include "prism/gui/test_strip.hpp"
+#include "prism/heic.hpp"
 #include "prism/raw.hpp"
 #include "prism/utf8_path.hpp"
 #include "prism/version.hpp"
@@ -1410,7 +1411,10 @@ void App::draw_canvas() {
         }
         ImGui::TextUnformatted("");
         ImGui::PushStyleColor(ImGuiCol_Text, colours.canvas_text);
-        centred_text(raw_support_available() ? "PNG, JPEG or RAW" : "PNG or JPEG");
+        centred_text(heic_support_available()
+                         ? (raw_support_available() ? "PNG, JPEG, HEIC or RAW"
+                                                    : "PNG, JPEG or HEIC")
+                         : (raw_support_available() ? "PNG, JPEG or RAW" : "PNG or JPEG"));
         ImGui::PopStyleColor();
     }
 

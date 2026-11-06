@@ -13,6 +13,7 @@
 
 #include "file_ext.hpp"
 #include "prism/color.hpp"
+#include "prism/heic.hpp"
 #include "prism/raw.hpp"
 #include "prism/utf8_path.hpp"
 #include "sample_ranges.hpp"
@@ -79,6 +80,9 @@ Photo load_photo(const std::filesystem::path& path, int threads) {
 Photo load_photo(const std::filesystem::path& path, const RawOptions& raw, int threads) {
     if (is_raw_file(path)) {
         return load_raw_photo(path, raw, threads);
+    }
+    if (is_heic_file(path)) {
+        return load_heic_photo(path, threads);
     }
 
     int width = 0;

@@ -17,7 +17,8 @@
 namespace prism::gui {
 
 enum class ErrorKind {
-    unsupported_format,  // not a PNG, JPEG or RAW name (open), or not .png/.jpg/.jpeg (export)
+    unsupported_format,  // not a PNG, JPEG, HEIC or RAW name (open), or HEIC off macOS, or not
+                         // .png/.jpg/.jpeg (export)
     not_found,           // the file does not exist
     unreadable,          // the decoder rejected it: damaged, or not what its name says
     no_raw_support,      // a RAW file, but this build has no LibRaw

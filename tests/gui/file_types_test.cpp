@@ -5,6 +5,7 @@
 #include <string>
 
 #include "prism/gui/file_types.hpp"
+#include "prism/heic.hpp"
 #include "prism/raw.hpp"
 #include "prism/utf8_path.hpp"
 
@@ -15,25 +16,30 @@ using prism::gui::open_filter_pattern;
 using prism::gui::suggested_export_path;
 using prism::gui::with_export_extension;
 
-TEST(FileTypes, OpenFilterOffersRawOnlyWithLibRaw) {
+TEST(FileTypes, OpenFilterOffersRawOnlyWithLibRawAndHeicOnlyOnMacOS) {
     const std::string pattern = open_filter_pattern();
     EXPECT_EQ(pattern.rfind("png;jpg;jpeg", 0), 0u);
-    if (prism::raw_support_available()) {
-        EXPECT_EQ(pattern, "png;jpg;jpeg;arw;dng;cr2;cr3;nef;raf");
-    } else {
-        EXPECT_EQ(pattern, "png;jpg;jpeg");
+    std::string expected = "png;jpg;jpeg";
+    if (prism::heic_support_available()) {
+        expected += ";heic;heif";
     }
+    if (prism::raw_support_available()) {
+        expected += ";arw;dng;cr2;cr3;nef;raf";
+    }
+    EXPECT_EQ(pattern, expected);
 }
 
-TEST(FileTypes, OpenFilterMatchesWhatIsRawFileAccepts) {
-    // Every RAW extension the dialog offers is one Session will treat as RAW.
+TEST(FileTypes, OpenFilterMatchesWhatIsRawFileAndIsHeicFileAccept) {
+    // Every extension the dialog offers is a picture, a HEIC photo or a RAW file, and only one.
     const std::string pattern = open_filter_pattern();
     std::size_t start = 0;
     while (start < pattern.size()) {
         const std::size_t end = std::min(pattern.find(';', start), pattern.size());
         const std::string ext = pattern.substr(start, end - start);
         const bool image = ext == "png" || ext == "jpg" || ext == "jpeg";
-        EXPECT_EQ(prism::is_raw_file("x." + ext), !image) << ext;
+        const bool heic = ext == "heic" || ext == "heif";
+        EXPECT_EQ(prism::is_heic_file("x." + ext), heic) << ext;
+        EXPECT_EQ(prism::is_raw_file("x." + ext), !image && !heic) << ext;
         start = end + 1;
     }
 }

@@ -103,6 +103,7 @@ target_link_libraries(prism_gui_core_tests PRIVATE prism_gui_core prism_warnings
 target_include_directories(prism_gui_core_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
                                                         ${PROJECT_SOURCE_DIR}/lib)
 target_compile_definitions(prism_gui_core_tests PRIVATE
-                           PRISM_RECIPES_DIR="${PROJECT_SOURCE_DIR}/recipes")
+                           PRISM_RECIPES_DIR="${PROJECT_SOURCE_DIR}/recipes"
+                           PRISM_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
 prism_copy_libraw_dll(prism_gui_core_tests)
 gtest_discover_tests(prism_gui_core_tests)

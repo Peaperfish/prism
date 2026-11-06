@@ -44,7 +44,8 @@ struct Photo {
 // problems never fail a load: the photo then loads as stored.
 // Grey or alpha images are expanded/flattened to RGB. Throws std::runtime_error on failure.
 // Decoding the file itself (stb_image) is single-threaded; only the sRGB conversion uses `threads`.
-// Camera RAW files (see is_raw_file in prism/raw.hpp) go to load_raw with default RawOptions.
+// Camera RAW files (see is_raw_file in prism/raw.hpp) go to load_raw with default RawOptions, and
+// .heic / .heif files to load_heic_photo (prism/heic.hpp), which only works on macOS.
 [[nodiscard]] Image load_image(const std::filesystem::path& path, int threads = 0);
 
 // As above, passing `raw` on to load_raw for RAW files; ignored for PNG and JPEG.

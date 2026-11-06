@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "prism/gui/recipe_settings.hpp"
+#include "prism/heic.hpp"
 #include "prism/raw.hpp"
 #include "prism/resize.hpp"
 #include "prism/utf8_path.hpp"
@@ -61,6 +62,9 @@ std::variant<Photo, Error> decode(const fs::path& path, InputKind kind, const Ra
         if (kind == InputKind::raw) {
             message = "Couldn't read the RAW file " + quoted_name(path) +
                       ". The camera may be newer than this version of Prism's RAW decoder.";
+        } else if (is_heic_file(path)) {
+            message = "Couldn't open " + quoted_name(path) +
+                      ". The file may be damaged, or not really a HEIC photo.";
         } else {
             const bool png = extension_of(path) == ".png";
             message = "Couldn't open " + quoted_name(path) + ". The file may be damaged, or not " +
@@ -75,11 +79,20 @@ std::variant<InputKind, Error> check_input(const fs::path& path) {
     InputKind kind = InputKind::image;
     if (is_raw_file(path)) {
         kind = InputKind::raw;
+    } else if (is_heic_file(path)) {
+        // An ordinary photo as far as editing goes; only decoding it needs macOS.
+        if (!heic_support_available()) {
+            return Error{ErrorKind::unsupported_format,
+                         "HEIC photos can only be opened on macOS in this version of Prism.", ""};
+        }
     } else if (!is_png_or_jpeg(path)) {
         return Error{
             ErrorKind::unsupported_format,
-            "Prism opens PNG, JPEG and camera RAW files (.arw .dng .cr2 .cr3 .nef .raf). " +
-                quoted_name(path) + " isn't one of them.",
+            heic_support_available()
+                ? "Prism opens PNG, JPEG, HEIC and camera RAW files (.heic .heif .arw .dng .cr2 "
+                  ".cr3 .nef .raf). " + quoted_name(path) + " isn't one of them."
+                : "Prism opens PNG, JPEG and camera RAW files (.arw .dng .cr2 .cr3 .nef .raf). " +
+                      quoted_name(path) + " isn't one of them.",
             ""};
     }
     std::error_code ec;
