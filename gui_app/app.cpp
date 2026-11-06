@@ -435,9 +435,9 @@ bool App::recipes_available() const {
            !close_pending_;
 }
 
-// Save Recipe...: the sheet first, with the name and description Prism suggests.
+// Save Recipe…: the sheet first, with the name and description Prism suggests.
 void App::begin_save_recipe(bool for_close) {
-    // The close prompt's Save Recipe... comes while a quit or open is pending, which otherwise
+    // The close prompt's Save Recipe… comes while a quit or open is pending, which otherwise
     // keeps recipes unavailable.
     if (for_close ? (!session_.has_file() || dialog_open_ || recipe_sheet_ || exporter_.busy())
                   : !recipes_available()) {
@@ -453,9 +453,9 @@ void App::begin_save_recipe(bool for_close) {
     recipe_sheet_ = std::move(sheet);
 }
 
-// The save sheet: Name, Description, what is saved, Save... and Cancel. Modal. Esc cancels when no
+// The save sheet: Name, Description, what is saved, Save… and Cancel. Modal. Esc cancels when no
 // text field has the keyboard; inside a field the first Esc only leaves the field. Enter in a
-// field is Save....
+// field is Save….
 void App::draw_recipe_sheet() {
     constexpr const char* popup = "Save Recipe";
     if (recipe_sheet_ && !ImGui::IsPopupOpen(popup)) {
@@ -504,7 +504,7 @@ void App::draw_recipe_sheet() {
     ImGui::PopStyleColor();
     ImGui::PopTextWrapPos();
     ImGui::Spacing();
-    const bool save = ImGui::Button("Save...") || enter;
+    const bool save = ImGui::Button("Save…") || enter;
     ImGui::SameLine();
     const bool cancel = ImGui::Button("Cancel") || (escape && !field_active);
     if (save || cancel) {
@@ -513,7 +513,7 @@ void App::draw_recipe_sheet() {
     ImGui::EndPopup();
 
     if (save) {
-        // The recipe is made now, from what is on screen as Save... is pressed.
+        // The recipe is made now, from what is on screen as Save… is pressed.
         saving_recipe_settings_ = session_.settings();
         saving_recipe_ = gui::recipe_from(saving_recipe_settings_);
         saving_recipe_.name = typed_text(sheet.name.data());
@@ -1008,7 +1008,7 @@ bool App::animating() const {
 void App::frame() {
     ++quiet_frames_;
     take_dialog_results();
-    // The "Opening ..." frame was presented: now decode (this frame shows the result).
+    // The "Opening …" frame was presented: now decode (this frame shows the result).
     if (pending_open_ && pending_open_shown_) {
         const fs::path path = std::move(*pending_open_);
         pending_open_.reset();
@@ -1422,10 +1422,10 @@ void App::draw_canvas() {
         ImGui::PushStyleColor(ImGuiCol_Text, colours.canvas_text);
         centred_text("Drop a photo here");
         ImGui::PopStyleColor();
-        const float button = ImGui::CalcTextSize("Open photo...").x +
+        const float button = ImGui::CalcTextSize("Open photo…").x +
                              ImGui::GetStyle().FramePadding.x * 2;
         ImGui::SetCursorPosX((size.x - button) / 2);
-        if (ImGui::Button("Open photo...")) {
+        if (ImGui::Button("Open photo…")) {
             show_open_dialog();
         }
         ImGui::TextUnformatted("");
@@ -1438,8 +1438,8 @@ void App::draw_canvas() {
     }
 
     const ImVec2 note_at(min.x + margin, max.y - margin - 2 * ImGui::GetFontSize());
-    const std::string opening = pending_open_ ? "Opening " + file_name(*pending_open_) + "..." : "";
-    const std::string rendering = "Rendering...";
+    const std::string opening = pending_open_ ? "Opening " + file_name(*pending_open_) + "…" : "";
+    const std::string rendering = "Rendering…";
     if (pending_open_) {
         overlay_text(draw, colours, note_at, opening);
     } else if (preview_.rendering()) {
@@ -3196,7 +3196,7 @@ void App::draw_about() {
         }
         ImGui::EndTable();
     }
-    if (ImGui::Button("Third-party notices...")) {
+    if (ImGui::Button("Third-party notices…")) {
         notices_open_ = true;
         ImGui::SetWindowFocus("Third-party notices");
     }
@@ -3241,7 +3241,7 @@ void App::draw_saving_popup() {
         // and lets the export finish; otherwise it cancels the export.
         const bool waiting = close_pending_ && close_phase_ == ClosePhase::waiting;
         const std::string_view text =
-            waiting ? gui::waiting_text(*close_pending_) : std::string_view("Saving...");
+            waiting ? gui::waiting_text(*close_pending_) : std::string_view("Saving…");
         ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + token_metrics().prompt_wrap);
         ImGui::TextUnformatted(text.data(), text.data() + text.size());
         ImGui::PopTextWrapPos();
@@ -3259,8 +3259,8 @@ void App::draw_saving_popup() {
 }
 
 // "You have edits that haven't been exported or saved as a recipe.", what was saved last, and
-// Export..., Save Recipe..., Quit/Open Without Saving and Cancel in the platform's order. Modal;
-// Esc is Cancel; Export... is the default (Enter).
+// Export…, Save Recipe…, Quit/Open Without Saving and Cancel in the platform's order. Modal;
+// Esc is Cancel; Export… is the default (Enter).
 void App::draw_close_prompt() {
     const bool asking = close_pending_ && close_phase_ == ClosePhase::asking;
     if (asking && !ImGui::IsPopupOpen("close_prompt")) {

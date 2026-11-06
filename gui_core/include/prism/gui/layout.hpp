@@ -50,11 +50,11 @@ struct SplitLayout {
 // picture one pixel wide gives a divider at one of its two edges (one half is empty).
 [[nodiscard]] SplitLayout split_layout(float x, float width, float fraction) noexcept;
 
-// `text` (UTF-8) shortened to fit `max_width` by cutting out its middle and putting "..." there,
-// e.g. "a very long holiday photo name.png" -> "a very lo...name.png". The end is kept because
+// `text` (UTF-8) shortened to fit `max_width` by cutting out its middle and putting "…" there,
+// e.g. "a very long holiday photo name.png" -> "a very lo…name.png". The end is kept because
 // it holds the extension and often a number that tells files apart. `measure` gives a string's
 // width (in ImGui: CalcTextSize(...).x). Never cuts a character's UTF-8 bytes apart. Returns the
-// text unchanged if it fits, and just "..." (or "") if not even that much fits.
+// text unchanged if it fits, and just "…" (or "") if not even that much fits.
 [[nodiscard]] std::string ellipsize_middle(std::string_view text, float max_width,
                                            const std::function<float(std::string_view)>& measure);
 

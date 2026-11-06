@@ -67,9 +67,4 @@ void draw_chevron(ImDrawList* draw, ImVec2 centre, Chevron direction, ImU32 colo
 // EndCombo when it returns true, as usual. Set the width first with SetNextItemWidth.
 bool styled_begin_combo(const char* id, const char* preview);
 
-// A collapsible section's header, in the look of section_text (semi-bold, muted, a hairline) with
-// a chevron that points right when closed and down when open. The whole line is the click area.
-// Returns true when it was clicked; *open is toggled.
-bool section_header(const char* title, bool* open);
-
 }  // namespace prism::gui_app

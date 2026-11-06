@@ -65,14 +65,14 @@ enum class CloseStep {
     proceed,             // go ahead: quit, or open the other photo
     ask,                 // show the prompt
     wait_for_export,     // show "waiting for the export", and ask again when it has finished
-    choose_file,         // the prompt's Export...: open the save dialog
+    choose_file,         // the prompt's Export…: open the save dialog
     await_export,        // the export has started: wait for its result
-    name_recipe,         // the prompt's Save Recipe...: show the save sheet
-    choose_recipe_file,  // the sheet's Save...: open the recipe's save dialog
+    name_recipe,         // the prompt's Save Recipe…: show the save sheet
+    choose_recipe_file,  // the sheet's Save…: open the recipe's save dialog
     cancel,              // drop the request; nothing quits or opens
 };
 
-// Export..., Save Recipe..., Quit/Open Without Saving, Cancel.
+// Export…, Save Recipe…, Quit/Open Without Saving, Cancel.
 enum class PromptChoice { export_first, save_recipe, discard, cancel };
 
 enum class ExportEnd { saved, cancelled, failed };
@@ -91,7 +91,7 @@ enum class RecipeEnd { saved, cancelled, failed };
 // What a prompt button does.
 [[nodiscard]] CloseStep prompt_choice(PromptChoice choice) noexcept;
 
-// The save dialog opened by the prompt's Export... closed: with a file chosen the export starts
+// The save dialog opened by the prompt's Export… closed: with a file chosen the export starts
 // (await_export); cancelling the dialog cancels the whole request.
 [[nodiscard]] CloseStep save_dialog_closed(bool file_chosen) noexcept;
 
@@ -99,7 +99,7 @@ enum class RecipeEnd { saved, cancelled, failed };
 // on; cancelling or a failure cancels the request.
 [[nodiscard]] CloseStep export_finished(ExportEnd end) noexcept;
 
-// The save sheet opened by the prompt's Save Recipe... closed: Save... goes on to the dialog,
+// The save sheet opened by the prompt's Save Recipe… closed: Save… goes on to the dialog,
 // Cancel cancels the whole request.
 [[nodiscard]] CloseStep recipe_sheet_closed(bool confirmed) noexcept;
 
@@ -124,9 +124,9 @@ struct PromptText {
 
 // The prompt's buttons in the order they are drawn, left to right, as each platform orders them.
 // On macOS the destructive button stands alone on the left and the rest are on the right, the
-// default last: [Quit Without Saving] ... [Cancel] [Save Recipe...] [Export...]. On Windows and
-// Linux the default comes first: [Export...] [Save Recipe...] [Quit Without Saving] [Cancel].
-// Export... is the default (Enter) everywhere, and Esc is Cancel.
+// default last: [Quit Without Saving] ... [Cancel] [Save Recipe…] [Export…]. On Windows and
+// Linux the default comes first: [Export…] [Save Recipe…] [Quit Without Saving] [Cancel].
+// Export… is the default (Enter) everywhere, and Esc is Cancel.
 struct PromptButtons {
     PromptChoice order[4];
     // A flexible gap goes after this many buttons (0: none, the row is packed).

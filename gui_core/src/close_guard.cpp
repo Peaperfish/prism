@@ -65,8 +65,8 @@ CloseStep recipe_save_finished(RecipeEnd end) noexcept {
 }
 
 PromptText prompt_text(Pending pending) noexcept {
-    return {"You have edits that haven't been exported or saved as a recipe.", "Export...",
-            "Save Recipe...",
+    return {"You have edits that haven't been exported or saved as a recipe.", "Export…",
+            "Save Recipe…",
             pending == Pending::quit ? "Quit Without Saving" : "Open Without Saving", "Cancel"};
 }
 
@@ -90,8 +90,8 @@ PromptButtons prompt_buttons(bool mac) noexcept {
 }
 
 std::string_view waiting_text(Pending pending) noexcept {
-    return pending == Pending::quit ? "Finishing the export before quitting..."
-                                    : "Finishing the export before opening the other photo...";
+    return pending == Pending::quit ? "Finishing the export before quitting…"
+                                    : "Finishing the export before opening the other photo…";
 }
 
 }  // namespace prism::gui

@@ -251,7 +251,7 @@ TEST(ThemeTokens, TypeSizesAreAsDesigned) {
 
 // Every field of TokenMetrics is a float or two; a field added without teaching scaled() about it
 // would not scale, so the size is pinned here.
-static_assert(sizeof(TokenMetrics) == 99 * sizeof(float));
+static_assert(sizeof(TokenMetrics) == 92 * sizeof(float));
 
 TEST(ThemeTokens, EverySizeScalesLinearlyWithTheInterfaceScale) {
     for (const TokenSet& set : token_sets()) {

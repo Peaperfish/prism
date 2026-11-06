@@ -21,7 +21,7 @@ struct Palette {
     ImVec4 notice_background;  // the notice banner ("Saved ...")
     ImVec4 notice_text;
     ImVec4 notice_border;
-    // Text drawn over the photo ("Rendering..."): light on a dark translucent box in both themes,
+    // Text drawn over the photo ("Rendering…"): light on a dark translucent box in both themes,
     // since the box sits on the photo or the grey canvas, not on the theme's background.
     ImU32 overlay_background;
     ImU32 overlay_text;

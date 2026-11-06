@@ -74,7 +74,7 @@ public:
 
 private:
     // Asks for `path` to be opened. The open itself happens a frame later, so the window can
-    // first show "Opening ..." (decoding a large RAW file takes about a second).
+    // first show "Opening …" (decoding a large RAW file takes about a second).
     void request_open(std::filesystem::path path);
     // The part of request_open that really starts it (after the unexported-edits question).
     void start_open(std::filesystem::path path);
@@ -92,7 +92,7 @@ private:
     // be saved or loaded now: a photo is open and no dialog, sheet, export or close question is
     // in progress.
     [[nodiscard]] bool recipes_available() const;
-    // for_close: the close prompt's Save Recipe... asks, while a quit or open waits on it.
+    // for_close: the close prompt's Save Recipe… asks, while a quit or open waits on it.
     void begin_save_recipe(bool for_close = false);
     void draw_recipe_sheet();
     void show_recipe_save_dialog();
@@ -108,7 +108,6 @@ private:
     void draw_look_recipe();
     // The files of a drop that has just ended.
     void take_drop();
-    // The panel's Load recipe... / Save recipe... row, in the Look section.
     // "Recipe: <name>" under the Look menu, and what it sets, while the settings are still its.
     void draw_recipe_line();
     void take_dialog_results();
@@ -270,11 +269,11 @@ private:
         std::array<char, 512> description{};
         std::string hint;
         bool appearing = true;  // the first frame: put the keyboard in the Name field
-        bool for_close = false;  // opened by the close prompt's Save Recipe...
+        bool for_close = false;  // opened by the close prompt's Save Recipe…
     };
     std::optional<RecipeSheet> recipe_sheet_;
     // The recipe the save dialog will write, and the settings it was made from (those on screen
-    // when the sheet's Save... was pressed).
+    // when the sheet's Save… was pressed).
     Recipe saving_recipe_;
     gui::EditSettings saving_recipe_settings_;
     // The recipe loaded onto the open photo, if any.
@@ -298,7 +297,7 @@ private:
         asking,
         saving_dialog,
         exporting,
-        naming_recipe,         // the prompt's Save Recipe...: the sheet is up
+        naming_recipe,         // the prompt's Save Recipe…: the sheet is up
         saving_recipe_dialog,  // ... and then its save dialog
     };
     std::optional<gui::Pending> close_pending_;
@@ -330,7 +329,7 @@ private:
     std::vector<gui::ViewRect> canvas_taken_;  // this frame's chips and notes on the canvas
 
     std::optional<std::filesystem::path> pending_open_;
-    bool pending_open_shown_ = false;  // the "Opening ..." frame has been drawn
+    bool pending_open_shown_ = false;  // the "Opening …" frame has been drawn
     bool dialog_open_ = false;         // a file dialog is up: don't open another
 
     bool drag_over_ = false;                      // files are being dragged over the window

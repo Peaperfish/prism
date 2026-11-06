@@ -29,7 +29,7 @@ std::string ellipsize_middle(std::string_view text, float max_width,
     if (measure(text) <= max_width) {
         return std::string(text);
     }
-    constexpr std::string_view dots = "...";
+    constexpr std::string_view dots = "…";
     if (measure(dots) > max_width) {
         return "";
     }

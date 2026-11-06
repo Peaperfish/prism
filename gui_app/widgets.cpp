@@ -352,38 +352,6 @@ void draw_chevron(ImDrawList* draw, ImVec2 c, Chevron direction, ImU32 colour) {
     draw->AddPolyline(points, 3, colour, ImDrawFlags_RoundCornersAll, t);
 }
 
-bool section_header(const char* title, bool* open) {
-    space_before_section();
-    const gui::TokenColours& colours = token_colours();
-    const gui::TokenMetrics& m = token_metrics();
-    ImDrawList* draw = ImGui::GetWindowDrawList();
-    ImGui::PushFont(fonts().semibold, token_type().section);
-    const ImVec2 text_size = ImGui::CalcTextSize(title);
-    const float height = text_size.y + m.separator_text_padding.y;
-    const float width = ImGui::GetContentRegionAvail().x;
-    const bool clicked = ImGui::InvisibleButton(title, ImVec2(width, height));
-    if (clicked) {
-        *open = !*open;
-    }
-    const ImVec2 min = ImGui::GetItemRectMin();
-    const ImVec2 max = ImGui::GetItemRectMax();
-    const float cy = std::round((min.y + max.y) * 0.5f);
-    if (ImGui::IsItemHovered()) {
-        draw->AddRectFilled(min, max, colour_u32(colours.control_hovered),
-                            ImGui::GetStyle().FrameRounding);
-    }
-    const ImU32 muted = ImGui::GetColorU32(ImGuiCol_TextDisabled);
-    const float gap = ImGui::GetStyle().ItemInnerSpacing.x;
-    float x = min.x + m.chevron_size + gap * 0.5f;
-    draw_chevron(draw, ImVec2(std::round(x), cy), *open ? Chevron::down : Chevron::right, muted);
-    x += m.chevron_size + gap;
-    draw->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(x, std::round(cy - text_size.y * 0.5f)),
-                  muted, title);
-    ImGui::PopFont();
-    ImGui::RenderNavCursor(ImRect(min, max), ImGui::GetItemID());
-    return clicked;
-}
-
 bool styled_begin_combo(const char* id, const char* preview) {
     // The frame's place, worked out before BeginCombo (which opens its popup as the current
     // window when it returns true): the cursor, the item width and the frame height.

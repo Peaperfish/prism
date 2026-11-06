@@ -449,7 +449,7 @@ TEST(ViewChip, HasItsOwnMarginAtTheRightAndAtTheBottom) {
 }
 
 TEST(ViewChip, StaysPutForWhatIsNotInItsWay) {
-    // "Rendering..." in the bottom left corner, on the same line.
+    // "Rendering…" in the bottom left corner, on the same line.
     const std::vector<ViewRect> taken{{{112.0f, 610.0f}, {300.0f, 638.0f}}};
     const std::optional<ViewPoint> at = view_chip_position(chip_canvas, 200.0f, 30.0f, 12.0f, taken);
     ASSERT_TRUE(at.has_value());

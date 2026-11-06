@@ -54,7 +54,6 @@ struct TokenColours {
     // Checkboxes and radio buttons: the fill when ticked, and the tick drawn on it.
     Rgba check_fill, check_mark;
     Rgba scrollbar_grab;
-    Rgba knob_shadow;  // under the slider's knob
     // The hairline of the histogram and scope boxes: it does not outline them heavily.
     Rgba plot_border;
     // The Shadows / Highlights chips when lit: muted fills the white label reads on, still told
@@ -93,9 +92,6 @@ struct TokenMetrics {
     float window_border, frame_border;
     float separator_text_border;
     Vec2 separator_text_padding;
-    // The custom slider: a thin track and a round knob (diameters), and how far the knob's soft
-    // shadow reaches.
-    float slider_track, slider_knob, slider_knob_shadow;
     // Checkbox and radio button: the box's side, and its corner radius.
     float checkbox_size, checkbox_rounding;
     // The thin chevrons that replace ImGui's triangles: half the width, and the stroke.
@@ -104,8 +100,8 @@ struct TokenMetrics {
     float overlay_padding, overlay_rounding;
     // The canvas around the photo: margin for banners and badges, the empty state's drop area.
     float canvas_margin, drop_inset, drop_dash, drop_line, drop_line_active;
-    // The compare divider: line half-width, grip radius, arrow size, drag strip, corner margin.
-    float divider_line, divider_grip, divider_arrow, divider_strip, divider_chip_margin;
+    // The compare divider: line half-width, grip radius, drag strip, corner margin.
+    float divider_line, divider_grip, divider_strip, divider_chip_margin;
     float banner_max_width;
     Vec2 badge_padding;
     // The histogram and scope boxes: one height for all four scopes (the vectorscope is a square
@@ -114,9 +110,9 @@ struct TokenMetrics {
     // The Shadows / Highlights chips below the plot.
     float chip_pad_y, chip_gap, chip_rounding, chip_pad_x, chip_text_gap;
     // The scope selector's buttons.
-    float selector_pad, selector_gap;
-    // The per-stage clipping dots and percentages in a pipeline row.
-    float dot_radius, dot_gap, dot_between, dot_inset;
+    float selector_pad;
+    // The clip marks' dots: their radius, the gap to their text, and the gap to the next mark.
+    float dot_radius, dot_gap, dot_between;
     float tooltip_wrap;
     float prefs_control_width;
     float about_wrap;
@@ -125,9 +121,9 @@ struct TokenMetrics {
     // The vectorscope's targets: half side, label gap, and how near the skin line shows its tip.
     float scope_target_half, scope_label_gap, scope_hit;
     // The test strip: the line between bands, the hovered band's edge, the label chip's distance
-    // from the band's corner; the strip bar's step pills (padding) and the bar's widest line.
+    // from the band's corner; the strip bar's step pills (padding).
     float strip_divider_width, strip_hover_edge_width, strip_chip_margin;
-    float strip_pill_pad_x, strip_pill_pad_y, strip_bar_wrap;
+    float strip_pill_pad_x, strip_pill_pad_y;
     // The Explain area at the foot of the control panel: its padding and the gap between its
     // summary, detail and live line.
     Vec2 explain_pad;

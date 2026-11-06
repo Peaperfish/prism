@@ -25,13 +25,26 @@ float measure(std::string_view s) {
     return width;
 }
 
-// A continuation byte never starts the string or follows "...": no character was cut apart.
+// Every lead byte has just the continuation bytes it announces: no character was cut apart, on
+// either side of the "…" (itself three bytes, so looking at its neighbours would not tell).
 bool whole_characters(const std::string& s) {
-    for (std::size_t i = 0; i < s.size(); ++i) {
-        const bool continuation = (static_cast<unsigned char>(s[i]) & 0xC0) == 0x80;
-        if (continuation && (i == 0 || s[i - 1] == '.')) {
+    std::size_t i = 0;
+    while (i < s.size()) {
+        const auto lead = static_cast<unsigned char>(s[i]);
+        const std::size_t more = lead < 0x80            ? 0
+                                 : (lead & 0xE0) == 0xC0 ? 1
+                                 : (lead & 0xF0) == 0xE0 ? 2
+                                 : (lead & 0xF8) == 0xF0 ? 3
+                                                         : s.size();  // a stray continuation byte
+        if (more >= s.size() - i) {
             return false;
         }
+        for (std::size_t k = 1; k <= more; ++k) {
+            if ((static_cast<unsigned char>(s[i + k]) & 0xC0) != 0x80) {
+                return false;
+            }
+        }
+        i += more + 1;
     }
     return true;
 }
@@ -94,7 +107,7 @@ TEST(Layout, LongTextLosesItsMiddle) {
     const std::string out = ellipsize_middle(text, 200, measure);           // room for 20
     EXPECT_LE(measure(out), 200);
     EXPECT_EQ(measure(out), 200) << "as much as fits: " << out;
-    EXPECT_EQ(out.find("..."), 5u) << "a third of what is kept is the start: " << out;
+    EXPECT_EQ(out.find("…"), 6u) << "a third of what is kept is the start: " << out;
     EXPECT_TRUE(out.ends_with("DSC09876.png")) << "the end, with the extension, is kept: " << out;
     EXPECT_TRUE(out.starts_with("a ver"));
 }
@@ -109,8 +122,8 @@ TEST(Layout, NeverCutsACharacterApart) {
 }
 
 TEST(Layout, TooNarrowForAnything) {
-    EXPECT_EQ(ellipsize_middle("photo.jpg", 30, measure), "...");
-    EXPECT_EQ(ellipsize_middle("photo.jpg", 29, measure), "");
+    EXPECT_EQ(ellipsize_middle("photo.jpg", 10, measure), "…");
+    EXPECT_EQ(ellipsize_middle("photo.jpg", 9, measure), "");
 }
 
 // --- Split ------------------------------------------------------------------------------------

@@ -26,9 +26,6 @@ constexpr TokenMetrics darkroom_metrics{
     .frame_border = 0,
     .separator_text_border = 1,
     .separator_text_padding = {0, 8},
-    .slider_track = 4,
-    .slider_knob = 14,
-    .slider_knob_shadow = 3,
     .checkbox_size = 14,
     .checkbox_rounding = 4,
     .chevron_size = 4,
@@ -42,7 +39,6 @@ constexpr TokenMetrics darkroom_metrics{
     .drop_line_active = 3,
     .divider_line = 2,
     .divider_grip = 9,
-    .divider_arrow = 4,
     .divider_strip = 14,
     .divider_chip_margin = 10,
     .banner_max_width = 720,
@@ -59,11 +55,9 @@ constexpr TokenMetrics darkroom_metrics{
     .chip_pad_x = 7,
     .chip_text_gap = 5,
     .selector_pad = 3,
-    .selector_gap = 2,
     .dot_radius = 4,
     .dot_gap = 4,
     .dot_between = 8,
-    .dot_inset = 6,
     .tooltip_wrap = 384,
     .prefs_control_width = 180,
     .about_wrap = 440,
@@ -77,7 +71,6 @@ constexpr TokenMetrics darkroom_metrics{
     .strip_chip_margin = 8,
     .strip_pill_pad_x = 9,
     .strip_pill_pad_y = 3,
-    .strip_bar_wrap = 520,
     .explain_pad = {mock_points(16), mock_points(12)},
     .explain_gap = mock_points(4),
     .prompt_wrap = 360,
@@ -153,7 +146,6 @@ constexpr TokenColours darkroom_dark{
     .check_fill = hex(0xd6d6dc),
     .check_mark = hex(0x1a1a1d),
     .scrollbar_grab = hex(0x34343a),
-    .knob_shadow = grey(0.0f, 0.45f),
     .plot_border = hex(0x26262b),
     .chip_shadows = {0.20f, 0.36f, 0.59f, 1},
     .chip_highlights = {0.59f, 0.28f, 0.19f, 1},
@@ -213,7 +205,6 @@ constexpr TokenColours darkroom_light{
     .check_fill = hex(0x3a3a40),
     .check_mark = grey(1.0f),
     .scrollbar_grab = hex(0xcfcfd5),
-    .knob_shadow = grey(0.0f, 0.30f),
     .plot_border = hex(0x26262b),
     .chip_shadows = {0.20f, 0.40f, 0.69f, 1},
     .chip_highlights = {0.69f, 0.34f, 0.23f, 1},
@@ -286,9 +277,6 @@ TokenMetrics scaled(const TokenMetrics& m, float s) {
     r.frame_border = m.frame_border * s;
     r.separator_text_border = m.separator_text_border * s;
     r.separator_text_padding = m.separator_text_padding * s;
-    r.slider_track = m.slider_track * s;
-    r.slider_knob = m.slider_knob * s;
-    r.slider_knob_shadow = m.slider_knob_shadow * s;
     r.checkbox_size = m.checkbox_size * s;
     r.checkbox_rounding = m.checkbox_rounding * s;
     r.chevron_size = m.chevron_size * s;
@@ -302,7 +290,6 @@ TokenMetrics scaled(const TokenMetrics& m, float s) {
     r.drop_line_active = m.drop_line_active * s;
     r.divider_line = m.divider_line * s;
     r.divider_grip = m.divider_grip * s;
-    r.divider_arrow = m.divider_arrow * s;
     r.divider_strip = m.divider_strip * s;
     r.divider_chip_margin = m.divider_chip_margin * s;
     r.banner_max_width = m.banner_max_width * s;
@@ -319,11 +306,9 @@ TokenMetrics scaled(const TokenMetrics& m, float s) {
     r.chip_pad_x = m.chip_pad_x * s;
     r.chip_text_gap = m.chip_text_gap * s;
     r.selector_pad = m.selector_pad * s;
-    r.selector_gap = m.selector_gap * s;
     r.dot_radius = m.dot_radius * s;
     r.dot_gap = m.dot_gap * s;
     r.dot_between = m.dot_between * s;
-    r.dot_inset = m.dot_inset * s;
     r.tooltip_wrap = m.tooltip_wrap * s;
     r.prefs_control_width = m.prefs_control_width * s;
     r.about_wrap = m.about_wrap * s;
@@ -337,7 +322,6 @@ TokenMetrics scaled(const TokenMetrics& m, float s) {
     r.strip_chip_margin = m.strip_chip_margin * s;
     r.strip_pill_pad_x = m.strip_pill_pad_x * s;
     r.strip_pill_pad_y = m.strip_pill_pad_y * s;
-    r.strip_bar_wrap = m.strip_bar_wrap * s;
     r.explain_pad = m.explain_pad * s;
     r.explain_gap = m.explain_gap * s;
     r.prompt_wrap = m.prompt_wrap * s;

@@ -205,8 +205,8 @@ TEST(CloseGuard, AFailedRecipeWriteLeavesTheBaselineAlone) {
 TEST(CloseGuard, TheTextsFollowWhatIsBeingAskedFor) {
     const PromptText quit = prompt_text(Pending::quit);
     EXPECT_EQ(quit.message, "You have edits that haven't been exported or saved as a recipe.");
-    EXPECT_EQ(quit.export_button, "Export...");
-    EXPECT_EQ(quit.recipe_button, "Save Recipe...");
+    EXPECT_EQ(quit.export_button, "Export…");
+    EXPECT_EQ(quit.recipe_button, "Save Recipe…");
     EXPECT_EQ(quit.cancel_button, "Cancel");
     EXPECT_NE(waiting_text(Pending::quit), waiting_text(Pending::open_photo));
 }

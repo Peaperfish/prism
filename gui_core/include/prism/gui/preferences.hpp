@@ -57,7 +57,7 @@ struct Preferences {
     bool clip_overlay = false;  // mark pixels above white / below black on the preview
     // The Explain area at the foot of the control panel (#16). On unless the file says "off".
     bool show_explanations = true;
-    // Where Save Recipe... and Load Recipe... start (#18): the folder of the last recipe saved or
+    // Where Save Recipe… and Load Recipe… start (#18): the folder of the last recipe saved or
     // loaded through them. Empty until then; kept apart from the photos' folders. Written only
     // when set, as UTF-8.
     std::filesystem::path recipe_folder;
