@@ -118,5 +118,6 @@ if(PRISM_BUILD_GUI)
     gui_app/light_path_test.cpp)
   target_link_libraries(prism_gui_app_tests PRIVATE prism_gui_panels prism_warnings
                         GTest::gtest_main)
+  prism_copy_libraw_dll(prism_gui_app_tests)
   gtest_discover_tests(prism_gui_app_tests)
 endif()

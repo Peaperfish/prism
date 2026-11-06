@@ -195,7 +195,7 @@ jobs:
           cmake -S . -B build
           -DCMAKE_BUILD_TYPE=Release
           -DPRISM_BUILD_GUI=ON
-          -DPRISM_BUILD_TESTS=OFF
+          -DPRISM_BUILD_TESTS=ON
           -DPRISM_WITH_LIBRAW=OFF
           -DFETCHCONTENT_BASE_DIR=${{ github.workspace }}/.deps
 
@@ -214,5 +214,9 @@ jobs:
             echo "$found"
           fi
 
-      - name: Build prism_gui
-        run: cmake --build build --config Release --target prism_gui --parallel
+      - name: Build prism_gui and its headless tests
+        run: cmake --build build --config Release --target prism_gui prism_gui_app_tests --parallel
+
+      # The widget code against a headless Dear ImGui: no window, display or SDL backend needed.
+      - name: Test the GUI widgets headlessly
+        run: ctest --test-dir build -C Release -R 'Headless' --no-tests=error --output-on-failure
