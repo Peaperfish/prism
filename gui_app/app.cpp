@@ -2414,35 +2414,36 @@ void App::draw_explain_area(float width, float height) {
     const gui::TokenMetrics& m = token_metrics();
     const gui::TokenColours& c = token_colours();
     const auto vec = [](const gui::Rgba& rgba) { return ImVec4(rgba.r, rgba.g, rgba.b, rgba.a); };
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, vec(c.plot));
-    ImGui::PushStyleColor(ImGuiCol_Border, vec(c.plot_border));
+    // Its own background (explain), a hair line above it instead of a border.
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, vec(c.explain));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(m.explain_pad.x, m.explain_pad.y));
-    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, m.plot_rounding);
-    ImGui::BeginChild("explain", ImVec2(width, height),
-                      ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding);
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 0.0f);
+    ImGui::BeginChild("explain", ImVec2(width, height), ImGuiChildFlags_AlwaysUseWindowPadding);
     const ExplainText text = explain_text();
     ImGui::PushTextWrapPos(0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, m.explain_gap));
-    const auto part = [&](const std::string& s, ImFont* font, ImVec4 colour) {
+    const auto part = [&](const std::string& s, ImFont* font, float size, ImVec4 colour) {
         if (s.empty()) {
             return;
         }
-        ImGui::PushFont(font, token_type().small);
+        ImGui::PushFont(font, size);
         ImGui::PushStyleColor(ImGuiCol_Text, colour);
         ImGui::TextUnformatted(s.c_str());
         ImGui::PopStyleColor();
         ImGui::PopFont();
     };
     const bool hint = gui::explanation_for(explain_shown_) == nullptr;
-    part(text.summary, hint ? nullptr : fonts().semibold, vec(hint ? c.text_muted : c.text));
-    part(text.detail, nullptr, vec(c.text));
-    part(text.live, nullptr, vec(c.text_muted));
+    // The title in the body colour and semi-bold; the body and the live line quiet.
+    part(text.summary, hint ? nullptr : fonts().semibold,
+         hint ? token_type().small : token_type().explain_title, vec(hint ? c.text_muted : c.text));
+    part(text.detail, nullptr, token_type().small, vec(c.text_muted));
+    part(text.live, nullptr, token_type().small, vec(c.text_muted));
     ImGui::PopStyleVar();
     ImGui::PopTextWrapPos();
     // A text longer than the area scrolls inside it: a short fade at the bottom edge says there
     // is more, and goes once the end is reached. Drawn only, so the height stays as given (#38).
     if (ImGui::GetScrollMaxY() > 0.0f && ImGui::GetScrollY() < ImGui::GetScrollMaxY() - 0.5f) {
-        const float border = ImGui::GetStyle().ChildBorderSize;
+        const float border = 0.0f;
         const float scrollbar = ImGui::GetCurrentWindow()->ScrollbarSizes.x;
         const ImVec2 origin = ImGui::GetWindowPos();
         const ImVec2 size = ImGui::GetWindowSize();
@@ -2451,13 +2452,18 @@ void App::draw_explain_area(float width, float height) {
         ImGui::PopFont();
         const ImVec2 min(origin.x + border, origin.y + size.y - border - fade);
         const ImVec2 max(origin.x + size.x - border - scrollbar, origin.y + size.y - border);
-        const ImU32 clear = ImGui::ColorConvertFloat4ToU32(ImVec4(c.plot.r, c.plot.g, c.plot.b, 0.0f));
-        const ImU32 solid = ImGui::ColorConvertFloat4ToU32(vec(c.plot));
+        const ImU32 clear = ImGui::ColorConvertFloat4ToU32(ImVec4(c.explain.r, c.explain.g, c.explain.b, 0.0f));
+        const ImU32 solid = ImGui::ColorConvertFloat4ToU32(vec(c.explain));
         ImGui::GetWindowDrawList()->AddRectFilledMultiColor(min, max, clear, clear, solid, solid);
     }
+    // The hair line along the top edge, over any text scrolled up under it.
+    ImGui::GetWindowDrawList()->AddRectFilled(
+        ImGui::GetWindowPos(), ImVec2(ImGui::GetWindowPos().x + ImGui::GetWindowSize().x,
+                                      ImGui::GetWindowPos().y + hair()),
+        ImGui::ColorConvertFloat4ToU32(vec(c.hair)));
     ImGui::EndChild();
     ImGui::PopStyleVar(2);
-    ImGui::PopStyleColor(2);
+    ImGui::PopStyleColor();
 }
 
 void App::draw_panel_column(float height) {
