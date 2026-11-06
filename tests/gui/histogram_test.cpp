@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "prism/color.hpp"
+#include "prism/gui/clipping.hpp"
 #include "prism/gui/histogram.hpp"
 #include "prism/gui/preview_renderer.hpp"
 #include "prism/gui/settings.hpp"
@@ -270,4 +271,148 @@ TEST(StageHistogram, LuminanceWeightsAreRec709InLinearLightThenEncoded) {
     // Each channel is 1.0 in one pixel (bin 255) and 0.0 in two (bin 0).
     EXPECT_EQ(h.red[255], 1u);
     EXPECT_EQ(h.red[0], 2u);
+}
+
+// --- Any-channel counts and the readout under the scope ------------------------------------------
+
+namespace {
+
+prism::Image image_of(const std::vector<float>& samples) {
+    prism::Image img;
+    img.width = static_cast<int>(samples.size() / 3);
+    img.height = 1;
+    img.pixels = samples;
+    return img;
+}
+
+}  // namespace
+
+TEST(StageHistogramAnyChannel, APixelCountsOnceHoweverManyChannelsAreOut) {
+    const prism::Image img = image_of({
+        -0.1f, 0.5f,  0.5f,   // red under
+        -0.1f, -0.2f, -0.3f,  // all three under: still one pixel
+        1.5f,  0.5f,  0.5f,   // red over
+        1.5f,  1.5f,  0.5f,   // two over: still one pixel
+        -0.1f, 0.5f,  1.5f,   // one at each end: counts at both
+        0.5f,  0.5f,  0.5f,   // in range
+        0.0f,  1.0f,  0.0f,   // exactly on the limits: in range
+    });
+    const StageHistogram h = prism::gui::compute_stage_histogram(img, 1);
+    EXPECT_EQ(h.any_under_black, 3u);
+    EXPECT_EQ(h.any_over_white, 3u);
+    // Not the sum of the channels, and never fewer than the worst of them.
+    EXPECT_EQ(h.red_clips.under_black + h.green_clips.under_black + h.blue_clips.under_black, 5u);
+    EXPECT_GE(h.any_under_black, h.red_clips.under_black);
+    EXPECT_GE(h.any_over_white, h.green_clips.over_white);
+}
+
+TEST(StageHistogramAnyChannel, InfinitiesCountAndNaNDoesNot) {
+    const float inf = std::numeric_limits<float>::infinity();
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const StageHistogram h = prism::gui::compute_stage_histogram(
+        image_of({inf, 0.5f, 0.5f, -inf, 0.5f, 0.5f, nan, nan, nan}), 1);
+    EXPECT_EQ(h.any_over_white, 1u);
+    EXPECT_EQ(h.any_under_black, 1u);
+}
+
+TEST(StageHistogramAnyChannel, TheCodeValuesAtTheEndsDoNotCount) {
+    // These encode to 255 and 0, the end bins, and have lost nothing: the limits are 0 and 1.
+    const StageHistogram h =
+        prism::gui::compute_stage_histogram(image_of({0.9999f, 0.9999f, 0.9999f, 1e-6f, 1e-6f, 1e-6f}), 1);
+    EXPECT_EQ(h.red[255], 1u);
+    EXPECT_EQ(h.red[0], 1u);
+    EXPECT_EQ(h.any_over_white, 0u);
+    EXPECT_EQ(h.any_under_black, 0u);
+}
+
+TEST(StageHistogramAnyChannel, TheCountsAreTheSameAtAnyThreadCount) {
+    prism::Image img;
+    img.width = 301;
+    img.height = 211;
+    img.pixels.resize(static_cast<std::size_t>(img.width) * img.height * 3);
+    for (std::size_t i = 0; i < img.pixels.size(); ++i) {
+        img.pixels[i] = static_cast<float>(static_cast<int>((i * 2654435761u) % 3001u)) / 1000.0f - 1.0f;
+    }
+    const StageHistogram one = prism::gui::compute_stage_histogram(img, 1);
+    EXPECT_GT(one.any_under_black, 0u);
+    EXPECT_GT(one.any_over_white, 0u);
+    for (const int threads : {2, 3, 7, 16}) {
+        EXPECT_EQ(prism::gui::compute_stage_histogram(img, threads), one) << threads;
+        std::vector<std::uint8_t> rgb8;
+        StageHistogram encoded;
+        prism::gui::encode_srgb8_with_histogram(img, threads, rgb8, encoded);
+        EXPECT_EQ(encoded, one) << threads;
+    }
+}
+
+// The overlay's "above white" and the readout's are one count, for any stage. The readout's "below
+// black" is every negative channel, so it holds all the overlay marks at that end (the blue and the
+// violet ones) and adds only values too small to change an 8-bit code.
+TEST(StageHistogramAnyChannel, TheCountsAgreeWithTheClipMaskOnTheSamePicture) {
+    const float ceiling = 1.0f - prism::gui::file_ceiling_epsilon;
+    const prism::Image img = image_of({
+        1.5f,  0.2f,  0.2f,   // over
+        1.0f,  0.2f,  0.2f,   // at the file's ceiling
+        ceiling, 0.2f, 0.2f,  // at the bottom of the band
+        0.99f, 0.2f,  0.2f,   // below the band
+        -0.5f, -0.5f, -0.5f,  // no light: low
+        -0.5f, 0.8f,  0.8f,   // has light: gamut
+        -1e-5f, 0.2f, 0.2f,   // has light, too little under 0 to be gamut
+        0.0f,  0.0f,  0.0f,   // black
+    });
+    for (const bool file_ceiling : {false, true}) {
+        const StageHistogram h = prism::gui::compute_stage_histogram(img, 1, file_ceiling);
+        std::vector<std::uint8_t> mask;
+        prism::gui::compute_clip_mask(img, 1, mask, file_ceiling);
+        std::uint64_t high = 0;
+        std::uint64_t low_or_gamut = 0;
+        for (const std::uint8_t m : mask) {
+            high += (m & prism::gui::clip_mask_high) != 0;
+            low_or_gamut += (m & (prism::gui::clip_mask_low | prism::gui::clip_mask_gamut)) != 0;
+        }
+        EXPECT_EQ(h.any_over_white, high) << file_ceiling;
+        EXPECT_EQ(low_or_gamut, 2u);
+        EXPECT_EQ(h.any_under_black, low_or_gamut + 1u);
+    }
+    EXPECT_EQ(prism::gui::compute_stage_histogram(img, 1, true).any_over_white, 3u);
+    EXPECT_EQ(prism::gui::compute_stage_histogram(img, 1, false).any_over_white, 1u);
+}
+
+TEST(StageHistogramAnyChannel, ThePreviewCountsTheFilesCeilingAtDecodeOnly) {
+    prism::Image base = image_of({1.0f, 0.2f, 0.2f, 0.2f, 0.2f, 0.2f});
+    prism::gui::EditSettings settings;
+    const auto decode = prism::gui::render_preview(base, settings, 1, {}, {}, StageId::decode);
+    ASSERT_TRUE(decode.has_value());
+    EXPECT_EQ(decode->histogram.any_over_white, 1u);
+    EXPECT_EQ(decode->histogram.red_clips.over_white, 0u);  // the channel figures stay as they were
+    const auto exposure = prism::gui::render_preview(base, settings, 1, {}, {}, StageId::exposure);
+    ASSERT_TRUE(exposure.has_value());
+    EXPECT_EQ(exposure->histogram.any_over_white, 0u);
+}
+
+TEST(ScopeReadoutText, IsTheSpecsFormWithOneDecimal) {
+    StageHistogram h;
+    h.pixel_count = 1000;
+    h.any_under_black = 1;
+    EXPECT_EQ(prism::gui::scope_readout(h),
+              (prism::gui::ScopeReadout{"0.1% below black", "0.0% above white"}));
+    h.any_under_black = 123;
+    h.any_over_white = 70;
+    EXPECT_EQ(prism::gui::scope_readout(h),
+              (prism::gui::ScopeReadout{"12.3% below black", "7.0% above white"}));
+}
+
+TEST(ScopeReadoutText, ZeroMeansNoPixelAtAll) {
+    StageHistogram h;
+    h.pixel_count = 1'000'000;
+    h.any_under_black = 1;
+    h.any_over_white = 999'999;
+    EXPECT_EQ(prism::gui::scope_readout(h).below_black, "<0.1% below black");
+    EXPECT_EQ(prism::gui::scope_readout(h).above_white, ">99.9% above white");
+    h.any_under_black = 500;  // 0.05% rounds up to the first figure shown
+    h.any_over_white = 1'000'000;
+    EXPECT_EQ(prism::gui::scope_readout(h).below_black, "0.1% below black");
+    EXPECT_EQ(prism::gui::scope_readout(h).above_white, "100.0% above white");
+    EXPECT_EQ(prism::gui::scope_readout(StageHistogram{}),
+              (prism::gui::ScopeReadout{"0.0% below black", "0.0% above white"}));
 }

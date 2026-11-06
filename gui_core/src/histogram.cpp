@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "prism/color.hpp"
+#include "prism/gui/clipping.hpp"
 #include "prism/parallel.hpp"
 
 namespace prism::gui {
@@ -42,8 +43,10 @@ void record_sample(float v, std::uint8_t code, StageHistogram::Counts& bins,
 // of a value is the sRGB code linear_to_srgb8 gives it (NaN gives 0, black, as on screen). R, G and
 // B read that code from `encoded` (the bytes the encode already produced for the same samples)
 // when it is given, and look it up otherwise; luminance has no output byte, so it is encoded here.
+// The any-channel counts ask what pixel_range asks (over, and ceiling with `file_ceiling`).
 void count_range(const float* pixels, const std::uint8_t* encoded, std::size_t first,
-                 std::size_t last, StageHistogram& local) noexcept {
+                 std::size_t last, bool file_ceiling, StageHistogram& local) noexcept {
+    constexpr float ceiling = 1.0f - file_ceiling_epsilon;
     for (std::size_t i = first; i < last; i += Image::channels) {
         const float r = pixels[i];
         const float g = pixels[i + 1];
@@ -55,6 +58,10 @@ void count_range(const float* pixels, const std::uint8_t* encoded, std::size_t f
         record_sample(b, encoded ? encoded[i + 2] : linear_to_srgb8(b), local.blue,
                       local.blue_clips);
         record_sample(y, linear_to_srgb8(y), local.luminance, local.luminance_clips);
+        local.any_under_black += static_cast<unsigned>((r < 0.0f) | (g < 0.0f) | (b < 0.0f));
+        local.any_over_white +=
+            file_ceiling ? static_cast<unsigned>((r >= ceiling) | (g >= ceiling) | (b >= ceiling))
+                         : static_cast<unsigned>((r > 1.0f) | (g > 1.0f) | (b > 1.0f));
     }
     local.pixel_count += (last - first) / Image::channels;
 }
@@ -81,6 +88,8 @@ StageHistogram merge_partials(const std::vector<StageHistogram>& partial) noexce
         add_clips(total.green_clips, p.green_clips);
         add_clips(total.blue_clips, p.blue_clips);
         add_clips(total.luminance_clips, p.luminance_clips);
+        total.any_under_black += p.any_under_black;
+        total.any_over_white += p.any_over_white;
         total.pixel_count += p.pixel_count;
     }
     return total;
@@ -88,7 +97,7 @@ StageHistogram merge_partials(const std::vector<StageHistogram>& partial) noexce
 
 }  // namespace
 
-StageHistogram compute_stage_histogram(const Image& img, int threads) {
+StageHistogram compute_stage_histogram(const Image& img, int threads, bool file_ceiling) {
     (void)require_consistent(img, "compute_stage_histogram");
     if (img.width == 0 || img.height == 0) {
         return {};
@@ -103,7 +112,7 @@ StageHistogram compute_stage_histogram(const Image& img, int threads) {
         const RowRange rows = chunk_rows(img.height, chunks, chunk);
         StageHistogram local;
         count_range(img.pixels.data(), nullptr, rows.begin * row_samples,
-                    rows.end * row_samples, local);
+                    rows.end * row_samples, file_ceiling, local);
         partial[static_cast<std::size_t>(chunk)] = local;
     });
 
@@ -111,7 +120,7 @@ StageHistogram compute_stage_histogram(const Image& img, int threads) {
 }
 
 void encode_srgb8_with_histogram(const Image& img, int threads, std::vector<std::uint8_t>& rgb8,
-                                 StageHistogram& histogram) {
+                                 StageHistogram& histogram, bool file_ceiling) {
     const std::size_t total_samples = require_consistent(img, "encode_srgb8_with_histogram");
     rgb8.resize(total_samples);
     if (img.width == 0 || img.height == 0) {
@@ -135,7 +144,7 @@ void encode_srgb8_with_histogram(const Image& img, int threads, std::vector<std:
         for (std::size_t i = first; i < last; i += block) {
             const std::size_t count = std::min(block, last - i);
             linear_to_srgb8(img.pixels.data() + i, rgb8.data() + i, count);
-            count_range(img.pixels.data(), rgb8.data(), i, i + count, local);
+            count_range(img.pixels.data(), rgb8.data(), i, i + count, file_ceiling, local);
         }
         partial[static_cast<std::size_t>(chunk)] = local;
     });
@@ -148,6 +157,32 @@ double pixel_percent(std::uint64_t count, std::uint64_t pixel_count) noexcept {
         return 0.0;
     }
     return 100.0 * static_cast<double>(count) / static_cast<double>(pixel_count);
+}
+
+namespace {
+
+std::string readout_percent(std::uint64_t count, std::uint64_t total) {
+    if (count == 0 || total == 0) {
+        return "0.0%";
+    }
+    if (count >= total) {
+        return "100.0%";
+    }
+    const std::uint64_t tenths = (count * 2000 + total) / (2 * total);  // rounded to the nearest
+    if (tenths == 0) {
+        return "<0.1%";
+    }
+    if (tenths >= 1000) {
+        return ">99.9%";
+    }
+    return std::to_string(tenths / 10) + "." + std::to_string(tenths % 10) + "%";
+}
+
+}  // namespace
+
+ScopeReadout scope_readout(const StageHistogram& h) {
+    return {readout_percent(h.any_under_black, h.pixel_count) + " below black",
+            readout_percent(h.any_over_white, h.pixel_count) + " above white"};
 }
 
 bool has_shadow_clipping(const StageHistogram& h, double threshold_percent) noexcept {

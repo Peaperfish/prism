@@ -252,7 +252,8 @@ std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings
     const auto show = [&](const Image& shown) {
         frame.width = shown.width;
         frame.height = shown.height;
-        encode_srgb8_with_histogram(shown, threads, frame.rgb8, frame.histogram);
+        encode_srgb8_with_histogram(shown, threads, frame.rgb8, frame.histogram,
+                                    stop_after == StageId::decode);
         if (options.scopes) {
             frame.scopes = compute_scopes(frame.rgb8, frame.width, frame.height);
         }
