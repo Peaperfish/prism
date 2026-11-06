@@ -1,6 +1,3 @@
-<!-- The release workflow fills in {{VERSION}} and {{LIBRAW_VERSION}} and uses this as the
-     draft release's notes. Edit the draft on GitHub before publishing if needed. -->
-
 Prism's desktop app, for macOS and Windows.
 
 ## What it does
@@ -62,11 +59,6 @@ says "Windows protected your PC", click **More info → Run anyway**. If Smart A
 
 What is planned is tracked as [milestones on GitHub](https://github.com/Peaperfish/prism/milestones)
 and summarised in the README's [Roadmap](https://github.com/Peaperfish/prism#roadmap).
-
-## Guide
-
-How to use the app: the [user guide](https://github.com/Peaperfish/prism/blob/main/docs/GUIDE.md).
-The command-line tool: the [command-line reference](https://github.com/Peaperfish/prism/blob/main/docs/CLI.md).
 
 ## Licences
 
