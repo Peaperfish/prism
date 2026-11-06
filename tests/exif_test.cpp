@@ -2,8 +2,17 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
+#include <optional>
 #include <span>
+#include <string>
 #include <vector>
+
+#ifdef _WIN32
+#include <process.h>  // _getpid
+#else
+#include <unistd.h>  // getpid
+#endif
 
 #include "prism/photo_info.hpp"
 #include "synthetic_exif.hpp"
@@ -207,4 +216,125 @@ TEST(ReadExif, EmptyAndTinyBuffers) {
     EXPECT_TRUE(read_exif({}).empty());
     const std::uint8_t tiny[] = {'I', 'I', 42, 0};
     EXPECT_TRUE(read_exif(tiny).empty());
+}
+
+// --- read_jpeg_exif ---
+
+namespace {
+
+namespace fs = std::filesystem;
+using prism_test::exif_app1;
+using prism_test::jpeg_segment;
+using prism_test::quadrant_jpeg;
+using prism_test::xmp_app1;
+
+// A file name no other test (or test process: ctest -j) uses.
+fs::path temp_file(const std::string& name) {
+    const testing::TestInfo* test = testing::UnitTest::GetInstance()->current_test_info();
+#ifdef _WIN32
+    const int pid = _getpid();
+#else
+    const int pid = static_cast<int>(getpid());
+#endif
+    return fs::path(testing::TempDir()) /
+           ("prism_exif_" + std::string(test->name()) + "_" + std::to_string(pid) + "_" + name);
+}
+
+// Writes `jpeg` to a temporary file and reads its EXIF block back.
+std::optional<std::vector<std::uint8_t>> exif_of(const std::vector<std::uint8_t>& jpeg) {
+    const fs::path path = temp_file("a.jpg");
+    prism_test::write_all(path, jpeg);
+    auto result = prism::read_jpeg_exif(path);
+    std::error_code ec;
+    fs::remove(path, ec);
+    return result;
+}
+
+std::vector<std::uint8_t> sample_jpeg(const std::vector<std::vector<std::uint8_t>>& segments) {
+    return quadrant_jpeg(temp_file("scratch.jpg"), segments);
+}
+
+}  // namespace
+
+TEST(ReadJpegExif, FindsTheBlock) {
+    const std::vector<std::uint8_t> tiff = full_block(true).build();
+    const auto got = exif_of(sample_jpeg({exif_app1(tiff)}));
+    ASSERT_TRUE(got);
+    EXPECT_EQ(*got, tiff);
+    expect_full(read_exif(*got));
+}
+
+TEST(ReadJpegExif, SkipsXmpApp1BeforeExif) {
+    const std::vector<std::uint8_t> tiff = full_block(false).build();
+    const auto got = exif_of(sample_jpeg({xmp_app1(), exif_app1(tiff)}));
+    ASSERT_TRUE(got);
+    EXPECT_EQ(*got, tiff);
+}
+
+TEST(ReadJpegExif, SkipsOtherSegmentsFirst) {
+    const std::vector<std::uint8_t> tiff = full_block(false).build();
+    const auto got = exif_of(sample_jpeg({jpeg_segment(0xE0, {'J', 'F', 'I', 'F', 0, 1, 1}),
+                                          jpeg_segment(0xE2, {1, 2, 3}), exif_app1(tiff)}));
+    ASSERT_TRUE(got);
+    EXPECT_EQ(*got, tiff);
+}
+
+TEST(ReadJpegExif, NoApp1) {
+    EXPECT_FALSE(exif_of(sample_jpeg({})));
+    EXPECT_FALSE(exif_of(sample_jpeg({xmp_app1()})));
+}
+
+TEST(ReadJpegExif, FillBytesBeforeMarkers) {
+    const std::vector<std::uint8_t> tiff = full_block(false).build();
+    std::vector<std::uint8_t> fill = {0xFF, 0xFF, 0xFF};
+    std::vector<std::uint8_t> seg = exif_app1(tiff);
+    fill.insert(fill.end(), seg.begin(), seg.end());  // FF FF FF FF E1 ...
+    const auto got = exif_of(sample_jpeg({fill}));
+    ASSERT_TRUE(got);
+    EXPECT_EQ(*got, tiff);
+}
+
+TEST(ReadJpegExif, StandaloneMarkersHaveNoLength) {
+    const std::vector<std::uint8_t> tiff = full_block(false).build();
+    // RST0 and TEM before the APP1: reading a length after them would swallow the APP1.
+    const auto got = exif_of(sample_jpeg({{0xFF, 0xD0}, {0xFF, 0x01}, exif_app1(tiff)}));
+    ASSERT_TRUE(got);
+    EXPECT_EQ(*got, tiff);
+}
+
+TEST(ReadJpegExif, ExifAfterTheImageDataIsNotReached) {
+    // Stops at SOS: a block placed after it is never reached.
+    std::vector<std::uint8_t> jpeg = sample_jpeg({});
+    const std::vector<std::uint8_t> seg = exif_app1(full_block(false).build());
+    jpeg.insert(jpeg.end() - 2, seg.begin(), seg.end());  // before EOI, after the scan
+    EXPECT_FALSE(exif_of(jpeg));
+}
+
+TEST(ReadJpegExif, SegmentLengthPastEndOfFile) {
+    std::vector<std::uint8_t> seg = exif_app1(full_block(false).build());
+    seg[2] = 0xFF;  // length 0xFFxx
+    EXPECT_FALSE(exif_of(sample_jpeg({seg})));
+    // Cut the file in the middle of the APP1.
+    std::vector<std::uint8_t> jpeg = {0xFF, 0xD8};
+    const std::vector<std::uint8_t> good = exif_app1(full_block(false).build());
+    jpeg.insert(jpeg.end(), good.begin(), good.begin() + good.size() / 2);
+    EXPECT_FALSE(exif_of(jpeg));
+}
+
+TEST(ReadJpegExif, NotAJpegOrMissingFile) {
+    EXPECT_FALSE(exif_of({}));
+    EXPECT_FALSE(exif_of({'P', 'N', 'G', 0, 0, 0, 0, 0}));
+    EXPECT_FALSE(prism::read_jpeg_exif(temp_file("does_not_exist.jpg")));
+}
+
+TEST(ReadJpegExif, TruncatedAtEveryLengthNeverThrows) {
+    const std::vector<std::uint8_t> jpeg =
+        sample_jpeg({xmp_app1(), exif_app1(full_block(false).build())});
+    const fs::path path = temp_file("cut.jpg");
+    for (std::size_t n = 0; n < 300 && n < jpeg.size(); ++n) {
+        prism_test::write_all(path, std::vector<std::uint8_t>(jpeg.begin(), jpeg.begin() + n));
+        EXPECT_NO_THROW((void)prism::read_jpeg_exif(path)) << n;
+    }
+    std::error_code ec;
+    fs::remove(path, ec);
 }

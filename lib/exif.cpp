@@ -1,6 +1,8 @@
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <exception>
+#include <fstream>
 #include <limits>
 #include <string>
 
@@ -156,6 +158,83 @@ PhotoInfo read_exif(std::span<const std::uint8_t> tiff_bytes) noexcept {
         return read(std::as_bytes(tiff_bytes));
     } catch (...) {
         return {};
+    }
+}
+
+std::optional<std::vector<std::uint8_t>> read_jpeg_exif(
+    const std::filesystem::path& path) noexcept {
+    try {
+        std::ifstream in(path, std::ios::binary);
+        if (!in) {
+            return std::nullopt;
+        }
+        in.seekg(0, std::ios::end);
+        const std::streamoff end = in.tellg();
+        if (end < 4) {
+            return std::nullopt;
+        }
+        const auto size = static_cast<std::uint64_t>(end);
+        in.seekg(0);
+
+        const auto byte_at = [&](std::uint64_t pos) -> int {
+            in.clear();
+            in.seekg(static_cast<std::streamoff>(pos));
+            return in.get();  // EOF (-1) past the end
+        };
+        if (byte_at(0) != 0xFF || in.get() != 0xD8) {  // SOI
+            return std::nullopt;
+        }
+
+        std::uint64_t pos = 2;
+        while (pos + 2 <= size) {
+            // A marker is 0xFF, any number of 0xFF fill bytes, then the marker code.
+            if (byte_at(pos) != 0xFF) {
+                return std::nullopt;  // not at a marker: damaged
+            }
+            int code = 0xFF;
+            std::uint64_t at = pos + 1;
+            while (code == 0xFF && at < size) {
+                code = byte_at(at++);
+            }
+            if (code < 0 || code == 0xFF || code == 0x00) {
+                return std::nullopt;
+            }
+            pos = at;
+            if (code == 0xD9 || code == 0xDA) {  // EOI, SOS: the image data follows
+                return std::nullopt;
+            }
+            if (code == 0x01 || (code >= 0xD0 && code <= 0xD8)) {  // TEM, RSTn, SOI: no length
+                continue;
+            }
+            if (pos + 2 > size) {
+                return std::nullopt;
+            }
+            const std::uint64_t length = (static_cast<std::uint64_t>(byte_at(pos)) << 8) |
+                                         static_cast<std::uint64_t>(in.get());
+            if (length < 2 || pos + length > size) {
+                return std::nullopt;  // the segment runs past the end of the file
+            }
+            constexpr std::uint64_t prefix = 6;  // "Exif\0\0"
+            if (code == 0xE1 && length >= 2 + prefix) {
+                std::vector<std::uint8_t> payload(static_cast<std::size_t>(length - 2));
+                in.clear();
+                in.seekg(static_cast<std::streamoff>(pos + 2));
+                in.read(reinterpret_cast<char*>(payload.data()),
+                        static_cast<std::streamsize>(payload.size()));
+                if (static_cast<std::size_t>(in.gcount()) != payload.size()) {
+                    return std::nullopt;
+                }
+                static constexpr std::uint8_t exif_prefix[prefix] = {'E', 'x', 'i', 'f', 0, 0};
+                if (std::equal(exif_prefix, exif_prefix + prefix, payload.begin())) {
+                    payload.erase(payload.begin(), payload.begin() + prefix);
+                    return payload;
+                }
+            }
+            pos += length;
+        }
+        return std::nullopt;
+    } catch (...) {
+        return std::nullopt;
     }
 }
 

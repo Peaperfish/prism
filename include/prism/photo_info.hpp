@@ -1,9 +1,11 @@
 #pragma once
 
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <span>
 #include <string>
+#include <vector>
 
 namespace prism {
 
@@ -36,5 +38,12 @@ struct PhotoInfo {
 // gives whatever could be read, in the worst case an empty PhotoInfo. Text has trailing NULs and
 // spaces removed; an Orientation outside 1-8 counts as absent.
 [[nodiscard]] PhotoInfo read_exif(std::span<const std::uint8_t> tiff_bytes) noexcept;
+
+// The EXIF block of a JPEG file: the TIFF structure inside its first APP1 segment that starts with
+// "Exif\0\0", without that prefix (what read_exif takes). Walks the segments from the start of the
+// file and stops at the image data, so it reads a few KB, not the whole file. nullopt if there is
+// none, or the file can't be read or isn't a JPEG; never throws.
+[[nodiscard]] std::optional<std::vector<std::uint8_t>> read_jpeg_exif(
+    const std::filesystem::path& path) noexcept;
 
 }  // namespace prism
