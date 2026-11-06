@@ -1,8 +1,11 @@
 #include "prism/gui/scopes.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
+
+#include "prism/color.hpp"
 
 namespace prism::gui {
 
@@ -31,6 +34,36 @@ VectorscopeCell vectorscope_cell(std::uint8_t r, std::uint8_t g, std::uint8_t b)
     const float y = kr * r + kg * g + kb * b;
     return {clamp_cell((static_cast<float>(b) - y) / cb_divisor),
             clamp_cell((static_cast<float>(r) - y) / cr_divisor)};
+}
+
+ScopeRgb vectorscope_cell_colour(int cb, int cr) noexcept {
+    // Back from the cell to how far R, G and B stand from the luma (see vectorscope_cell).
+    const float db = static_cast<float>(cb - 128) * cb_divisor;
+    const float dr = static_cast<float>(cr - 128) * cr_divisor;
+    const float dg = -(kr * dr + kb * db) / kg;
+    const float high = std::max({dr, dg, db});
+    const float low = std::min({dr, dg, db});
+    const float span = high - low;
+    // Near the axis the hue can't be told, so it fades into the grey over the first stretch.
+    constexpr float grey = 205.0f;
+    constexpr float full_hue_span = 72.0f;
+    const float strength = std::min(span / full_hue_span, 1.0f);
+    const auto channel = [&](float d) {
+        const float pure = span > 0.0f ? (d - low) / span * 255.0f : grey;
+        return static_cast<std::uint8_t>(std::lround(grey + (pure - grey) * strength));
+    };
+    return {channel(dr), channel(dg), channel(db)};
+}
+
+std::span<const ScopeGuide> scope_guides() {
+    static const std::array<ScopeGuide, 5> guides{{
+        {linear_to_srgb8(1.0f), "white"},
+        {linear_to_srgb8(0.5f), "50%"},
+        {linear_to_srgb8(0.18f), "18%"},
+        {linear_to_srgb8(0.05f), "5%"},
+        {linear_to_srgb8(0.0f), "black"},
+    }};
+    return guides;
 }
 
 Scopes compute_scopes(const std::vector<std::uint8_t>& rgb8, int width, int height) {

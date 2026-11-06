@@ -183,6 +183,15 @@ TEST(ThemeTokens, ScopePlotIsDarkInBothThemes) {
     }
 }
 
+TEST(ThemeTokens, TextOnThePlotIsReadableInBothThemes) {
+    // The plot is dark in both themes, so text on it takes the dark theme's colours in both.
+    const TokenColours& dark = token_set(Theme::dark).colours;
+    for (const TokenSet& set : token_sets()) {
+        EXPECT_GE(contrast_ratio(dark.text, set.colours.plot), 4.5f) << label(set);
+        EXPECT_GE(contrast_ratio(dark.text_muted, set.colours.plot), 4.5f) << label(set);
+    }
+}
+
 TEST(ThemeTokens, ExplainAreaTextIsReadableInBothThemes) {
     for (const TokenSet& set : token_sets()) {
         const TokenColours& c = set.colours;

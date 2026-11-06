@@ -122,17 +122,32 @@ void draw_histogram_plot(const ScopesData& data, ImDrawList* draw, ImVec2 box_mi
     edge(h.red, IM_COL32(255, 110, 96, 217));     // .85
 }
 
-// Parade and waveform: the counts, with guide lines over them.
+// Text on the plot, in the dark palette's muted colour whatever the theme, as the plot is dark in
+// both (the light theme's would not read on it).
+ImU32 plot_text_colour() {
+    return u32(gui::token_set(gui::Theme::dark).colours.text_muted);
+}
+
+// Parade and waveform: the counts, with a line at each guide's level, named in the first panel, and
+// the parade's channels named in their own colours. The insets leave room for the lines at both
+// ends.
 void draw_trace_plot(const ScopesData& data, ImDrawList* draw, ImVec2 box_min, ImVec2 box_max) {
     const gui::TokenMetrics& metrics = token_metrics();
     const Palette& colours = palette(data.theme);
     const float line = hair();
     const ImVec2 plot_min(box_min.x + metrics.plot_pad_x, box_min.y + metrics.plot_pad_top);
     const ImVec2 plot_max(box_max.x - metrics.plot_pad_x, box_max.y - metrics.plot_pad_top);
-    const int panels = data.scope == gui::ScopeChoice::parade ? 3 : 1;
-    const float gap = panels > 1 ? metrics.plot_pad_top : 0.0f;
+    const bool parade = data.scope == gui::ScopeChoice::parade;
+    const int panels = parade ? 3 : 1;
+    const float gap = parade ? metrics.plot_pad_top : 0.0f;
     const float panel_w = (plot_max.x - plot_min.x - gap * static_cast<float>(panels - 1)) /
                           static_cast<float>(panels);
+    const std::array<ImU32, 3> channel_colours{colours.histogram_red, colours.histogram_green,
+                                               colours.histogram_blue};
+    static constexpr std::array<const char*, 3> channel_names{"R", "G", "B"};
+    ImGui::PushFont(nullptr, token_type().tiny);
+    const float text_height = ImGui::GetFontSize();
+    const float text_inset = px(3.0f);
     for (int p = 0; p < panels; ++p) {
         const float x0 = plot_min.x + static_cast<float>(p) * (panel_w + gap);
         const float x1 = x0 + panel_w;
@@ -142,20 +157,34 @@ void draw_trace_plot(const ScopesData& data, ImDrawList* draw, ImVec2 box_min, I
                            ImVec2(static_cast<float>(p) / static_cast<float>(panels), 0.0f),
                            ImVec2(static_cast<float>(p + 1) / static_cast<float>(panels), 1.0f));
         }
-        for (const float level : {0.0f, 0.25f, 0.5f, 0.75f, 1.0f}) {
-            const float y = std::round(plot_max.y - level * (plot_max.y - plot_min.y));
+        for (const gui::ScopeGuide& guide : gui::scope_guides()) {
+            const float y = std::round(plot_max.y - static_cast<float>(guide.level) / 255.0f *
+                                                        (plot_max.y - plot_min.y));
             draw->AddLine(ImVec2(x0, y), ImVec2(x1, y), colours.scope_guide, line);
+            if (p == 0) {
+                // On its line, except the top one, which hangs under it to stay on the plot.
+                const float text_y = guide.level == 255 ? y + line : y - text_height - line;
+                draw->AddText(ImVec2(x0 + text_inset, text_y), plot_text_colour(),
+                              guide.label.data(), guide.label.data() + guide.label.size());
+            }
+        }
+        if (parade) {
+            const char* const name = channel_names[static_cast<std::size_t>(p)];
+            draw->AddText(ImVec2(x1 - text_inset - ImGui::CalcTextSize(name).x, plot_min.y + line),
+                          channel_colours[static_cast<std::size_t>(p)], name);
         }
     }
+    ImGui::PopFont();
 }
 
+// A round plot: a mock(120) circle with two faint rings, centred in the box, the dots in their own
+// hues. The targets and the skin line stay on it.
 void draw_vector_plot(const ScopesData& data, ImDrawList* draw, ImVec2 box_min, ImVec2 box_max,
                       const ScopesCallbacks& cb) {
     const gui::TokenMetrics& metrics = token_metrics();
     const Palette& colours = palette(data.theme);
     const float line = hair();
-    const float pad = metrics.plot_pad_top;
-    const float side = std::min(box_max.x - box_min.x, box_max.y - box_min.y) - 2 * pad;
+    const float side = std::min(mock(120.0f), std::min(box_max.x - box_min.x, box_max.y - box_min.y));
     const ImVec2 origin((box_min.x + box_max.x) * 0.5f - side * 0.5f,
                         (box_min.y + box_max.y) * 0.5f - side * 0.5f);
     if (data.plot_texture != 0) {
@@ -170,12 +199,8 @@ void draw_vector_plot(const ScopesData& data, ImDrawList* draw, ImVec2 box_min, 
     };
     const ImVec2 centre = position({128, 128});
     const float radius = side * 0.5f;
-    draw->AddCircle(centre, radius, colours.scope_guide, 64, line);
-    draw->AddCircle(centre, radius * 0.5f, colours.scope_guide, 48, line);
-    draw->AddLine(ImVec2(centre.x - radius, centre.y), ImVec2(centre.x + radius, centre.y),
-                  colours.scope_guide, line);
-    draw->AddLine(ImVec2(centre.x, centre.y - radius), ImVec2(centre.x, centre.y + radius),
-                  colours.scope_guide, line);
+    draw->AddCircle(centre, radius, IM_COL32(255, 255, 255, 31), 96, line);  // .12
+    draw->AddCircle(centre, radius * 0.5f, IM_COL32(255, 255, 255, 18), 64, line);  // .07
 
     // Skin tones: the I-line, 123 degrees counter-clockwise from the +Cb axis.
     constexpr float pi = 3.14159265f;

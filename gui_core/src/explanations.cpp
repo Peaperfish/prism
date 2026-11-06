@@ -127,15 +127,17 @@ constexpr Explanation templates[] = {
      LiveKind::viewing},
     {"scope.parade", "Each colour channel's brightness, side by side.",
      "Left to right across the photo, red, green and blue panels show how bright that channel is "
-     "at each column. Equal heights mean neutral.",
+     "at each column. Equal heights mean neutral. The lines mark 5%, 18% and 50% of white's light.",
      LiveKind::viewing},
     {"scope.waveform", "Brightness of each part of the photo.",
      "Horizontal position matches the photo; the vertical axis is Rec. 709 luma, 0 at the bottom "
-     "and 255 at the top. Brighter trace means more pixels there.",
+     "and 255 at the top. A stronger trace means more pixels there. The lines mark 5%, 18% and 50% "
+     "of white's light.",
      LiveKind::viewing},
     {"scope.vectorscope", "Which colours are present and how strong.",
      "Angle is hue and distance from the centre is strength (Rec. 709 Cb and Cr). Centre is "
-     "neutral grey. The line marks where skin tones usually sit.",
+     "neutral grey, and each dot is drawn in its own hue. The line marks where skin tones usually "
+     "sit.",
      LiveKind::viewing},
     {"scope.skin", "Skin tones usually sit near this line.",
      "The skin-tone line, 123° from the Cb axis: skin of any complexion lands close to it. Skin "

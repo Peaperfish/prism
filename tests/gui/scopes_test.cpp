@@ -5,6 +5,7 @@
 #include <numeric>
 #include <vector>
 
+#include "prism/color.hpp"
 #include "prism/gui/preview_renderer.hpp"
 #include "prism/gui/scopes.hpp"
 #include "prism/gui/settings.hpp"
@@ -153,4 +154,53 @@ TEST(Scopes, RenderPreviewCarriesScopesOnlyWhenAsked) {
                                                    prism::gui::StageId::decode, true);
     ASSERT_TRUE(decode);
     EXPECT_TRUE(decode->scopes.has_value());
+}
+
+TEST(ScopeGuides, AreWhereThoseSharesOfWhitesLightLandOnTheDisplayScale) {
+    const auto guides = prism::gui::scope_guides();
+    ASSERT_EQ(guides.size(), 5u);
+    EXPECT_EQ(guides[0].level, 255);
+    EXPECT_EQ(guides[0].label, "white");
+    EXPECT_EQ(guides[1].level, 188);  // linear 0.5, as in the histogram's bins
+    EXPECT_EQ(guides[1].label, "50%");
+    EXPECT_EQ(guides[2].level, 118);  // mid grey
+    EXPECT_EQ(guides[2].label, "18%");
+    EXPECT_EQ(guides[3].level, prism::linear_to_srgb8(0.05f));
+    EXPECT_EQ(guides[3].label, "5%");
+    EXPECT_EQ(guides[4].level, 0);
+    EXPECT_EQ(guides[4].label, "black");
+}
+
+TEST(VectorscopeCellColour, TheNeutralAxisIsAGrey) {
+    const prism::gui::ScopeRgb c = prism::gui::vectorscope_cell_colour(128, 128);
+    EXPECT_EQ(c.r, c.g);
+    EXPECT_EQ(c.g, c.b);
+    EXPECT_GT(c.r, 150);
+}
+
+TEST(VectorscopeCellColour, EachColoursCellIsDrawnInThatColoursHue) {
+    const auto colour_of = [](std::uint8_t r, std::uint8_t g, std::uint8_t b) {
+        const prism::gui::VectorscopeCell cell = prism::gui::vectorscope_cell(r, g, b);
+        return prism::gui::vectorscope_cell_colour(cell.cb, cell.cr);
+    };
+    const prism::gui::ScopeRgb red = colour_of(255, 0, 0);
+    EXPECT_GT(red.r, 240);
+    EXPECT_LT(red.g, 40);
+    EXPECT_LT(red.b, 40);
+    const prism::gui::ScopeRgb green = colour_of(0, 255, 0);
+    EXPECT_GT(green.g, 240);
+    EXPECT_LT(green.r, 40);
+    EXPECT_LT(green.b, 40);
+    const prism::gui::ScopeRgb blue = colour_of(0, 0, 255);
+    EXPECT_GT(blue.b, 240);
+    EXPECT_LT(blue.r, 40);
+    EXPECT_LT(blue.g, 40);
+    const prism::gui::ScopeRgb yellow = colour_of(255, 255, 0);
+    EXPECT_GT(yellow.r, 240);
+    EXPECT_GT(yellow.g, 240);
+    EXPECT_LT(yellow.b, 40);
+    // A faint tint stays close to the grey, leaning the right way.
+    const prism::gui::ScopeRgb faint = colour_of(140, 128, 128);
+    EXPECT_GT(faint.r, faint.g);
+    EXPECT_GT(faint.g, 120);
 }

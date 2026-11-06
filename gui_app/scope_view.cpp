@@ -28,22 +28,25 @@ std::uint64_t grid_max(const gui::Scopes::Grid& g) {
 }
 
 // Writes one grid into `pixels` (RGBA, `row_pixels` wide) at column `x0`, top row = highest level.
-// The count's log decides the opacity (a lone sample is still visible), the colour is `tint`; the
-// panel's background shows through, so one tint works on a light or a dark panel.
+// The count's log decides the opacity (a lone sample is still visible), and `tint(level, col)` the
+// colour; the plot shows through.
+template <typename Tint>
 void paint_grid(std::vector<std::uint32_t>& pixels, int row_pixels, int x0,
-                const gui::Scopes::Grid& grid, std::uint64_t max_count, Rgb tint) {
+                const gui::Scopes::Grid& grid, std::uint64_t max_count, Tint tint) {
     const double norm = max_count > 0 ? 1.0 / std::log1p(static_cast<double>(max_count)) : 0.0;
     for (int level = 0; level < N; ++level) {
         const int row = N - 1 - level;
         for (int col = 0; col < N; ++col) {
             const std::uint32_t count = grid[static_cast<std::size_t>(level) * N + col];
-            std::uint32_t alpha = 0;
-            if (count > 0) {
-                const double t = std::log1p(static_cast<double>(count)) * norm;
-                alpha = static_cast<std::uint32_t>(std::lround(48.0 + 207.0 * t));
+            if (count == 0) {
+                pixels[static_cast<std::size_t>(row) * row_pixels + x0 + col] = 0;
+                continue;
             }
+            const double t = std::log1p(static_cast<double>(count)) * norm;
+            const auto alpha = static_cast<std::uint32_t>(std::lround(48.0 + 207.0 * t));
+            const Rgb c = tint(level, col);
             pixels[static_cast<std::size_t>(row) * row_pixels + x0 + col] =
-                IM_COL32(tint.r, tint.g, tint.b, alpha);
+                IM_COL32(c.r, c.g, c.b, alpha);
         }
     }
 }
@@ -78,14 +81,21 @@ void ScopeView::rebuild(gui::ScopeChoice which, gui::Theme theme) {
         // One scale for the three, so a channel that holds more shows more.
         const std::uint64_t m =
             std::max({grid_max(s.parade_red), grid_max(s.parade_green), grid_max(s.parade_blue)});
-        paint_grid(pixels, width, 0, s.parade_red, m, unpack(colours.histogram_red));
-        paint_grid(pixels, width, N, s.parade_green, m, unpack(colours.histogram_green));
-        paint_grid(pixels, width, 2 * N, s.parade_blue, m, unpack(colours.histogram_blue));
+        const auto flat = [](ImU32 colour) {
+            return [c = unpack(colour)](int, int) { return c; };
+        };
+        paint_grid(pixels, width, 0, s.parade_red, m, flat(colours.histogram_red));
+        paint_grid(pixels, width, N, s.parade_green, m, flat(colours.histogram_green));
+        paint_grid(pixels, width, 2 * N, s.parade_blue, m, flat(colours.histogram_blue));
     } else if (which == gui::ScopeChoice::waveform) {
-        paint_grid(pixels, width, 0, s.waveform, grid_max(s.waveform), unpack(colours.scope_trace));
+        paint_grid(pixels, width, 0, s.waveform, grid_max(s.waveform),
+                   [c = unpack(colours.scope_trace)](int, int) { return c; });
     } else {
-        paint_grid(pixels, width, 0, s.vectorscope, grid_max(s.vectorscope),
-                   unpack(colours.scope_trace));
+        // Each dot in its own hue. A cell's row is its Cr and its column its Cb.
+        paint_grid(pixels, width, 0, s.vectorscope, grid_max(s.vectorscope), [](int cr, int cb) {
+            const gui::ScopeRgb c = gui::vectorscope_cell_colour(cb, cr);
+            return Rgb{c.r, c.g, c.b};
+        });
     }
 
     if (texture_ == nullptr || texture_width_ != width) {

@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <span>
+#include <string_view>
 #include <vector>
 
 namespace prism::gui {
@@ -53,6 +55,23 @@ struct VectorscopeCell {
 
 // Rec. 709 luma of 8-bit encoded values, rounded to 0..255 (greys keep their value).
 [[nodiscard]] int luma8(std::uint8_t r, std::uint8_t g, std::uint8_t b) noexcept;
+
+// The hue a vectorscope cell is drawn in: what a colour at that angle looks like, more saturated the
+// further the cell is from the neutral axis (which is a light grey).
+struct ScopeRgb {
+    std::uint8_t r = 0, g = 0, b = 0;
+
+    bool operator==(const ScopeRgb&) const = default;
+};
+[[nodiscard]] ScopeRgb vectorscope_cell_colour(int cb, int cr) noexcept;
+
+// A line across the parade and the waveform. They are on the display scale, so the lines go where
+// these shares of white's light land on it: `level` is the 8-bit code (0..255), as in the histogram.
+struct ScopeGuide {
+    int level = 0;
+    std::string_view label;
+};
+[[nodiscard]] std::span<const ScopeGuide> scope_guides();
 
 // The scopes of a width x height picture of 8-bit sRGB `rgb8` (3 bytes per pixel, row-major).
 // An empty picture, or one whose buffer is not width * height * 3 bytes, gives all-zero grids and

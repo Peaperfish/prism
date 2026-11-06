@@ -34,7 +34,8 @@ struct Palette {
     ImU32 clip_gamut_fill;  // colours outside sRGB: magenta-violet, apart from orange and blue
     // The colour scopes (they share the red, green and blue above). The trace is the neutral colour
     // counts are drawn in, the guides are the light lines over them, and the vectorscope's targets
-    // and skin-tone line.
+    // and skin-tone line. Scope traces, guides and targets are the same in both themes, as the plot
+    // is dark in both.
     ImU32 scope_trace;
     ImU32 scope_guide;
     ImU32 scope_skin;
