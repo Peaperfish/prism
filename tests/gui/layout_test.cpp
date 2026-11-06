@@ -69,6 +69,13 @@ TEST(Layout, OnANarrowWindowTheMinimumGivesWayButTheCanvasKeepsFortyPercent) {
     }
 }
 
+TEST(Layout, TheDefaultPanelWidthIs440PointsAndStillCappedAtFortyPercent) {
+    EXPECT_EQ(prism::gui::panel_width_default, 440);
+    EXPECT_FLOAT_EQ(panel_width_pixels(prism::gui::panel_width_default, 1.0f, 1440), 440);
+    EXPECT_FLOAT_EQ(panel_width_pixels(prism::gui::panel_width_default, 1.0f, 1000), 400);
+    EXPECT_FLOAT_EQ(panel_width_pixels(prism::gui::panel_width_default, 2.0f, 2880), 880);
+}
+
 TEST(Layout, SplitterPixelsBecomeClampedPoints) {
     EXPECT_EQ(panel_points_from_pixels(640, 2.0f), 320);
     EXPECT_EQ(panel_points_from_pixels(301, 1.0f), 301);

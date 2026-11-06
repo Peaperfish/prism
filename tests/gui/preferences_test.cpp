@@ -117,7 +117,7 @@ TEST(Preferences, DefaultsAreSystemThemeAutoSizeAndTheStandardPanel) {
     const Preferences p;
     EXPECT_EQ(p.theme, ThemeChoice::system);
     EXPECT_EQ(p.interface_size, prism::gui::interface_size_auto);
-    EXPECT_EQ(p.panel_width, 320);
+    EXPECT_EQ(p.panel_width, 440);
     EXPECT_TRUE(p.unknown.empty());
 }
 
@@ -239,7 +239,7 @@ TEST(Preferences, MalformedNumbersAndEmptyValuesGiveDefaults) {
     const Preferences p = prism::gui::parse_preferences(
         "interface_size=150%\npanel_width=320px\ntheme=\n=orphan value\n");
     EXPECT_EQ(p.interface_size, prism::gui::interface_size_auto);
-    EXPECT_EQ(p.panel_width, 320);
+    EXPECT_EQ(p.panel_width, 440);
     EXPECT_EQ(p.theme, ThemeChoice::system);
     EXPECT_TRUE(p.unknown.empty()) << "a line without a key is dropped";
 }

@@ -42,7 +42,7 @@ inline constexpr int interface_size_step = 25;
 
 // The control panel's width in points (before the interface scale). The window may still show it
 // narrower or wider than this, see panel_width_pixels in layout.hpp.
-inline constexpr int panel_width_default = 320;
+inline constexpr int panel_width_default = 440;
 inline constexpr int panel_width_min = 240;
 inline constexpr int panel_width_max = 1200;
 

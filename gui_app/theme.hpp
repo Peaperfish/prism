@@ -83,6 +83,12 @@ void section_text(const char* text);
 [[nodiscard]] const gui::TokenMetrics& token_metrics();
 [[nodiscard]] const gui::TokenType& token_type();
 
+// A size from the design mockup (Inter at 13 px) in pixels at the current interface size: 16/13
+// points per mockup pixel, times the scale apply_style last set. See gui::mock.
+[[nodiscard]] inline float mock(float px) {
+    return gui::mock(px, ImGui::GetStyle().FontScaleDpi);
+}
+
 // Rebuilds ImGui's style for `theme`, with every size multiplied by `scale` (sizes can't be
 // rescaled in place, so the style is made from scratch each time). Fonts are scaled separately
 // through style.FontScaleDpi, which this sets to `scale` too. Colours, spacing, rounding and the body
