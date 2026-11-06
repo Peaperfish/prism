@@ -73,6 +73,21 @@ struct TiffIfd {
     [[nodiscard]] std::string string(const TiffEntry& entry) const;
 };
 
+// How strictly parse_ifd treats damage.
+//   strict:  the file is expected to be well-formed (DNG, DCP): any damage throws.
+//   lenient: for metadata that must never fail a load (EXIF): an IFD with no entries is fine, a
+//            repeated tag keeps its first entry, and a bad entry (a type we don't read, or data
+//            outside the buffer, including an absurd count) is skipped on its own; an entry
+//            table running past the end is read as far as it goes. Only an IFD offset that is
+//            itself outside the buffer still throws.
+enum class IfdMode { strict, lenient };
+
+// Reads the IFD at `ifd_offset` (from the start of `file`, in the given byte order). `label`
+// names it in error messages ("IFD 0"). The result's magic is left as tiff. Throws
+// std::runtime_error as parse_tiff does. Does not follow the next-IFD offset.
+[[nodiscard]] TiffIfd parse_ifd(std::span<const std::byte> file, bool big_endian,
+                                std::uint64_t ifd_offset, IfdMode mode, const std::string& label);
+
 // Parses the header and IFD 0. Throws std::runtime_error (message starting "TIFF: ") if the file
 // is not a TIFF with magic 42 or 0x4352, if any part of the header, IFD or an entry's data lies
 // outside the file, or if IFD 0 has no entries or the same tag twice.

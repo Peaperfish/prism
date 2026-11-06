@@ -154,56 +154,40 @@ std::string TiffIfd::string(const TiffEntry& entry) const {
     return out;
 }
 
-TiffIfd parse_tiff(std::span<const std::byte> file) {
+TiffIfd parse_ifd(std::span<const std::byte> file, bool big_endian, std::uint64_t ifd_offset,
+                  IfdMode mode, const std::string& label) {
     const std::uint64_t size = file.size();
-    if (size < 8) {
-        fail("file is too short for a TIFF header (" + std::to_string(size) + " bytes, need 8)");
-    }
+    const bool strict = mode == IfdMode::strict;
+    const bool big = big_endian;
 
     TiffIfd ifd;
-    if (file[0] == std::byte{'I'} && file[1] == std::byte{'I'}) {
-        ifd.big_endian = false;
-    } else if (file[0] == std::byte{'M'} && file[1] == std::byte{'M'}) {
-        ifd.big_endian = true;
-    } else {
-        fail("not a TIFF file (no II or MM byte order mark)");
-    }
-    const bool big = ifd.big_endian;
-
-    const std::uint32_t magic = read_uint(file, 2, 2, big);
-    if (magic == 42) {
-        ifd.magic = TiffMagic::tiff;
-    } else if (magic == 0x4352) {
-        ifd.magic = TiffMagic::camera_profile;
-    } else if (magic == 43) {
-        fail("BigTIFF files (magic number 43) are not supported");
-    } else {
-        fail("unknown magic number " + hex(magic) +
-             " (expected 42 for TIFF or DNG, or 0x4352 for a DCP camera profile)");
-    }
+    ifd.big_endian = big;
 
     // All offset arithmetic is in 64 bits: offsets and counts from the file are at most 2^32 - 1,
     // so sums and products like these can't wrap around.
-    const std::uint64_t ifd_offset = read_uint(file, 4, 4, big);
     if (ifd_offset < 8) {
-        fail("IFD 0 offset " + std::to_string(ifd_offset) +
+        fail(label + " offset " + std::to_string(ifd_offset) +
              (ifd_offset == 0 ? " means the file has no image file directory"
                               : " points into the 8-byte header"));
     }
     if (ifd_offset + 2 > size) {
-        fail("IFD 0 offset " + std::to_string(ifd_offset) + " is past the end of the file (" +
+        fail(label + " offset " + std::to_string(ifd_offset) + " is past the end of the file (" +
              std::to_string(size) + " bytes)");
     }
-    const std::uint64_t n = read_uint(file, ifd_offset, 2, big);
-    if (n == 0) {
-        fail("IFD 0 has no entries");
+    std::uint64_t n = read_uint(file, ifd_offset, 2, big);
+    if (n == 0 && strict) {
+        fail(label + " has no entries");
     }
     // Entry count, n entries of 12 bytes, next-IFD offset (not followed, but it must be there).
     const std::uint64_t ifd_end = ifd_offset + 2 + 12 * n + 4;
     if (ifd_end > size) {
-        fail("IFD 0 at offset " + std::to_string(ifd_offset) + " has " + std::to_string(n) +
-             " entries, which need " + std::to_string(ifd_end) + " bytes, but the file has " +
-             std::to_string(size));
+        if (strict) {
+            fail(label + " at offset " + std::to_string(ifd_offset) + " has " + std::to_string(n) +
+                 " entries, which need " + std::to_string(ifd_end) + " bytes, but the file has " +
+                 std::to_string(size));
+        }
+        // Lenient: read the entries that are there.
+        n = (size - ifd_offset - 2) / 12;
     }
 
     // n is at most 65535 and the whole IFD is known to fit in the file, so these are bounded.
@@ -215,7 +199,12 @@ TiffIfd parse_tiff(std::span<const std::byte> file) {
         const auto tag = static_cast<std::uint16_t>(read_uint(file, at, 2, big));
         const auto type = static_cast<std::uint16_t>(read_uint(file, at + 2, 2, big));
         const std::uint32_t count = read_uint(file, at + 4, 4, big);
-        tags.push_back(tag);
+        if (strict || std::none_of(ifd.entries.begin(), ifd.entries.end(),
+                                   [&](const TiffEntry& e) { return e.tag == tag; })) {
+            tags.push_back(tag);
+        } else {
+            continue;  // lenient: the first entry with a tag wins
+        }
 
         const std::uint64_t one = type_size(type);
         if (one == 0) {
@@ -228,6 +217,9 @@ TiffIfd parse_tiff(std::span<const std::byte> file) {
         if (bytes > 4) {
             value_at = read_uint(file, at + 8, 4, big);
             if (value_at > size || bytes > size - value_at) {
+                if (!strict) {
+                    continue;  // lenient: drop the entry whose data is missing
+                }
                 fail(tag_name(tag) + " (" + type_name(static_cast<TiffType>(type)) + ", count " +
                      std::to_string(count) + ", " + std::to_string(bytes) +
                      " bytes) points to offset " + std::to_string(value_at) +
@@ -241,10 +233,45 @@ TiffIfd parse_tiff(std::span<const std::byte> file) {
 
     // Two entries with the same tag would make find() return whichever came first; a valid file
     // never has them, so treat them as damage rather than guess.
-    std::sort(tags.begin(), tags.end());
-    if (const auto dup = std::adjacent_find(tags.begin(), tags.end()); dup != tags.end()) {
-        fail(tag_name(*dup) + " appears more than once in IFD 0");
+    if (strict) {
+        std::sort(tags.begin(), tags.end());
+        if (const auto dup = std::adjacent_find(tags.begin(), tags.end()); dup != tags.end()) {
+            fail(tag_name(*dup) + " appears more than once in " + label);
+        }
     }
+    return ifd;
+}
+
+TiffIfd parse_tiff(std::span<const std::byte> file) {
+    const std::uint64_t size = file.size();
+    if (size < 8) {
+        fail("file is too short for a TIFF header (" + std::to_string(size) + " bytes, need 8)");
+    }
+
+    bool big = false;
+    if (file[0] == std::byte{'I'} && file[1] == std::byte{'I'}) {
+        big = false;
+    } else if (file[0] == std::byte{'M'} && file[1] == std::byte{'M'}) {
+        big = true;
+    } else {
+        fail("not a TIFF file (no II or MM byte order mark)");
+    }
+
+    TiffMagic kind = TiffMagic::tiff;
+    const std::uint32_t magic = read_uint(file, 2, 2, big);
+    if (magic == 42) {
+        kind = TiffMagic::tiff;
+    } else if (magic == 0x4352) {
+        kind = TiffMagic::camera_profile;
+    } else if (magic == 43) {
+        fail("BigTIFF files (magic number 43) are not supported");
+    } else {
+        fail("unknown magic number " + hex(magic) +
+             " (expected 42 for TIFF or DNG, or 0x4352 for a DCP camera profile)");
+    }
+
+    TiffIfd ifd = parse_ifd(file, big, read_uint(file, 4, 4, big), IfdMode::strict, "IFD 0");
+    ifd.magic = kind;
     return ifd;
 }
 
