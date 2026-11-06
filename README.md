@@ -21,7 +21,7 @@ Mainstream photo editors often come with a subscription and a cloud catalog, hid
 1. **Free for personal use.** No subscription, no cloud, no catalog: open a file, edit it, export it. (See [Licences](#licences).)
 2. **It teaches as you go.** Every control should say in plain words what it does to the light, and you should be able to see each step happen. Since [0.2.0](https://github.com/Peaperfish/prism/milestone/1): a pipeline view, colour scopes and a test strip. Since [0.3.0](https://github.com/Peaperfish/prism/milestone/3): zoom and pan, and a reader for the numbers of any pixel.
 3. **No black-box presets.** A look should be a readable recipe you can see and adjust. The plain-text [recipe format](docs/RECIPES.md) is defined, the app saves and loads recipes ([Recipes](docs/GUIDE.md#recipes)), the command line applies them, and the built-in looks are [recipes you can read](recipes/): the app shows each look's numbers and its file.
-4. **Physical controls.** You adjust light rather than apply effects. Exposure is already in stops; white balance in Kelvin, contrast as paper grades, and dodge and burn are planned for [0.4.0](https://github.com/Peaperfish/prism/milestone/4).
+4. **Physical controls.** You adjust light rather than apply effects. Exposure is already in stops; white balance in Kelvin, contrast as paper grades, and dodge and burn are planned for [0.5.0](https://github.com/Peaperfish/prism/milestone/4).
 
 ## Downloading and running Prism
 
@@ -277,11 +277,31 @@ v0.1.0 was a pre-release of the desktop app, and v0.2.0 is its first full releas
 - [Zoom and pan](https://github.com/Peaperfish/prism/issues/27) the preview, with the pixels shown as squares above 200% *(done)*
 - [Reading a pixel](https://github.com/Peaperfish/prism/issues/28): the linear values, its share of white's light and its stops from middle grey, at any stage *(done)*
 
-[**0.4.0 – Darkroom**](https://github.com/Peaperfish/prism/milestone/4): physical controls.
+**0.3.1 – Photos the right way up**: a small release for photos from phones and cameras.
+
+- iPhone photos (HEIC) open on macOS *(done)*
+- JPEGs open the right way up *(done)*
+- Small fixes *(done)*
+
+[**0.4.0 – Fresh look**](https://github.com/Peaperfish/prism/milestone/5): a calmer interface, with the controls shown as the light path.
+
+- A new look: calmer surfaces in dark and light themes, one accent colour
+- The pipeline stages become the controls: a vertical light path, a dot per stage, a switch and a slider for each
+- Redesigned scopes: filled histogram, parade, waveform and vectorscope, with clipping shown under them
+- An info bar with the photo's camera, lens, shutter, aperture and ISO
+- New screenshot and updated guide
+
+[**0.5.0 – Darkroom**](https://github.com/Peaperfish/prism/milestone/4): physical controls.
 
 - [White balance in Kelvin and tint](https://github.com/Peaperfish/prism/issues/21), with a click-on-neutral picker
 - [Contrast as paper grades](https://github.com/Peaperfish/prism/issues/23)
 - [Dodge and burn](https://github.com/Peaperfish/prism/issues/22) with brushes (masks)
+
+[**0.6.0 – HDR**](https://github.com/Peaperfish/prism/milestone/6): HDR photos on HDR displays, and HDR files out.
+
+- Show HDR photos on HDR displays (macOS first)
+- Export HDR files with gain maps
+- Later: merge exposure brackets
 
 [**Later**](https://github.com/Peaperfish/prism/milestone/2), not scheduled yet:
 
