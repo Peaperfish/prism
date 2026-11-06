@@ -1353,24 +1353,6 @@ void App::draw_menu() {
                                               token_colours().hair.b, token_colours().hair.a)));
 }
 
-// A soft shadow behind the photo (0 2px 18px at 35% black, in the design): translucent rounded
-// rectangles, each a little larger than the last, whose alphas add up to the shadow's darkness at
-// the photo's edge and fade to nothing at the blur's reach. The photo is drawn over the middle.
-void App::draw_photo_shadow(ImDrawList* draw, ImVec2 at, ImVec2 shown) const {
-    const gui::TokenMetrics& m = token_metrics();
-    constexpr int layers = 9;
-    constexpr float darkness = 0.35f;
-    // Each layer's alpha so that `layers` of them stacked come to `darkness`.
-    const float alpha = 1.0f - std::pow(1.0f - darkness, 1.0f / layers);
-    const ImU32 colour = ImGui::ColorConvertFloat4ToU32(ImVec4(0.0f, 0.0f, 0.0f, alpha));
-    for (int i = 0; i < layers; ++i) {
-        const float grow = m.photo_shadow_blur * static_cast<float>(layers - i) / layers;
-        draw->AddRectFilled(ImVec2(at.x - grow, at.y - grow + m.photo_shadow_offset),
-                            ImVec2(at.x + shown.x + grow, at.y + shown.y + grow + m.photo_shadow_offset),
-                            colour, grow);
-    }
-}
-
 void App::draw_canvas() {
     canvas_taken_.clear();
     sample_hover_.reset();
@@ -1403,7 +1385,6 @@ void App::draw_canvas() {
         const ImVec2 at(placed.at.x, placed.at.y);
         const ImVec2 shown(placed.shown.x, placed.shown.y);
         update_clip_overlay_texture();
-        draw_photo_shadow(draw, at, shown);
         if (splitting()) {
             draw_split(draw, at, shown);
         } else {

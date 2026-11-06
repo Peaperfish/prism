@@ -92,8 +92,6 @@ constexpr TokenMetrics darkroom_metrics{
     .panel_pad_bottom = mock_points(18),
     .section_gap = mock_points(18),
     .section_head_gap = mock_points(8),
-    .photo_shadow_blur = mock_points(18),
-    .photo_shadow_offset = mock_points(2),
     .control_height = mock_points(34),
     .control_rounding = mock_points(7),
     .control_pad_x = mock_points(12),
@@ -351,8 +349,6 @@ TokenMetrics scaled(const TokenMetrics& m, float s) {
     r.panel_pad_bottom = m.panel_pad_bottom * s;
     r.section_gap = m.section_gap * s;
     r.section_head_gap = m.section_head_gap * s;
-    r.photo_shadow_blur = m.photo_shadow_blur * s;
-    r.photo_shadow_offset = m.photo_shadow_offset * s;
     r.control_height = m.control_height * s;
     r.control_rounding = m.control_rounding * s;
     r.control_pad_x = m.control_pad_x * s;

@@ -144,8 +144,6 @@ struct TokenMetrics {
     // under a section's header.
     Vec2 panel_pad;
     float panel_pad_bottom, section_gap, section_head_gap;
-    // The photo's soft shadow: how far it spreads, and how far down it is pushed.
-    float photo_shadow_blur, photo_shadow_offset;
     // A dropdown button in the panel: height, corner radius and side padding.
     float control_height, control_rounding, control_pad_x;
     // The zoom chip: corner radius, padding, and its distance from the canvas's right and bottom

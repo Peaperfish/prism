@@ -159,7 +159,6 @@ private:
     [[nodiscard]] bool control_active() const;
     // The zoom's chip: the number, Fit and 100%. Drawn last on the canvas, clear of canvas_taken_.
     void draw_zoom_chip();
-    void draw_photo_shadow(ImDrawList* draw, ImVec2 at, ImVec2 shown) const;
     void draw_banner();
     // The test strip. Whether it is on and usable (strip_ is cleared when the viewed stage can't
     // show it).
