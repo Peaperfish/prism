@@ -2780,62 +2780,34 @@ void App::draw_clip_chips(const gui::StageHistogram& h, float avail_w) {
 }
 
 void App::draw_scope_selector() {
-    struct Choice {
-        gui::ScopeChoice scope;
-        const char* label;
+    static const gui::ScopeChoice scopes[] = {
+        gui::ScopeChoice::histogram,
+        gui::ScopeChoice::parade,
+        gui::ScopeChoice::waveform,
+        gui::ScopeChoice::vectorscope,
     };
-    static const Choice choices[] = {
-        {gui::ScopeChoice::histogram, "Histogram"},
-        {gui::ScopeChoice::parade, "Parade"},
-        {gui::ScopeChoice::waveform, "Waveform"},
-        {gui::ScopeChoice::vectorscope, "Vectorscope"},
-    };
-    const float avail = std::max(1.0f, ImGui::GetContentRegionAvail().x);
-    const float spacing = ImGui::GetStyle().ItemSpacing.x;
-    // A slightly smaller font, so the full names fit in one row at the default panel width.
-    ImGui::PushFont(nullptr, token_type().small);
+    static const char* const labels[] = {"Histogram", "Parade", "Waveform", "Vector"};
+    int current = 0;
+    for (std::size_t i = 0; i < std::size(scopes); ++i) {
+        if (scopes[i] == prefs_.scope) {
+            current = static_cast<int>(i);
+        }
+    }
     std::string_view hovered_id;
-    const float pad = token_metrics().selector_pad;  // tighter than a button so all four fit a row
-    const float gap = token_metrics().selector_gap;  // and closer together
-    float needed = 3 * gap;
-    for (const Choice& c : choices) {
-        needed += ImGui::CalcTextSize(c.label).x + 2 * pad;
-    }
-    const bool one_row = needed <= avail;
-    const float row_w = one_row ? avail : (avail - spacing) * 0.5f;
-
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
-                        ImVec2(pad, ImGui::GetStyle().FramePadding.y * 0.7f));
-    int index = 0;
-    for (const Choice& c : choices) {
-        const bool selected = prefs_.scope == c.scope;
-        const float w = one_row ? ImGui::CalcTextSize(c.label).x + 2 * pad +
-                                      (avail - needed) / static_cast<float>(std::size(choices))
-                                : row_w;
-        if (index % (one_row ? 4 : 2) != 0) {
-            ImGui::SameLine(0.0f, one_row ? gap : spacing);
-        }
-        if (selected) {
-            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-        }
-        if (ImGui::Button(c.label, ImVec2(w, 0)) && !selected) {
-            gui::Preferences p = prefs_;
-            p.scope = c.scope;
-            set_preferences(std::move(p));
-        }
-        if (selected) {
-            ImGui::PopStyleColor();
-        }
-        explain(gui::explain_id(c.scope));
+    const bool chosen = segmented("##scope", labels, &current, [&](int i) {
+        const std::string_view id = gui::explain_id(scopes[static_cast<std::size_t>(i)]);
+        explain(id);
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
-            hovered_id = gui::explain_id(c.scope);
+            hovered_id = id;
         }
-        ++index;
+    });
+    if (chosen) {
+        gui::Preferences p = prefs_;
+        p.scope = scopes[static_cast<std::size_t>(current)];
+        set_preferences(std::move(p));
     }
-    ImGui::PopStyleVar();
-    ImGui::PopFont();
     if (const gui::Explanation* e = gui::explanation_for(hovered_id)) {
-        ImGui::SetTooltip("%s", std::string(e->summary).c_str());  // in the normal font size
+        ImGui::SetTooltip("%s", std::string(e->summary).c_str());
     }
 }
 
@@ -3329,8 +3301,8 @@ void App::draw_pipeline() {
 
     const ImGuiStyle& style = ImGui::GetStyle();
     const float row_h = ImGui::GetFrameHeight();
-    const float box = std::round(token_metrics().checkbox_size);
-    // The name starts after the checkbox (or the gap where there is none); what hangs under it, the
+    const float box = switch_size().x;
+    // The name starts after the switch (or the gap where there is none); what hangs under it, the
     // value and its control, lines up with it.
     const float inset = style.ItemInnerSpacing.x;
     const float name_indent = inset + box + style.ItemInnerSpacing.x;
@@ -3340,7 +3312,7 @@ void App::draw_pipeline() {
         const bool selected = viewed_stage_ == stage.id;
 
         // The row is one hit area across the panel's width, drawn with its own highlight so that
-        // it covers the checkbox too; the checkbox, submitted over it, takes its own clicks.
+        // it covers the switch too; the switch, submitted over it, takes its own clicks.
         const ImVec2 row_pos = ImGui::GetCursorScreenPos();
         const float row_w = ImGui::GetContentRegionAvail().x;
         ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0, 0, 0, 0));
@@ -3366,10 +3338,11 @@ void App::draw_pipeline() {
         const bool row_hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal);
         explain(gui::explain_id(stage.id));
 
-        ImGui::SetCursorScreenPos(ImVec2(row_pos.x + inset, row_pos.y));
+        ImGui::SetCursorScreenPos(ImVec2(
+            row_pos.x + inset, row_pos.y + std::round((row_h - switch_size().y) * 0.5f)));
         if (stage.can_toggle) {
             bool on = enabled;
-            if (styled_checkbox("##on", &on)) {
+            if (styled_switch("##on", &on)) {
                 gui::EditSettings s = session_.settings();
                 gui::set_stage_enabled(s, stage.id, on);
                 report(session_.set_settings(s));  // one undo step in History
@@ -3378,7 +3351,9 @@ void App::draw_pipeline() {
         } else {
             ImGui::Dummy(ImVec2(box, row_h));
         }
-        ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
+        // Back to the row's top: the switch is centred lower than the name's line starts.
+        ImGui::SetCursorScreenPos(
+            ImVec2(row_pos.x + inset + box + style.ItemInnerSpacing.x, row_pos.y));
 
         // The name in the semi-bold face, in the muted colour when the stage is off.
         std::string name(stage.name);
