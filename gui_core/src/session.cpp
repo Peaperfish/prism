@@ -50,10 +50,10 @@ std::optional<Matrix3> camera_matrix_of(const EditSettings& s) {
 
 // Decodes `path` (already known to exist and to be a supported kind), turning every failure into
 // an Error. `raw` only matters for RAW files.
-std::variant<Image, Error> decode(const fs::path& path, InputKind kind, const RawOptions& raw,
+std::variant<Photo, Error> decode(const fs::path& path, InputKind kind, const RawOptions& raw,
                                   int threads) {
     try {
-        return load_image(path, raw, threads);
+        return load_photo(path, raw, threads);
     } catch (const std::bad_alloc&) {
         return Error{ErrorKind::out_of_memory, "Not enough memory to open this photo.", ""};
     } catch (const std::exception& e) {
@@ -126,13 +126,14 @@ MaybeError Session::open_file(const fs::path& path) {
     RawOptions raw;
     raw.half_size = true;
     raw.full_size = &full;
-    std::variant<Image, Error> decoded = decode(path, kind, raw, options_.threads);
+    std::variant<Photo, Error> decoded = decode(path, kind, raw, options_.threads);
     if (Error* e = std::get_if<Error>(&decoded)) {
         return std::move(*e);
     }
 
     // Only now, with everything loaded, replace the previous file.
-    const Image& img = std::get<Image>(decoded);
+    Photo& photo = std::get<Photo>(decoded);
+    const Image& img = photo.image;
     try {
         preview_base_ = std::make_shared<const Image>(
             downscale(img, options_.preview_long_side, options_.threads));
@@ -141,13 +142,15 @@ MaybeError Session::open_file(const fs::path& path) {
     }
     path_ = path;
     kind_ = kind;
+    photo_info_ = std::move(photo.info);
     decoded_width_ = img.width;
     decoded_height_ = img.height;
     file_width_ = img.width;
     file_height_ = img.height;
     file_size_exact_ = true;
     if (kind == InputKind::raw) {
-        // Half size is about half the sensor's width and height: the estimate if the file won't say.
+        // Half size is about half the sensor's width and height: the estimate if the file won't
+        // say.
         const bool known = full.width > 0;
         file_width_ = known ? full.width : img.width * 2;
         file_height_ = known ? full.height : img.height * 2;
@@ -190,13 +193,13 @@ MaybeError Session::update_preview_base() {
     RawOptions raw;
     raw.half_size = true;
     raw.camera_matrix = wanted;
-    std::variant<Image, Error> decoded = decode(path_, kind_, raw, options_.threads);
+    std::variant<Photo, Error> decoded = decode(path_, kind_, raw, options_.threads);
     if (Error* e = std::get_if<Error>(&decoded)) {
         return std::move(*e);
     }
     try {
-        preview_base_ = std::make_shared<const Image>(
-            downscale(std::get<Image>(decoded), options_.preview_long_side, options_.threads));
+        preview_base_ = std::make_shared<const Image>(downscale(
+            std::get<Photo>(decoded).image, options_.preview_long_side, options_.threads));
     } catch (const std::bad_alloc&) {
         return Error{ErrorKind::out_of_memory, "Not enough memory to open this photo.", ""};
     }
@@ -235,11 +238,11 @@ MaybeError export_image(const ExportJob& job, const fs::path& output, std::stop_
     if (stop.stop_requested()) {
         return cancelled();
     }
-    std::variant<Image, Error> decoded = decode(job.source, job.kind, raw, job.threads);
+    std::variant<Photo, Error> decoded = decode(job.source, job.kind, raw, job.threads);
     if (Error* e = std::get_if<Error>(&decoded)) {
         return std::move(*e);
     }
-    Image& img = std::get<Image>(decoded);
+    Image& img = std::get<Photo>(decoded).image;
 
     if (process(img, to_process_settings(job.settings), job.threads, stop, on_stage) ==
             ProcessResult::cancelled ||

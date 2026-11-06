@@ -23,6 +23,7 @@
 #include "prism/raw.hpp"
 #include "prism/resize.hpp"
 #include "synthetic_dng.hpp"
+#include "synthetic_exif.hpp"
 
 namespace fs = std::filesystem;
 using prism::gui::EditSettings;
@@ -214,6 +215,77 @@ TEST(Session, AnotherFileStartsOverWithItsOwnDefault) {
     EXPECT_FALSE(session.history().can_undo());
     fs::remove(a);
     fs::remove(b);
+}
+
+TEST(Session, OpensAJpegUprightWithItsPhotoInfo) {
+    const fs::path jpg = temp_file("turned.jpg");
+    prism_test::ExifBuilder exif(true);
+    exif.ifd0_ascii(0x010F, "ACME").ifd0_short(0x0112, 6).exif_short(0x8827, 400);
+    prism_test::write_all(jpg, prism_test::quadrant_jpeg(temp_file("scratch.jpg"),
+                                                         {prism_test::exif_app1(exif.build())}));
+    Session session;
+    ASSERT_EQ(session.open_file(jpg), std::nullopt);
+    EXPECT_EQ(session.decoded_width(), prism_test::quadrant_height);
+    EXPECT_EQ(session.decoded_height(), prism_test::quadrant_width);
+    EXPECT_EQ(session.file_width(), prism_test::quadrant_height);
+    EXPECT_EQ(session.file_height(), prism_test::quadrant_width);
+    EXPECT_EQ(session.preview_base()->width, prism_test::quadrant_height);
+    EXPECT_EQ(session.photo_info().make, "ACME");
+    EXPECT_EQ(session.photo_info().iso, 400);
+    EXPECT_EQ(session.photo_info().orientation, 6);
+    fs::remove(jpg);
+}
+
+TEST(Session, PhotoInfoIsReplacedByTheNextOpen) {
+    const fs::path jpg = temp_file("info.jpg");
+    prism_test::ExifBuilder exif(false);
+    exif.ifd0_ascii(0x010F, "ACME");
+    prism_test::write_all(jpg, prism_test::quadrant_jpeg(temp_file("scratch.jpg"),
+                                                         {prism_test::exif_app1(exif.build())}));
+    const fs::path png = write_png("plain.png", 40, 30);
+    Session session;
+    EXPECT_TRUE(session.photo_info().empty());  // nothing open yet
+    ASSERT_EQ(session.open_file(jpg), std::nullopt);
+    EXPECT_EQ(session.photo_info().make, "ACME");
+    ASSERT_EQ(session.open_file(png), std::nullopt);
+    EXPECT_TRUE(session.photo_info().empty());  // the PNG's, not the JPEG's
+    fs::remove(jpg);
+    fs::remove(png);
+}
+
+// The info belongs to the photo that is open: an open that fails leaves both as they were.
+TEST(Session, AFailedOpenKeepsThePhotoInfoOfThePreviousFile) {
+    const fs::path jpg = temp_file("keep.jpg");
+    prism_test::ExifBuilder exif(false);
+    exif.ifd0_ascii(0x010F, "ACME");
+    prism_test::write_all(jpg, prism_test::quadrant_jpeg(temp_file("scratch.jpg"),
+                                                         {prism_test::exif_app1(exif.build())}));
+    const fs::path junk = write_text("junk.jpg", "not a JPEG");
+    Session fresh;
+    ASSERT_TRUE(fresh.open_file(junk));
+    EXPECT_TRUE(fresh.photo_info().empty());  // never opened: nothing to be stale
+
+    Session session;
+    ASSERT_EQ(session.open_file(jpg), std::nullopt);
+    ASSERT_TRUE(session.open_file(junk));
+    EXPECT_EQ(session.path(), jpg);
+    EXPECT_EQ(session.photo_info().make, "ACME");
+    fs::remove(jpg);
+    fs::remove(junk);
+}
+
+TEST(Session, ExportOfARotatedJpegIsUpright) {
+    const fs::path jpg = temp_file("export_in.jpg");
+    prism_test::write_oriented_jpeg(jpg, 8);
+    const fs::path out = temp_file("export_out.png");
+    Session session;
+    ASSERT_EQ(session.open_file(jpg), std::nullopt);
+    ASSERT_EQ(prism::gui::export_image(session.export_job(), out), std::nullopt);
+    const prism::Image img = prism::load_image(out);
+    EXPECT_EQ(img.width, prism_test::quadrant_height);
+    EXPECT_EQ(img.height, prism_test::quadrant_width);
+    fs::remove(jpg);
+    fs::remove(out);
 }
 
 // --- editing ----------------------------------------------------------------------------------

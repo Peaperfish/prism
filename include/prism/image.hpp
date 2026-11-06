@@ -5,6 +5,8 @@
 #include <span>
 #include <vector>
 
+#include "prism/photo_info.hpp"
+
 namespace prism {
 
 // An RGB image in linear light, 32-bit float per channel.
@@ -16,6 +18,12 @@ struct Image {
     int width = 0;
     int height = 0;
     std::vector<float> pixels;
+};
+
+// A decoded photo and what is known about how it was taken.
+struct Photo {
+    Image image;
+    PhotoInfo info;
 };
 
 // Every function taking `int threads` splits the work across that many threads; 0 (the default)
@@ -31,6 +39,9 @@ struct Image {
 [[nodiscard]] std::vector<std::uint8_t> encode_srgb8(const Image& img, int threads = 0);
 
 // Loads an 8-bit PNG or JPEG (anything stb_image reads) and converts sRGB to linear float.
+// A JPEG comes out upright: its EXIF Orientation is applied (apply_orientation), so a photo taken
+// with the camera on its side is not sideways, and 5-8 swap its width and height. Metadata
+// problems never fail a load: the photo then loads as stored.
 // Grey or alpha images are expanded/flattened to RGB. Throws std::runtime_error on failure.
 // Decoding the file itself (stb_image) is single-threaded; only the sRGB conversion uses `threads`.
 // Camera RAW files (see is_raw_file in prism/raw.hpp) go to load_raw with default RawOptions.
@@ -41,6 +52,14 @@ struct Image {
 struct RawOptions;
 [[nodiscard]] Image load_image(const std::filesystem::path& path, const RawOptions& raw,
                                int threads = 0);
+
+// As load_image, and also returns what the file says about the shot (see PhotoInfo): from the
+// EXIF block of a JPEG, or from the RAW decoder for a RAW file (whose orientation is applied by
+// LibRaw, so `info.orientation` is not set). A PNG, or a file with no usable metadata, gives an
+// empty PhotoInfo. Throws std::runtime_error exactly when load_image does.
+[[nodiscard]] Photo load_photo(const std::filesystem::path& path, const RawOptions& raw,
+                               int threads = 0);
+[[nodiscard]] Photo load_photo(const std::filesystem::path& path, int threads = 0);
 
 // Turns `img` to display upright, given an EXIF Orientation value (1-8), in place. With W x H the
 // size of `img` and in(x, y) its pixels, the new pixel (x, y) is:

@@ -65,12 +65,20 @@ std::vector<std::uint8_t> encode_srgb8(const Image& img, int threads) {
 }
 
 Image load_image(const std::filesystem::path& path, int threads) {
-    return load_image(path, RawOptions{}, threads);
+    return load_photo(path, RawOptions{}, threads).image;
 }
 
 Image load_image(const std::filesystem::path& path, const RawOptions& raw, int threads) {
+    return load_photo(path, raw, threads).image;
+}
+
+Photo load_photo(const std::filesystem::path& path, int threads) {
+    return load_photo(path, RawOptions{}, threads);
+}
+
+Photo load_photo(const std::filesystem::path& path, const RawOptions& raw, int threads) {
     if (is_raw_file(path)) {
-        return load_raw(path, raw, threads);
+        return load_raw_photo(path, raw, threads);
     }
 
     int width = 0;
@@ -85,7 +93,22 @@ Image load_image(const std::filesystem::path& path, const RawOptions& raw, int t
                                  "': " + stbi_failure_reason());
     }
 
-    return decode_srgb8({data.get(), sample_count(width, height)}, width, height, threads);
+    Photo photo;
+    photo.image = decode_srgb8({data.get(), sample_count(width, height)}, width, height, threads);
+
+    // Only JPEGs carry EXIF (by extension, like the rest of the file-type decisions). Reading it
+    // and applying it cannot fail the load: the readers never throw, and without an Orientation
+    // the image is left as stored.
+    const std::string ext = lowercase_extension(path);
+    if (ext == ".jpg" || ext == ".jpeg") {
+        if (const auto exif = read_jpeg_exif(path)) {
+            photo.info = read_exif(*exif);
+        }
+        if (photo.info.orientation) {
+            apply_orientation(photo.image, *photo.info.orientation);
+        }
+    }
+    return photo;
 }
 
 void apply_orientation(Image& img, int orientation) {

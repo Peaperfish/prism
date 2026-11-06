@@ -17,6 +17,7 @@
 #include "prism/image.hpp"
 #include "prism/version.hpp"
 #include "run_command.hpp"
+#include "synthetic_exif.hpp"
 
 // End-to-end tests: run the real prism executable (path supplied by CMake as PRISM_EXE)
 // and check its exit code and output.
@@ -236,6 +237,22 @@ TEST(Cli, MissingRawFileIsReportedAsRawError) {
         run_prism(quoted(temp_file("missing.ARW")) + " --histogram " + quoted(hist));
     EXPECT_EQ(r.exit_code, 1) << r.output;
     EXPECT_TRUE(contains(r.output, "cannot load RAW file")) << r.output;
+}
+
+// A JPEG whose EXIF says "turned 90 degrees": the render comes out upright, so 32 x 64.
+TEST(Cli, AJpegWithOrientation6RendersUpright) {
+    const fs::path input = temp_file("sideways.jpg");
+    const fs::path output = temp_file("upright.png");
+    prism_test::write_oriented_jpeg(input, 6);
+
+    const RunResult r = run_prism(quoted(input) + " -o " + quoted(output));
+    EXPECT_EQ(r.exit_code, 0) << r.output;
+    ASSERT_TRUE(fs::exists(output));
+    const prism::Image out = prism::load_image(output);
+    EXPECT_EQ(out.width, prism_test::quadrant_height);
+    EXPECT_EQ(out.height, prism_test::quadrant_width);
+    fs::remove(input);
+    fs::remove(output);
 }
 
 // Runs only with PRISM_TEST_RAW set; see raw_test.cpp. Half size keeps it quick.

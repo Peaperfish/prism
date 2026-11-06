@@ -36,8 +36,8 @@ struct RawOptions {
     // --matrix it is row-major and applied with apply_matrix; see README for what it must map.
     std::optional<Matrix3> camera_matrix;
 
-    // If set, receives the file's full size, read from its metadata when load_raw opens it, also for
-    // a half-size decode. Left as it is if the file can't be opened or doesn't say.
+    // If set, receives the file's full size, read from its metadata when load_raw opens it, also
+    // for a half-size decode. Left as it is if the file can't be opened or doesn't say.
     RawDimensions* full_size = nullptr;
 };
 
@@ -66,5 +66,12 @@ struct RawOptions {
 // the optional camera matrix are.
 [[nodiscard]] Image load_raw(const std::filesystem::path& path, const RawOptions& options = {},
                              int threads = 0);
+
+// As load_raw, and also returns the PhotoInfo LibRaw read from the same file: make, model, ISO,
+// shutter time, aperture, focal length, lens, and capture time ("YYYY:MM:DD HH:MM:SS" in local
+// time, as EXIF writes it) where the file has them. `orientation` stays unset: LibRaw has already
+// applied it.
+[[nodiscard]] Photo load_raw_photo(const std::filesystem::path& path,
+                                   const RawOptions& options = {}, int threads = 0);
 
 }  // namespace prism

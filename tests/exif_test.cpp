@@ -1,10 +1,12 @@
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -14,6 +16,7 @@
 #include <unistd.h>  // getpid
 #endif
 
+#include "prism/image.hpp"
 #include "prism/photo_info.hpp"
 #include "synthetic_exif.hpp"
 
@@ -337,4 +340,133 @@ TEST(ReadJpegExif, TruncatedAtEveryLengthNeverThrows) {
     }
     std::error_code ec;
     fs::remove(path, ec);
+}
+
+// --- Loading: the orientation is applied, the PhotoInfo comes with the image ---
+
+namespace {
+
+// The colour (index into quadrant_rgb: 0 red, 1 green, 2 blue, 3 yellow) expected in the top-left,
+// top-right, bottom-left and bottom-right of the loaded picture, for each Orientation 1-8. The
+// stored picture is   red   green
+//                     blue  yellow
+constexpr int expected_quadrants[9][4] = {
+    {0, 0, 0, 0},  // (unused: orientations start at 1)
+    {0, 1, 2, 3},  // 1 as stored
+    {1, 0, 3, 2},  // 2 mirrored left-right
+    {3, 2, 1, 0},  // 3 turned 180 degrees
+    {2, 3, 0, 1},  // 4 mirrored top-bottom
+    {0, 2, 1, 3},  // 5 transposed
+    {2, 0, 3, 1},  // 6 turned 90 degrees clockwise
+    {3, 1, 2, 0},  // 7 transversed
+    {1, 3, 0, 2},  // 8 turned 90 degrees counter-clockwise
+};
+
+// The 8-bit sRGB colour at the middle of quadrant q (0..3 = TL, TR, BL, BR) of `img`.
+std::array<int, 3> quadrant_centre(const prism::Image& img, int q) {
+    const int x = (q % 2 == 0 ? 1 : 3) * img.width / 4;
+    const int y = (q < 2 ? 1 : 3) * img.height / 4;
+    const std::vector<std::uint8_t> bytes = prism::encode_srgb8(img);
+    const std::size_t i = (static_cast<std::size_t>(y) * img.width + x) * 3;
+    return {bytes[i], bytes[i + 1], bytes[i + 2]};
+}
+
+void expect_quadrants(const prism::Image& img, const int (&expected)[4]) {
+    for (int q = 0; q < 4; ++q) {
+        const std::array<int, 3> got = quadrant_centre(img, q);
+        for (int c = 0; c < 3; ++c) {
+            // JPEG is lossy: a solid block's middle is within a few levels of its colour.
+            EXPECT_NEAR(got[c], prism_test::quadrant_rgb[expected[q]][c], 12)
+                << "quadrant " << q << " channel " << c;
+        }
+    }
+}
+
+}  // namespace
+
+TEST(LoadPhoto, EveryOrientationLandsTheQuadrantsWhereTheyBelong) {
+    for (int o = 1; o <= 8; ++o) {
+        SCOPED_TRACE("orientation " + std::to_string(o));
+        const fs::path path = temp_file("o" + std::to_string(o) + ".jpg");
+        prism_test::write_oriented_jpeg(path, o);
+
+        const prism::Photo photo = prism::load_photo(path);
+        const bool turned = o >= 5;
+        EXPECT_EQ(photo.image.width,
+                  turned ? prism_test::quadrant_height : prism_test::quadrant_width);
+        EXPECT_EQ(photo.image.height,
+                  turned ? prism_test::quadrant_width : prism_test::quadrant_height);
+        expect_quadrants(photo.image, expected_quadrants[o]);
+        EXPECT_EQ(photo.info.orientation, o);
+
+        // load_image is the same picture.
+        const prism::Image image = prism::load_image(path);
+        EXPECT_EQ(image.width, photo.image.width);
+        EXPECT_EQ(image.pixels, photo.image.pixels);
+        std::error_code ec;
+        fs::remove(path, ec);
+    }
+}
+
+TEST(LoadPhoto, AnUppercaseExtensionIsStillAJpeg) {
+    const fs::path path = temp_file("upper.JPG");
+    prism_test::write_oriented_jpeg(path, 6);
+    const prism::Photo photo = prism::load_photo(path);
+    EXPECT_EQ(photo.image.width, prism_test::quadrant_height);
+    std::error_code ec;
+    fs::remove(path, ec);
+}
+
+TEST(LoadPhoto, TheWholeBlockComesWithTheImage) {
+    const fs::path path = temp_file("full.jpg");
+    prism_test::write_all(path, sample_jpeg({xmp_app1(), exif_app1(full_block(true).build())}));
+    const prism::Photo photo = prism::load_photo(path);
+    expect_full(photo.info);
+    EXPECT_EQ(photo.image.width, prism_test::quadrant_height);  // Orientation 6 in full_block
+    std::error_code ec;
+    fs::remove(path, ec);
+}
+
+TEST(LoadPhoto, BrokenExifStillLoadsUnrotatedWithEmptyInfo) {
+    const std::vector<std::uint8_t> good = full_block(false).build();
+    std::vector<std::uint8_t> bad_mark = good;
+    bad_mark[0] = 'Z';
+    const std::vector<std::uint8_t> garbage(40, 0xAB);
+    const std::vector<std::uint8_t> too_short = {'I', 'I', 42, 0};
+    const std::vector<std::vector<std::uint8_t>> blocks = {bad_mark, garbage, too_short, {}};
+    for (std::size_t i = 0; i < blocks.size(); ++i) {
+        SCOPED_TRACE("block " + std::to_string(i));
+        const fs::path path = temp_file("broken" + std::to_string(i) + ".jpg");
+        prism_test::write_all(path, sample_jpeg({exif_app1(blocks[i])}));
+        const prism::Photo photo = prism::load_photo(path);
+        EXPECT_TRUE(photo.info.empty());
+        EXPECT_EQ(photo.image.width, prism_test::quadrant_width);
+        EXPECT_EQ(photo.image.height, prism_test::quadrant_height);
+        expect_quadrants(photo.image, expected_quadrants[1]);
+        std::error_code ec;
+        fs::remove(path, ec);
+    }
+}
+
+TEST(LoadPhoto, AJpegWithoutExifAndAPngHaveEmptyInfo) {
+    const fs::path jpg = temp_file("plain.jpg");
+    prism_test::write_all(jpg, sample_jpeg({}));
+    EXPECT_TRUE(prism::load_photo(jpg).info.empty());
+
+    prism::Image img;
+    img.width = 4;
+    img.height = 2;
+    img.pixels.assign(4 * 2 * 3, 0.5f);
+    const fs::path png = temp_file("plain.png");
+    prism::save_image(png, img);
+    const prism::Photo photo = prism::load_photo(png);
+    EXPECT_TRUE(photo.info.empty());
+    EXPECT_EQ(photo.image.width, 4);
+    std::error_code ec;
+    fs::remove(jpg, ec);
+    fs::remove(png, ec);
+}
+
+TEST(LoadPhoto, AMissingFileStillThrows) {
+    EXPECT_THROW((void)prism::load_photo(temp_file("missing.jpg")), std::runtime_error);
 }

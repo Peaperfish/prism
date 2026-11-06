@@ -174,6 +174,25 @@ TEST(RawSyntheticDng, FullSizeDecodesToUniformGrey) {
     fs::remove(path);
 }
 
+// The PhotoInfo comes from the same LibRaw open as the pixels. The synthetic DNG names its camera
+// and nothing else; its Orientation tag is 1, and LibRaw applies that itself, so none is reported.
+TEST(RawSyntheticDng, PhotoInfoCarriesTheCameraFromTheSameOpen) {
+    if (!prism::raw_support_available()) {
+        GTEST_SKIP() << "Prism was built without LibRaw";
+    }
+    const fs::path path = write_synthetic_dng(u8"");
+    const prism::Photo photo = prism::load_raw_photo(path);
+    EXPECT_EQ(photo.image.width, dng_size);
+    EXPECT_EQ(photo.info.make, "Prism");
+    EXPECT_EQ(photo.info.model, "Synthetic");
+    EXPECT_FALSE(photo.info.orientation);
+    EXPECT_FALSE(photo.info.iso);  // the file has none: unknown, not 0
+    const prism::Photo via_load_photo = prism::load_photo(path);
+    EXPECT_EQ(via_load_photo.info.make, "Prism");
+    EXPECT_EQ(via_load_photo.image.pixels, photo.image.pixels);
+    fs::remove(path);
+}
+
 TEST(RawSyntheticDng, HalfSizeHalvesTheDimensions) {
     const fs::path path = write_synthetic_dng(u8"");
     prism::RawOptions options;
@@ -301,6 +320,20 @@ TEST_F(RawFile, AHalfSizeDecodeReportsTheFullDecodesSize) {
 }
 
 }  // namespace
+
+TEST_F(RawFile, PhotoInfoHasMakeAndIso) {
+    prism::RawOptions options;
+    options.half_size = true;
+    const prism::Photo photo = prism::load_raw_photo(path_, options);
+    ASSERT_TRUE(photo.info.make);
+    EXPECT_FALSE(photo.info.make->empty());
+    ASSERT_TRUE(photo.info.iso);
+    EXPECT_GT(*photo.info.iso, 0);
+    EXPECT_FALSE(photo.info.orientation);  // LibRaw applied it
+    if (photo.info.date_taken) {
+        EXPECT_EQ(photo.info.date_taken->size(), 19u);  // YYYY:MM:DD HH:MM:SS
+    }
+}
 
 TEST_F(RawFile, FullSizeLoadsLinearValuesInRange) {
     const prism::Image img = prism::load_image(path_);

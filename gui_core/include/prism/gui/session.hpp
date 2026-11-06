@@ -10,6 +10,7 @@
 #include "prism/gui/presets.hpp"
 #include "prism/gui/settings.hpp"
 #include "prism/image.hpp"
+#include "prism/photo_info.hpp"
 #include "prism/process.hpp"
 #include "prism/recipe.hpp"
 
@@ -51,10 +52,11 @@ struct ExportJob {
     int threads = 0;
 };
 
-// The photo being edited: where it came from, the small image the preview is rendered from, and
-// the settings with their undo history. Not thread-safe; it belongs to the UI thread. The full
-// image is not kept: after opening, only the preview base stays in memory (~52 MB at 2560 px
-// instead of ~730 MB for 60 MP), and export decodes the file again at full size.
+// The photo being edited: where it came from, what is known about the shot, the small image the
+// preview is rendered from, and the settings with their undo history. Not thread-safe; it belongs
+// to the UI thread. The full image is not kept: after opening, only the preview base stays in
+// memory (~52 MB at 2560 px instead of ~730 MB for 60 MP), and export decodes the file again at
+// full size.
 class Session {
 public:
     explicit Session(SessionOptions options = {});
@@ -77,6 +79,11 @@ public:
     [[nodiscard]] int file_width() const noexcept { return file_width_; }
     [[nodiscard]] int file_height() const noexcept { return file_height_; }
     [[nodiscard]] bool file_size_exact() const noexcept { return file_size_exact_; }
+
+    // What the open photo says about how it was taken (see PhotoInfo): empty before the first
+    // successful open_file() and for a PNG. It belongs to the open photo, so it is replaced when
+    // another file is opened and left alone by an open that fails, like the rest of the session.
+    [[nodiscard]] const PhotoInfo& photo_info() const noexcept { return photo_info_; }
 
     // The image previews are rendered from: never changed once made, so it can be shared with the
     // preview thread. A new one replaces it when another file is opened or the RAW camera matrix
@@ -120,6 +127,7 @@ private:
     int file_width_ = 0;
     int file_height_ = 0;
     bool file_size_exact_ = true;
+    PhotoInfo photo_info_;
     std::shared_ptr<const Image> preview_base_;
     std::optional<Matrix3> preview_camera_matrix_;  // what preview_base_ was decoded with
     History history_;

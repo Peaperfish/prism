@@ -2,11 +2,16 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
+#include <cstring>
+#include <ctime>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #ifdef PRISM_HAVE_LIBRAW
 #include <libraw/libraw.h>
@@ -77,9 +82,71 @@ struct MemImageDeleter {
 };
 using MemImage = std::unique_ptr<libraw_processed_image_t, MemImageDeleter>;
 
+// Text from one of LibRaw's fixed char arrays (not necessarily NUL-terminated), trimmed.
+std::optional<std::string> text_of(const char* chars, std::size_t capacity) {
+    std::string s(chars, strnlen(chars, capacity));
+    while (!s.empty() && (s.back() == ' ' || s.back() == '\0')) {
+        s.pop_back();
+    }
+    const auto first = s.find_first_not_of(' ');
+    if (first == std::string::npos) {
+        return std::nullopt;
+    }
+    return s.substr(first);
+}
+
+template <std::size_t N>
+std::optional<std::string> text_of(const char (&chars)[N]) {
+    return text_of(chars, N);
+}
+
+// A positive, finite value, or nullopt: LibRaw leaves what a file doesn't say at 0.
+std::optional<double> positive(double v) {
+    if (std::isfinite(v) && v > 0.0) {
+        return v;
+    }
+    return std::nullopt;
+}
+
+// What LibRaw knows about the shot, from the file it has open.
+PhotoInfo photo_info_of(const LibRaw& raw) {
+    const libraw_data_t& d = raw.imgdata;
+    PhotoInfo info;
+    info.make = text_of(d.idata.make);
+    info.model = text_of(d.idata.model);
+    info.lens = text_of(d.lens.Lens);
+    if (const auto iso = positive(d.other.iso_speed); iso && *iso < 1e9) {
+        info.iso = static_cast<int>(std::lround(*iso));
+    }
+    info.exposure_seconds = positive(d.other.shutter);
+    info.f_number = positive(d.other.aperture);
+    info.focal_length_mm = positive(d.other.focal_len);
+    if (d.lens.FocalLengthIn35mmFormat > 0) {
+        info.focal_length_35mm = d.lens.FocalLengthIn35mmFormat;
+    }
+    if (d.other.timestamp > 0) {
+        const std::time_t t = d.other.timestamp;
+        std::tm local{};
+#ifdef _WIN32
+        const bool ok = localtime_s(&local, &t) == 0;
+#else
+        const bool ok = localtime_r(&t, &local) != nullptr;
+#endif
+        char buf[32];
+        if (ok && std::strftime(buf, sizeof buf, "%Y:%m:%d %H:%M:%S", &local) > 0) {
+            info.date_taken = buf;
+        }
+    }
+    return info;
+}
+
 }  // namespace
 
 Image load_raw(const std::filesystem::path& path, const RawOptions& options, int threads) {
+    return load_raw_photo(path, options, threads).image;
+}
+
+Photo load_raw_photo(const std::filesystem::path& path, const RawOptions& options, int threads) {
     // A RAW file holds one value per photosite, each behind a red, green or blue filter (the Bayer
     // pattern), proportional to the light that hit it. LibRaw's processing turns that into RGB:
     //   unpack        decompress the sensor values
@@ -171,6 +238,8 @@ Image load_raw(const std::filesystem::path& path, const RawOptions& options, int
         raw_error(path, "LibRaw output size does not match its dimensions");
     }
 
+    PhotoInfo info = photo_info_of(*raw);
+
     // The 16-bit RGB buffer is no longer needed inside LibRaw: free its working copy (several
     // hundred MB for a 61 MP file) before allocating the float image. `mem` is a separate buffer.
     raw->recycle();
@@ -182,12 +251,16 @@ Image load_raw(const std::filesystem::path& path, const RawOptions& options, int
     if (options.camera_matrix) {
         apply_matrix(img, *options.camera_matrix, threads);
     }
-    return img;
+    return {std::move(img), std::move(info)};
 }
 
 #else  // !PRISM_HAVE_LIBRAW
 
-Image load_raw(const std::filesystem::path& path, const RawOptions&, int) {
+Image load_raw(const std::filesystem::path& path, const RawOptions& options, int threads) {
+    return load_raw_photo(path, options, threads).image;
+}
+
+Photo load_raw_photo(const std::filesystem::path& path, const RawOptions&, int) {
     throw std::runtime_error(
         "cannot load RAW file '" + utf8(path) +
         "': Prism was built without LibRaw (install it, e.g. `brew install "
