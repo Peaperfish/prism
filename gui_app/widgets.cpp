@@ -50,7 +50,7 @@ void draw_slider(float t, float t_neutral) {
     const float fill_to = std::max(x, x_neutral);
     if (fill_to > fill_from) {
         draw->AddRectFilled(ImVec2(fill_from, cy - track * 0.5f), ImVec2(fill_to, cy + track * 0.5f),
-                            colour_u32(colours.accent), rounding);
+                            colour_u32(colours.fill), rounding);
     }
 
     // A soft shadow: a few translucent discs, growing and fading outward, a touch below the knob.
@@ -64,12 +64,12 @@ void draw_slider(float t, float t_neutral) {
                               half + reach, colour_u32(layer), 0);
     }
     if (active) {
-        gui::Rgba halo = colours.accent;
+        gui::Rgba halo = colours.fill;
         halo.a = 0.25f;
         draw->AddCircleFilled(ImVec2(x, cy), half + m.slider_knob_shadow * 1.5f, colour_u32(halo), 0);
     }
     draw->AddCircleFilled(ImVec2(x, cy), half,
-                          colour_u32(active || hovered ? colours.accent_active : colours.accent), 0);
+                          colour_u32(active || hovered ? colours.text : colours.fill), 0);
 }
 
 // Hides ImGui's own drawing of the slider (frame and grab) while it handles the interaction.
@@ -139,8 +139,8 @@ bool box_control(const char* label, bool on, bool round, bool* pressed_out) {
             draw->AddPolyline(tick_points, 3, tick, ImDrawFlags_None, std::max(1.5f, box * 0.13f));
         }
     } else {
-        const gui::Rgba& frame = held ? colours.frame_bg_active
-                                      : hovered ? colours.frame_bg_hovered : colours.frame_bg;
+        const gui::Rgba& frame = held ? colours.control_active
+                                      : hovered ? colours.control_hovered : colours.control;
         const ImU32 outline = colour_u32(colours.control_border);
         if (round) {
             draw->AddCircleFilled(centre, box * 0.5f, colour_u32(frame), 0);
@@ -226,7 +226,7 @@ bool section_header(const char* title, bool* open) {
     const ImVec2 max = ImGui::GetItemRectMax();
     const float cy = std::round((min.y + max.y) * 0.5f);
     if (ImGui::IsItemHovered()) {
-        draw->AddRectFilled(min, max, colour_u32(colours.header_hovered),
+        draw->AddRectFilled(min, max, colour_u32(colours.control_hovered),
                             ImGui::GetStyle().FrameRounding);
     }
     const ImU32 muted = ImGui::GetColorU32(ImGuiCol_TextDisabled);
@@ -238,7 +238,7 @@ bool section_header(const char* title, bool* open) {
                   muted, title);
     x += text_size.x + gap;
     if (x < max.x) {
-        draw->AddLine(ImVec2(x, cy), ImVec2(max.x, cy), colour_u32(colours.separator),
+        draw->AddLine(ImVec2(x, cy), ImVec2(max.x, cy), colour_u32(colours.hair),
                       std::max(1.0f, m.separator_text_border));
     }
     ImGui::PopFont();

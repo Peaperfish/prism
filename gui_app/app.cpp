@@ -2260,9 +2260,9 @@ void App::draw_zoom_chip() {
         // Dark in both themes, so the buttons use their own washes, not the theme's button colours.
         ImGui::PushStyleColor(ImGuiCol_ChildBg, rgba4(tokens.strip_chip_bg));
         ImGui::PushStyleColor(ImGuiCol_Text, rgba4(tokens.strip_chip_text));
-        ImGui::PushStyleColor(ImGuiCol_Button, rgba4(tokens.zoom_chip_button));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, rgba4(tokens.zoom_chip_button_hovered));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, rgba4(tokens.zoom_chip_button_active));
+        ImGui::PushStyleColor(ImGuiCol_Button, rgba4(tokens.zoom_chip_hovered));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, rgba4(tokens.zoom_chip_hovered));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, rgba4(tokens.zoom_chip_current));
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(pad, pad));
         ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, metrics.overlay_rounding);
         ImGui::BeginChild("zoom_chip", ImVec2(width, height),
@@ -2359,7 +2359,7 @@ void App::draw_explain_area(float width, float height) {
     const gui::TokenMetrics& m = token_metrics();
     const gui::TokenColours& c = token_colours();
     const auto vec = [](const gui::Rgba& rgba) { return ImVec4(rgba.r, rgba.g, rgba.b, rgba.a); };
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, vec(c.plot_bg));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, vec(c.plot));
     ImGui::PushStyleColor(ImGuiCol_Border, vec(c.plot_border));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(m.explain_pad.x, m.explain_pad.y));
     ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, m.plot_rounding);
@@ -2396,8 +2396,8 @@ void App::draw_explain_area(float width, float height) {
         ImGui::PopFont();
         const ImVec2 min(origin.x + border, origin.y + size.y - border - fade);
         const ImVec2 max(origin.x + size.x - border - scrollbar, origin.y + size.y - border);
-        const ImU32 clear = ImGui::ColorConvertFloat4ToU32(ImVec4(c.plot_bg.r, c.plot_bg.g, c.plot_bg.b, 0.0f));
-        const ImU32 solid = ImGui::ColorConvertFloat4ToU32(vec(c.plot_bg));
+        const ImU32 clear = ImGui::ColorConvertFloat4ToU32(ImVec4(c.plot.r, c.plot.g, c.plot.b, 0.0f));
+        const ImU32 solid = ImGui::ColorConvertFloat4ToU32(vec(c.plot));
         ImGui::GetWindowDrawList()->AddRectFilledMultiColor(min, max, clear, clear, solid, solid);
     }
     ImGui::EndChild();
@@ -3219,7 +3219,7 @@ void App::draw_pipeline() {
             ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(row_min, row_max);
         if (selected || row_over) {
             const gui::TokenColours& tokens = token_colours();
-            const gui::Rgba& fill = selected ? tokens.header_active : tokens.header_hovered;
+            const gui::Rgba& fill = selected ? tokens.control_active : tokens.control_hovered;
             ImGui::GetWindowDrawList()->AddRectFilled(
                 row_min, row_max, ImGui::GetColorU32(ImVec4(fill.r, fill.g, fill.b, fill.a)),
                 style.FrameRounding);

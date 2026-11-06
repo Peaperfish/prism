@@ -8,8 +8,8 @@ namespace prism::gui {
 
 namespace {
 
-// Darkroom: a quiet, neutral chrome around the photo, one blue accent for what is chosen or
-// active. Greys are neutral; frames sit a step above the window so a field reads without a border.
+// Darkroom: a quiet chrome around the photo, one amber accent (the Export button and the viewed
+// stage). Controls sit a step off their surface so a field reads without a border.
 constexpr TokenMetrics darkroom_metrics{
     .window_padding = {14, 12},
     .frame_padding = {10, 6},
@@ -78,43 +78,82 @@ constexpr TokenMetrics darkroom_metrics{
     .strip_pill_pad_x = 9,
     .strip_pill_pad_y = 3,
     .strip_bar_wrap = 520,
-    .explain_pad = {10, 8},
-    .explain_gap = 4,
+    .explain_pad = {mock_points(16), mock_points(12)},
+    .explain_gap = mock_points(4),
     .prompt_wrap = 360,
+    .hair_width = 1,
+    .header_height = mock_points(52),
+    .header_button = mock_points(32),
+    .header_button_rounding = mock_points(7),
+    .header_icon = mock_points(17),
+    .export_pad_x = mock_points(16),
+    .status_height = mock_points(30),
+    .panel_pad = {mock_points(14), mock_points(14)},
+    .panel_pad_bottom = mock_points(18),
+    .section_gap = mock_points(18),
+    .section_head_gap = mock_points(8),
+    .photo_shadow_blur = mock_points(18),
+    .photo_shadow_offset = mock_points(2),
+    .control_height = mock_points(34),
+    .control_rounding = mock_points(7),
+    .control_pad_x = mock_points(12),
+    .zoom_chip_rounding = mock_points(8),
+    .zoom_chip_pad = mock_points(3),
+    .zoom_chip_margin = {mock_points(16), mock_points(14)},
 };
 
 // Body text is 16 px at 100%: readable on a Retina laptop without squinting. Headers and small
-// text share 13 px; headers are set in the semi-bold face to stand apart.
-constexpr TokenType darkroom_type{.body = 16.0f, .section = 13.0f, .small = 13.0f, .tiny = 11.5f};
+// text share the mockup's 12 px (14.8 points); headers are set in the semi-bold face to stand
+// apart.
+constexpr TokenType darkroom_type{.body = 16.0f,
+                                  .section = mock_points(12),
+                                  .small = mock_points(12),
+                                  .tiny = mock_points(11.5f),
+                                  .explain_title = mock_points(12.5f)};
 
+// A colour from 0xRRGGBB, with an alpha.
+constexpr Rgba hex(unsigned rgb, float alpha = 1.0f) {
+    return {static_cast<float>((rgb >> 16) & 0xff) / 255.0f,
+            static_cast<float>((rgb >> 8) & 0xff) / 255.0f,
+            static_cast<float>(rgb & 0xff) / 255.0f, alpha};
+}
+
+// The surfaces carry a slight cool tint (a blue channel a few steps above the others); the canvas
+// behind the photo alone is truly neutral, as a tinted surround shifts how a photo's colour is
+// judged.
 constexpr TokenColours darkroom_dark{
-    .text = grey(0.90f),
-    .text_muted = grey(0.62f),
-    .window_bg = grey(0.125f),
-    .menubar_bg = grey(0.105f),
-    .popup_bg = grey(0.16f, 0.98f),
-    .title_bg = grey(0.16f),
-    .title_bg_active = grey(0.16f),
-    .frame_bg = grey(0.19f),
-    .frame_bg_hovered = grey(0.23f),
-    .frame_bg_active = grey(0.26f),
-    .button = grey(0.20f),
-    .button_hovered = grey(0.26f),
-    .button_active = grey(0.32f),
-    .header = grey(0.20f),
-    .header_hovered = grey(0.235f),
-    .header_active = grey(0.27f),
-    .edge = grey(0.24f),
-    .separator = grey(0.22f),
-    .control_border = grey(0.50f),
-    .accent = {0.45f, 0.62f, 0.88f, 1},
-    .accent_active = {0.55f, 0.70f, 0.95f, 1},
-    .check_fill = {0.30f, 0.50f, 0.82f, 1},  // darker than the accent so a white tick reads
-    .check_mark = grey(1.0f),
-    .scrollbar_grab = grey(0.26f),
+    .text = hex(0xececf0),
+    .text_muted = hex(0xa3a3ab),
+    .faint = hex(0x6c6c74),
+    .chrome = hex(0x121214),
+    .panel = hex(0x1a1a1d),
+    .well = hex(0x111113),
+    .plot = hex(0x0d0d0f),
+    .control = hex(0x2b2b30),
+    .control_on = hex(0x3a3a41),
+    .explain = hex(0x161618),
+    .node = hex(0x1a1a1d),
+    .control_hovered = hex(0x35353b),
+    .control_active = hex(0x404048),
+    .popup_bg = hex(0x222226, 0.98f),
+    .title_bg = hex(0x222226),
+    .title_bg_active = hex(0x222226),
+    .hair = hex(0x2a2a2f),
+    .control_border = grey(0.52f),
+    .accent = hex(0xe3a33b),
+    .accent_active = hex(0xf0b452),
+    .accent_ring = hex(0xe3a33b),
+    .text_on_accent = hex(0x1b1408),
+    .track = hex(0x34343a),
+    .fill = hex(0xd6d6dc),
+    .thumb_border = hex(0x000000, 0.35f),
+    .rail = hex(0x2f2f35),
+    .view_bg = hex(0xffffff, 0.045f),
+    .check_fill = hex(0xd6d6dc),
+    .check_mark = hex(0x1a1a1d),
+    .scrollbar_grab = hex(0x34343a),
     .knob_shadow = grey(0.0f, 0.45f),
-    .plot_bg = grey(0.095f),
-    .plot_border = grey(0.21f),
+    .plot_border = hex(0x26262b),
     .chip_shadows = {0.20f, 0.36f, 0.59f, 1},
     .chip_highlights = {0.59f, 0.28f, 0.19f, 1},
     .chip_text = grey(1.0f),
@@ -123,49 +162,57 @@ constexpr TokenColours darkroom_dark{
     .grip_ring = grey(0.0f, 0.43f),
     .grip_ink = grey(0.157f),
     .modal_dim = grey(0.0f, 0.45f),
-    .canvas = grey(46.0f / 255.0f),  // about 19 on the L* scale, darker than the chrome's panels
+    .canvas = hex(0x262626),  // L* 15
     .strip_divider = grey(1.0f, 0.85f),
     .strip_hover_fill = grey(1.0f, 0.12f),
     .strip_hover_edge = {0.55f, 0.72f, 0.98f, 1},
     .strip_chip_bg = grey(0.05f, 0.84f),
     .strip_chip_text = grey(1.0f),
-    .strip_bar_bg = grey(0.10f),
+    .strip_bar_bg = hex(0x1c1c20),
     .strip_bar_text = grey(0.92f),
     .strip_bar_pill = grey(1.0f, 0.18f),
     .strip_bar_hover = grey(1.0f, 0.10f),
-    .zoom_chip_button = grey(1.0f, 0.14f),
-    .zoom_chip_button_hovered = grey(1.0f, 0.22f),
-    .zoom_chip_button_active = grey(1.0f, 0.30f),
+    .zoom_chip_bg = hex(0x121214, 0.82f),
+    .zoom_chip_text = hex(0xf2f2f4),
+    .zoom_chip_idle_text = hex(0xc9c9ce),
+    .zoom_chip_hovered = grey(1.0f, 0.09f),
+    .zoom_chip_current = grey(1.0f, 0.16f),
+    .zoom_chip_current_text = grey(1.0f),
 };
 
 constexpr TokenColours darkroom_light{
-    .text = grey(0.12f),
-    .text_muted = grey(0.39f),
-    .window_bg = grey(0.955f),
-    .menubar_bg = grey(0.92f),
-    .popup_bg = grey(0.99f, 0.99f),
-    .title_bg = grey(0.99f),
-    .title_bg_active = grey(0.99f),
-    .frame_bg = grey(0.895f),
-    .frame_bg_hovered = grey(0.87f),
-    .frame_bg_active = grey(0.84f),
-    .button = grey(0.89f),
-    .button_hovered = grey(0.85f),
-    .button_active = grey(0.80f),
-    .header = grey(0.895f),
-    .header_hovered = grey(0.87f),
-    .header_active = grey(0.84f),
-    .edge = grey(0.82f),
-    .separator = grey(0.85f),
+    .text = hex(0x1b1b1e),
+    .text_muted = hex(0x5c5c64),
+    .faint = hex(0x8b8b93),
+    .chrome = hex(0xe8e8eb),
+    .panel = hex(0xf7f7f9),
+    .well = hex(0xe6e6ea),
+    .plot = hex(0x151517),  // dark in both themes
+    .control = hex(0xe6e6ea),
+    .control_on = hex(0xffffff),
+    .explain = hex(0xefeff2),
+    .node = hex(0xf7f7f9),
+    .control_hovered = hex(0xdcdce1),
+    .control_active = hex(0xd2d2d8),
+    .popup_bg = hex(0xfcfcfd, 0.99f),
+    .title_bg = hex(0xfcfcfd),
+    .title_bg_active = hex(0xfcfcfd),
+    .hair = hex(0xdadade),
     .control_border = grey(0.45f),
-    .accent = {0.18f, 0.42f, 0.80f, 1},
-    .accent_active = {0.10f, 0.32f, 0.66f, 1},
-    .check_fill = {0.18f, 0.42f, 0.80f, 1},
+    .accent = hex(0xe3a33b),
+    .accent_active = hex(0xd2922a),
+    .accent_ring = hex(0x9a6200),
+    .text_on_accent = hex(0x1b1408),
+    .track = hex(0xd5d5db),
+    .fill = hex(0x3a3a40),
+    .thumb_border = hex(0x000000, 0.25f),
+    .rail = hex(0xd8d8de),
+    .view_bg = hex(0x000000, 0.04f),
+    .check_fill = hex(0x3a3a40),
     .check_mark = grey(1.0f),
-    .scrollbar_grab = grey(0.80f),
+    .scrollbar_grab = hex(0xcfcfd5),
     .knob_shadow = grey(0.0f, 0.30f),
-    .plot_bg = grey(0.93f),
-    .plot_border = grey(0.84f),
+    .plot_border = hex(0x26262b),
     .chip_shadows = {0.20f, 0.40f, 0.69f, 1},
     .chip_highlights = {0.69f, 0.34f, 0.23f, 1},
     .chip_text = grey(1.0f),
@@ -174,19 +221,22 @@ constexpr TokenColours darkroom_light{
     .grip_ring = grey(0.0f, 0.43f),
     .grip_ink = grey(0.157f),
     .modal_dim = grey(0.20f, 0.35f),
-    .canvas = grey(118.0f / 255.0f),  // about 50 on the L* scale: mid-grey, as photo editors use
+    .canvas = hex(0x838383),  // L* 55: the lightest a surround can be and still be a grey
     .strip_divider = grey(1.0f, 0.85f),
     .strip_hover_fill = grey(1.0f, 0.12f),
     .strip_hover_edge = {0.55f, 0.72f, 0.98f, 1},
     .strip_chip_bg = grey(0.05f, 0.84f),
     .strip_chip_text = grey(1.0f),
-    .strip_bar_bg = grey(0.90f),
+    .strip_bar_bg = hex(0xe9e9ed),
     .strip_bar_text = grey(0.12f),
     .strip_bar_pill = grey(0.0f, 0.14f),
     .strip_bar_hover = grey(0.0f, 0.08f),
-    .zoom_chip_button = grey(1.0f, 0.14f),
-    .zoom_chip_button_hovered = grey(1.0f, 0.22f),
-    .zoom_chip_button_active = grey(1.0f, 0.30f),
+    .zoom_chip_bg = hex(0x121214, 0.82f),
+    .zoom_chip_text = hex(0xf2f2f4),
+    .zoom_chip_idle_text = hex(0xc9c9ce),
+    .zoom_chip_hovered = grey(1.0f, 0.09f),
+    .zoom_chip_current = grey(1.0f, 0.16f),
+    .zoom_chip_current_text = grey(1.0f),
 };
 
 constexpr std::array<TokenSet, 2> sets{{
@@ -289,11 +339,30 @@ TokenMetrics scaled(const TokenMetrics& m, float s) {
     r.explain_pad = m.explain_pad * s;
     r.explain_gap = m.explain_gap * s;
     r.prompt_wrap = m.prompt_wrap * s;
+    r.hair_width = m.hair_width * s;
+    r.header_height = m.header_height * s;
+    r.header_button = m.header_button * s;
+    r.header_button_rounding = m.header_button_rounding * s;
+    r.header_icon = m.header_icon * s;
+    r.export_pad_x = m.export_pad_x * s;
+    r.status_height = m.status_height * s;
+    r.panel_pad = m.panel_pad * s;
+    r.panel_pad_bottom = m.panel_pad_bottom * s;
+    r.section_gap = m.section_gap * s;
+    r.section_head_gap = m.section_head_gap * s;
+    r.photo_shadow_blur = m.photo_shadow_blur * s;
+    r.photo_shadow_offset = m.photo_shadow_offset * s;
+    r.control_height = m.control_height * s;
+    r.control_rounding = m.control_rounding * s;
+    r.control_pad_x = m.control_pad_x * s;
+    r.zoom_chip_rounding = m.zoom_chip_rounding * s;
+    r.zoom_chip_pad = m.zoom_chip_pad * s;
+    r.zoom_chip_margin = m.zoom_chip_margin * s;
     return r;
 }
 
 TokenType scaled(const TokenType& t, float s) {
-    return {t.body * s, t.section * s, t.small * s, t.tiny * s};
+    return {t.body * s, t.section * s, t.small * s, t.tiny * s, t.explain_title * s};
 }
 
 float relative_luminance(const Rgba& c) {

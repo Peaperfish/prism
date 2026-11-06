@@ -25,25 +25,38 @@ struct Vec2 {
 }
 
 struct TokenColours {
-    Rgba text, text_muted;
-    // Backgrounds text is drawn on.
-    Rgba window_bg, menubar_bg, popup_bg, title_bg, title_bg_active;
-    Rgba frame_bg, frame_bg_hovered, frame_bg_active;
-    Rgba button, button_hovered, button_active;
-    Rgba header, header_hovered, header_active;
-    // Hairlines between areas (window and popup edges, separators): decorative, so quiet.
-    Rgba edge, separator;
+    // Text: the body colour, the quieter one for secondary text, and the faintest (a disabled
+    // icon, an unlit dot's border): meant to be seen, not read.
+    Rgba text, text_muted, faint;
+    // The surfaces, from the outside in. Depth comes from these shades, not from outlines.
+    // chrome: the menu bar and the status bar. panel: the edit panel (and the windows that open
+    // over the app). well: the container of a segmented control. plot: the scope's box (dark in
+    // both themes). control: a button, a field, a combo; control_on: an active segment.
+    // explain: the Explain area. node: the fill of a stage's dot on the panel.
+    Rgba chrome, panel, well, plot, control, control_on, explain, node;
+    // A control hovered or pressed: a step lighter than `control` in Dark, a step darker in Light.
+    Rgba control_hovered, control_active;
+    // Backgrounds of popups and windows' title bars.
+    Rgba popup_bg, title_bg, title_bg_active;
+    // The 1 px line between the big regions, and the quiet edge of a popup or a separator.
+    Rgba hair;
     // The outline of a control that has no fill of its own to stand out from its background (a
     // checkbox box, a slider track): meant to be seen, so at least 3:1 against what it sits on.
     Rgba control_border;
-    Rgba accent, accent_active;
+    // The one coloured thing: the Export button and the viewed stage's dot. accent_active is its
+    // hovered and pressed colour; accent_ring is the viewed dot's border (the accent itself in
+    // Dark, darker in Light, where the accent is too pale for 3:1 on the panel); text_on_accent is
+    // the label on the Export button.
+    Rgba accent, accent_active, accent_ring, text_on_accent;
+    // Sliders and switches: the empty track, the filled part (and a switch that is on), the
+    // thumb's border, the rail the stage dots sit on, and the wash behind the viewed stage's row.
+    Rgba track, fill, thumb_border, rail, view_bg;
     // Checkboxes and radio buttons: the fill when ticked, and the tick drawn on it.
     Rgba check_fill, check_mark;
     Rgba scrollbar_grab;
     Rgba knob_shadow;  // under the slider's knob
-    // The histogram and scope boxes in the control panel: a calm fill a step off the panel's, and
-    // a hairline that doesn't outline it heavily.
-    Rgba plot_bg, plot_border;
+    // The hairline of the histogram and scope boxes: it does not outline them heavily.
+    Rgba plot_border;
     // The Shadows / Highlights chips when lit: muted fills the white label reads on, still told
     // apart (blue and orange). The per-stage dots keep the stronger palette colours.
     Rgba chip_shadows, chip_highlights, chip_text;
@@ -61,9 +74,11 @@ struct TokenColours {
     // step's pill (a wash over the background) and the wash under a hovered pill or the close
     // button.
     Rgba strip_bar_bg, strip_bar_text, strip_bar_pill, strip_bar_hover;
-    // The zoom chip over the photo is dark in both themes (strip_chip_bg and strip_chip_text), so
-    // its Fit and 100% buttons are light washes over that, not the theme's own button colours.
-    Rgba zoom_chip_button, zoom_chip_button_hovered, zoom_chip_button_active;
+    // The zoom chip over the photo is dark in both themes: its background, the number and the
+    // choice that is not current in text, a wash under a hovered choice, and the current choice
+    // (the one the view already is at) as a brighter wash with white text.
+    Rgba zoom_chip_bg, zoom_chip_text, zoom_chip_idle_text, zoom_chip_hovered, zoom_chip_current,
+        zoom_chip_current_text;
 };
 
 // How many lines of Small text the Explain area shows before it scrolls inside itself. A count,
@@ -118,6 +133,25 @@ struct TokenMetrics {
     float explain_gap;
     // The wrap width of the text in the "unexported edits" prompt.
     float prompt_wrap;
+    // The 1 px line between regions (at least one pixel is drawn).
+    float hair_width;
+    // The panel's header (Undo, Redo, Export): its height, the icon buttons' side and corner
+    // radius, the icon drawn in them, the Export button's side padding.
+    float header_height, header_button, header_button_rounding, header_icon, export_pad_x;
+    // The status bar's height.
+    float status_height;
+    // The panel's padding (sides and top, then bottom), the gap between sections, and the gap
+    // under a section's header.
+    Vec2 panel_pad;
+    float panel_pad_bottom, section_gap, section_head_gap;
+    // The photo's soft shadow: how far it spreads, and how far down it is pushed.
+    float photo_shadow_blur, photo_shadow_offset;
+    // A dropdown button in the panel: height, corner radius and side padding.
+    float control_height, control_rounding, control_pad_x;
+    // The zoom chip: corner radius, padding, and its distance from the canvas's right and bottom
+    // edges.
+    float zoom_chip_rounding, zoom_chip_pad;
+    Vec2 zoom_chip_margin;
 };
 
 // Type sizes in points at 100%.
@@ -126,6 +160,7 @@ struct TokenType {
     float section;  // section headers (semi-bold)
     float small;    // captions, hints, small buttons and the dots' percentages
     float tiny;     // labels inside plots
+    float explain_title;  // the Explain area's heading (semi-bold)
 };
 
 struct TokenSet {
@@ -141,6 +176,16 @@ struct TokenSet {
 
 // The set the app uses for `theme`.
 [[nodiscard]] const TokenSet& token_set(Theme theme);
+
+// A size drawn in the design mockup (Inter at 13 px) as app points at an interface size of 100%:
+// the app's body text is 16 points where the mockup's is 13, so every mockup size is multiplied by
+// 16/13. `mock(px, scale)` is then multiplied by the interface scale like every other size.
+[[nodiscard]] constexpr float mock_points(float px) {
+    return px * 16.0f / 13.0f;
+}
+[[nodiscard]] constexpr float mock(float px, float scale) {
+    return mock_points(px) * scale;
+}
 
 // Every size multiplied by `scale`.
 [[nodiscard]] TokenMetrics scaled(const TokenMetrics& m, float scale);

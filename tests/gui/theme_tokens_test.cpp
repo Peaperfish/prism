@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 #include <vector>
@@ -15,16 +16,14 @@ std::string label(const TokenSet& s) {
 
 // Everything text can sit on at rest.
 std::vector<std::pair<const char*, Rgba>> backgrounds(const TokenColours& c) {
-    return {{"window", c.window_bg}, {"menubar", c.menubar_bg}, {"popup", c.popup_bg},
-            {"title", c.title_bg},   {"frame", c.frame_bg},     {"button", c.button},
-            {"header", c.header}};
+    return {{"panel", c.panel},     {"chrome", c.chrome},   {"popup", c.popup_bg},
+            {"title", c.title_bg},  {"well", c.well},       {"control", c.control},
+            {"control on", c.control_on}, {"explain", c.explain}};
 }
 
 // ... and while hovered or pressed, where only the body text is drawn.
 std::vector<std::pair<const char*, Rgba>> interactive_backgrounds(const TokenColours& c) {
-    return {{"frame hovered", c.frame_bg_hovered},   {"frame active", c.frame_bg_active},
-            {"button hovered", c.button_hovered},    {"button active", c.button_active},
-            {"header hovered", c.header_hovered},    {"header active", c.header_active}};
+    return {{"control hovered", c.control_hovered}, {"control active", c.control_active}};
 }
 
 TEST(ThemeTokens, EveryThemeHasASet) {
@@ -47,20 +46,49 @@ TEST(ThemeTokens, BodyAndMutedTextAreReadableOnEveryBackground) {
     }
 }
 
-TEST(ThemeTokens, BordersAccentAndCheckmarksAreSeenAgainstEveryBackground) {
+TEST(ThemeTokens, BordersAndCheckmarksAreSeenAgainstEveryBackground) {
     for (const TokenSet& set : token_sets()) {
         const TokenColours& c = set.colours;
         for (const auto& [name, bg] : backgrounds(c)) {
-            if (std::string(name) == "menubar" || std::string(name) == "title") {
-                continue;  // no controls are drawn on these
+            if (std::string(name) == "chrome" || std::string(name) == "title" ||
+                std::string(name) == "explain" || std::string(name) == "control on") {
+                continue;  // no outlined controls are drawn on these
             }
             EXPECT_GE(contrast_ratio(c.control_border, bg), 3.0f) << label(set) << " border on " << name;
-            EXPECT_GE(contrast_ratio(c.accent, bg), 3.0f) << label(set) << " accent on " << name;
-            EXPECT_GE(contrast_ratio(c.accent_active, bg), 3.0f)
-                << label(set) << " active accent on " << name;
             EXPECT_GE(contrast_ratio(c.check_fill, bg), 3.0f) << label(set) << " ticked box on " << name;
         }
     }
+}
+
+TEST(ThemeTokens, TheAccentCarriesItsLabelAndTheViewedDotIsSeenOnThePanel) {
+    for (const TokenSet& set : token_sets()) {
+        const TokenColours& c = set.colours;
+        // The Export button: the label on the accent, hovered or pressed too.
+        EXPECT_GE(contrast_ratio(c.text_on_accent, c.accent), 4.5f) << label(set);
+        EXPECT_GE(contrast_ratio(c.text_on_accent, c.accent_active), 4.5f) << label(set);
+        // The viewed stage's dot: its border (the ring colour) against the panel it sits on.
+        EXPECT_GE(contrast_ratio(c.accent_ring, c.panel), 3.0f) << label(set);
+        // The fill and the switch-on colour are seen on the panel and on a control too.
+        EXPECT_GE(contrast_ratio(c.fill, c.panel), 3.0f) << label(set);
+        EXPECT_GE(contrast_ratio(c.fill, c.control), 3.0f) << label(set);
+    }
+}
+
+TEST(ThemeTokens, FaintIsSeenOnThePanel) {
+    for (const TokenSet& set : token_sets()) {
+        // An unlit dot's border and a disabled icon: not read, but must be seen.
+        EXPECT_GE(contrast_ratio(set.colours.faint, set.colours.panel), 3.0f) << label(set);
+    }
+}
+
+TEST(ThemeTokens, HoverAndPressAreAStepFromTheControl) {
+    const TokenColours& dark = token_set(Theme::dark).colours;
+    const TokenColours& light = token_set(Theme::light).colours;
+    // A step lighter in Dark, a step darker in Light.
+    EXPECT_GT(lightness(dark.control_hovered), lightness(dark.control));
+    EXPECT_GT(lightness(dark.control_active), lightness(dark.control_hovered));
+    EXPECT_LT(lightness(light.control_hovered), lightness(light.control));
+    EXPECT_LT(lightness(light.control_active), lightness(light.control_hovered));
 }
 
 TEST(ThemeTokens, TheTickIsSeenOnTheTickedBox) {
@@ -98,21 +126,24 @@ TEST(ThemeTokens, StripChipTextIsReadableOnAnyPhoto) {
     }
 }
 
-TEST(ThemeTokens, ZoomChipButtonsAreReadableOnTheDarkChipInBothThemes) {
+TEST(ThemeTokens, ZoomChipIsDarkInBothThemesAndItsTextIsReadable) {
     for (const TokenSet& set : token_sets()) {
         const TokenColours& c = set.colours;
-        // The chip is dark in both themes, whatever the theme's buttons are.
+        // The chip sits on the picture: the worst cases are pure white and pure black.
         for (const float photo : {0.0f, 0.5f, 1.0f}) {
-            const Rgba chip = composite(c.strip_chip_bg, grey(photo));
+            const Rgba chip = composite(c.zoom_chip_bg, grey(photo));
             EXPECT_LT(lightness(chip), 45.0f) << label(set) << " photo " << photo;
-            for (const Rgba& wash :
-                 {c.zoom_chip_button, c.zoom_chip_button_hovered, c.zoom_chip_button_active}) {
-                EXPECT_GE(contrast_ratio(c.strip_chip_text, composite(wash, chip)), 4.5f)
-                    << label(set) << " photo " << photo;
-            }
-            // The button can be seen against the chip.
-            EXPECT_GT(contrast_ratio(composite(c.zoom_chip_button, chip), chip), 1.1f)
+            EXPECT_GE(contrast_ratio(c.zoom_chip_text, chip), 4.5f) << label(set) << " photo " << photo;
+            // The choice that is not current, also while hovered.
+            EXPECT_GE(contrast_ratio(c.zoom_chip_idle_text, chip), 4.5f)
                 << label(set) << " photo " << photo;
+            EXPECT_GE(contrast_ratio(c.zoom_chip_idle_text, composite(c.zoom_chip_hovered, chip)), 4.5f)
+                << label(set) << " photo " << photo;
+            // The current choice: white on its wash, which can be seen against the chip.
+            const Rgba current = composite(c.zoom_chip_current, chip);
+            EXPECT_GE(contrast_ratio(c.zoom_chip_current_text, current), 4.5f)
+                << label(set) << " photo " << photo;
+            EXPECT_GT(contrast_ratio(current, chip), 1.1f) << label(set) << " photo " << photo;
         }
     }
 }
@@ -148,7 +179,7 @@ TEST(ThemeTokens, StripBarFollowsTheThemeAndItsTextIsReadable) {
         // ... and the pill can be seen against the bar without being a hole in it.
         EXPECT_GT(contrast_ratio(pill, c.strip_bar_bg), 1.1f) << label(set);
         // The bar sits on the window: not a different world from it.
-        EXPECT_LT(std::abs(lightness(c.strip_bar_bg) - lightness(c.window_bg)), 20.0f) << label(set);
+        EXPECT_LT(std::abs(lightness(c.strip_bar_bg) - lightness(c.panel)), 20.0f) << label(set);
     }
 }
 
@@ -156,29 +187,28 @@ TEST(ThemeTokens, ExplainAreaShowsAboutFiveLines) {
     EXPECT_EQ(explain_max_lines, 5);
 }
 
-TEST(ThemeTokens, PlotBoxSitsCalmlyInThePanel) {
+TEST(ThemeTokens, ScopePlotIsDarkInBothThemes) {
     for (const TokenSet& set : token_sets()) {
         const TokenColours& c = set.colours;
-        // A step off the window colour, not a white (or black) hole in it, and its hairline is
-        // quieter than a control's outline.
-        EXPECT_LT(std::abs(lightness(c.plot_bg) - lightness(c.window_bg)), 12.0f) << label(set);
-        EXPECT_LT(contrast_ratio(c.plot_border, c.plot_bg), 1.6f) << label(set);
-        EXPECT_GE(contrast_ratio(c.text, c.plot_bg), 4.5f) << label(set);
+        EXPECT_LT(lightness(c.plot), 10.0f) << label(set);
+        // Its hairline is quieter than a control's outline.
+        EXPECT_LT(contrast_ratio(c.plot_border, c.plot), 1.6f) << label(set);
     }
 }
 
 TEST(ThemeTokens, ExplainAreaTextIsReadableInBothThemes) {
     for (const TokenSet& set : token_sets()) {
         const TokenColours& c = set.colours;
-        // The Explain area sits on the plot fill: summary and detail in the body colour, the live
-        // line and the hint in the muted one.
-        EXPECT_GE(contrast_ratio(c.text, c.plot_bg), 4.5f) << label(set);
-        EXPECT_GE(contrast_ratio(c.text_muted, c.plot_bg), 4.5f) << label(set);
+        // The Explain area has its own background: summary and detail in the body colour, the
+        // live line and the hint in the muted one.
+        EXPECT_GE(contrast_ratio(c.text, c.explain), 4.5f) << label(set);
+        EXPECT_GE(contrast_ratio(c.text_muted, c.explain), 4.5f) << label(set);
         EXPECT_GT(set.metrics.explain_pad.x, 0.0f) << label(set);
         EXPECT_GT(set.metrics.explain_pad.y, 0.0f) << label(set);
         EXPECT_GT(set.metrics.explain_gap, 0.0f) << label(set);
         // The small type the Explain area is set in stays readable.
         EXPECT_GE(set.type.small, 12.0f) << label(set);
+        EXPECT_GE(set.type.explain_title, set.type.small) << label(set);
     }
 }
 
@@ -192,13 +222,21 @@ TEST(ThemeTokens, CanvasIsNeutralAndNeitherBlackNorWhite) {
     }
 }
 
-TEST(ThemeTokens, ChromeGreysAreNeutral) {
+TEST(ThemeTokens, SurfacesAndTextAreOnlySlightlyTinted) {
+    const auto spread = [](const Rgba& g) {
+        return std::max({g.r, g.g, g.b}) - std::min({g.r, g.g, g.b});
+    };
     for (const TokenSet& set : token_sets()) {
         const TokenColours& c = set.colours;
-        for (const Rgba& g : {c.window_bg, c.frame_bg, c.button, c.header, c.edge, c.text,
-                              c.text_muted, c.control_border}) {
-            EXPECT_EQ(g.r, g.g) << label(set);
-            EXPECT_EQ(g.g, g.b) << label(set);
+        // A cool tint of a few steps is intended; a stronger one would colour the photo's surround.
+        for (const Rgba& g : {c.chrome, c.panel, c.well, c.plot, c.control, c.explain, c.hair, c.text,
+                              c.control_border}) {
+            EXPECT_LE(spread(g), 6.0f / 255.0f + 1e-5f) << label(set);
+        }
+        // The design's own muted, faint and active-segment colours lean a little further (7 to 8
+        // steps), kept as drawn.
+        for (const Rgba& g : {c.text_muted, c.faint, c.control_on}) {
+            EXPECT_LE(spread(g), 8.0f / 255.0f + 1e-5f) << label(set);
         }
     }
 }
@@ -213,7 +251,7 @@ TEST(ThemeTokens, TypeSizesAreAsDesigned) {
 
 // Every field of TokenMetrics is a float or two; a field added without teaching scaled() about it
 // would not scale, so the size is pinned here.
-static_assert(sizeof(TokenMetrics) == 78 * sizeof(float));
+static_assert(sizeof(TokenMetrics) == 99 * sizeof(float));
 
 TEST(ThemeTokens, EverySizeScalesLinearlyWithTheInterfaceScale) {
     for (const TokenSet& set : token_sets()) {
@@ -230,7 +268,28 @@ TEST(ThemeTokens, EverySizeScalesLinearlyWithTheInterfaceScale) {
             EXPECT_FLOAT_EQ(t.section, set.type.section * scale);
             EXPECT_FLOAT_EQ(t.small, set.type.small * scale);
             EXPECT_FLOAT_EQ(t.tiny, set.type.tiny * scale);
+            EXPECT_FLOAT_EQ(t.explain_title, set.type.explain_title * scale);
         }
+    }
+}
+
+TEST(ThemeTokens, MockupSizesAreSixteenThirteenthsAndScaleLinearly) {
+    // The mockup's body text is 13 px and the app's 16 points.
+    EXPECT_FLOAT_EQ(mock_points(13.0f), 16.0f);
+    EXPECT_FLOAT_EQ(mock_points(52.0f), 64.0f);
+    for (const float px : {1.0f, 12.0f, 12.5f, 34.0f}) {
+        for (const float scale : {0.75f, 1.0f, 1.5f, 2.0f}) {
+            EXPECT_FLOAT_EQ(mock(px, scale), mock(px, 1.0f) * scale) << px << " at " << scale;
+        }
+    }
+    // The type sizes taken from the mockup.
+    for (const TokenSet& set : token_sets()) {
+        EXPECT_FLOAT_EQ(set.type.section, mock_points(12.0f)) << label(set);
+        EXPECT_FLOAT_EQ(set.type.small, mock_points(12.0f)) << label(set);
+        EXPECT_FLOAT_EQ(set.type.tiny, mock_points(11.5f)) << label(set);
+        EXPECT_FLOAT_EQ(set.type.explain_title, mock_points(12.5f)) << label(set);
+        EXPECT_FLOAT_EQ(set.metrics.header_height, mock_points(52.0f)) << label(set);
+        EXPECT_FLOAT_EQ(set.metrics.status_height, mock_points(30.0f)) << label(set);
     }
 }
 

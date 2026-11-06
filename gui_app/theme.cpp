@@ -25,40 +25,40 @@ ImVec2 to_vec2(const gui::Vec2& v) {
 }
 
 // The tokens' colours on top of ImGui's own style (which supplies the ones the tokens don't name,
-// e.g. the tab and plot colours): neutral greys, so the chrome around a photo carries no colour
-// cast, and a blue accent used only for what is hovered, active or chosen.
+// e.g. the tab and plot colours): quiet greys, so the chrome around a photo carries no colour
+// cast, and the amber accent only on the Export button and the viewed stage (drawn by the app).
 void apply_colours(ImGuiStyle& style, const gui::TokenColours& t) {
     ImVec4* c = style.Colors;
     c[ImGuiCol_Text] = to_vec4(t.text);
     c[ImGuiCol_TextDisabled] = to_vec4(t.text_muted);
-    c[ImGuiCol_WindowBg] = to_vec4(t.window_bg);
+    c[ImGuiCol_WindowBg] = to_vec4(t.panel);
     c[ImGuiCol_ChildBg] = grey(0.0f, 0.0f);
     c[ImGuiCol_PopupBg] = to_vec4(t.popup_bg);
-    c[ImGuiCol_MenuBarBg] = to_vec4(t.menubar_bg);
-    c[ImGuiCol_Border] = to_vec4(t.edge);
+    c[ImGuiCol_MenuBarBg] = to_vec4(t.chrome);
+    c[ImGuiCol_Border] = to_vec4(t.hair);
     c[ImGuiCol_BorderShadow] = grey(0.0f, 0.0f);
-    c[ImGuiCol_FrameBg] = to_vec4(t.frame_bg);
-    c[ImGuiCol_FrameBgHovered] = to_vec4(t.frame_bg_hovered);
-    c[ImGuiCol_FrameBgActive] = to_vec4(t.frame_bg_active);
+    c[ImGuiCol_FrameBg] = to_vec4(t.control);
+    c[ImGuiCol_FrameBgHovered] = to_vec4(t.control_hovered);
+    c[ImGuiCol_FrameBgActive] = to_vec4(t.control_active);
     c[ImGuiCol_TitleBg] = to_vec4(t.title_bg);
     c[ImGuiCol_TitleBgActive] = to_vec4(t.title_bg_active);
     c[ImGuiCol_TitleBgCollapsed] = to_vec4(t.title_bg);
     c[ImGuiCol_ScrollbarBg] = grey(0.0f, 0.0f);
     c[ImGuiCol_ScrollbarGrab] = to_vec4(t.scrollbar_grab);
     c[ImGuiCol_ScrollbarGrabHovered] = to_vec4(t.control_border);
-    c[ImGuiCol_ScrollbarGrabActive] = to_vec4(t.accent);
-    c[ImGuiCol_Button] = to_vec4(t.button);
-    c[ImGuiCol_ButtonHovered] = to_vec4(t.button_hovered);
-    c[ImGuiCol_ButtonActive] = to_vec4(t.button_active);
-    c[ImGuiCol_Header] = to_vec4(t.header);
-    c[ImGuiCol_HeaderHovered] = to_vec4(t.header_hovered);
-    c[ImGuiCol_HeaderActive] = to_vec4(t.header_active);
-    c[ImGuiCol_SliderGrab] = to_vec4(t.accent);
-    c[ImGuiCol_SliderGrabActive] = to_vec4(t.accent_active);
-    c[ImGuiCol_CheckMark] = to_vec4(t.accent);  // ImGui's own (menu ticks); boxes are ours
-    c[ImGuiCol_Separator] = to_vec4(t.separator);
-    c[ImGuiCol_SeparatorHovered] = to_vec4(t.accent);
-    c[ImGuiCol_SeparatorActive] = to_vec4(t.accent);
+    c[ImGuiCol_ScrollbarGrabActive] = to_vec4(t.fill);
+    c[ImGuiCol_Button] = to_vec4(t.control);
+    c[ImGuiCol_ButtonHovered] = to_vec4(t.control_hovered);
+    c[ImGuiCol_ButtonActive] = to_vec4(t.control_active);
+    c[ImGuiCol_Header] = to_vec4(t.control);
+    c[ImGuiCol_HeaderHovered] = to_vec4(t.control_hovered);
+    c[ImGuiCol_HeaderActive] = to_vec4(t.control_active);
+    c[ImGuiCol_SliderGrab] = to_vec4(t.fill);
+    c[ImGuiCol_SliderGrabActive] = to_vec4(t.text);
+    c[ImGuiCol_CheckMark] = to_vec4(t.text);  // ImGui's own (menu ticks); boxes are ours
+    c[ImGuiCol_Separator] = to_vec4(t.hair);
+    c[ImGuiCol_SeparatorHovered] = to_vec4(t.control_border);
+    c[ImGuiCol_SeparatorActive] = to_vec4(t.control_border);
     c[ImGuiCol_ModalWindowDimBg] = to_vec4(t.modal_dim);
 }
 
@@ -101,7 +101,7 @@ const Palette& palette(gui::Theme theme) {
         grey(0.40f),
         IM_COL32(0, 0, 0, 180),
         IM_COL32(255, 255, 255, 255),
-        to_u32(gui::token_set(gui::Theme::dark).colours.plot_bg),      // histogram background
+        to_u32(gui::token_set(gui::Theme::dark).colours.plot),         // histogram background
         to_u32(gui::token_set(gui::Theme::dark).colours.plot_border),  // histogram border
         IM_COL32(195, 195, 195, 85),   // luminance fill
         IM_COL32(215, 215, 215, 150),  // luminance outline
@@ -125,7 +125,7 @@ const Palette& palette(gui::Theme theme) {
         IM_COL32(255, 70, 30, 215),    // clipping overlay: above white
         IM_COL32(30, 140, 255, 215),   // clipping overlay: below black
         IM_COL32(235, 60, 245, 235),   // clipping overlay: outside sRGB (stripes)
-        to_vec4(gui::token_set(gui::Theme::dark).colours.window_bg),
+        to_vec4(gui::token_set(gui::Theme::dark).colours.chrome),
     };
     static const Palette light{
         to_u32(gui::token_set(gui::Theme::light).colours.canvas),  // canvas: neutral mid-grey
@@ -140,13 +140,13 @@ const Palette& palette(gui::Theme theme) {
         grey(0.70f),
         IM_COL32(0, 0, 0, 180),
         IM_COL32(255, 255, 255, 255),
-        to_u32(gui::token_set(gui::Theme::light).colours.plot_bg),     // histogram background
+        to_u32(gui::token_set(gui::Theme::light).colours.plot),        // histogram background
         to_u32(gui::token_set(gui::Theme::light).colours.plot_border), // histogram border
-        IM_COL32(115, 115, 115, 75),   // luminance fill
-        IM_COL32(95, 95, 95, 145),     // luminance outline
-        IM_COL32(215, 38, 38, 235),    // red line
-        IM_COL32(22, 150, 52, 235),    // green line
-        IM_COL32(28, 98, 220, 235),    // blue line
+        IM_COL32(195, 195, 195, 85),   // luminance fill (the plot is dark in both themes)
+        IM_COL32(215, 215, 215, 150),  // luminance outline
+        IM_COL32(245, 90, 90, 235),    // red line
+        IM_COL32(85, 215, 105, 235),   // green line
+        IM_COL32(95, 155, 255, 240),   // blue line
         IM_COL32(226, 226, 226, 255),  // clip indicator (unlit)
         IM_COL32(178, 178, 178, 255),  // clip indicator border (unlit)
         IM_COL32(105, 105, 105, 255),  // clip indicator text (unlit)
@@ -155,16 +155,16 @@ const Palette& palette(gui::Theme theme) {
         IM_COL32(155, 45, 195, 255),   // gamut (outside sRGB) fill
         IM_COL32(90, 25, 10, 255),     // clip indicator border (lit)
         IM_COL32(255, 255, 255, 255),  // clip indicator text (lit)
-        IM_COL32(45, 45, 45, 255),     // scope trace
-        IM_COL32(0, 0, 0, 55),         // scope guide lines
-        IM_COL32(165, 95, 15, 245),    // skin-tone line
-        IM_COL32(0, 140, 155, 245),    // cyan target
-        IM_COL32(175, 30, 145, 245),   // magenta target
-        IM_COL32(150, 120, 0, 245),    // yellow target
+        IM_COL32(225, 225, 225, 255),  // scope trace
+        IM_COL32(255, 255, 255, 52),   // scope guide lines
+        IM_COL32(245, 195, 120, 240),  // skin-tone line
+        IM_COL32(70, 215, 225, 240),   // cyan target
+        IM_COL32(225, 95, 205, 240),   // magenta target
+        IM_COL32(235, 215, 70, 240),   // yellow target
         IM_COL32(255, 60, 20, 225),    // clipping overlay: above white
         IM_COL32(10, 110, 245, 225),   // clipping overlay: below black
         IM_COL32(190, 20, 200, 240),   // clipping overlay: outside sRGB (stripes)
-        to_vec4(gui::token_set(gui::Theme::light).colours.window_bg),
+        to_vec4(gui::token_set(gui::Theme::light).colours.chrome),
     };
     return theme == gui::Theme::light ? light : dark;
 }
