@@ -39,6 +39,7 @@ add_library(prism_gui_core STATIC
   src/history.cpp
   src/layout.cpp
   src/live_preview.cpp
+  src/photo_format.cpp
   src/preferences.cpp
   src/presets.cpp
   src/pixel_sample.cpp
