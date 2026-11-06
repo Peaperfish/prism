@@ -12,7 +12,8 @@ namespace prism::gui_app {
 // into a slider and right-click popups work exactly as ImGui's do; only the drawing is replaced.
 // Sizes and colours come from the theme's tokens (theme.hpp).
 
-// A thin track with the accent filling from `neutral` to the value, and a round knob. `neutral` is
+// A thin track with the fill colour from `neutral` to the value, a centre tick when `neutral` is
+// inside the range, and a white round thumb. `neutral` is
 // the value that does nothing (0 for brightness, the default for a curve parameter), so the fill
 // does not always start at the left end. Like ImGui::SliderFloat with an empty format; the item
 // is the last item afterwards (IsItemActivated, BeginPopupContextItem...). Set the width first

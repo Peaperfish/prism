@@ -20,20 +20,19 @@ float snap(float v) {
     return std::round(v);
 }
 
-// Draws the track, fill and knob over the slider item just submitted. t and t_neutral are
-// positions along the slider, 0 to 1.
+// Draws the track, fill, centre tick and thumb over the slider item just submitted. t and
+// t_neutral are positions along the slider, 0 to 1. Every size is constant: hovering or dragging
+// changes nothing about the thumb.
 void draw_slider(float t, float t_neutral) {
     const gui::TokenColours& colours = token_colours();
-    const gui::TokenMetrics& m = token_metrics();
     ImDrawList* draw = ImGui::GetWindowDrawList();
     const ImVec2 min = ImGui::GetItemRectMin();
     const ImVec2 max = ImGui::GetItemRectMax();
-    const bool active = ImGui::IsItemActive();
-    const bool hovered = ImGui::IsItemHovered();
 
-    // The knob travels where ImGui's own grab would: its centre half a knob in from either end of
-    // the item (GrabMinSize is the knob's diameter and the horizontal padding is 0).
-    const float half = m.slider_knob * 0.5f;
+    // The thumb travels where ImGui's own grab would: its centre half a thumb in from either end
+    // of the item (GrabMinSize is the thumb's diameter and the horizontal padding is 0).
+    const float diameter = std::round(mock(14.0f));
+    const float half = diameter * 0.5f;
     const float left = min.x;  // the slider has no horizontal padding (HiddenSliderLook)
     const float right = max.x;
     const float cy = snap((min.y + max.y) * 0.5f);
@@ -43,34 +42,41 @@ void draw_slider(float t, float t_neutral) {
     const float x = x_at(t);
     const float x_neutral = x_at(t_neutral);
 
-    const float track = std::max(1.0f, snap(m.slider_track));
-    const float rounding = track * 0.5f;
-    draw->AddRectFilled(ImVec2(left, cy - track * 0.5f), ImVec2(right, cy + track * 0.5f),
-                        colour_u32(colours.control_border), rounding);
+    const float track = std::max(1.0f, snap(mock(4.0f)));
+    const float rounding = std::max(1.0f, snap(mock(2.0f)));
+    const float top = cy - track * 0.5f;
+    const float bottom = cy + track * 0.5f;
+    draw->AddRectFilled(ImVec2(left, top), ImVec2(right, bottom), colour_u32(colours.track),
+                        rounding);
     const float fill_from = std::min(x, x_neutral);
     const float fill_to = std::max(x, x_neutral);
     if (fill_to > fill_from) {
-        draw->AddRectFilled(ImVec2(fill_from, cy - track * 0.5f), ImVec2(fill_to, cy + track * 0.5f),
+        draw->AddRectFilled(ImVec2(fill_from, top), ImVec2(fill_to, bottom),
                             colour_u32(colours.fill), rounding);
     }
+    // A neutral point inside the range gets a centre tick (a slider that starts at its left end
+    // has none).
+    if (t_neutral > 0.0f && t_neutral < 1.0f) {
+        const float tick_h = snap(mock(10.0f));
+        const float line = hair();
+        draw->AddRectFilled(ImVec2(x_neutral - std::floor(line * 0.5f), cy - tick_h * 0.5f),
+                            ImVec2(x_neutral - std::floor(line * 0.5f) + line, cy + tick_h * 0.5f),
+                            colour_u32(colours.faint));
+    }
 
-    // A soft shadow: a few translucent discs, growing and fading outward, a touch below the knob.
-    const gui::Rgba& shadow = colours.knob_shadow;
+    // The shadow, 0 1px 3px at 35% black: a few translucent discs, growing and fading outward,
+    // a pixel below the thumb.
     constexpr int layers = 4;
+    const float reach_total = mock(3.0f);
     for (int i = layers; i >= 1; --i) {
-        const float reach = m.slider_knob_shadow * static_cast<float>(i) / layers;
-        gui::Rgba layer = shadow;
-        layer.a = shadow.a / (layers * 2.0f);
-        draw->AddCircleFilled(ImVec2(x, cy + std::max(1.0f, m.slider_knob_shadow * 0.4f)),
-                              half + reach, colour_u32(layer), 0);
+        const gui::Rgba layer{0.0f, 0.0f, 0.0f, 0.35f / (layers * 2.0f)};
+        draw->AddCircleFilled(ImVec2(x, cy + hair()),
+                              half + reach_total * static_cast<float>(i) / layers,
+                              colour_u32(layer), 0);
     }
-    if (active) {
-        gui::Rgba halo = colours.fill;
-        halo.a = 0.25f;
-        draw->AddCircleFilled(ImVec2(x, cy), half + m.slider_knob_shadow * 1.5f, colour_u32(halo), 0);
-    }
-    draw->AddCircleFilled(ImVec2(x, cy), half,
-                          colour_u32(active || hovered ? colours.text : colours.fill), 0);
+    draw->AddCircleFilled(ImVec2(x, cy), half, ImGui::GetColorU32(ImVec4(1, 1, 1, 1)), 0);
+    draw->AddCircle(ImVec2(x, cy), half - hair() * 0.5f, colour_u32(colours.thumb_border), 0,
+                    hair());
 }
 
 // Hides ImGui's own drawing of the slider (frame and grab) while it handles the interaction.
@@ -81,9 +87,11 @@ struct HiddenSliderLook {
                                  ImGuiCol_SliderGrab, ImGuiCol_SliderGrabActive}) {
             ImGui::PushStyleColor(c, none);
         }
-        ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, token_metrics().slider_knob);
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
-                            ImVec2(0.0f, ImGui::GetStyle().FramePadding.y));
+        ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, std::round(mock(14.0f)));
+        // The row is mock(16) tall: the frame is the font plus twice the vertical padding.
+        ImGui::PushStyleVar(
+            ImGuiStyleVar_FramePadding,
+            ImVec2(0.0f, std::max(0.0f, std::round((mock(16.0f) - ImGui::GetFontSize()) * 0.5f))));
     }
     ~HiddenSliderLook() {
         ImGui::PopStyleVar(2);
