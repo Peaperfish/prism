@@ -116,7 +116,8 @@ void ScopeView::draw(gui::ScopeChoice which, gui::Theme theme, float avail_w, fl
     }
     const Palette& colours = palette(theme);
     const bool vector = which == gui::ScopeChoice::vectorscope;
-    const float height = std::round((vector ? vectorscope_max_side : scope_graph_height) * s);
+    // The same box as the histogram's, so switching scopes never moves what is below it.
+    const float height = std::round(token_metrics().plot_height);
 
     ImGui::InvisibleButton("##scope_graph", ImVec2(avail_w, height));
     ImDrawList* draw = ImGui::GetWindowDrawList();

@@ -108,7 +108,8 @@ struct TokenMetrics {
     float divider_line, divider_grip, divider_arrow, divider_strip, divider_chip_margin;
     float banner_max_width;
     Vec2 badge_padding;
-    // The histogram and scope boxes.
+    // The histogram and scope boxes: one height for all four scopes (the vectorscope is a square
+    // centred in it).
     float plot_height, plot_rounding, plot_padding, plot_line, plot_luma_line, plot_border_width;
     // The Shadows / Highlights chips below the plot.
     float chip_pad_y, chip_gap, chip_rounding, chip_pad_x, chip_text_gap;

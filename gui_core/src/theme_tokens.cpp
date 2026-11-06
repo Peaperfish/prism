@@ -47,7 +47,7 @@ constexpr TokenMetrics darkroom_metrics{
     .divider_chip_margin = 10,
     .banner_max_width = 720,
     .badge_padding = {8, 5},
-    .plot_height = 68,
+    .plot_height = mock_points(132),
     .plot_rounding = 4,
     .plot_padding = 4,
     .plot_line = 1.5f,

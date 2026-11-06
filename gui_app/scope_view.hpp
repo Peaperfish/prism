@@ -48,8 +48,4 @@ private:
     gui::Theme built_theme_ = gui::Theme::dark;
 };
 
-// Heights of the scope panels in points (before the UI scale).
-inline constexpr float scope_graph_height = 112.0f;
-inline constexpr float vectorscope_max_side = 168.0f;
-
 }  // namespace prism::gui_app
