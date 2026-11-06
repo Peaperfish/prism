@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 
 #include "imgui_internal.h"
 #include "theme.hpp"
@@ -206,6 +207,82 @@ bool styled_switch(const char* id, bool* value) {
                           colour_u32(colours.panel), 0);
     ImGui::RenderNavCursor(bb, item_id, ImGuiNavRenderCursorFlags_None, radius);
     return pressed;
+}
+
+bool segmented(const char* id, std::span<const char* const> labels, int* current,
+               const std::function<void(int)>& after_item) {
+    ImGuiWindow* window = ImGui::GetCurrentWindow();
+    const int count = static_cast<int>(labels.size());
+    if (window->SkipItems || count == 0) {
+        return false;
+    }
+    const gui::TokenColours& colours = token_colours();
+    const float pad = std::round(mock(2.0f));
+    const float gap = std::round(mock(2.0f));
+    const float tab_h = std::round(mock(26.0f));
+    const float width = std::max(1.0f, ImGui::GetContentRegionAvail().x);
+    const float tab_w = std::max(
+        1.0f, std::floor((width - 2 * pad - gap * static_cast<float>(count - 1)) / count));
+    const ImVec2 origin = window->DC.CursorPos;
+    const ImRect well(origin, ImVec2(origin.x + width, origin.y + tab_h + 2 * pad));
+    ImGui::ItemSize(well);
+    ImDrawList* draw = window->DrawList;
+    draw->AddRectFilled(well.Min, well.Max, colour_u32(colours.well), std::round(mock(8.0f)));
+
+    // The light theme lifts the current tab with a hairline shadow; its panel is the lighter one.
+    const bool light = colours.panel.r + colours.panel.g + colours.panel.b > 1.5f;
+    const float font_size = token_type().small;
+    bool chosen = false;
+    ImGui::PushID(id);
+    for (int i = 0; i < count; ++i) {
+        const ImVec2 tab_min(well.Min.x + pad + static_cast<float>(i) * (tab_w + gap),
+                             well.Min.y + pad);
+        const ImRect bb(tab_min, ImVec2(tab_min.x + tab_w, tab_min.y + tab_h));
+        const ImGuiID tab_id = window->GetID(i);
+        if (ImGui::ItemAdd(bb, tab_id)) {
+            bool hovered = false;
+            bool held = false;
+            if (ImGui::ButtonBehavior(bb, tab_id, &hovered, &held) && *current != i) {
+                *current = i;
+                chosen = true;
+                ImGui::MarkItemEdited(tab_id);
+            }
+            const bool active = *current == i;
+            const float rounding = std::round(mock(6.0f));
+            if (active) {
+                if (light) {
+                    draw->AddRectFilled(ImVec2(bb.Min.x, bb.Min.y + hair()),
+                                        ImVec2(bb.Max.x, bb.Max.y + hair()),
+                                        colour_u32(gui::Rgba{0, 0, 0, 0.12f}), rounding);
+                }
+                draw->AddRectFilled(bb.Min, bb.Max, colour_u32(colours.control_on), rounding);
+            } else if (hovered || held) {
+                gui::Rgba wash = colours.text;
+                wash.a = held ? 0.14f : 0.07f;
+                draw->AddRectFilled(bb.Min, bb.Max, colour_u32(wash), rounding);
+            }
+            // Centred by the semi-bold width in both states, so the text does not shift when the
+            // tab becomes current.
+            ImGui::PushFont(fonts().semibold, font_size);
+            const ImVec2 wide = ImGui::CalcTextSize(labels[static_cast<std::size_t>(i)]);
+            ImGui::PopFont();
+            ImGui::PushFont(active ? fonts().semibold : fonts().regular, font_size);
+            const ImVec2 text_size = ImGui::CalcTextSize(labels[static_cast<std::size_t>(i)]);
+            draw->PushClipRect(bb.Min, bb.Max, true);
+            draw->AddText(ImVec2(std::round(bb.Min.x + (tab_w - wide.x) * 0.5f),
+                                 std::round(bb.Min.y + (tab_h - text_size.y) * 0.5f)),
+                          ImGui::GetColorU32(active ? ImGuiCol_Text : ImGuiCol_TextDisabled),
+                          labels[static_cast<std::size_t>(i)]);
+            draw->PopClipRect();
+            ImGui::PopFont();
+            ImGui::RenderNavCursor(bb, tab_id, ImGuiNavRenderCursorFlags_None, rounding);
+        }
+        if (after_item) {
+            after_item(i);
+        }
+    }
+    ImGui::PopID();
+    return chosen;
 }
 
 bool styled_checkbox(const char* label, bool* value) {

@@ -36,6 +36,16 @@ bool styled_switch(const char* id, bool* value);
 // The switch's size, for laying a row out around it.
 [[nodiscard]] ImVec2 switch_size();
 
+// A segmented control: one row of equal-width tabs in a rounded well (padding and gaps mock(2),
+// tabs mock(26) tall), the current one raised on the control_on colour in the semi-bold face, the
+// others flat, muted and regular, with a hover wash. Each tab is a real ImGui item (arrow keys and
+// Tab move focus between them, Space and Enter select). The text size is the same in both states
+// and the tab widths never depend on the state, so nothing reflows. Returns true when another tab
+// was chosen (*current is set). `after_item(i)` is called right after tab i is submitted, so the
+// caller can hook the last item (explain, tooltips). The row takes the available width.
+bool segmented(const char* id, std::span<const char* const> labels, int* current,
+               const std::function<void(int)>& after_item = {});
+
 // The same, round, with a dot: ImGui::RadioButton.
 bool styled_radio(const char* label, int* current, int value);
 
