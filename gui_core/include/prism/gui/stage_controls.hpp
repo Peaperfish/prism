@@ -93,6 +93,11 @@ void set_curve_parameter(EditSettings& s, float value);
 // The furthest stage that either picture shows: the later of `viewed` and `compare`.
 [[nodiscard]] StageId furthest_shown(StageId viewed, std::optional<StageId> compare = {}) noexcept;
 
+// True when `stage` comes after the furthest stage on screen (`viewed`, or `compare` if that is
+// later): no picture shows what it does, whatever it is set to.
+[[nodiscard]] bool stage_after_view(StageId stage, StageId viewed,
+                                    std::optional<StageId> compare = {}) noexcept;
+
 // True when `stage` changes the photo but comes after the furthest stage on screen (`viewed`, or
 // `compare` if that is later), so no picture shows it: the stage is on and not neutral
 // (exposure 0, saturation 1, contrast 1, no matrix or identity matrix, no curve). Stages up to and

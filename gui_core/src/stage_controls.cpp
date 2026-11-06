@@ -173,6 +173,10 @@ StageId furthest_shown(StageId viewed, std::optional<StageId> compare) noexcept 
     return compare && static_cast<int>(*compare) > static_cast<int>(viewed) ? *compare : viewed;
 }
 
+bool stage_after_view(StageId stage, StageId viewed, std::optional<StageId> compare) noexcept {
+    return static_cast<int>(stage) > static_cast<int>(furthest_shown(viewed, compare));
+}
+
 bool hidden_by_view(const EditSettings& s, StageId stage, StageId viewed,
                     std::optional<StageId> compare) {
     if (static_cast<int>(stage) <= static_cast<int>(furthest_shown(viewed, compare)) ||
