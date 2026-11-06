@@ -137,8 +137,14 @@ struct ViewPixel {
 // because 100% then isn't the file at full size, and plain "75%" when it holds them all.
 [[nodiscard]] std::string view_zoom_label(float zoom, int preview_long_side, int file_long_side);
 
-// Where the zoom's chip of this size goes: the canvas's bottom right corner, `margin` from its edges,
-// moved up past anything of `taken` in its way. Nothing if it doesn't fit without covering them.
+// Where the zoom's chip of this size goes: the canvas's bottom right corner, `margin_x` from its
+// right edge and `margin_y` from its bottom, moved up past anything of `taken` in its way (keeping
+// those margins from it). Nothing if it doesn't fit without covering them. With one `margin` it is
+// the same on every side.
+[[nodiscard]] std::optional<ViewPoint> view_chip_position(const ViewRect& canvas, float width,
+                                                          float height, float margin_x,
+                                                          float margin_y,
+                                                          std::span<const ViewRect> taken) noexcept;
 [[nodiscard]] std::optional<ViewPoint> view_chip_position(const ViewRect& canvas, float width,
                                                           float height, float margin,
                                                           std::span<const ViewRect> taken) noexcept;

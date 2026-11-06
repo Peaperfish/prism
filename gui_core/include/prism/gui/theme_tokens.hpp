@@ -150,7 +150,7 @@ struct TokenMetrics {
     float control_height, control_rounding, control_pad_x;
     // The zoom chip: corner radius, padding, and its distance from the canvas's right and bottom
     // edges.
-    float zoom_chip_rounding, zoom_chip_pad;
+    float zoom_chip_rounding, zoom_chip_pad, zoom_chip_button_pad_x;
     Vec2 zoom_chip_margin;
 };
 

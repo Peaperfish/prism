@@ -99,6 +99,7 @@ constexpr TokenMetrics darkroom_metrics{
     .control_pad_x = mock_points(12),
     .zoom_chip_rounding = mock_points(8),
     .zoom_chip_pad = mock_points(3),
+    .zoom_chip_button_pad_x = mock_points(9),
     .zoom_chip_margin = {mock_points(16), mock_points(14)},
 };
 
@@ -357,6 +358,7 @@ TokenMetrics scaled(const TokenMetrics& m, float s) {
     r.control_pad_x = m.control_pad_x * s;
     r.zoom_chip_rounding = m.zoom_chip_rounding * s;
     r.zoom_chip_pad = m.zoom_chip_pad * s;
+    r.zoom_chip_button_pad_x = m.zoom_chip_button_pad_x * s;
     r.zoom_chip_margin = m.zoom_chip_margin * s;
     return r;
 }

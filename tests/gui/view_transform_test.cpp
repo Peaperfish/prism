@@ -436,6 +436,18 @@ TEST(ViewChip, GoesInTheBottomRightCorner) {
     EXPECT_FLOAT_EQ(at->y, 650.0f - 12.0f - 30.0f);
 }
 
+TEST(ViewChip, HasItsOwnMarginAtTheRightAndAtTheBottom) {
+    const std::optional<ViewPoint> at = view_chip_position(chip_canvas, 200.0f, 30.0f, 16.0f, 14.0f, {});
+    ASSERT_TRUE(at.has_value());
+    EXPECT_FLOAT_EQ(at->x, 900.0f - 16.0f - 200.0f);
+    EXPECT_FLOAT_EQ(at->y, 650.0f - 14.0f - 30.0f);
+    // Moved up past something in the way, with the vertical margin kept from it.
+    const std::vector<ViewRect> taken{{{112.0f, 610.0f}, {800.0f, 638.0f}}};
+    const std::optional<ViewPoint> up = view_chip_position(chip_canvas, 200.0f, 30.0f, 16.0f, 14.0f, taken);
+    ASSERT_TRUE(up.has_value());
+    EXPECT_FLOAT_EQ(up->y, 610.0f - 14.0f - 30.0f);
+}
+
 TEST(ViewChip, StaysPutForWhatIsNotInItsWay) {
     // "Rendering..." in the bottom left corner, on the same line.
     const std::vector<ViewRect> taken{{{112.0f, 610.0f}, {300.0f, 638.0f}}};

@@ -2273,75 +2273,89 @@ void App::draw_zoom_chip() {
     }
     const gui::TokenMetrics& metrics = token_metrics();
     const gui::TokenColours& tokens = token_colours();
-    const auto rgba = [](const gui::Rgba& c) {
-        return ImGui::ColorConvertFloat4ToU32(ImVec4(c.r, c.g, c.b, c.a));
-    };
-    const auto rgba4 = [&](const gui::Rgba& c) { return ImGui::ColorConvertU32ToFloat4(rgba(c)); };
+    const auto rgba4 = [](const gui::Rgba& c) { return ImVec4(c.r, c.g, c.b, c.a); };
     const float zoom = gui::view_zoom(view_, view_geometry_);
     const float fit = gui::view_fit_zoom(view_geometry_);
     const std::string label = gui::view_zoom_label(
         zoom, std::max(texture_.width(), texture_.height()),
         std::max(session_.file_width(), session_.file_height()));
+    // The choice the view is at is lit; clicking it does nothing. 100% can't be chosen where Fit
+    // already shows the photo at 100% or more.
+    const bool fit_current = view_.fit;
+    const bool actual_current = !view_.fit && gui::view_same_zoom(zoom, 1.0f);
+    const bool actual_unavailable = fit >= 1.0f;
 
     ImGui::PushFont(nullptr, token_type().small);
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
-                        ImVec2(metrics.selector_pad, ImGui::GetStyle().FramePadding.y * 0.5f));
-    const float pad = metrics.overlay_padding;
-    const float gap = ImGui::GetStyle().ItemSpacing.x;
-    const float frame_pad = ImGui::GetStyle().FramePadding.x;
+    const float pad = metrics.zoom_chip_pad;
+    const float button_pad = metrics.zoom_chip_button_pad_x;
+    const float gap = ImGui::GetStyle().ItemSpacing.x * 0.5f;
+    const float button_pad_y = ImGui::GetStyle().FramePadding.y * 0.5f;
     const float label_width = ImGui::CalcTextSize(label.c_str()).x;
     const float buttons_width = ImGui::CalcTextSize("Fit").x + ImGui::CalcTextSize("100%").x +
-                                4 * frame_pad + 2 * gap;
-    const float height = ImGui::GetFrameHeight() + 2 * pad;
+                                4 * button_pad + gap;
+    const float height = ImGui::GetTextLineHeight() + 2 * button_pad_y + 2 * pad;
     // The number and both buttons; on a canvas with no room for those, the number alone; and with
     // no room for that, nothing (the keys and the View menu still work).
     const gui::ViewRect canvas = gui::view_canvas_rect(view_geometry_);
     bool with_buttons = true;
-    float width = label_width + buttons_width + 2 * pad;
-    std::optional<gui::ViewPoint> at =
-        gui::view_chip_position(canvas, width, height, metrics.canvas_margin, canvas_taken_);
+    float width = button_pad + label_width + gap + buttons_width + 2 * pad;
+    std::optional<gui::ViewPoint> at = gui::view_chip_position(
+        canvas, width, height, metrics.zoom_chip_margin.x, metrics.zoom_chip_margin.y, canvas_taken_);
     if (!at) {
         with_buttons = false;
-        width = label_width + 2 * pad;
-        at = gui::view_chip_position(canvas, width, height, metrics.canvas_margin, canvas_taken_);
+        width = 2 * button_pad + label_width + 2 * pad;
+        at = gui::view_chip_position(canvas, width, height, metrics.zoom_chip_margin.x,
+                                     metrics.zoom_chip_margin.y, canvas_taken_);
     }
     if (at) {
         ImGui::SetCursorScreenPos(ImVec2(at->x, at->y));
-        // Dark in both themes, so the buttons use their own washes, not the theme's button colours.
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, rgba4(tokens.strip_chip_bg));
-        ImGui::PushStyleColor(ImGuiCol_Text, rgba4(tokens.strip_chip_text));
-        ImGui::PushStyleColor(ImGuiCol_Button, rgba4(tokens.zoom_chip_hovered));
+        // Dark in both themes, so the chip has its own colours, not the theme's.
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, rgba4(tokens.zoom_chip_bg));
+        ImGui::PushStyleColor(ImGuiCol_Text, rgba4(tokens.zoom_chip_text));
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, rgba4(tokens.zoom_chip_hovered));
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, rgba4(tokens.zoom_chip_current));
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(pad, pad));
-        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, metrics.overlay_rounding);
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, metrics.zoom_chip_rounding);
         ImGui::BeginChild("zoom_chip", ImVec2(width, height),
                           ImGuiChildFlags_AlwaysUseWindowPadding,
                           ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(button_pad, button_pad_y));
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, std::max(0.0f, metrics.zoom_chip_rounding - pad));
         ImGui::AlignTextToFramePadding();
+        ImGui::SetCursorPosX(pad + button_pad);
         ImGui::TextUnformatted(label.c_str());
         describe(gui::explain::view_zoom);
+        // One choice: lit when it is the current one (a brighter wash, white text), plain
+        // otherwise. Clicking the lit one does nothing.
+        const auto choice = [&](const char* text, bool current, bool unavailable) {
+            ImGui::PushStyleColor(ImGuiCol_Button, current ? rgba4(tokens.zoom_chip_current)
+                                                           : ImVec4(0, 0, 0, 0));
+            ImGui::PushStyleColor(ImGuiCol_Text, current ? rgba4(tokens.zoom_chip_current_text)
+                                                         : rgba4(tokens.zoom_chip_idle_text));
+            ImGui::BeginDisabled(unavailable);
+            const bool clicked = ImGui::Button(text) && !current;
+            ImGui::EndDisabled();
+            ImGui::PopStyleColor(2);
+            return clicked;
+        };
         if (with_buttons) {
-            ImGui::SameLine();
-            ImGui::BeginDisabled(view_.fit);
-            if (ImGui::Button("Fit")) {
+            ImGui::SameLine(0.0f, gap);
+            if (choice("Fit", fit_current, false)) {
                 view_fit();
             }
-            ImGui::EndDisabled();
             describe(gui::explain::view_fit);
-            ImGui::SameLine();
-            ImGui::BeginDisabled(fit >= 1.0f || gui::view_same_zoom(zoom, 1.0f));
-            if (ImGui::Button("100%")) {
+            ImGui::SameLine(0.0f, 0.0f);
+            if (choice("100%", actual_current, actual_unavailable)) {
                 view_actual_size();
             }
-            ImGui::EndDisabled();
             describe(gui::explain::view_actual);
         }
+        ImGui::PopStyleVar(2);
         ImGui::EndChild();
         ImGui::PopStyleVar(2);
         ImGui::PopStyleColor(5);
     }
-    ImGui::PopStyleVar();
     ImGui::PopFont();
 }
 

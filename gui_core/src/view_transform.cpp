@@ -222,31 +222,37 @@ std::string view_zoom_label(float zoom, int preview_long_side, int file_long_sid
 }
 
 std::optional<ViewPoint> view_chip_position(const ViewRect& canvas, float width, float height,
-                                            float margin,
+                                            float margin_x, float margin_y,
                                             std::span<const ViewRect> taken) noexcept {
-    const float left = canvas.max.x - margin - width;
-    if (left < canvas.min.x + margin) {
+    const float left = canvas.max.x - margin_x - width;
+    if (left < canvas.min.x + margin_x) {
         return std::nullopt;
     }
-    float top = canvas.max.y - margin - height;
+    float top = canvas.max.y - margin_y - height;
     bool moved = true;
     while (moved) {
         moved = false;
-        if (top < canvas.min.y + margin) {
+        if (top < canvas.min.y + margin_y) {
             return std::nullopt;
         }
         for (const ViewRect& r : taken) {
             // A margin's clearance from whatever is there. Each move goes strictly upwards, so this
             // ends.
-            const bool across = left < r.max.x + margin && left + width > r.min.x - margin;
-            const bool down = top < r.max.y + margin && top + height > r.min.y - margin;
+            const bool across = left < r.max.x + margin_x && left + width > r.min.x - margin_x;
+            const bool down = top < r.max.y + margin_y && top + height > r.min.y - margin_y;
             if (!r.empty() && across && down) {
-                top = r.min.y - margin - height;
+                top = r.min.y - margin_y - height;
                 moved = true;
             }
         }
     }
     return ViewPoint{left, top};
+}
+
+std::optional<ViewPoint> view_chip_position(const ViewRect& canvas, float width, float height,
+                                            float margin,
+                                            std::span<const ViewRect> taken) noexcept {
+    return view_chip_position(canvas, width, height, margin, margin, taken);
 }
 
 }  // namespace prism::gui
