@@ -5,6 +5,8 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <stb_image.h>
 #include <stb_image_write.h>
@@ -84,6 +86,49 @@ Image load_image(const std::filesystem::path& path, const RawOptions& raw, int t
     }
 
     return decode_srgb8({data.get(), sample_count(width, height)}, width, height, threads);
+}
+
+void apply_orientation(Image& img, int orientation) {
+    detail::require_consistent(img, "apply_orientation");
+    if (orientation < 2 || orientation > 8 || img.width == 0 || img.height == 0) {
+        return;
+    }
+    const int w = img.width;
+    const int h = img.height;
+    constexpr std::size_t ch = Image::channels;
+    const bool turned = orientation >= 5;
+    const int out_w = turned ? h : w;
+    const int out_h = turned ? w : h;
+
+    // `source(x, y)` is where output pixel (x, y) comes from in the input: the table in the header.
+    const auto fill = [&](auto source) {
+        std::vector<float> out(img.pixels.size());
+        const float* in = img.pixels.data();
+        float* dst = out.data();
+        for (int y = 0; y < out_h; ++y) {
+            for (int x = 0; x < out_w; ++x) {
+                const auto [sx, sy] = source(x, y);
+                const float* px = in + (static_cast<std::size_t>(sy) * w + sx) * ch;
+                dst[0] = px[0];
+                dst[1] = px[1];
+                dst[2] = px[2];
+                dst += ch;
+            }
+        }
+        img.pixels = std::move(out);
+    };
+    using Pos = std::pair<int, int>;
+    switch (orientation) {
+        case 2: fill([&](int x, int y) { return Pos{w - 1 - x, y}; }); break;
+        case 3: fill([&](int x, int y) { return Pos{w - 1 - x, h - 1 - y}; }); break;
+        case 4: fill([&](int x, int y) { return Pos{x, h - 1 - y}; }); break;
+        case 5: fill([&](int x, int y) { return Pos{y, x}; }); break;
+        case 6: fill([&](int x, int y) { return Pos{y, h - 1 - x}; }); break;
+        case 7: fill([&](int x, int y) { return Pos{w - 1 - y, h - 1 - x}; }); break;
+        default: fill([&](int x, int y) { return Pos{w - 1 - y, x}; }); break;  // 8
+    }
+    img.width = out_w;
+    img.height = out_h;
 }
 
 void save_srgb8(const std::filesystem::path& path, std::span<const std::uint8_t> bytes, int width,

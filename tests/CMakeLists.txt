@@ -22,6 +22,7 @@ add_executable(prism_tests
   exif_test.cpp
   histogram_test.cpp
   image_test.cpp
+  orientation_test.cpp
   parallel_test.cpp
   pipeline_test.cpp
   process_test.cpp

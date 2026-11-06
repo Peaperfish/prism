@@ -42,6 +42,16 @@ struct RawOptions;
 [[nodiscard]] Image load_image(const std::filesystem::path& path, const RawOptions& raw,
                                int threads = 0);
 
+// Turns `img` to display upright, given an EXIF Orientation value (1-8), in place. With W x H the
+// size of `img` and in(x, y) its pixels, the new pixel (x, y) is:
+//   1: in(x, y)          2: in(W-1-x, y)      3: in(W-1-x, H-1-y)   4: in(x, H-1-y)
+//   5: in(y, x)          6: in(y, H-1-x)      7: in(W-1-y, H-1-x)   8: in(W-1-y, x)
+// i.e. 2 mirrors left-right, 3 turns 180 degrees, 4 mirrors top-bottom, 5 transposes, 6 turns 90
+// degrees clockwise, 7 transverses and 8 turns 90 degrees counter-clockwise. For 5-8 the result is
+// H wide and W tall. 1, and any value outside 1-8, leave the image as it is.
+// Throws std::invalid_argument if pixels.size() does not match width * height * 3.
+void apply_orientation(Image& img, int orientation);
+
 // Writes already-encoded 8-bit sRGB bytes (e.g. from encode_srgb8) as PNG or JPEG, chosen by the
 // file extension. Lets a caller that also needs the bytes for something else (like a histogram)
 // encode only once. Throws std::runtime_error on failure, as save_image does.
