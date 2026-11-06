@@ -54,11 +54,6 @@ struct TokenColours {
     // Checkboxes and radio buttons: the fill when ticked, and the tick drawn on it.
     Rgba check_fill, check_mark;
     Rgba scrollbar_grab;
-    // The hairline of the histogram and scope boxes: it does not outline them heavily.
-    Rgba plot_border;
-    // The Shadows / Highlights chips when lit: muted fills the white label reads on, still told
-    // apart (blue and orange). The per-stage dots keep the stronger palette colours.
-    Rgba chip_shadows, chip_highlights, chip_text;
     // The compare divider drawn over the photo: a dark edge, the line, and the grip's ring and
     // arrows. Theme-independent, as they sit on the photo.
     Rgba divider_edge, divider_line, grip_ring, grip_ink;
@@ -105,12 +100,10 @@ struct TokenMetrics {
     float banner_max_width;
     Vec2 badge_padding;
     // The histogram and scope boxes: one height for all four scopes (the vectorscope is a square
-    // centred in it).
-    float plot_height, plot_rounding, plot_padding, plot_line, plot_luma_line, plot_border_width;
-    // The Shadows / Highlights chips below the plot.
-    float chip_pad_y, chip_gap, chip_rounding, chip_pad_x, chip_text_gap;
-    // The scope selector's buttons.
-    float selector_pad;
+    // centred in it), the inset of what is in them, and the width of a line in a plot.
+    float plot_height, plot_rounding, plot_pad_x, plot_pad_top, plot_line;
+    // The corner radius of the strip bar's step pills.
+    float chip_rounding;
     // The clip marks' dots: their radius, the gap to their text, and the gap to the next mark.
     float dot_radius, dot_gap, dot_between;
     float tooltip_wrap;

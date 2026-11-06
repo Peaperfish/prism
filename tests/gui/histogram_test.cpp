@@ -47,8 +47,8 @@ TEST(StageHistogram, FlatGreyFillsExactBinAcrossAllChannelsWithZeroClips) {
     EXPECT_EQ(h.green_clips, (ChannelClips{0, 0}));
     EXPECT_EQ(h.blue_clips, (ChannelClips{0, 0}));
     EXPECT_EQ(h.luminance_clips, (ChannelClips{0, 0}));
-    EXPECT_FALSE(prism::gui::has_shadow_clipping(h));
-    EXPECT_FALSE(prism::gui::has_highlight_clipping(h));
+    EXPECT_EQ(h.any_under_black, 0u);
+    EXPECT_EQ(h.any_over_white, 0u);
 }
 
 TEST(StageHistogram, SrgbRampPopulatesEveryBinExactlyOnce) {
@@ -154,8 +154,8 @@ TEST(StageHistogram, OutOfRangeValuesCountAsUnderBlackAndOverWhiteSeparateFromBi
 
     EXPECT_DOUBLE_EQ(prism::gui::pixel_percent(h.red_clips.under_black, h.pixel_count), 25.0);
     EXPECT_DOUBLE_EQ(prism::gui::pixel_percent(h.red_clips.over_white, h.pixel_count), 50.0);
-    EXPECT_TRUE(prism::gui::has_shadow_clipping(h));
-    EXPECT_TRUE(prism::gui::has_highlight_clipping(h));
+    EXPECT_GT(h.any_under_black, 0u);
+    EXPECT_GT(h.any_over_white, 0u);
 }
 
 TEST(StageHistogram, FusedEncodeAndHistogramMatchesSeparateCallsAcrossThreads) {
@@ -196,19 +196,19 @@ TEST(StageHistogram, PreviewFrameDeliversHistogramMatchingTheViewedStage) {
     ASSERT_TRUE(at_decode && at_exposure);
 
     EXPECT_EQ(at_decode->histogram.red_clips.over_white, 0u);
-    EXPECT_FALSE(prism::gui::has_highlight_clipping(at_decode->histogram));
+    EXPECT_EQ(at_decode->histogram.any_over_white, 0u);
 
     EXPECT_EQ(at_exposure->histogram.red_clips.over_white, 3u);
     EXPECT_EQ(at_exposure->histogram.red[231], 1u);
-    EXPECT_TRUE(prism::gui::has_highlight_clipping(at_exposure->histogram));
+    EXPECT_EQ(at_exposure->histogram.any_over_white, 3u);
 }
 
 TEST(StageHistogram, RejectsInconsistentImageAndHandlesEmptyImage) {
     const StageHistogram empty = prism::gui::compute_stage_histogram(prism::Image{});
     EXPECT_EQ(empty.pixel_count, 0u);
     EXPECT_DOUBLE_EQ(prism::gui::pixel_percent(1, 0), 0.0);
-    EXPECT_FALSE(prism::gui::has_shadow_clipping(empty));
-    EXPECT_FALSE(prism::gui::has_highlight_clipping(empty));
+    EXPECT_EQ(empty.any_under_black, 0u);
+    EXPECT_EQ(empty.any_over_white, 0u);
 
     prism::Image bad;
     bad.width = 2;

@@ -81,15 +81,4 @@ struct ScopeReadout {
 };
 [[nodiscard]] ScopeReadout scope_readout(const StageHistogram& h);
 
-// Default threshold (in percent of pixels) above which the UI's shadow or highlight clip
-// indicator lights up.
-inline constexpr double default_clip_threshold_percent = 0.01;
-
-// True if any of R, G or B has under-black / over-white clipping above `threshold_percent` of
-// the image's pixels.
-[[nodiscard]] bool has_shadow_clipping(
-    const StageHistogram& h, double threshold_percent = default_clip_threshold_percent) noexcept;
-[[nodiscard]] bool has_highlight_clipping(
-    const StageHistogram& h, double threshold_percent = default_clip_threshold_percent) noexcept;
-
 }  // namespace prism::gui

@@ -141,11 +141,11 @@ constexpr Explanation templates[] = {
      "The skin-tone line, 123° from the Cb axis: skin of any complexion lands close to it. Skin "
      "far from the line suggests a colour cast."},
     {"chip.over", "Pixels brighter than white.",
-     "Share of pixels with a channel above 1 at this stage. The red, green and blue figures "
-     "count each channel alone.",
+     "Share of pixels with any channel above 1 at this stage (at Decode, already at the file's "
+     "ceiling). The red, green and blue figures count each channel alone.",
      LiveKind::over},
     {"chip.under", "Pixels darker than black.",
-     "Share of pixels with a channel below 0 at this stage. The red, green and blue figures "
+     "Share of pixels with any channel below 0 at this stage. The red, green and blue figures "
      "count each channel alone.",
      LiveKind::under},
 
@@ -158,7 +158,8 @@ constexpr Explanation templates[] = {
      "means a later stage can still pull them back."},
     {"clip.summary", "Where clipping starts and where it costs detail.",
      "Detail is lost only where a stage cuts values off at white or black. Until then the values "
-     "are kept, so a later stage can still bring them back."},
+     "are kept, so a later stage can still bring them back.",
+     LiveKind::clip_note},
     {"clip.note", "Clipping in the photo, in one line.",
      "Dot colours as in the pipeline: orange above white, blue below black, violet too saturated "
      "for sRGB. It follows your edits and settles a moment after you stop dragging.",

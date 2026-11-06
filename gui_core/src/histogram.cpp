@@ -185,22 +185,4 @@ ScopeReadout scope_readout(const StageHistogram& h) {
             readout_percent(h.any_over_white, h.pixel_count) + " above white"};
 }
 
-bool has_shadow_clipping(const StageHistogram& h, double threshold_percent) noexcept {
-    if (h.pixel_count == 0) {
-        return false;
-    }
-    const std::uint64_t worst =
-        std::max({h.red_clips.under_black, h.green_clips.under_black, h.blue_clips.under_black});
-    return worst > 0 && pixel_percent(worst, h.pixel_count) >= threshold_percent;
-}
-
-bool has_highlight_clipping(const StageHistogram& h, double threshold_percent) noexcept {
-    if (h.pixel_count == 0) {
-        return false;
-    }
-    const std::uint64_t worst =
-        std::max({h.red_clips.over_white, h.green_clips.over_white, h.blue_clips.over_white});
-    return worst > 0 && pixel_percent(worst, h.pixel_count) >= threshold_percent;
-}
-
 }  // namespace prism::gui

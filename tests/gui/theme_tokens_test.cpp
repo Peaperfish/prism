@@ -97,17 +97,6 @@ TEST(ThemeTokens, TheTickIsSeenOnTheTickedBox) {
     }
 }
 
-TEST(ThemeTokens, LitClipChipsAreReadableAndStillToldApart) {
-    for (const TokenSet& set : token_sets()) {
-        const TokenColours& c = set.colours;
-        EXPECT_GE(contrast_ratio(c.chip_text, c.chip_shadows), 4.5f) << label(set);
-        EXPECT_GE(contrast_ratio(c.chip_text, c.chip_highlights), 4.5f) << label(set);
-        // Blue for shadows, orange for highlights: not two similar muted tones.
-        EXPECT_GT(c.chip_shadows.b, c.chip_shadows.r + 0.25f) << label(set);
-        EXPECT_GT(c.chip_highlights.r, c.chip_highlights.b + 0.25f) << label(set);
-    }
-}
-
 // `top` (with its alpha) over a flat `under`.
 Rgba composite(const Rgba& top, const Rgba& under) {
     return {top.r * top.a + under.r * (1 - top.a), top.g * top.a + under.g * (1 - top.a),
@@ -191,8 +180,6 @@ TEST(ThemeTokens, ScopePlotIsDarkInBothThemes) {
     for (const TokenSet& set : token_sets()) {
         const TokenColours& c = set.colours;
         EXPECT_LT(lightness(c.plot), 10.0f) << label(set);
-        // Its hairline is quieter than a control's outline.
-        EXPECT_LT(contrast_ratio(c.plot_border, c.plot), 1.6f) << label(set);
     }
 }
 
@@ -251,7 +238,7 @@ TEST(ThemeTokens, TypeSizesAreAsDesigned) {
 
 // Every field of TokenMetrics is a float or two; a field added without teaching scaled() about it
 // would not scale, so the size is pinned here.
-static_assert(sizeof(TokenMetrics) == 92 * sizeof(float));
+static_assert(sizeof(TokenMetrics) == 86 * sizeof(float));
 
 TEST(ThemeTokens, EverySizeScalesLinearlyWithTheInterfaceScale) {
     for (const TokenSet& set : token_sets()) {
@@ -289,6 +276,9 @@ TEST(ThemeTokens, MockupSizesAreSixteenThirteenthsAndScaleLinearly) {
         EXPECT_FLOAT_EQ(set.type.tiny, mock_points(11.5f)) << label(set);
         EXPECT_FLOAT_EQ(set.type.explain_title, mock_points(12.5f)) << label(set);
         EXPECT_FLOAT_EQ(set.metrics.plot_height, mock_points(132.0f)) << label(set);
+        EXPECT_FLOAT_EQ(set.metrics.plot_rounding, mock_points(8.0f)) << label(set);
+        EXPECT_FLOAT_EQ(set.metrics.plot_pad_x, mock_points(10.0f)) << label(set);
+        EXPECT_FLOAT_EQ(set.metrics.plot_pad_top, mock_points(8.0f)) << label(set);
         EXPECT_FLOAT_EQ(set.metrics.header_height, mock_points(44.0f)) << label(set);
         EXPECT_FLOAT_EQ(set.metrics.header_button, mock_points(28.0f)) << label(set);
         EXPECT_FLOAT_EQ(set.metrics.header_icon, mock_points(16.0f)) << label(set);

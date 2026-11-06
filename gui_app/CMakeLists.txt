@@ -35,6 +35,7 @@ add_library(prism_gui_panels STATIC
   active_control.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/fonts.cpp
   light_path.cpp
+  scopes_panel.cpp
   theme.cpp
   widgets.cpp)
 target_include_directories(prism_gui_panels PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

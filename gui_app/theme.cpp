@@ -5,6 +5,7 @@
 #include <span>
 
 #include "fonts.hpp"
+#include "imgui_internal.h"
 
 namespace prism::gui_app {
 
@@ -103,21 +104,12 @@ const Palette& palette(gui::Theme theme) {
         grey(0.40f),
         IM_COL32(0, 0, 0, 180),
         IM_COL32(255, 255, 255, 255),
-        to_u32(gui::token_set(gui::Theme::dark).colours.plot),         // histogram background
-        to_u32(gui::token_set(gui::Theme::dark).colours.plot_border),  // histogram border
-        IM_COL32(195, 195, 195, 85),   // luminance fill
-        IM_COL32(215, 215, 215, 150),  // luminance outline
         IM_COL32(245, 90, 90, 235),    // red line
         IM_COL32(85, 215, 105, 235),   // green line
         IM_COL32(95, 155, 255, 240),   // blue line
-        IM_COL32(44, 44, 44, 255),     // clip indicator (unlit)
-        IM_COL32(82, 82, 82, 255),     // clip indicator border (unlit)
-        IM_COL32(150, 150, 150, 255),  // clip indicator text (unlit)
         IM_COL32(55, 130, 230, 255),   // shadows clipped fill
         IM_COL32(225, 85, 45, 255),    // highlights clipped fill
         IM_COL32(205, 95, 240, 255),   // gamut (outside sRGB) fill
-        IM_COL32(255, 235, 220, 255),  // clip indicator border (lit)
-        IM_COL32(255, 255, 255, 255),  // clip indicator text (lit)
         IM_COL32(225, 225, 225, 255),  // scope trace
         IM_COL32(255, 255, 255, 52),   // scope guide lines
         IM_COL32(245, 195, 120, 240),  // skin-tone line
@@ -142,21 +134,12 @@ const Palette& palette(gui::Theme theme) {
         grey(0.70f),
         IM_COL32(0, 0, 0, 180),
         IM_COL32(255, 255, 255, 255),
-        to_u32(gui::token_set(gui::Theme::light).colours.plot),        // histogram background
-        to_u32(gui::token_set(gui::Theme::light).colours.plot_border), // histogram border
-        IM_COL32(195, 195, 195, 85),   // luminance fill (the plot is dark in both themes)
-        IM_COL32(215, 215, 215, 150),  // luminance outline
         IM_COL32(245, 90, 90, 235),    // red line
         IM_COL32(85, 215, 105, 235),   // green line
         IM_COL32(95, 155, 255, 240),   // blue line
-        IM_COL32(226, 226, 226, 255),  // clip indicator (unlit)
-        IM_COL32(178, 178, 178, 255),  // clip indicator border (unlit)
-        IM_COL32(105, 105, 105, 255),  // clip indicator text (unlit)
         IM_COL32(30, 110, 215, 255),   // shadows clipped fill
         IM_COL32(215, 65, 30, 255),    // highlights clipped fill
         IM_COL32(155, 45, 195, 255),   // gamut (outside sRGB) fill
-        IM_COL32(90, 25, 10, 255),     // clip indicator border (lit)
-        IM_COL32(255, 255, 255, 255),  // clip indicator text (lit)
         IM_COL32(225, 225, 225, 255),  // scope trace
         IM_COL32(255, 255, 255, 52),   // scope guide lines
         IM_COL32(245, 195, 120, 240),  // skin-tone line
@@ -230,7 +213,8 @@ void space_before_section() {
     }
 }
 
-bool section_text(const char* text, const char* action, bool* title_hovered) {
+bool section_text(const char* text, const char* action, bool* title_hovered,
+                  ImGuiButtonFlags action_flags) {
     // The title in the semi-bold face, small and quiet, with no rule under it: the headers name
     // groups, the controls beneath them are what the eye should land on. An optional action sits
     // at the right as plain muted text.
@@ -247,7 +231,7 @@ bool section_text(const char* text, const char* action, bool* title_hovered) {
     ImGui::PopFont();
     if (action != nullptr) {
         ImGui::PushFont(loaded_fonts.regular, section_size);
-        const float width = ImGui::CalcTextSize(action).x;
+        const float width = ImGui::CalcTextSize(action, nullptr, true).x;
         ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetContentRegionMax().x - width));
         // Plain text that lights up under the cursor: no background, and the same size always.
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
@@ -261,7 +245,7 @@ bool section_text(const char* text, const char* action, bool* title_hovered) {
                                                  ? ImGui::GetStyleColorVec4(ImGuiCol_Text)
                                                  : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0f, style.FramePadding.y));
-        clicked = ImGui::Button(action);
+        clicked = ImGui::ButtonEx(action, ImVec2(0.0f, 0.0f), action_flags);
         ImGui::PopStyleVar();
         ImGui::PopStyleColor(4);
         ImGui::PopFont();

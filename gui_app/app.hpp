@@ -194,11 +194,8 @@ private:
     };
     [[nodiscard]] ExplainText explain_text() const;
     void draw_explain_area(float width, float height);
-    void draw_histogram();
-    void draw_histogram_graph(const gui::StageHistogram& h, float avail_w);
-    void draw_clip_chips(const gui::StageHistogram& h, float avail_w);
-    void draw_scope_selector();
-    void draw_clip_overlay_button();
+    // The Scopes section: its data and callbacks, for draw_scopes to draw.
+    void draw_scopes_panel();
     void toggle_clip_overlay();
     void update_clip_overlay_texture();
     void draw_presets();
@@ -225,6 +222,7 @@ private:
     gui::LivePreview preview_;
     PreviewTexture texture_;
     ScopeView scope_view_;
+    HistogramTexture histogram_texture_;
     std::optional<gui::StageHistogram> histogram_;
     // The test strip: on (with its step), the step chosen last (it comes back when the strip is
     // turned on again), and, for the frame on screen, each band's histogram and scopes. The

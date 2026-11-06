@@ -25,25 +25,16 @@ struct Palette {
     // since the box sits on the photo or the grey canvas, not on the theme's background.
     ImU32 overlay_background;
     ImU32 overlay_text;
-    // The stage histogram in the control panel and its shadow/highlight clipping indicators.
-    ImU32 histogram_background;
-    ImU32 histogram_border;
-    ImU32 histogram_luma_fill;
-    ImU32 histogram_luma_line;
+    // The traces of the parade and the targets of the vectorscope, and the clip marks.
     ImU32 histogram_red;
     ImU32 histogram_green;
     ImU32 histogram_blue;
-    ImU32 clip_inactive_fill;
-    ImU32 clip_inactive_border;
-    ImU32 clip_inactive_text;
     ImU32 clip_shadows_fill;
     ImU32 clip_highlights_fill;
     ImU32 clip_gamut_fill;  // colours outside sRGB: magenta-violet, apart from orange and blue
-    ImU32 clip_active_border;
-    ImU32 clip_active_text;
-    // The colour scopes (they share histogram_background / histogram_border and the red, green and
-    // blue above). The trace is the neutral colour counts are drawn in, the guides are the light
-    // lines at 0, 25, 50, 75 and 100%, and the vectorscope's targets and skin-tone line.
+    // The colour scopes (they share the red, green and blue above). The trace is the neutral colour
+    // counts are drawn in, the guides are the light lines over them, and the vectorscope's targets
+    // and skin-tone line.
     ImU32 scope_trace;
     ImU32 scope_guide;
     ImU32 scope_skin;
@@ -53,7 +44,7 @@ struct Palette {
     // The clipping overlay drawn over the photo: pixels above white and pixels below black. Opaque
     // enough to read on any photo; they sit on the picture, not the panel, so they are chosen to
     // be told apart from each other and from grey, and to stay visible in either theme. The
-    // Light path's marks use clip_highlights_fill / clip_shadows_fill so they match the chips.
+    // Light path's marks use clip_highlights_fill / clip_shadows_fill.
     ImU32 clip_overlay_over;
     ImU32 clip_overlay_under;
     // Colours outside sRGB, drawn as diagonal stripes so the colour underneath stays visible.
@@ -83,8 +74,10 @@ void space_before_section();
 // text colour, with no line under it, and room above (the gap between sections) and below. With
 // `action`, a plain muted text at the right edge that lights up under the cursor; returns true
 // when it was clicked (it is ImGui's last item afterwards). `title_hovered` says if the mouse is on
-// the title. Replaces ImGui::SeparatorText.
-bool section_text(const char* text, const char* action = nullptr, bool* title_hovered = nullptr);
+// the title. `action_flags`: how the action takes a press, as for ImGui's ButtonEx. A "###" in
+// `action` is its id and isn't shown, for a text that changes. Replaces ImGui::SeparatorText.
+bool section_text(const char* text, const char* action = nullptr, bool* title_hovered = nullptr,
+                  ImGuiButtonFlags action_flags = 0);
 
 // The current theme's tokens as apply_style last set them: the colours, the sizes already
 // multiplied by the interface scale, and the type sizes (before the scale, as ImGui wants them).

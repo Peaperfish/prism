@@ -14,6 +14,7 @@
 #include "imgui_internal.h"  // ClearActiveID: Esc leaves a text field without undoing the typing
 #include "light_path.hpp"
 #include "macos_menu.hpp"
+#include "scopes_panel.hpp"
 #include "theme.hpp"
 #include "widgets.hpp"
 #include "prism/gui/explanations.hpp"
@@ -152,6 +153,7 @@ App::App(SDL_Window* window, SDL_Renderer* renderer, DialogQueue& dialogs,
       dialogs_(dialogs),
       texture_(renderer),
       scope_view_(renderer),
+      histogram_texture_(renderer),
       prefs_file_(std::move(preferences_file)),
       display_scale_(content_scale(window)) {
 #if defined(__APPLE__)
@@ -2557,7 +2559,7 @@ void App::draw_panel() {
         ImGui::TextDisabled("Open a photo to edit it.");
         return;
     }
-    draw_histogram();
+    draw_scopes_panel();
     draw_sample_block();
 
     draw_presets();
@@ -2565,230 +2567,47 @@ void App::draw_panel() {
     draw_light_path_panel();
 }
 
-void App::draw_histogram() {
-    if (!histogram_ || histogram_->pixel_count == 0) {
-        return;
+void App::draw_scopes_panel() {
+    ScopesData data;
+    data.scope = prefs_.scope;
+    data.theme = theme();
+    if (histogram_stage_ != gui::final_stage) {
+        data.detail = std::string(gui::stage_info(histogram_stage_).name);
     }
-    const char* const scope_titles[] = {"Histogram", "RGB parade", "Waveform", "Vectorscope"};
-    const std::string base_title = scope_titles[static_cast<int>(prefs_.scope)];
-    std::string detail =
-        histogram_stage_ == gui::final_stage ? "" : std::string(gui::stage_info(histogram_stage_).name);
     if (strip_ && strip_shown_band_ >= 0) {
         // With a test strip: whose histogram this is.
-        if (!detail.empty()) {
-            detail += ", ";
-        }
-        detail += gui::strip_band_title(strip_->step, static_cast<int>(strip_bands_.size()),
-                                        strip_shown_band_);
+        data.detail += data.detail.empty() ? "" : ", ";
+        data.detail += gui::strip_band_title(strip_->step, static_cast<int>(strip_bands_.size()),
+                                             strip_shown_band_);
     }
-    const std::string title = detail.empty() ? base_title : base_title + " (" + detail + ")";
-    section_text(title.c_str());
-
-    const gui::StageHistogram& h = *histogram_;
-    const float avail_w = std::max(1.0f, ImGui::GetContentRegionAvail().x);
+    data.clip_overlay_on = prefs_.clip_overlay;
+    data.histogram = histogram_ ? &*histogram_ : nullptr;
+    data.pixel_density = ImGui::GetIO().DisplayFramebufferScale.x;
+    if (note_report_) {
+        data.clip_sentence = gui::make_clip_note(*note_report_).full;
+    }
+    SDL_Texture* picture = nullptr;
     if (prefs_.scope == gui::ScopeChoice::histogram) {
-        draw_histogram_graph(h, avail_w);
+        const float width = std::max(1.0f, ImGui::GetContentRegionAvail().x);
+        picture = histogram_texture_.update(histogram_ ? *histogram_ : gui::StageHistogram{},
+                                            scopes_histogram_size(width, data.pixel_density),
+                                            gui::histogram_paint_colours(data.theme));
     } else {
-        scope_view_.draw(prefs_.scope, theme(), avail_w, ui_scale());
+        picture = scope_view_.texture(prefs_.scope, data.theme);
     }
-    explain(gui::explain_id(prefs_.scope));
-    if (prefs_.scope == gui::ScopeChoice::vectorscope && scope_view_.skin_line_hovered()) {
-        explain_hover_ = std::string(gui::explain::scope_skin);
-    }
-    draw_clip_chips(h, avail_w);
-    draw_scope_selector();
-    draw_clip_overlay_button();
-}
+    data.plot_texture = static_cast<ImTextureID>(reinterpret_cast<std::uintptr_t>(picture));
 
-void App::draw_histogram_graph(const gui::StageHistogram& h, float avail_w) {
-    const Palette& colours = palette(theme());
-    const float graph_h = std::round(token_metrics().plot_height);
-    const float rounding = token_metrics().plot_rounding;
-
-    ImGui::InvisibleButton("##histogram_graph", ImVec2(avail_w, graph_h));
-    ImDrawList* draw = ImGui::GetWindowDrawList();
-    const ImVec2 box_min = ImGui::GetItemRectMin();
-    const ImVec2 box_max = ImGui::GetItemRectMax();
-    draw->AddRectFilled(box_min, box_max, colours.histogram_background, rounding);
-
-    // Scale to the tallest interior bin (1..254) so an all-black or all-white border doesn't
-    // flatten the curve; fall back to all 256 bins when only 0 and 255 have any counts.
-    std::uint64_t max_count = 0;
-    std::uint64_t max_all = 0;
-    for (const gui::StageHistogram::Counts* c : {&h.red, &h.green, &h.blue, &h.luminance}) {
-        max_count = std::max(max_count, *std::max_element(c->begin() + 1, c->end() - 1));
-        max_all = std::max(max_all, *std::max_element(c->begin(), c->end()));
-    }
-    if (max_count == 0) {
-        max_count = max_all;
-    }
-
-    const float pad = token_metrics().plot_padding;
-    const ImVec2 plot_min(box_min.x + pad, box_min.y + pad);
-    const ImVec2 plot_max(box_max.x - pad, box_max.y - pad);
-    const float plot_w = std::max(1.0f, plot_max.x - plot_min.x);
-    const float plot_h = std::max(1.0f, plot_max.y - plot_min.y);
-
-    const auto build_points = [&](const gui::StageHistogram::Counts& counts) {
-        std::array<ImVec2, gui::StageHistogram::bins> pts{};
-        for (int b = 0; b < gui::StageHistogram::bins; ++b) {
-            const float x = plot_min.x + (static_cast<float>(b) / 255.0f) * plot_w;
-            const double ratio =
-                max_count > 0
-                    ? std::min(1.0, static_cast<double>(counts[b]) / static_cast<double>(max_count))
-                    : 0.0;
-            const float y = plot_max.y - static_cast<float>(ratio) * plot_h;
-            pts[static_cast<std::size_t>(b)] = ImVec2(x, y);
-        }
-        return pts;
-    };
-
-    draw->PushClipRect(box_min, box_max, true);
-    const auto luma_pts = build_points(h.luminance);
-    for (int b = 0; b + 1 < gui::StageHistogram::bins; ++b) {
-        const ImVec2 p0 = luma_pts[static_cast<std::size_t>(b)];
-        const ImVec2 p1 = luma_pts[static_cast<std::size_t>(b + 1)];
-        draw->AddQuadFilled(p0, p1, ImVec2(p1.x, plot_max.y), ImVec2(p0.x, plot_max.y),
-                            colours.histogram_luma_fill);
-    }
-    draw->AddPolyline(luma_pts.data(), gui::StageHistogram::bins, colours.histogram_luma_line,
-                      ImDrawFlags_None, token_metrics().plot_luma_line);
-
-    const float line_thickness = token_metrics().plot_line;
-    const auto red_pts = build_points(h.red);
-    const auto green_pts = build_points(h.green);
-    const auto blue_pts = build_points(h.blue);
-    draw->AddPolyline(blue_pts.data(), gui::StageHistogram::bins, colours.histogram_blue,
-                      ImDrawFlags_None, line_thickness);
-    draw->AddPolyline(green_pts.data(), gui::StageHistogram::bins, colours.histogram_green,
-                      ImDrawFlags_None, line_thickness);
-    draw->AddPolyline(red_pts.data(), gui::StageHistogram::bins, colours.histogram_red,
-                      ImDrawFlags_None, line_thickness);
-    draw->PopClipRect();
-    draw->AddRect(box_min, box_max, colours.histogram_border, rounding, 0,
-                  token_metrics().plot_border_width);
-}
-
-void App::draw_clip_chips(const gui::StageHistogram& h, float avail_w) {
-    const Palette& colours = palette(theme());
-    const float s = ui_scale();
-    ImDrawList* draw = ImGui::GetWindowDrawList();
-
-    // Two small clip indicators below the graph: shadows on the left, highlights on the right.
-    const bool shadows_clipped = gui::has_shadow_clipping(h);
-    const bool highlights_clipped = gui::has_highlight_clipping(h);
-    const gui::TokenMetrics& metrics = token_metrics();
-    const gui::TokenColours& tokens = token_colours();
-    const auto rgba = [](const gui::Rgba& c, float lighten = 0.0f) {
-        return ImGui::ColorConvertFloat4ToU32(ImVec4(c.r + (1 - c.r) * lighten,
-                                                     c.g + (1 - c.g) * lighten,
-                                                     c.b + (1 - c.b) * lighten, c.a));
-    };
-    const float chip_h = ImGui::GetFontSize() + 2.0f * metrics.chip_pad_y;
-    const float gap = metrics.chip_gap;
-    const float chip_w = std::max(1.0f, (avail_w - gap) * 0.5f);
-
-    const auto draw_clip_chip = [&](const char* id, const char* label, bool left_arrow, bool active,
-                                    ImU32 active_fill, ImU32 active_border, std::uint64_t r_clip, std::uint64_t g_clip,
-                                    std::uint64_t b_clip, const char* tooltip_title,
-                                    std::string_view explain_id) {
-        ImGui::InvisibleButton(id, ImVec2(chip_w, chip_h));
-        const ImVec2 cmin = ImGui::GetItemRectMin();
-        const ImVec2 cmax = ImGui::GetItemRectMax();
-        const ImU32 fill = active ? active_fill : colours.clip_inactive_fill;
-        // A lit chip's edge is its own colour, lighter, not a pale outline.
-        const ImU32 border = active ? active_border : colours.clip_inactive_border;
-        const ImU32 text_col = active ? rgba(tokens.chip_text) : colours.clip_inactive_text;
-        draw->AddRectFilled(cmin, cmax, fill, metrics.chip_rounding);
-        draw->AddRect(cmin, cmax, border, metrics.chip_rounding, 0, 1.0f * s);
-
-        const float tri = token_metrics().chevron_size;
-        const float cy = (cmin.y + cmax.y) * 0.5f;
-        const float pad_x = metrics.chip_pad_x;
-        if (left_arrow) {
-            const float tx = cmin.x + pad_x;
-            draw_chevron(draw, ImVec2(std::round(tx + tri * 0.5f), std::round(cy)), Chevron::left,
-                         text_col);
-            draw->AddText(ImVec2(tx + tri + metrics.chip_text_gap, cmin.y + metrics.chip_pad_y), text_col,
-                          label);
-        } else {
-            const float tx = cmax.x - pad_x;
-            draw_chevron(draw, ImVec2(std::round(tx - tri * 0.5f), std::round(cy)), Chevron::right,
-                         text_col);
-            const ImVec2 tsize = ImGui::CalcTextSize(label);
-            draw->AddText(ImVec2(tx - tri - metrics.chip_text_gap - tsize.x, cmin.y + metrics.chip_pad_y),
-                          text_col,
-                          label);
-        }
-
-        explain(explain_id);
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
-            ImGui::SetTooltip("%s\nR %.2f%%   G %.2f%%   B %.2f%%", tooltip_title,
-                              gui::pixel_percent(r_clip, h.pixel_count),
-                              gui::pixel_percent(g_clip, h.pixel_count),
-                              gui::pixel_percent(b_clip, h.pixel_count));
-        }
-    };
-
-    draw_clip_chip("##clip_shadows", "Shadows", true, shadows_clipped, rgba(tokens.chip_shadows),
-                   rgba(tokens.chip_shadows, 0.25f), h.red_clips.under_black, h.green_clips.under_black, h.blue_clips.under_black,
-                   "Shadows clipped (below black):", gui::explain::chip_under);
-    ImGui::SameLine(0.0f, gap);
-    draw_clip_chip("##clip_highlights", "Highlights", false, highlights_clipped,
-                   rgba(tokens.chip_highlights), rgba(tokens.chip_highlights, 0.25f), h.red_clips.over_white, h.green_clips.over_white,
-                   h.blue_clips.over_white, "Highlights clipped (above white):",
-                   gui::explain::chip_over);
-}
-
-void App::draw_scope_selector() {
-    static const gui::ScopeChoice scopes[] = {
-        gui::ScopeChoice::histogram,
-        gui::ScopeChoice::parade,
-        gui::ScopeChoice::waveform,
-        gui::ScopeChoice::vectorscope,
-    };
-    static const char* const labels[] = {"Histogram", "Parade", "Waveform", "Vector"};
-    int current = 0;
-    for (std::size_t i = 0; i < std::size(scopes); ++i) {
-        if (scopes[i] == prefs_.scope) {
-            current = static_cast<int>(i);
-        }
-    }
-    std::string_view hovered_id;
-    const bool chosen = segmented("##scope", labels, &current, [&](int i) {
-        const std::string_view id = gui::explain_id(scopes[static_cast<std::size_t>(i)]);
-        explain(id);
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
-            hovered_id = id;
-        }
-    });
-    if (chosen) {
+    ScopesCallbacks cb;
+    cb.choose_scope = [this](gui::ScopeChoice scope) {
         gui::Preferences p = prefs_;
-        p.scope = scopes[static_cast<std::size_t>(current)];
+        p.scope = scope;
         set_preferences(std::move(p));
-    }
-    if (const gui::Explanation* e = gui::explanation_for(hovered_id)) {
-        ImGui::SetTooltip("%s", std::string(e->summary).c_str());
-    }
-}
-
-void App::draw_clip_overlay_button() {
-    const bool on = prefs_.clip_overlay;
-    ImGui::PushFont(nullptr, token_type().small);
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
-                        ImVec2(token_metrics().selector_pad, ImGui::GetStyle().FramePadding.y * 0.7f));
-    if (on) {
-        ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-    }
-    if (ImGui::Button("Show clipping on photo  (J)", ImVec2(-FLT_MIN, 0))) {
-        toggle_clip_overlay();
-    }
-    if (on) {
-        ImGui::PopStyleColor();
-    }
-    ImGui::PopStyleVar();
-    ImGui::PopFont();
-    describe(gui::explain::clip_overlay);
+    };
+    cb.toggle_clip_overlay = [this] { toggle_clip_overlay(); };
+    cb.explain = [this](std::string_view id) { explain(id); };
+    cb.describe = [this](std::string_view id) { describe(id); };
+    cb.hover = [this](std::string_view id) { explain_hover_ = std::string(id); };
+    draw_scopes(data, cb);
 }
 
 // The Look section: its header (with "Reset to <default look>" at the right while the settings
