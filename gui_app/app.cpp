@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "about_info.hpp"
+#include "active_control.hpp"
 #include "imgui.h"
 #include "imgui_internal.h"  // ClearActiveID: Esc leaves a text field without undoing the typing
 #include "macos_menu.hpp"
@@ -1520,7 +1521,7 @@ void App::end_picture_sampling(ImDrawList* draw) const {
 }
 
 bool App::control_active() const {
-    return ImGui::IsAnyItemActive() && !canvas_press_;
+    return control_is_active(canvas_press_);
 }
 
 void App::update_hand_key() {

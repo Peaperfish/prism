@@ -108,3 +108,14 @@ target_compile_definitions(prism_gui_core_tests PRIVATE
                            PRISM_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
 prism_copy_libraw_dll(prism_gui_core_tests)
 gtest_discover_tests(prism_gui_core_tests)
+
+# Tests of the desktop app's widget code against a headless Dear ImGui (no window, no backend). Only
+# with the app on, since they need ImGui.
+if(PRISM_BUILD_GUI)
+  add_executable(prism_gui_app_tests
+    gui_app/active_control_test.cpp
+    ${PROJECT_SOURCE_DIR}/gui_app/active_control.cpp)
+  target_include_directories(prism_gui_app_tests PRIVATE ${PROJECT_SOURCE_DIR}/gui_app)
+  target_link_libraries(prism_gui_app_tests PRIVATE imgui prism_warnings GTest::gtest_main)
+  gtest_discover_tests(prism_gui_app_tests)
+endif()

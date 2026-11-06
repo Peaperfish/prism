@@ -32,6 +32,7 @@ configure_file(fonts.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/fonts.cpp @ONLY)
 # WIN32: a Windows GUI program, started without a console window. SDL_main.h still gives main()
 # UTF-8 arguments (main.cpp). MACOSX_BUNDLE: on macOS it is Prism.app (see below).
 add_executable(prism_gui WIN32 MACOSX_BUNDLE
+  active_control.cpp
   app.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/about_info.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/fonts.cpp
