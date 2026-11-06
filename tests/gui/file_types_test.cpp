@@ -68,3 +68,28 @@ TEST(FileTypes, ExportsPngAsPngAndEverythingElseAsJpeg) {
     EXPECT_EQ(default_export_format("a.jpg"), ExportFormat::jpeg);
     EXPECT_EQ(default_export_format("a.ARW"), ExportFormat::jpeg);
 }
+
+TEST(FileTypes, PhotoFromArgumentsTakesThePhotoBeforeOrAfterMacFlags) {
+    using prism::gui::photo_from_arguments;
+    EXPECT_EQ(photo_from_arguments({"a.jpg", "-AppleLanguages", "(en)"}), "a.jpg");
+    EXPECT_EQ(photo_from_arguments({"-NSDocumentRevisionsDebugMode", "YES", "a.jpg"}), "a.jpg");
+    EXPECT_EQ(photo_from_arguments({"-psn_0_12345", "a.jpg"}), "a.jpg");
+    EXPECT_EQ(photo_from_arguments({"-AppleLocale", "en_US", "-NSx", "1", "-psn_0_1", "a.jpg"}),
+              "a.jpg");
+}
+
+TEST(FileTypes, PhotoFromArgumentsIsEmptyWithOnlyFlags) {
+    using prism::gui::photo_from_arguments;
+    EXPECT_FALSE(photo_from_arguments({}).has_value());
+    EXPECT_FALSE(photo_from_arguments({"-AppleLanguages", "(en)"}).has_value());
+    EXPECT_FALSE(photo_from_arguments({"-psn_0_1", "-NSx"}).has_value());
+}
+
+TEST(FileTypes, PhotoFromArgumentsKeepsAPathStartingWithADash) {
+    using prism::gui::photo_from_arguments;
+    // Only -Apple, -NS and -psn_ are flags; any other argument is the photo.
+    EXPECT_EQ(photo_from_arguments({"-photo.jpg"}), "-photo.jpg");
+    // A file named like a flag is told apart by writing it as a path.
+    EXPECT_EQ(photo_from_arguments({"./-NSphoto.jpg"}), "./-NSphoto.jpg");
+    EXPECT_FALSE(photo_from_arguments({"-NSphoto.jpg"}).has_value());
+}

@@ -10,9 +10,11 @@
 #include <exception>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 #include "app.hpp"
 #include "theme.hpp"
+#include "prism/gui/file_types.hpp"
 #include "prism/gui/presets.hpp"
 #include "prism/gui/wheel_scaling.hpp"
 #include "prism/utf8_path.hpp"
@@ -96,8 +98,10 @@ int main(int argc, char** argv) {
     {
         prism::gui_app::App app(window, renderer, dialogs, preferences_file);
         // "Open with" on Windows, or prism_gui photo.jpg: SDL's argv is UTF-8 on every OS.
-        if (argc > 1) {
-            app.open_utf8(argv[1]);
+        // macOS adds its own flags, which photo_from_arguments skips.
+        if (const auto photo =
+                prism::gui::photo_from_arguments(std::vector<std::string>(argv + 1, argv + argc))) {
+            app.open_utf8(photo->c_str());
         }
 
         bool done = false;

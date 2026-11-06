@@ -1,7 +1,9 @@
 #pragma once
 
 #include <filesystem>
+#include <optional>
 #include <string>
+#include <vector>
 
 namespace prism::gui {
 
@@ -29,6 +31,15 @@ enum class ExportFormat { png, jpeg };
 // source file itself ("DSC0001.ARW" -> "DSC0001_prism.jpg" in the same folder).
 [[nodiscard]] std::filesystem::path suggested_export_path(const std::filesystem::path& source,
                                                           ExportFormat format);
+
+// The photo to open at start-up, from the program's arguments (argv[1] onwards, without the program
+// name): the first argument that is not one macOS added. macOS launches add "-AppleLanguages (en)"
+// and similar pairs, and "-psn_..." in older versions. The rule: an argument starting with "-Apple"
+// or "-NS" is skipped together with the value after it, one starting with "-psn_" alone, and the
+// first other argument is the photo, even if it starts with a dash ("-photo.jpg"). Only a file
+// whose own name starts with "-Apple", "-NS" or "-psn_" is mistaken for a flag; given as a path
+// ("./-NSphoto.jpg") it is not. Empty if there is no photo.
+[[nodiscard]] std::optional<std::string> photo_from_arguments(const std::vector<std::string>& args);
 
 // --- Recipes (.prism) -----------------------------------------------------------------------------
 

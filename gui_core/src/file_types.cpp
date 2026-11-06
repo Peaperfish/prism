@@ -71,4 +71,19 @@ fs::path with_recipe_extension(const fs::path& chosen) {
     return result;
 }
 
+std::optional<std::string> photo_from_arguments(const std::vector<std::string>& args) {
+    const auto starts_with = [](const std::string& s, const char* prefix) {
+        return s.rfind(prefix, 0) == 0;
+    };
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        const std::string& arg = args[i];
+        if (starts_with(arg, "-Apple") || starts_with(arg, "-NS")) {
+            ++i;  // its value
+        } else if (!starts_with(arg, "-psn_")) {
+            return arg;
+        }
+    }
+    return std::nullopt;
+}
+
 }  // namespace prism::gui
