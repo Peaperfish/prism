@@ -2380,6 +2380,22 @@ void App::draw_explain_area(float width, float height) {
     part(text.live, nullptr, vec(c.text_muted));
     ImGui::PopStyleVar();
     ImGui::PopTextWrapPos();
+    // A text longer than the area scrolls inside it: a short fade at the bottom edge says there
+    // is more, and goes once the end is reached. Drawn only, so the height stays as given (#38).
+    if (ImGui::GetScrollMaxY() > 0.0f && ImGui::GetScrollY() < ImGui::GetScrollMaxY() - 0.5f) {
+        const float border = ImGui::GetStyle().ChildBorderSize;
+        const float scrollbar = ImGui::GetCurrentWindow()->ScrollbarSizes.x;
+        const ImVec2 origin = ImGui::GetWindowPos();
+        const ImVec2 size = ImGui::GetWindowSize();
+        ImGui::PushFont(nullptr, token_type().small);
+        const float fade = ImGui::GetTextLineHeight() * 1.5f;
+        ImGui::PopFont();
+        const ImVec2 min(origin.x + border, origin.y + size.y - border - fade);
+        const ImVec2 max(origin.x + size.x - border - scrollbar, origin.y + size.y - border);
+        const ImU32 clear = ImGui::ColorConvertFloat4ToU32(ImVec4(c.plot_bg.r, c.plot_bg.g, c.plot_bg.b, 0.0f));
+        const ImU32 solid = ImGui::ColorConvertFloat4ToU32(vec(c.plot_bg));
+        ImGui::GetWindowDrawList()->AddRectFilledMultiColor(min, max, clear, clear, solid, solid);
+    }
     ImGui::EndChild();
     ImGui::PopStyleVar(2);
     ImGui::PopStyleColor(2);
