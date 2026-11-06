@@ -47,6 +47,8 @@ This follows one photo from opening to export. The control panel is on the right
 
 Prism opens PNG, JPEG and RAW files (`.arw`, `.dng`, `.cr2`, `.cr3`, `.nef`, `.raf`). The preview is shrunk to fit 2560 pixels on its longer side, so editing stays quick. For a RAW file the preview is also decoded at half size, and the status bar says "RAW, half-size preview". Export always starts again from the full-size file.
 
+A JPEG opens upright: Prism turns it as its camera's orientation setting (EXIF) says, in the preview and in an export, so a photo taken with the camera on its side is not shown sideways. A photo with an unreadable orientation opens as it is stored.
+
 The status bar at the foot of the window shows the file name, the size of the decoded image, the size of the preview and how long the last preview took. If a file can't be opened, a message appears over the photo with a **Details** section and a **Copy** button; the photo you had open stays open.
 
 ### Simple sliders and Looks
