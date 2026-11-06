@@ -20,6 +20,7 @@ add_executable(prism_tests
   color_test.cpp
   dng_profile_test.cpp
   exif_test.cpp
+  heic_test.cpp
   histogram_test.cpp
   image_test.cpp
   orientation_test.cpp
@@ -52,6 +53,11 @@ target_compile_definitions(prism_tests PRIVATE PRISM_EXE="$<TARGET_FILE:prism>"
                                               PRISM_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data"
                                               PRISM_GRADE_SAMPLE="${PROJECT_SOURCE_DIR}/samples/grade.txt")
 add_dependencies(prism_tests prism prism_profile)
+# heic_test.cpp compares against ImageIO's own rendering.
+if(APPLE)
+  target_link_libraries(prism_tests PRIVATE "-framework ImageIO" "-framework CoreGraphics"
+                                            "-framework CoreFoundation")
+endif()
 
 # The test executable needs libraw_r.dll next to it too (Windows source build), and already when
 # gtest_discover_tests runs it after the build, so this comes first.

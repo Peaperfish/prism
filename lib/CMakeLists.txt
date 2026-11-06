@@ -4,6 +4,7 @@ add_library(prism_core STATIC
   color.cpp
   dng_profile.cpp
   exif.cpp
+  heic.cpp
   histogram.cpp
   image.cpp
   parallel.cpp
@@ -42,4 +43,11 @@ if(PRISM_RELEASE)
     PRISM_EXPECT_LIBRAW_MAJOR=${PRISM_LIBRAW_VERSION_MAJOR}
     PRISM_EXPECT_LIBRAW_MINOR=${PRISM_LIBRAW_VERSION_MINOR}
     PRISM_EXPECT_LIBRAW_PATCH=${PRISM_LIBRAW_VERSION_PATCH})
+endif()
+
+# HEIC photos are decoded by Apple's ImageIO, so only macOS can open them; heic.cpp has a stub that
+# says so everywhere else. Private for the same reason as LibRaw: callers never see these headers.
+if(APPLE)
+  target_link_libraries(prism_core PRIVATE "-framework ImageIO" "-framework CoreGraphics"
+                                           "-framework CoreFoundation")
 endif()

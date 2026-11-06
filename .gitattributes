@@ -6,5 +6,6 @@
 *.jpeg binary
 *.tif  binary
 *.tiff binary
+*.heic binary
 *.ARW  binary
 *.dng  binary
