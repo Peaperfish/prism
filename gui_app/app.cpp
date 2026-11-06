@@ -3447,7 +3447,7 @@ void App::draw_preferences() {
     ImGui::TextUnformatted(width_text);
     ImGui::SetNextItemWidth(slider_width);
     int width = p.panel_width;
-    if (styled_slider_int("##panel_width", &width, gui::panel_width_min, 800,
+    if (styled_slider_int("##panel_width", &width, gui::panel_width_min, gui::panel_width_max,
                           gui::panel_width_default, ImGuiSliderFlags_AlwaysClamp)) {
         p.panel_width = gui::clamp_panel_width(width);
     }
