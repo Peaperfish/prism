@@ -184,6 +184,7 @@ private:
     void draw_splitter(float canvas_width, float width, float height, float available);
     // The control panel with the Explain area under it (when on); `height` is for both.
     void draw_panel_column(float height);
+    void draw_panel_header(float width, float height);
     void draw_panel();
     // The Explain area (#16). explain() is called right after a control is submitted: it notes
     // the control as hovered, focused or changed, for the next frame's area. describe() does that

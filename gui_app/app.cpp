@@ -2476,10 +2476,14 @@ void App::draw_panel_column(float height) {
     // The panel's surface is drawn by frame(); the panel and the Explain area touch each other.
     const gui::TokenMetrics& m = token_metrics();
     const ImVec2 spacing = ImGui::GetStyle().ItemSpacing;
+    const float header_h = session_.has_file() ? std::round(m.header_height) : 0.0f;
     ImGui::BeginGroup();
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(spacing.x, 0.0f));  // no gap below
+    if (header_h > 0.0f) {
+        draw_panel_header(width, header_h);
+    }
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(m.panel_pad.x, m.panel_pad.y));
-    ImGui::BeginChild("panel", ImVec2(width, std::max(1.0f, height - (explaining ? explain_h : 0.0f))),
+    ImGui::BeginChild("panel", ImVec2(width, std::max(1.0f, height - header_h - (explaining ? explain_h : 0.0f))),
                       ImGuiChildFlags_AlwaysUseWindowPadding);
     ImGui::PopStyleVar();
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, spacing);  // the usual one inside
@@ -2495,47 +2499,106 @@ void App::draw_panel_column(float height) {
     ImGui::EndGroup();
 }
 
+// The two curved arrows of the Undo and Redo buttons, drawn in a 24 x 24 box (stroke 1.8): the
+// arrow's head, then its stem running into a half turn and back. Redo is Undo mirrored.
+static void draw_history_icon(ImDrawList* draw, ImVec2 centre, float size, bool redo, ImU32 colour) {
+    const float unit = size / 24.0f;
+    const auto at = [&](float x, float y) {
+        const float u = redo ? 24.0f - x : x;
+        return ImVec2(centre.x + (u - 12.0f) * unit, centre.y + (y - 12.0f) * unit);
+    };
+    const float stroke = 1.8f * unit;
+    const ImVec2 head[] = {at(9, 14), at(4, 9), at(9, 4)};
+    draw->AddPolyline(head, 3, colour, ImDrawFlags_RoundCornersAll, stroke);
+    // The stem: left along the top, round the bend, back along the bottom.
+    draw->PathLineTo(at(4, 9));
+    constexpr float quarter = 1.5707963f;
+    const ImVec2 bend = at(14.5f, 14.5f);
+    if (redo) {
+        draw->PathArcTo(bend, 5.5f * unit, quarter * 3, quarter, 16);  // through the left side
+    } else {
+        draw->PathArcTo(bend, 5.5f * unit, -quarter, quarter, 16);  // through the right side
+    }
+    draw->PathLineTo(at(11, 20));
+    draw->PathStroke(colour, ImDrawFlags_None, stroke);
+}
+
+// Undo and Redo as icon buttons, a spacer, and Export as the only coloured button, centred in a
+// header as tall as the design's. The buttons are ordinary ImGui buttons (focus, the disabled
+// state and the clicks are ImGui's) drawn over with the icons.
+void App::draw_panel_header(float width, float height) {
+    const gui::TokenMetrics& m = token_metrics();
+    const gui::TokenColours& c = token_colours();
+    const auto vec = [](const gui::Rgba& rgba) { return ImVec4(rgba.r, rgba.g, rgba.b, rgba.a); };
+    const auto u32 = [](const gui::Rgba& rgba) {
+        return ImGui::ColorConvertFloat4ToU32(ImVec4(rgba.r, rgba.g, rgba.b, rgba.a));
+    };
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    const float button = std::round(m.header_button);
+    const float top = origin.y + std::round((height - hair() - button) * 0.5f);
+    const std::string mod = ImGui::GetIO().ConfigMacOSXBehaviors ? "Cmd" : "Ctrl";
+
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, vec(c.control_hovered));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, vec(c.control_active));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, m.header_button_rounding);
+    const auto icon_button = [&](const char* id, float x, bool redo, bool enabled, const std::string& tip) {
+        ImGui::SetCursorScreenPos(ImVec2(x, top));
+        ImGui::BeginDisabled(!enabled);
+        const bool pressed = ImGui::Button(id, ImVec2(button, button));
+        ImGui::EndDisabled();
+        const ImVec2 lo = ImGui::GetItemRectMin();
+        const ImVec2 hi = ImGui::GetItemRectMax();
+        draw_history_icon(ImGui::GetWindowDrawList(), ImVec2((lo.x + hi.x) * 0.5f, (lo.y + hi.y) * 0.5f),
+                          m.header_icon, redo, u32(enabled ? c.text : c.faint));
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled)) {
+            ImGui::SetTooltip("%s", tip.c_str());
+        }
+        return pressed;
+    };
+    const float left = origin.x + m.panel_pad.x;
+    const float gap = ImGui::GetStyle().ItemSpacing.x * 0.5f;
+    if (icon_button("##undo", left, false, session_.history().can_undo(), "Undo (" + mod + "+Z)")) {
+        undo();
+    }
+    if (icon_button("##redo", left + button + gap, true, session_.history().can_redo(),
+                    "Redo (Shift+" + mod + "+Z)")) {
+        redo();
+    }
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor(3);
+
+    // Export: accent fill, dark semi-bold label.
+    const char* const label = "Export\xe2\x80\xa6";
+    ImGui::PushFont(fonts().semibold, token_type().body);
+    const float export_width = std::round(ImGui::CalcTextSize(label).x + 2 * m.export_pad_x);
+    ImGui::SetCursorScreenPos(ImVec2(origin.x + width - m.panel_pad.x - export_width, top));
+    ImGui::PushStyleColor(ImGuiCol_Button, vec(c.accent));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, vec(c.accent_active));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, vec(c.accent_active));
+    ImGui::PushStyleColor(ImGuiCol_Text, vec(c.text_on_accent));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, m.header_button_rounding);
+    ImGui::BeginDisabled(dialog_open_ || exporter_.busy());
+    if (ImGui::Button(label, ImVec2(export_width, button))) {
+        show_save_dialog();
+    }
+    ImGui::EndDisabled();
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor(4);
+    ImGui::PopFont();
+
+    // The hair line below the header, then on to the body.
+    ImGui::GetWindowDrawList()->AddRectFilled(
+        ImVec2(origin.x, origin.y + height - hair()), ImVec2(origin.x + width, origin.y + height),
+        u32(c.hair));
+    ImGui::SetCursorScreenPos(ImVec2(origin.x, origin.y + height));
+}
+
 void App::draw_panel() {
     if (!session_.has_file()) {
         ImGui::TextDisabled("Open a photo to edit it.");
         return;
     }
-    // Three buttons filling the panel's width, in equal thirds when the labels fit. Otherwise
-    // Export gets the width its label needs and Undo and Redo share the rest, and on a very
-    // narrow panel Export moves to a row of its own.
-    const float spacing = ImGui::GetStyle().ItemSpacing.x;
-    const float padding = 2 * ImGui::GetStyle().FramePadding.x;
-    const float avail = ImGui::GetContentRegionAvail().x;
-    const float export_needed = ImGui::CalcTextSize("Export...").x + padding;
-    const float undo_needed =
-        std::max(ImGui::CalcTextSize("Undo").x, ImGui::CalcTextSize("Redo").x) + padding;
-    float export_width = std::max((avail - 2 * spacing) / 3, export_needed);
-    float undo_width = (avail - 2 * spacing - export_width) / 2;
-    const bool one_row = undo_width >= undo_needed;
-    if (!one_row) {
-        undo_width = (avail - spacing) / 2;
-        export_width = avail;
-    }
-    ImGui::BeginDisabled(!session_.history().can_undo());
-    if (ImGui::Button("Undo", ImVec2(undo_width, 0))) {
-        undo();
-    }
-    ImGui::EndDisabled();
-    ImGui::SameLine();
-    ImGui::BeginDisabled(!session_.history().can_redo());
-    if (ImGui::Button("Redo", ImVec2(undo_width, 0))) {
-        redo();
-    }
-    ImGui::EndDisabled();
-    if (one_row) {
-        ImGui::SameLine();
-    }
-    ImGui::BeginDisabled(dialog_open_ || exporter_.busy());
-    if (ImGui::Button("Export...", ImVec2(export_width, 0))) {
-        show_save_dialog();
-    }
-    ImGui::EndDisabled();
-
     draw_histogram();
     draw_sample_block();
 
