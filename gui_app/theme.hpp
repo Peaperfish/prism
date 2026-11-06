@@ -73,9 +73,17 @@ struct Fonts {
 void load_fonts(ImGuiIO& io);
 [[nodiscard]] const Fonts& fonts();
 
+// The thickness of the 1 px line between regions, whole pixels and at least one.
+[[nodiscard]] float hair();
+
+// Room above a section header: the gap between sections, unless this is the top of the window.
+void space_before_section();
+
 // A section header: the title in the semi-bold face at the theme's section size, in the muted
-// text colour, over a hairline. Replaces ImGui::SeparatorText.
-void section_text(const char* text);
+// text colour, with no line under it, and room above (the gap between sections) and below. With
+// `action`, a plain muted text at the right edge that lights up under the cursor; returns true
+// when it was clicked. Replaces ImGui::SeparatorText.
+bool section_text(const char* text, const char* action = nullptr);
 
 // The current theme's tokens as apply_style last set them: the colours, the sizes already
 // multiplied by the interface scale, and the type sizes (before the scale, as ImGui wants them).

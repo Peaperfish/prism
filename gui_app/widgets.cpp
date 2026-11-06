@@ -211,12 +211,13 @@ void draw_chevron(ImDrawList* draw, ImVec2 c, Chevron direction, ImU32 colour) {
 }
 
 bool section_header(const char* title, bool* open) {
+    space_before_section();
     const gui::TokenColours& colours = token_colours();
     const gui::TokenMetrics& m = token_metrics();
     ImDrawList* draw = ImGui::GetWindowDrawList();
     ImGui::PushFont(fonts().semibold, token_type().section);
     const ImVec2 text_size = ImGui::CalcTextSize(title);
-    const float height = text_size.y + 2.0f * m.separator_text_padding.y;
+    const float height = text_size.y + m.separator_text_padding.y;
     const float width = ImGui::GetContentRegionAvail().x;
     const bool clicked = ImGui::InvisibleButton(title, ImVec2(width, height));
     if (clicked) {
@@ -236,11 +237,6 @@ bool section_header(const char* title, bool* open) {
     x += m.chevron_size + gap;
     draw->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(x, std::round(cy - text_size.y * 0.5f)),
                   muted, title);
-    x += text_size.x + gap;
-    if (x < max.x) {
-        draw->AddLine(ImVec2(x, cy), ImVec2(max.x, cy), colour_u32(colours.hair),
-                      std::max(1.0f, m.separator_text_border));
-    }
     ImGui::PopFont();
     ImGui::RenderNavCursor(ImRect(min, max), ImGui::GetItemID());
     return clicked;

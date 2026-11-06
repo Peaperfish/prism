@@ -1,5 +1,7 @@
 #include "theme.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <span>
 
 #include "fonts.hpp"
@@ -215,14 +217,55 @@ const gui::TokenType& token_type() {
     return current_set->type;
 }
 
-void section_text(const char* text) {
-    // A hairline with the title in the semi-bold face, small and quiet: the headers name groups,
-    // the controls beneath them are what the eye should land on.
-    ImGui::PushFont(loaded_fonts.semibold, section_size);
+float hair() {
+    return std::max(1.0f, std::round(current_metrics.hair_width));
+}
+
+void space_before_section() {
+    // Below whatever came before, but not at the top of a window or panel.
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float pad = style.WindowPadding.y;
+    if (ImGui::GetCursorPosY() > pad + 1.0f) {
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() - style.ItemSpacing.y + current_metrics.section_gap);
+    }
+}
+
+bool section_text(const char* text, const char* action) {
+    // The title in the semi-bold face, small and quiet, with no rule under it: the headers name
+    // groups, the controls beneath them are what the eye should land on. An optional action sits
+    // at the right as plain muted text.
+    space_before_section();
+    const ImGuiStyle& style = ImGui::GetStyle();
+    bool clicked = false;
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-    ImGui::SeparatorText(text);
-    ImGui::PopStyleColor();
+    ImGui::PushFont(loaded_fonts.semibold, section_size);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(text);
     ImGui::PopFont();
+    if (action != nullptr) {
+        ImGui::PushFont(loaded_fonts.regular, section_size);
+        const float width = ImGui::CalcTextSize(action).x;
+        ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetContentRegionMax().x - width));
+        // Plain text that lights up under the cursor: no background, and the same size always.
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::IsMouseHoveringRect(
+                                                 ImGui::GetCursorScreenPos(),
+                                                 ImVec2(ImGui::GetCursorScreenPos().x + width,
+                                                        ImGui::GetCursorScreenPos().y +
+                                                            ImGui::GetFrameHeight()))
+                                                 ? ImGui::GetStyleColorVec4(ImGuiCol_Text)
+                                                 : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0f, style.FramePadding.y));
+        clicked = ImGui::Button(action);
+        ImGui::PopStyleVar();
+        ImGui::PopStyleColor(4);
+        ImGui::PopFont();
+    }
+    ImGui::PopStyleColor();
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() - style.ItemSpacing.y + current_metrics.section_head_gap);
+    return clicked;
 }
 
 }  // namespace prism::gui_app

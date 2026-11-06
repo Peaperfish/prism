@@ -1036,24 +1036,47 @@ void App::frame() {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->WorkPos);
     ImGui::SetNextWindowSize(viewport->WorkSize);
+    // The regions (menu bar, canvas, panel, status bar) meet edge to edge, so the window has no
+    // padding of its own; the menu bar's left inset is the item spacing at Begin.
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
+                        ImVec2(token_metrics().panel_pad.x, ImGui::GetStyle().ItemSpacing.y));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImGui::GetStyleColorVec4(ImGuiCol_MenuBarBg));
     ImGui::Begin("Prism", nullptr,
                  ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                      ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_MenuBar |
                      ImGuiWindowFlags_NoBringToFrontOnFocus);
-    ImGui::PopStyleVar(2);
+    ImGui::PopStyleColor();
+    ImGui::PopStyleVar(4);
 
     draw_menu();
 
-    const float status_height = ImGui::GetFrameHeightWithSpacing();
+    const float status_height = std::round(token_metrics().status_height);
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     const float body_height = std::max(1.0f, avail.y - status_height);
-    // The splitter between canvas and panel: as wide as the usual gap between items.
+    // The splitter between canvas and panel: as wide as the usual gap between items, drawn in the
+    // canvas colour, so the panel's edge (with its hair line) is where the panel begins.
     const float splitter = ImGui::GetStyle().ItemSpacing.x;
     const float panel =
         gui::panel_width_pixels(static_cast<float>(prefs_.panel_width), ui_scale(), avail.x);
     const float canvas = std::max(1.0f, avail.x - panel - splitter);
+    // The panel's surface and the hair line on its left, under the panel's and the Explain area's
+    // own (transparent) windows.
+    {
+        const ImVec2 origin = ImGui::GetCursorScreenPos();
+        const gui::TokenColours& c = token_colours();
+        const auto u32 = [](const gui::Rgba& rgba) {
+            return ImGui::ColorConvertFloat4ToU32(ImVec4(rgba.r, rgba.g, rgba.b, rgba.a));
+        };
+        const float left = origin.x + canvas + splitter;
+        ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(left, origin.y),
+                                                  ImVec2(origin.x + avail.x, origin.y + body_height),
+                                                  u32(c.panel));
+        ImGui::GetWindowDrawList()->AddRectFilled(
+            ImVec2(left, origin.y), ImVec2(left + hair(), origin.y + body_height), u32(c.hair));
+    }
 
     // The canvas column: the test strip's bar (when on) above the canvas.
     ImGui::BeginGroup();
@@ -1077,8 +1100,10 @@ void App::frame() {
     draw_splitter(canvas, splitter, body_height, avail.x);
     ImGui::SameLine(0.0f, 0.0f);
     draw_panel_column(body_height);
+    ImGui::SetCursorScreenPos(
+        ImVec2(ImGui::GetWindowPos().x, ImGui::GetWindowPos().y + ImGui::GetWindowHeight() - status_height));
 
-    draw_status_bar();
+    draw_status_bar(status_height);
     draw_saving_popup();
     draw_close_prompt();
     draw_recipe_sheet();
@@ -1336,6 +1361,30 @@ void App::draw_menu() {
         }
     }
     ImGui::EndMenuBar();
+    // The hair line under the menu bar.
+    const ImRect bar = ImGui::GetCurrentWindow()->MenuBarRect();
+    ImGui::GetWindowDrawList()->AddRectFilled(
+        ImVec2(bar.Min.x, bar.Max.y - hair()), ImVec2(bar.Max.x, bar.Max.y),
+        ImGui::ColorConvertFloat4ToU32(ImVec4(token_colours().hair.r, token_colours().hair.g,
+                                              token_colours().hair.b, token_colours().hair.a)));
+}
+
+// A soft shadow behind the photo (0 2px 18px at 35% black, in the design): translucent rounded
+// rectangles, each a little larger than the last, whose alphas add up to the shadow's darkness at
+// the photo's edge and fade to nothing at the blur's reach. The photo is drawn over the middle.
+void App::draw_photo_shadow(ImDrawList* draw, ImVec2 at, ImVec2 shown) const {
+    const gui::TokenMetrics& m = token_metrics();
+    constexpr int layers = 9;
+    constexpr float darkness = 0.35f;
+    // Each layer's alpha so that `layers` of them stacked come to `darkness`.
+    const float alpha = 1.0f - std::pow(1.0f - darkness, 1.0f / layers);
+    const ImU32 colour = ImGui::ColorConvertFloat4ToU32(ImVec4(0.0f, 0.0f, 0.0f, alpha));
+    for (int i = 0; i < layers; ++i) {
+        const float grow = m.photo_shadow_blur * static_cast<float>(layers - i) / layers;
+        draw->AddRectFilled(ImVec2(at.x - grow, at.y - grow + m.photo_shadow_offset),
+                            ImVec2(at.x + shown.x + grow, at.y + shown.y + grow + m.photo_shadow_offset),
+                            colour, grow);
+    }
 }
 
 void App::draw_canvas() {
@@ -1370,6 +1419,7 @@ void App::draw_canvas() {
         const ImVec2 at(placed.at.x, placed.at.y);
         const ImVec2 shown(placed.shown.x, placed.shown.y);
         update_clip_overlay_texture();
+        draw_photo_shadow(draw, at, shown);
         if (splitting()) {
             draw_split(draw, at, shown);
         } else {
@@ -2297,6 +2347,11 @@ void App::draw_zoom_chip() {
 
 void App::draw_splitter(float canvas_width, float width, float height, float available) {
     ImGui::InvisibleButton("splitter", ImVec2(width, height));
+    {
+        const gui::Rgba& c = token_colours().canvas;
+        ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
+                                                  ImGui::ColorConvertFloat4ToU32(ImVec4(c.r, c.g, c.b, c.a)));
+    }
     if (ImGui::IsItemHovered() || ImGui::IsItemActive()) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
     }
@@ -2408,7 +2463,6 @@ void App::draw_explain_area(float width, float height) {
 void App::draw_panel_column(float height) {
     const float width = ImGui::GetContentRegionAvail().x;
     const bool explaining = prefs_.show_explanations && session_.has_file();
-    const float spacing = ImGui::GetStyle().ItemSpacing.y;
     // A fixed height (about five lines of Small text): it must not follow the text shown, or the
     // panel above it changes size as the cursor crosses the controls (#38). A longer text
     // scrolls inside the area.
@@ -2419,15 +2473,25 @@ void App::draw_panel_column(float height) {
         ImGui::PopFont();
         explain_h = gui::explain_area_height(token_metrics(), line, height);
     }
+    // The panel's surface is drawn by frame(); the panel and the Explain area touch each other.
+    const gui::TokenMetrics& m = token_metrics();
+    const ImVec2 spacing = ImGui::GetStyle().ItemSpacing;
     ImGui::BeginGroup();
-    ImGui::BeginChild("panel",
-                      ImVec2(width, std::max(1.0f, height - (explaining ? explain_h + spacing : 0.0f))),
-                      ImGuiChildFlags_Borders);
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(spacing.x, 0.0f));  // no gap below
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(m.panel_pad.x, m.panel_pad.y));
+    ImGui::BeginChild("panel", ImVec2(width, std::max(1.0f, height - (explaining ? explain_h : 0.0f))),
+                      ImGuiChildFlags_AlwaysUseWindowPadding);
+    ImGui::PopStyleVar();
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, spacing);  // the usual one inside
     draw_panel();
+    // The bottom padding is a little more than the top one; the child adds the top's amount.
+    ImGui::Dummy(ImVec2(0.0f, std::max(0.0f, m.panel_pad_bottom - m.panel_pad.y)));
+    ImGui::PopStyleVar();
     ImGui::EndChild();
     if (explaining) {
         draw_explain_area(width, explain_h);
     }
+    ImGui::PopStyleVar();
     ImGui::EndGroup();
 }
 
@@ -3291,7 +3355,21 @@ void App::draw_pipeline() {
     draw_clipping_summary();
 }
 
-void App::draw_status_bar() {
+void App::draw_status_bar(float height) {
+    // Its own surface (chrome) with a hair line above; the text sits centred in it.
+    const gui::TokenColours& colours = token_colours();
+    const ImVec2 top_left = ImGui::GetCursorScreenPos();
+    const float window_width = ImGui::GetWindowWidth();
+    const auto u32 = [](const gui::Rgba& c) {
+        return ImGui::ColorConvertFloat4ToU32(ImVec4(c.r, c.g, c.b, c.a));
+    };
+    ImGui::GetWindowDrawList()->AddRectFilled(top_left, ImVec2(top_left.x + window_width, top_left.y + height),
+                                              u32(colours.chrome));
+    ImGui::GetWindowDrawList()->AddRectFilled(top_left, ImVec2(top_left.x + window_width, top_left.y + hair()),
+                                              u32(colours.hair));
+    const float pad = token_metrics().panel_pad.x;
+    ImGui::SetCursorScreenPos(ImVec2(
+        top_left.x + pad, top_left.y + std::round((height + hair() - ImGui::GetTextLineHeight()) * 0.5f)));
     if (!session_.has_file()) {
         ImGui::TextDisabled("No photo open");
         return;
@@ -3310,7 +3388,7 @@ void App::draw_status_bar() {
     const auto measure = [](std::string_view s) {
         return ImGui::CalcTextSize(s.data(), s.data() + s.size()).x;
     };
-    const float total = ImGui::GetContentRegionAvail().x;
+    const float total = std::max(1.0f, window_width - 2 * pad);
     const float note_room =
         clip_note_ ? std::min(clip_note_width(*clip_note_), total * 0.5f) + ImGui::GetStyle().ItemSpacing.x
                    : 0.0f;
@@ -3347,7 +3425,8 @@ void App::draw_clip_note(float room) {
     const bool fresh = last_frame_had_clips_ && !preview_.rendering();
     const float natural = clip_note_width(note);
     const float width = std::min(natural, std::max(1.0f, room - ImGui::GetStyle().ItemSpacing.x));
-    ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetContentRegionMax().x - width));
+    ImGui::SameLine(std::max(ImGui::GetCursorPosX(),
+                             ImGui::GetWindowWidth() - m.panel_pad.x - width));
     const ImVec2 at = ImGui::GetCursorScreenPos();
     ImGui::InvisibleButton("##clip_note", ImVec2(width, ImGui::GetTextLineHeight()));
     ImDrawList* draw = ImGui::GetWindowDrawList();
