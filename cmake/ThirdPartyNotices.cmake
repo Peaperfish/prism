@@ -158,8 +158,9 @@ if(PRISM_BUILD_GUI)
   list(APPEND PRISM_THIRD_PARTY_COMPONENTS "Inter 4.1|SIL OFL 1.1")
   prism_notice_section(prism_notices "Inter 4.1" "\
 https://github.com/rsms/inter
-Licence: SIL Open Font License 1.1. The Regular and SemiBold fonts are unmodified and compiled
-into the app as its interface font.
+Licence: SIL Open Font License 1.1. The Regular and SemiBold fonts are compiled into the app as
+its interface font, modified only by freezing Inter's tabular figures (the tnum feature) into them,
+so that all digits have the same width; they keep the name Inter, which has no Reserved Font Name.
 
 ${prism_inter_licence}")
 endif()
