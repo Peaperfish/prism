@@ -2218,7 +2218,11 @@ void App::draw_zoom_chip() {
         return;
     }
     const gui::TokenMetrics& metrics = token_metrics();
-    const Palette& colours = palette(theme());
+    const gui::TokenColours& tokens = token_colours();
+    const auto rgba = [](const gui::Rgba& c) {
+        return ImGui::ColorConvertFloat4ToU32(ImVec4(c.r, c.g, c.b, c.a));
+    };
+    const auto rgba4 = [&](const gui::Rgba& c) { return ImGui::ColorConvertU32ToFloat4(rgba(c)); };
     const float zoom = gui::view_zoom(view_, view_geometry_);
     const float fit = gui::view_fit_zoom(view_geometry_);
     const std::string label = gui::view_zoom_label(
@@ -2249,8 +2253,12 @@ void App::draw_zoom_chip() {
     }
     if (at) {
         ImGui::SetCursorScreenPos(ImVec2(at->x, at->y));
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, colours.overlay_background);
-        ImGui::PushStyleColor(ImGuiCol_Text, colours.overlay_text);
+        // Dark in both themes, so the buttons use their own washes, not the theme's button colours.
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, rgba4(tokens.strip_chip_bg));
+        ImGui::PushStyleColor(ImGuiCol_Text, rgba4(tokens.strip_chip_text));
+        ImGui::PushStyleColor(ImGuiCol_Button, rgba4(tokens.zoom_chip_button));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, rgba4(tokens.zoom_chip_button_hovered));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, rgba4(tokens.zoom_chip_button_active));
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(pad, pad));
         ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, metrics.overlay_rounding);
         ImGui::BeginChild("zoom_chip", ImVec2(width, height),
@@ -2277,7 +2285,7 @@ void App::draw_zoom_chip() {
         }
         ImGui::EndChild();
         ImGui::PopStyleVar(2);
-        ImGui::PopStyleColor(2);
+        ImGui::PopStyleColor(5);
     }
     ImGui::PopStyleVar();
     ImGui::PopFont();

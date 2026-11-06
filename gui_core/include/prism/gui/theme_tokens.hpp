@@ -61,6 +61,9 @@ struct TokenColours {
     // step's pill (a wash over the background) and the wash under a hovered pill or the close
     // button.
     Rgba strip_bar_bg, strip_bar_text, strip_bar_pill, strip_bar_hover;
+    // The zoom chip over the photo is dark in both themes (strip_chip_bg and strip_chip_text), so
+    // its Fit and 100% buttons are light washes over that, not the theme's own button colours.
+    Rgba zoom_chip_button, zoom_chip_button_hovered, zoom_chip_button_active;
 };
 
 // How many lines of Small text the Explain area shows before it scrolls inside itself. A count,

@@ -98,6 +98,25 @@ TEST(ThemeTokens, StripChipTextIsReadableOnAnyPhoto) {
     }
 }
 
+TEST(ThemeTokens, ZoomChipButtonsAreReadableOnTheDarkChipInBothThemes) {
+    for (const TokenSet& set : token_sets()) {
+        const TokenColours& c = set.colours;
+        // The chip is dark in both themes, whatever the theme's buttons are.
+        for (const float photo : {0.0f, 0.5f, 1.0f}) {
+            const Rgba chip = composite(c.strip_chip_bg, grey(photo));
+            EXPECT_LT(lightness(chip), 45.0f) << label(set) << " photo " << photo;
+            for (const Rgba& wash :
+                 {c.zoom_chip_button, c.zoom_chip_button_hovered, c.zoom_chip_button_active}) {
+                EXPECT_GE(contrast_ratio(c.strip_chip_text, composite(wash, chip)), 4.5f)
+                    << label(set) << " photo " << photo;
+            }
+            // The button can be seen against the chip.
+            EXPECT_GT(contrast_ratio(composite(c.zoom_chip_button, chip), chip), 1.1f)
+                << label(set) << " photo " << photo;
+        }
+    }
+}
+
 TEST(ThemeTokens, StripLinesAreSeenOnTheirOwnColours) {
     for (const TokenSet& set : token_sets()) {
         const TokenColours& c = set.colours;
