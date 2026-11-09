@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(prism
-  VERSION 0.3.1
+  VERSION 0.4.0
   DESCRIPTION "Command-line photo tool"
   LANGUAGES CXX)
 
