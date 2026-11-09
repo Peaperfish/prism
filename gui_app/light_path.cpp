@@ -19,6 +19,11 @@ namespace {
 // How strongly a row past what's on screen is drawn: quiet, but still a working row.
 constexpr float dimmed_alpha = 0.5f;
 
+// A press on the row, or on its clip marks, acts at once and doesn't hold the active id: it isn't a
+// control being used, so it doesn't stop J, T, I or the clip report (see active_control.hpp).
+constexpr ImGuiButtonFlags press_only =
+    ImGuiButtonFlags_PressedOnClick | static_cast<ImGuiButtonFlags>(ImGuiButtonFlags_NoHoldingActiveId);
+
 float px(float mock_px) {
     return std::round(mock(mock_px));
 }
@@ -134,7 +139,7 @@ void draw_clip_marks(const LightPathData& data, const gui::LightPathRow& row, fl
     ImGui::SetCursorScreenPos(ImVec2(x, y));
     ImGui::PushItemFlag(ImGuiItemFlags_NoNav | ImGuiItemFlags_NoTabStop, true);
     const float width = std::clamp(at - m.dot_between - x, 1.0f, room);
-    if (ImGui::InvisibleButton("##clip", ImVec2(width, height), ImGuiButtonFlags_PressedOnClick)) {
+    if (ImGui::InvisibleButton("##clip", ImVec2(width, height), press_only)) {
         cb.view_stage(row.stage);
     }
     ImGui::PopItemFlag();
@@ -414,10 +419,7 @@ void draw_row(const LightPathData& data, const gui::LightPathRow& row,
     // Last: the row itself, for the presses nothing above took. ImGui's first taker of a position
     // keeps it, so this one is never hovered over a control.
     ImGui::SetCursorScreenPos(row_min);
-    if (ImGui::InvisibleButton(
-            "##row", ImVec2(width, layout.height),
-            ImGuiButtonFlags_PressedOnClick |
-                static_cast<ImGuiButtonFlags>(ImGuiButtonFlags_NoHoldingActiveId))) {
+    if (ImGui::InvisibleButton("##row", ImVec2(width, layout.height), press_only)) {
         cb.view_stage(row.stage);
     }
     cb.explain(gui::explain_id(row.stage), false);

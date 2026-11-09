@@ -169,7 +169,7 @@ TEST(RecipeMatrixLabel, IsOnlyALabelAndAReSaveWritesNoFrom) {
     EditSettings s;
     apply_recipe(s, r);
     ASSERT_TRUE(s.matrix.has_value());
-    EXPECT_EQ(stage_value_text(s, StageId::matrix), "recipe matrix");
+    EXPECT_EQ(stage_value_text(s, StageId::matrix), "From recipe");
     EXPECT_TRUE(s.matrix->path.empty());  // the label is not stored anywhere
     const Recipe again = recipe_from(s);
     ASSERT_TRUE(again.matrix.has_value());

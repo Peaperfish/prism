@@ -143,12 +143,13 @@ The three sliders are centred on no change. Hover over a row for a one-sentence 
 | Row | You can type | Meaning |
 |---|---|---|
 | Exposure | `1.5`, `+1.5` or `1.5 stops` | +1.50 stops |
-| Exposure | `-0.5` or `-0.5 stops` | −0.50 stops |
+| Exposure | `-0.5`, `−0.5` (with a true minus sign) or `-0.5 stops` | -0.50 stops |
+| Exposure | `1 stop` | +1.00 stops |
 | Saturation | `1.2`, `1.2×` or `1.2x` | ×1.20 |
 | Saturation | `0` | black and white |
 | Contrast | `1.25` or `1.25x` | ×1.25 |
 
-A comma works as the decimal mark (`1,5`). Enter confirms, Esc cancels, and a value past the slider's end stops at the end. Text that isn't a number in the row's unit leaves the value as it was. The field opens with the current value, for example `+0.70 stops` or `1.20`. The Tone curve's own slider does not take typed values.
+A comma works as the decimal mark (`1,5`). The word is `stops` or `stop`, in any case, and the minus can be a hyphen or a true minus sign (−). Enter confirms, Esc cancels, and a value past the slider's end stops at the end. Text that isn't a number in the row's unit leaves the value as it was. The field opens with the current value, for example `+0.70 stops` or `1.20`. The Tone curve's own slider does not take typed values.
 
 **Resetting.** Right-click a slider for **Reset to** its default (`+0.00 stops`, `×1.00`). Right-click a Tone curve tab for **Reset to None**. The curve's own slider has a **Reset to** menu as well.
 

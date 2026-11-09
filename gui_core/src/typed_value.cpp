@@ -11,7 +11,7 @@ namespace prism::gui {
 
 namespace {
 
-constexpr std::array<std::string_view, 1> exposure_units{"stops"};
+constexpr std::array<std::string_view, 2> exposure_units{"stops", "stop"};
 constexpr std::array<std::string_view, 2> factor_units{"\xC3\x97", "x"};  // "×" in UTF-8, and x
 
 bool is_space(char c) noexcept {
@@ -60,9 +60,13 @@ std::optional<float> parse_typed_number(std::string_view text,
                                         std::span<const std::string_view> units) {
     text = trimmed(text);
     bool negative = false;
+    constexpr std::string_view minus_sign = "\xE2\x88\x92";  // U+2212 "−", as the guide prints it
     if (!text.empty() && (text.front() == '+' || text.front() == '-')) {
         negative = text.front() == '-';
         text.remove_prefix(1);
+    } else if (text.substr(0, minus_sign.size()) == minus_sign) {
+        negative = true;
+        text.remove_prefix(minus_sign.size());
     }
 
     std::uint64_t mantissa = 0;  // the first 18 significant digits

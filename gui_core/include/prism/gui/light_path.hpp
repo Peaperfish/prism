@@ -54,7 +54,9 @@ struct LightPathRow {
     bool dimmed = false;  // after the furthest stage on screen: see stage_after_view
     std::string tooltip;  // the stage's summary, or for a dimmed row why it is dimmed
 
-    // The slider of Exposure, Saturation and Contrast. Off, it sits at its neutral position.
+    // The slider of Exposure, Saturation and Contrast. While the stage is off it is greyed out and
+    // sits at its neutral position (never beyond the slider), though slider_typed and slider_reset
+    // still go with the stored value, the one it comes back with.
     std::optional<SimpleControl> slider;
     float slider_position = 0.0f;
     bool beyond_slider = false;  // the value lies past the slider's end

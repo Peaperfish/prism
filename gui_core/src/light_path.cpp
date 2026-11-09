@@ -83,7 +83,7 @@ std::string matrix_value(const EditSettings& s, InputKind kind) {
     if (!s.matrix) {
         return kind == InputKind::raw ? "Camera default" : "None";
     }
-    return s.matrix->path.empty() ? std::string("From recipe") : utf8(s.matrix->path.filename());
+    return s.matrix->path.empty() ? std::string(recipe_matrix_label) : utf8(s.matrix->path.filename());
 }
 
 std::string compare_action_text(StageId viewed, std::optional<StageId> compare) {

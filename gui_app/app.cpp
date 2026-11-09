@@ -2784,12 +2784,17 @@ void App::draw_status_bar(float height) {
     const std::string name = file_name(session_.path());
 
     // The camera group sits at the bar's centre; it is shown only when it clears the whole left
-    // group and the clip note on both sides, so that it never overlaps either.
+    // group and the room kept for the clip note on both sides, so that it never overlaps either.
     const float camera_width = camera.empty() ? 0.0f : measure(camera);
     const float camera_x = std::round((window_width - camera_width) * 0.5f);
+    // The room kept for the note is that of the longest text it can have, not of the text it has
+    // now: whether the camera line shows must not change when a render changes the note.
+    constexpr std::string_view widest_note = "99% highlights clipped at Output encode  +3 more";
+    const float note_reserved =
+        2 * token_metrics().dot_radius + token_metrics().dot_gap + measure(widest_note);
     const bool show_camera =
         !camera.empty() && camera_x >= pad + measure(name + details) + gap * 2 &&
-        camera_x + camera_width <= window_width - pad - (clip_note_ ? note_natural : 0.0f) - gap * 2;
+        camera_x + camera_width <= window_width - pad - note_reserved - gap * 2;
 
     // The file name gives way first (shortened in the middle, keeping its extension), so the line
     // never runs off the window's edge or into the camera group.
@@ -2831,7 +2836,7 @@ float App::clip_note_width(const gui::ClipNote& note) const {
     return dot + ImGui::CalcTextSize(note.text.c_str()).x;
 }
 
-// Right-aligned on the status bar's line: a dot in the colour of what clipped (as in the pipeline
+// Right-aligned on the status bar's line: a dot in the colour of what clipped (as in the Light path
 // rows), then the short text; hover for the full sentence. Muted while it is not for the settings
 // on screen yet.
 void App::draw_clip_note(float room) {

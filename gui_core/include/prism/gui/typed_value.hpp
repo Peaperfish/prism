@@ -14,7 +14,7 @@ namespace prism::gui {
 // the multiplier for Saturation and Contrast ("×1.20"). All pure functions, so they are tested
 // without a window.
 
-// The number in `text`: an optional sign (+ or -), digits with at most one decimal mark ("." or
+// The number in `text`: an optional sign (+, - or the minus sign U+2212 "−" in UTF-8), digits with at most one decimal mark ("." or
 // ","), and then, after optional spaces, nothing or one of `units` (ASCII letters in any case).
 // Spaces around the whole text are ignored. Anything else, including an empty number ("", "+",
 // "."), a second mark ("1.000,5"), an exponent ("1e3") or an unknown word, gives nothing.
@@ -26,8 +26,8 @@ namespace prism::gui {
 [[nodiscard]] std::optional<float> parse_typed_number(std::string_view text,
                                                       std::span<const std::string_view> units);
 
-// The unit words `control`'s row accepts after the number: "stops" for Exposure, "×" (UTF-8) and
-// "x" for the other two.
+// The unit words `control`'s row accepts after the number: "stops" and "stop" for Exposure, "×"
+// (UTF-8) and "x" for the other two.
 [[nodiscard]] std::span<const std::string_view> typed_units(SimpleControl control) noexcept;
 
 // What `text` means for the field behind `control`, in the row's unit (stops, or the multiplier);

@@ -65,8 +65,8 @@ enum class CurveKind { none, gamma, reinhard, filmic };
 //
 // The default-constructed value is neutral: it leaves an image exactly as it was.
 struct EditSettings {
-    // Each stage has a value and an on/off switch (Advanced mode's checkbox). Turning a stage off
-    // keeps its value, so turning it back on restores it; an off stage is skipped.
+    // Each stage has a value and an on/off switch (on its Light path row). Turning a stage off keeps
+    // its value, so turning it back on restores it; an off stage is skipped.
     float exposure_stops = 0.0f;  // any finite number, as the CLI's --exposure
     bool exposure_on = true;
 
@@ -130,8 +130,8 @@ void set_stage_enabled(EditSettings& s, StageId id, bool enabled) noexcept;
 //                                                     are mirror images in stops)
 //   colour     k -> saturation     = 1 + k / 100     (-100 = black and white, +100 = 2.0)
 //
-// A field outside what its slider can show (e.g. saturation 3, from Advanced mode) is shown at
-// the slider's end, and outside_simple_range says so (the UI labels it "custom"); moving the
+// A field outside what its slider can show (e.g. saturation 3, from a recipe) is shown at
+// the slider's end, and outside_simple_range says so (the row says "beyond the slider"); moving the
 // slider then takes it over. A stage that is off shows as 0, its neutral position.
 
 inline constexpr float simple_min = -100.0f;
@@ -158,7 +158,7 @@ struct SimpleOutOfRange {
 
 // Sets exposure, contrast and saturation from the sliders (each clamped to [-100, +100] first)
 // and turns those three stages on. Nothing else changes: the matrix, curve and RAW options are
-// Advanced-only and stay as they are.
+// not the sliders' and stay as they are.
 void apply_simple(EditSettings& s, const SimpleControls& c);
 
 // One of the sliders, for when the user moves just that one.

@@ -606,6 +606,26 @@ TEST_F(LightPathHeadless, APressOnClipMarksIsAPressOnTheRow) {
     EXPECT_TRUE(ids_.count(std::string(gui::explain::clip_dot)));
 }
 
+TEST_F(LightPathHeadless, APressOnClipMarksActsAtOnceAndIsNotAControlBeingUsed) {
+    clips_ = report_with(gui::ClipFate::lost);
+    const std::vector<LightPathRowRect> rects = frame();
+    const LightPathRowRect& row = row_of(rects, gui::StageId::encode);
+    mouse_to(ImVec2(row.min.x + std::round(mock(27.0f)) + 6.0f,
+                    row.max.y - std::round(mock(10.0f)) - 4.0f));
+    frame();
+    frame();
+    mouse(true);
+    frame();
+    ASSERT_EQ(viewed_calls_.size(), 1u);
+    EXPECT_TRUE(ids_.count(std::string(gui::explain::clip_dot)));
+    EXPECT_FALSE(control_is_active(false));
+    frame();
+    EXPECT_FALSE(control_is_active(false));
+    mouse(false);
+    frame();
+    EXPECT_EQ(viewed_calls_.size(), 1u);
+}
+
 // --- The Compare popup -------------------------------------------------------------------------
 
 TEST_F(LightPathHeadless, TheCompareActionOpensAPopupThatChooses) {

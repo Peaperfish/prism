@@ -398,7 +398,7 @@ TEST(LiveLines, ARecipeMatrixIsLabelledAsOne) {
     EditSettings s;
     s.matrix = MatrixFile{{}, identity_matrix};
     s.matrix->values[0] = 1.05f;
-    EXPECT_EQ(live_line("stage.matrix", s), "recipe matrix");
+    EXPECT_EQ(live_line("stage.matrix", s), "From recipe");
 }
 
 TEST(LiveLines, TheLoadedRecipeLineNamesTheStagesItSets) {

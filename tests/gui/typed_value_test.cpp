@@ -76,7 +76,28 @@ TEST(TypedValue, ExposureTakesTheWordStopsAfterTheNumber) {
     EXPECT_FLOAT_EQ(parsed("-0.7stops", SimpleControl::brightness), -0.7f);
     EXPECT_FLOAT_EQ(parsed("+0.70   STOPS  ", SimpleControl::brightness), 0.7f);
     EXPECT_FLOAT_EQ(parsed("2", SimpleControl::brightness), 2.0f);
-    for (const std::string_view bad : {"1.5 x", "1.5 \xC3\x97", "1.5 stop", "stops", "1.5 stops!"}) {
+    for (const std::string_view bad : {"1.5 x", "1.5 \xC3\x97", "1.5 stopss", "stops", "stop", "1.5 stops!"}) {
+        EXPECT_FALSE(prism::gui::typed_row_value(SimpleControl::brightness, bad)) << bad;
+    }
+}
+
+TEST(TypedValue, ExposureTakesTheSingularToo) {
+    using prism::gui::SimpleControl;
+    EXPECT_FLOAT_EQ(parsed("1 stop", SimpleControl::brightness), 1.0f);
+    EXPECT_FLOAT_EQ(parsed("-1STOP", SimpleControl::brightness), -1.0f);
+    EXPECT_FLOAT_EQ(parsed("0.5stop", SimpleControl::brightness), 0.5f);
+    EXPECT_FALSE(prism::gui::typed_row_value(SimpleControl::colour, "1 stop"));
+}
+
+TEST(TypedValue, TheMinusSignOfTheGuideIsAMinus) {
+    using prism::gui::SimpleControl;
+    // U+2212, as the guide and the strip's labels print it.
+    EXPECT_FLOAT_EQ(parsed("\xE2\x88\x92" "0.5", SimpleControl::brightness), -0.5f);
+    EXPECT_FLOAT_EQ(parsed(" \xE2\x88\x92" "0,5 stops ", SimpleControl::brightness), -0.5f);
+    EXPECT_FLOAT_EQ(parsed("\xE2\x88\x92" "1 stop", SimpleControl::brightness), -1.0f);
+    EXPECT_FLOAT_EQ(parsed("\xE2\x88\x92" "0.2", SimpleControl::contrast), -0.2f);
+    for (const std::string_view bad : {"\xE2\x88\x92", "\xE2\x88\x92" "-1", "-" "\xE2\x88\x92" "1",
+                                       "1\xE2\x88\x92", "\xE2\x88" "1", "+" "\xE2\x88\x92" "1"}) {
         EXPECT_FALSE(prism::gui::typed_row_value(SimpleControl::brightness, bad)) << bad;
     }
 }
@@ -98,7 +119,7 @@ TEST(TypedValue, RejectsEverythingElse) {
     for (const std::string_view bad :
          {"", " ", "+", "-", ".", ",", "+.", "abc", "1.2.3", "1,2,3", "1.000,5", "1e3", "1.2e-1",
           "--1", "+-1", "1-", "1 2", "0x10", "nan", "inf", "-inf", "1.2 y", "1.2 xx", "1.2x2",
-          "\xE2\x88\x92" "1", "1.2%", "(1)", "1_000", "\xD9\xA1"}) {
+          "1.2%", "(1)", "1_000", "\xD9\xA1"}) {
         for (const SimpleControl control :
              {SimpleControl::brightness, SimpleControl::colour, SimpleControl::contrast}) {
             EXPECT_FALSE(prism::gui::typed_row_value(control, bad)) << bad;

@@ -74,7 +74,7 @@ std::string stage_value_text(const EditSettings& s, StageId stage) {
                 return "none";
             }
             // A matrix from a recipe without a `from` label has no file to name.
-            return s.matrix->path.empty() ? std::string("recipe matrix")
+            return s.matrix->path.empty() ? std::string(recipe_matrix_label)
                                           : utf8(s.matrix->path.filename());
         case StageId::curve:
             switch (s.curve) {
