@@ -53,6 +53,29 @@ struct VectorscopeCell {
 [[nodiscard]] VectorscopeCell vectorscope_cell(std::uint8_t r, std::uint8_t g,
                                                std::uint8_t b) noexcept;
 
+// The vectorscope plot is round, and its outer ring is 128 cells from the neutral axis (the plot's
+// half side). Cb/Cr are linear in R, G and B, so the farthest an 8-bit sRGB colour gets from the axis
+// is at a corner of the cube: one of the six full-strength primaries and secondaries (the hexagon).
+// That is green and magenta, about 152 unscaled cells out, past the ring that is inscribed in the Cb/Cr
+// square. So the plot is scaled: every colour's offset is multiplied by vectorscope_scale(), which
+// puts the farthest corner on the ring and everything else inside it. The 75% targets, the skin-tone
+// line and the cells all use the same mapping, so nothing needs clipping.
+inline constexpr int vectorscope_ring_cells = 128;
+
+// A colour's place on the plot: cells right of (cb) and above (cr) the neutral axis, after scaling.
+struct VectorscopePoint {
+    float cb = 0.0f;
+    float cr = 0.0f;
+};
+
+// The distance in unscaled cells of the farthest hexagon corner, computed from the six corners.
+[[nodiscard]] float vectorscope_farthest_cells() noexcept;
+// vectorscope_ring_cells / vectorscope_farthest_cells().
+[[nodiscard]] float vectorscope_scale() noexcept;
+// The exact (unrounded) scaled position of an 8-bit sRGB colour; vectorscope_cell rounds it.
+[[nodiscard]] VectorscopePoint vectorscope_point(std::uint8_t r, std::uint8_t g,
+                                                 std::uint8_t b) noexcept;
+
 // Rec. 709 luma of 8-bit encoded values, rounded to 0..255 (greys keep their value).
 [[nodiscard]] int luma8(std::uint8_t r, std::uint8_t g, std::uint8_t b) noexcept;
 

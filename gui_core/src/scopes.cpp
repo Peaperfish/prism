@@ -23,6 +23,12 @@ int clamp_cell(float v) noexcept {
     return std::clamp(static_cast<int>(std::lround(v)) + 128, 0, Scopes::size - 1);
 }
 
+// Cb and Cr of a colour in cells from the neutral axis, before scaling.
+VectorscopePoint unscaled_point(float r, float g, float b) noexcept {
+    const float y = kr * r + kg * g + kb * b;
+    return {(b - y) / cb_divisor, (r - y) / cr_divisor};
+}
+
 }  // namespace
 
 int luma8(std::uint8_t r, std::uint8_t g, std::uint8_t b) noexcept {
@@ -30,16 +36,37 @@ int luma8(std::uint8_t r, std::uint8_t g, std::uint8_t b) noexcept {
     return static_cast<int>((13933u * r + 46870u * g + 4733u * b + 32768u) >> 16);
 }
 
+float vectorscope_farthest_cells() noexcept {
+    // The six corners of the cube that are neither black nor white.
+    static constexpr float corners[6][3] = {{255, 0, 0},   {255, 255, 0}, {0, 255, 0},
+                                            {0, 255, 255}, {0, 0, 255},   {255, 0, 255}};
+    float farthest = 0.0f;
+    for (const auto& c : corners) {
+        const VectorscopePoint p = unscaled_point(c[0], c[1], c[2]);
+        farthest = std::max(farthest, std::sqrt(p.cb * p.cb + p.cr * p.cr));
+    }
+    return farthest;
+}
+
+float vectorscope_scale() noexcept {
+    static const float scale = static_cast<float>(vectorscope_ring_cells) / vectorscope_farthest_cells();
+    return scale;
+}
+
+VectorscopePoint vectorscope_point(std::uint8_t r, std::uint8_t g, std::uint8_t b) noexcept {
+    const VectorscopePoint p = unscaled_point(r, g, b);
+    return {p.cb * vectorscope_scale(), p.cr * vectorscope_scale()};
+}
+
 VectorscopeCell vectorscope_cell(std::uint8_t r, std::uint8_t g, std::uint8_t b) noexcept {
-    const float y = kr * r + kg * g + kb * b;
-    return {clamp_cell((static_cast<float>(b) - y) / cb_divisor),
-            clamp_cell((static_cast<float>(r) - y) / cr_divisor)};
+    const VectorscopePoint p = vectorscope_point(r, g, b);
+    return {clamp_cell(p.cb), clamp_cell(p.cr)};
 }
 
 ScopeRgb vectorscope_cell_colour(int cb, int cr) noexcept {
     // Back from the cell to how far R, G and B stand from the luma (see vectorscope_cell).
-    const float db = static_cast<float>(cb - 128) * cb_divisor;
-    const float dr = static_cast<float>(cr - 128) * cr_divisor;
+    const float db = static_cast<float>(cb - 128) / vectorscope_scale() * cb_divisor;
+    const float dr = static_cast<float>(cr - 128) / vectorscope_scale() * cr_divisor;
     const float dg = -(kr * dr + kb * db) / kg;
     const float high = std::max({dr, dg, db});
     const float low = std::min({dr, dg, db});

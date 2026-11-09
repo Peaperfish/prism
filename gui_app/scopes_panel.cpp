@@ -193,22 +193,24 @@ void draw_vector_plot(const ScopesData& data, ImDrawList* draw, ImVec2 box_min, 
     }
     // Cell (cb, cr) is drawn centred at ((cb + 0.5) / 256, (255 - cr + 0.5) / 256) of the square, so
     // the neutral axis is cell 128's centre.
-    const auto position = [&](gui::VectorscopeCell c) {
-        return ImVec2(origin.x + (static_cast<float>(c.cb) + 0.5f) / N * side,
-                      origin.y + (static_cast<float>(N - 1 - c.cr) + 0.5f) / N * side);
+    // The targets use the exact scaled position, the same mapping as the dots (vectorscope_point).
+    const auto position = [&](gui::VectorscopePoint p) {
+        return ImVec2(origin.x + (128.0f + p.cb + 0.5f) / N * side,
+                      origin.y + (static_cast<float>(N - 1) - (128.0f + p.cr) + 0.5f) / N * side);
     };
-    const ImVec2 centre = position({128, 128});
+    const ImVec2 centre = position({0.0f, 0.0f});
     const float radius = side * 0.5f;
     draw->AddCircle(centre, radius, IM_COL32(255, 255, 255, 31), 96, line);  // .12
     draw->AddCircle(centre, radius * 0.5f, IM_COL32(255, 255, 255, 18), 64, line);  // .07
 
-    // Skin tones: the I-line, 123 degrees counter-clockwise from the +Cb axis.
+    // Skin tones: the I-line, 123 degrees counter-clockwise from the +Cb axis. The scale is the same
+    // for Cb and Cr, so it leaves the angle alone and the line still runs out to the ring.
     constexpr float pi = 3.14159265f;
     const float angle = 123.0f * pi / 180.0f;
     const ImVec2 skin_end(centre.x + std::cos(angle) * radius, centre.y - std::sin(angle) * radius);
     draw->AddLine(centre, skin_end, colours.scope_skin, metrics.plot_line);
 
-    // Targets at 75% saturation (inside the ring, like colour bars): R, Mg, B, Cy, G, Yl.
+    // Targets at 75% strength (0.75 of the full-strength position, like colour bars): R, Mg, B, Cy, G, Yl.
     struct Target {
         const char* name;
         std::uint8_t r, g, b;
@@ -223,7 +225,7 @@ void draw_vector_plot(const ScopesData& data, ImDrawList* draw, ImVec2 box_min, 
     const float half = metrics.scope_target_half;
     ImGui::PushFont(nullptr, token_type().tiny);
     for (const Target& t : targets) {
-        const ImVec2 p = position(gui::vectorscope_cell(t.r, t.g, t.b));
+        const ImVec2 p = position(gui::vectorscope_point(t.r, t.g, t.b));
         draw->AddRect(ImVec2(p.x - half, p.y - half), ImVec2(p.x + half, p.y + half), t.colour, 0.0f,
                       0, metrics.plot_line);
         // The label goes on the outer side of the target, away from the centre.

@@ -1,5 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <numeric>
@@ -69,15 +72,16 @@ TEST(Scopes, HorizontalRampGivesADiagonalWaveform) {
 }
 
 TEST(Scopes, PrimariesLandInTheirVectorscopeCells) {
-    // Computed by hand: Cb = (B - Y) / 1.8556, Cr = (R - Y) / 1.5748, in codes, plus 128.
+    // Computed by hand: Cb = (B - Y) / 1.8556, Cr = (R - Y) / 1.5748, in codes, times the plot's
+    // scale (128 / 151.89, green and magenta being the farthest corners), plus 128.
     struct Case {
         std::uint8_t r, g, b;
         int cb, cr;
     };
     const Case cases[] = {
-        {255, 0, 0, 99, 255},   // red:   Cb -29.3, Cr +127.5 (clamped)
-        {0, 255, 0, 30, 12},    // green: Cb -98.3, Cr -115.8
-        {0, 0, 255, 255, 116},  // blue:  Cb +127.5 (clamped), Cr -11.7
+        {255, 0, 0, 103, 235},  // red:   Cb -24.6, Cr +107.4
+        {0, 255, 0, 45, 30},    // green: Cb -82.8, Cr -97.6
+        {0, 0, 255, 235, 118},  // blue:  Cb +107.4, Cr -9.9
     };
     for (const Case& c : cases) {
         const Scopes s = compute_scopes(solid(8, 8, c.r, c.g, c.b), 8, 8);
@@ -203,4 +207,69 @@ TEST(VectorscopeCellColour, EachColoursCellIsDrawnInThatColoursHue) {
     const prism::gui::ScopeRgb faint = colour_of(140, 128, 128);
     EXPECT_GT(faint.r, faint.g);
     EXPECT_GT(faint.g, 120);
+}
+
+// The plot is round with its ring 128 cells out, and it is scaled so the farthest colour any 8-bit
+// sRGB value can reach (a corner of the cube) lands on the ring: nothing needs clipping.
+TEST(Scopes, VectorscopeScaleFitsTheFarthestColourOnTheRing) {
+    using prism::gui::vectorscope_cell;
+    using prism::gui::vectorscope_point;
+    using prism::gui::vectorscope_ring_cells;
+    const auto radius = [](std::uint8_t r, std::uint8_t g, std::uint8_t b) {
+        const VectorscopeCell c = vectorscope_cell(r, g, b);
+        return std::hypot(static_cast<double>(c.cb - 128), static_cast<double>(c.cr - 128));
+    };
+    // The unscaled hexagon reaches past the ring (green and magenta ~152 cells), so a scale is needed.
+    EXPECT_GT(prism::gui::vectorscope_farthest_cells(), static_cast<float>(vectorscope_ring_cells));
+    EXPECT_LT(prism::gui::vectorscope_scale(), 1.0f);
+    const std::array<std::array<int, 3>, 6> corners{
+        {{255, 0, 0}, {255, 255, 0}, {0, 255, 0}, {0, 255, 255}, {0, 0, 255}, {255, 0, 255}}};
+    double farthest = 0.0;
+    for (const auto& c : corners) {
+        const double d = radius(static_cast<std::uint8_t>(c[0]), static_cast<std::uint8_t>(c[1]),
+                                static_cast<std::uint8_t>(c[2]));
+        EXPECT_LE(d, vectorscope_ring_cells + 1.0);  // inside or on the ring, to the cell
+        farthest = std::max(farthest, d);
+    }
+    EXPECT_NEAR(farthest, static_cast<double>(vectorscope_ring_cells), 1.0);
+    // Exactly: the farthest corner is on the ring and none is past it.
+    float exact_farthest = 0.0f;
+    for (const auto& c : corners) {
+        const auto p = vectorscope_point(static_cast<std::uint8_t>(c[0]), static_cast<std::uint8_t>(c[1]),
+                                         static_cast<std::uint8_t>(c[2]));
+        exact_farthest = std::max(exact_farthest, std::hypot(p.cb, p.cr));
+    }
+    EXPECT_NEAR(exact_farthest, static_cast<float>(vectorscope_ring_cells), 1e-3f);
+    // No colour of the cube is outside the ring (it is linear, so the corners bound it).
+    for (int r = 0; r < 256; r += 5) {
+        for (int g = 0; g < 256; g += 5) {
+            for (int b = 0; b < 256; b += 5) {
+                const auto p = vectorscope_point(static_cast<std::uint8_t>(r), static_cast<std::uint8_t>(g),
+                                                 static_cast<std::uint8_t>(b));
+                EXPECT_LE(std::hypot(p.cb, p.cr), static_cast<float>(vectorscope_ring_cells) + 1e-3f);
+            }
+        }
+    }
+    // Neutral grey is at the centre.
+    for (int v = 0; v < 256; v += 5) {
+        EXPECT_EQ(vectorscope_cell(static_cast<std::uint8_t>(v), static_cast<std::uint8_t>(v),
+                                   static_cast<std::uint8_t>(v)),
+                  (VectorscopeCell{128, 128}));
+    }
+}
+
+// The 75% targets the plot draws are 0.75 of the way from the centre to the full-strength colour.
+TEST(Scopes, VectorscopeTargetsSitAtThreeQuartersOfTheirFullPosition) {
+    using prism::gui::vectorscope_point;
+    const std::array<std::array<int, 3>, 6> full{
+        {{255, 0, 0}, {255, 0, 255}, {0, 0, 255}, {0, 255, 255}, {0, 255, 0}, {255, 255, 0}}};
+    for (const auto& c : full) {
+        const auto hundred = vectorscope_point(static_cast<std::uint8_t>(c[0]), static_cast<std::uint8_t>(c[1]),
+                                               static_cast<std::uint8_t>(c[2]));
+        const auto target = vectorscope_point(static_cast<std::uint8_t>(c[0] ? 191 : 0),
+                                              static_cast<std::uint8_t>(c[1] ? 191 : 0),
+                                              static_cast<std::uint8_t>(c[2] ? 191 : 0));
+        EXPECT_NEAR(target.cb, 0.75f * hundred.cb, 0.2f);
+        EXPECT_NEAR(target.cr, 0.75f * hundred.cr, 0.2f);
+    }
 }
