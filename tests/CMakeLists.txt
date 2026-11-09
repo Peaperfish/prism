@@ -85,6 +85,7 @@ add_executable(prism_gui_core_tests
   gui/light_path_test.cpp
   gui/live_preview_test.cpp
   gui/main_thread_queue_test.cpp
+  gui/paper_grade_test.cpp
   gui/preferences_test.cpp
   gui/presets_test.cpp
   gui/photo_format_test.cpp
