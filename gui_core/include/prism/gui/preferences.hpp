@@ -13,9 +13,10 @@ namespace prism::gui {
 // key=value lines in the per-user folder, e.g.
 //
 //   # Prism preferences
+//   preferences_version=1
 //   theme=system
 //   interface_size=auto
-//   panel_width=320
+//   panel_width=440
 //   scope=histogram
 //   clip_overlay=off
 //   show_explanations=on
@@ -25,6 +26,11 @@ namespace prism::gui {
 // missing, malformed or out of range falls back to its default (or is clamped) on its own, without
 // affecting the other keys. Keys Prism doesn't know (e.g. from a newer version) are kept as they
 // are and written back, so going back and forth between versions loses nothing.
+//
+// preferences_version (1 from 0.4.0 on): a file without it was last written by 0.3.x, which always
+// wrote panel_width=320, its default, whether or not anyone had chosen that. Such a file with
+// exactly 320 loads as the new default instead (panel_width_default); any other width is the
+// user's own and is kept. A file with the key is taken as written.
 
 // Appearance. `system` follows the operating system's light or dark mode, live.
 enum class ThemeChoice { system, light, dark };
@@ -43,6 +49,10 @@ inline constexpr int interface_size_step = 25;
 // The control panel's width in points (before the interface scale). The window may still show it
 // narrower or wider than this, see panel_width_pixels in layout.hpp.
 inline constexpr int panel_width_default = 440;
+// What 0.3.x wrote for panel_width whatever the user had chosen: its default.
+inline constexpr int panel_width_before_0_4 = 320;
+// The value of the preferences_version key written now.
+inline constexpr int preferences_version = 1;
 inline constexpr int panel_width_min = 240;
 inline constexpr int panel_width_max = 1200;
 

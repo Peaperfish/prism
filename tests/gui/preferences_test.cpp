@@ -138,11 +138,57 @@ TEST(Preferences, SerializeAndParseRoundTrip) {
     const Preferences p = customised();
     const std::string text = prism::gui::serialize_preferences(p);
     EXPECT_EQ(text,
-              "# Prism preferences\ntheme=light\ninterface_size=150\npanel_width=400\n"
+              "# Prism preferences\npreferences_version=1\ntheme=light\ninterface_size=150\npanel_width=400\n"
               "scope=vectorscope\nclip_overlay=on\nshow_explanations=off\n");
     EXPECT_EQ(prism::gui::parse_preferences(text), p);
     EXPECT_EQ(prism::gui::parse_preferences(prism::gui::serialize_preferences(Preferences{})),
               Preferences{});
+}
+
+// What 0.3.1's serialize_preferences wrote for the defaults (git show v0.3.1:
+// gui_core/src/preferences.cpp): every key, panel_width=320 among them.
+constexpr const char* v0_3_1_defaults =
+    "# Prism preferences\ntheme=system\ninterface_size=auto\npanel_width=320\nscope=histogram\n"
+    "clip_overlay=off\nshow_explanations=on\n";
+
+TEST(Preferences, A031FileWithItsDefaultWidthLoadsAsTheNewDefault) {
+    EXPECT_EQ(prism::gui::parse_preferences(v0_3_1_defaults), Preferences{});
+    EXPECT_EQ(prism::gui::parse_preferences(v0_3_1_defaults).panel_width, 440);
+    // The same with Windows line ends, and with the key anywhere in the file.
+    EXPECT_EQ(prism::gui::parse_preferences("panel_width=320\r\ntheme=dark\r\n").panel_width, 440);
+    EXPECT_EQ(prism::gui::parse_preferences("theme=dark\npanel_width = 320\n").panel_width, 440);
+}
+
+TEST(Preferences, A031FileWithAnotherWidthKeepsIt) {
+    const std::string text =
+        "# Prism preferences\ntheme=dark\ninterface_size=150\npanel_width=400\nscope=parade\n"
+        "clip_overlay=on\nshow_explanations=off\n";
+    const Preferences p = prism::gui::parse_preferences(text);
+    EXPECT_EQ(p.panel_width, 400);
+    // Every other key loads as it always did.
+    EXPECT_EQ(p.theme, prism::gui::ThemeChoice::dark);
+    EXPECT_EQ(p.interface_size, 150);
+    EXPECT_EQ(p.scope, prism::gui::ScopeChoice::parade);
+    EXPECT_TRUE(p.clip_overlay);
+    EXPECT_FALSE(p.show_explanations);
+    EXPECT_EQ(prism::gui::parse_preferences("panel_width=321\n").panel_width, 321);
+    EXPECT_EQ(prism::gui::parse_preferences("panel_width=319\n").panel_width, 319);
+    EXPECT_EQ(prism::gui::parse_preferences("panel_width=320px\n").panel_width, 440);  // not a number
+}
+
+TEST(Preferences, AFileWithTheVersionKeyIsTakenAsWritten) {
+    EXPECT_EQ(prism::gui::parse_preferences("preferences_version=1\npanel_width=320\n").panel_width, 320);
+    // Wherever the key is.
+    EXPECT_EQ(prism::gui::parse_preferences("panel_width=320\npreferences_version=1\n").panel_width, 320);
+    EXPECT_TRUE(prism::gui::parse_preferences("preferences_version=1\n").unknown.empty());
+    // What is written now, with 320 chosen, comes back as 320.
+    Preferences p;
+    p.panel_width = 320;
+    EXPECT_EQ(prism::gui::parse_preferences(prism::gui::serialize_preferences(p)).panel_width, 320);
+    // The file written for the defaults has the key, and the default width.
+    const std::string defaults = prism::gui::serialize_preferences(Preferences{});
+    EXPECT_NE(defaults.find("preferences_version=1\n"), std::string::npos);
+    EXPECT_EQ(prism::gui::parse_preferences(defaults).panel_width, 440);
 }
 
 TEST(Preferences, TheClippingOverlayIsOffByDefaultAndRemembered) {

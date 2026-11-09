@@ -150,6 +150,8 @@ float interface_scale(const Preferences& prefs, float display_scale) {
 
 Preferences parse_preferences(std::string_view text) {
     Preferences prefs;
+    bool has_version = false;
+    std::optional<int> panel_width_written;
     while (!text.empty()) {
         const std::size_t newline = text.find('\n');
         std::string_view line = trim(text.substr(0, newline));
@@ -161,14 +163,17 @@ Preferences parse_preferences(std::string_view text) {
         }
         const std::string_view key = trim(line.substr(0, equals));
         const std::string_view value = trim(line.substr(equals + 1));
-        if (key == "theme") {
+        if (key == "preferences_version") {
+            has_version = true;
+        } else if (key == "theme") {
             prefs.theme = parse_theme(value).value_or(ThemeChoice::system);
         } else if (key == "interface_size") {
             const std::optional<int> percent = value == "auto" ? interface_size_auto
                                                                : parse_int(value);
             prefs.interface_size = clamp_interface_size(percent.value_or(interface_size_auto));
         } else if (key == "panel_width") {
-            prefs.panel_width = clamp_panel_width(parse_int(value).value_or(panel_width_default));
+            panel_width_written = parse_int(value);
+            prefs.panel_width = clamp_panel_width(panel_width_written.value_or(panel_width_default));
         } else if (key == "scope") {
             prefs.scope = parse_scope(value).value_or(ScopeChoice::histogram);
         } else if (key == "clip_overlay") {
@@ -181,12 +186,17 @@ Preferences parse_preferences(std::string_view text) {
             prefs.unknown.emplace_back(std::string(key), std::string(value));
         }
     }
+    // 0.3.x wrote its default width into every file, so a bare 320 is not a choice.
+    if (!has_version && panel_width_written == panel_width_before_0_4) {
+        prefs.panel_width = panel_width_default;
+    }
     return prefs;
 }
 
 std::string serialize_preferences(const Preferences& prefs) {
     const int size = clamp_interface_size(prefs.interface_size);
     std::string text = "# Prism preferences\n";
+    text += "preferences_version=" + std::to_string(preferences_version) + "\n";
     text += "theme=" + std::string(theme_name(prefs.theme)) + "\n";
     text += "interface_size=" +
             (size == interface_size_auto ? std::string("auto") : std::to_string(size)) + "\n";
