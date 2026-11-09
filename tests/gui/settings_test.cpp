@@ -70,7 +70,7 @@ TEST(EditSettings, DefaultsLeaveTheImageUnchanged) {
     const EditSettings s;
     EXPECT_TRUE(prism::gui::validate(s).empty());
     EXPECT_EQ(bits(processed(s)), bits(make_image()));
-    EXPECT_EQ(prism::gui::simple_from(s), (SimpleControls{0, 0, 0}));
+    EXPECT_EQ(prism::gui::simple_from(s), (SimpleControls{0, 0}));
 }
 
 TEST(EditSettings, EqualityComparesEveryField) {
@@ -219,73 +219,64 @@ TEST(MatrixFile, LoadsAFileAndReportsBadOnes) {
 TEST(SimpleControls, NeutralSlidersGiveExactlyNeutralSettings) {
     EditSettings s;
     s.exposure_stops = 1.0f;
-    s.contrast = 2.0f;
     s.saturation = 0.3f;
-    prism::gui::apply_simple(s, {0, 0, 0});
-    // Exactly 0, 1 and 1 (not merely close), so process() skips these stages.
+    prism::gui::apply_simple(s, {0, 0});
+    // Exactly 0 and 1 (not merely close), so process() skips these stages.
     EXPECT_EQ(s, EditSettings{});
 }
 
 TEST(SimpleControls, ExtremesMapToTheDocumentedValues) {
     EditSettings s;
-    prism::gui::apply_simple(s, {100, 100, 100});
+    prism::gui::apply_simple(s, {100, 100});
     EXPECT_FLOAT_EQ(s.exposure_stops, 2.0f);
-    EXPECT_FLOAT_EQ(s.contrast, 1.5f);
     EXPECT_FLOAT_EQ(s.saturation, 2.0f);
 
-    prism::gui::apply_simple(s, {-100, -100, -100});
+    prism::gui::apply_simple(s, {-100, -100});
     EXPECT_FLOAT_EQ(s.exposure_stops, -2.0f);
-    EXPECT_FLOAT_EQ(s.contrast, 1.0f / 1.5f);
     EXPECT_FLOAT_EQ(s.saturation, 0.0f);  // black and white
     EXPECT_TRUE(prism::gui::validate(s).empty());
 }
 
-TEST(SimpleControls, HalfwayPointsAreOneStopAndMirrorImages) {
+TEST(SimpleControls, HalfwayPointsAreOneStopAndHalfwayToBlackAndWhite) {
     EditSettings s;
-    prism::gui::apply_simple(s, {50, 50, 50});
+    prism::gui::apply_simple(s, {50, 50});
     EXPECT_FLOAT_EQ(s.exposure_stops, 1.0f);
     EXPECT_FLOAT_EQ(s.saturation, 1.5f);
-    const float up = s.contrast;
-    prism::gui::apply_simple(s, {-50, -50, -50});
+    prism::gui::apply_simple(s, {-50, -50});
     EXPECT_FLOAT_EQ(s.exposure_stops, -1.0f);
     EXPECT_FLOAT_EQ(s.saturation, 0.5f);
-    EXPECT_FLOAT_EQ(std::log2(up), -std::log2(s.contrast));  // same number of stops each way
 }
 
 TEST(SimpleControls, PositionsBeyondTheEndsAreClamped) {
     EditSettings s;
-    prism::gui::apply_simple(s, {250, -300, std::numeric_limits<float>::quiet_NaN()});
+    prism::gui::apply_simple(s, {250, std::numeric_limits<float>::quiet_NaN()});
     EXPECT_FLOAT_EQ(s.exposure_stops, 2.0f);
-    EXPECT_FLOAT_EQ(s.contrast, 1.0f / 1.5f);
     EXPECT_EQ(s.saturation, 1.0f);
+    prism::gui::apply_simple(s, {-300, -300});
+    EXPECT_FLOAT_EQ(s.exposure_stops, -2.0f);
+    EXPECT_EQ(s.saturation, 0.0f);
 }
 
 TEST(SimpleControls, ReadingBackGivesTheSliderPositions) {
     for (int b = -100; b <= 100; b += 10) {
-        for (int c = -100; c <= 100; c += 25) {
-            EditSettings s;
-            const SimpleControls in{static_cast<float>(b), static_cast<float>(c),
-                                    static_cast<float>(-b)};
-            prism::gui::apply_simple(s, in);
-            const SimpleControls out = prism::gui::simple_from(s);
-            EXPECT_NEAR(out.brightness, in.brightness, 1e-3) << b << " " << c;
-            EXPECT_NEAR(out.contrast, in.contrast, 1e-3) << b << " " << c;
-            EXPECT_NEAR(out.colour, in.colour, 1e-3) << b << " " << c;
-            const prism::gui::SimpleOutOfRange range = prism::gui::outside_simple_range(s);
-            EXPECT_FALSE(range.brightness || range.contrast || range.colour);
-        }
+        EditSettings s;
+        const SimpleControls in{static_cast<float>(b), static_cast<float>(-b)};
+        prism::gui::apply_simple(s, in);
+        const SimpleControls out = prism::gui::simple_from(s);
+        EXPECT_NEAR(out.brightness, in.brightness, 1e-3) << b;
+        EXPECT_NEAR(out.colour, in.colour, 1e-3) << b;
+        const prism::gui::SimpleOutOfRange range = prism::gui::outside_simple_range(s);
+        EXPECT_FALSE(range.brightness || range.colour);
     }
 }
 
 TEST(SimpleControls, ValuesFromAdvancedModeBeyondTheSlidersAreFlagged) {
     EditSettings s;
     s.exposure_stops = -3.0f;  // below -2
-    s.contrast = 0.5f;         // below 1 / 1.5
     s.saturation = 3.0f;       // above 2
-    EXPECT_EQ(prism::gui::simple_from(s), (SimpleControls{-100, -100, 100}));
+    EXPECT_EQ(prism::gui::simple_from(s), (SimpleControls{-100, 100}));
     const prism::gui::SimpleOutOfRange range = prism::gui::outside_simple_range(s);
     EXPECT_TRUE(range.brightness);
-    EXPECT_TRUE(range.contrast);
     EXPECT_TRUE(range.colour);
 }
 
@@ -295,11 +286,11 @@ TEST(SimpleControls, StagesThatAreOffShowNeutralAndMovingASliderTurnsThemOn) {
     s.exposure_on = false;
     s.saturation = 3.0f;
     s.saturation_on = false;
-    EXPECT_EQ(prism::gui::simple_from(s), (SimpleControls{0, 0, 0}));
+    EXPECT_EQ(prism::gui::simple_from(s), (SimpleControls{0, 0}));
     EXPECT_FALSE(prism::gui::outside_simple_range(s).colour);
 
-    prism::gui::apply_simple(s, {10, 0, 0});
-    EXPECT_TRUE(s.exposure_on && s.saturation_on && s.contrast_on);
+    prism::gui::apply_simple(s, {10, 0});
+    EXPECT_TRUE(s.exposure_on && s.saturation_on);
 }
 
 TEST(SimpleControls, AdvancedOnlyFieldsAreLeftAlone) {
@@ -310,9 +301,8 @@ TEST(SimpleControls, AdvancedOnlyFieldsAreLeftAlone) {
     s.matrix = prism::gui::MatrixFile{"grade.txt", prism::identity_matrix};
     s.raw_half_size = true;
     EditSettings expected = s;
-    prism::gui::apply_simple(s, {40, -20, 60});
+    prism::gui::apply_simple(s, {40, 60});
     expected.exposure_stops = s.exposure_stops;
-    expected.contrast = s.contrast;
     expected.saturation = s.saturation;
     EXPECT_EQ(s, expected);
 }
@@ -333,18 +323,13 @@ TEST(SimpleControls, OneSliderSetsOnlyItsOwnField) {
     expected.saturation = 0.0f;
     expected.saturation_on = true;
     EXPECT_EQ(s, expected);
-
-    prism::gui::apply_simple_control(s, prism::gui::SimpleControl::contrast, 500);  // clamped
-    expected.contrast = 1.5f;
-    EXPECT_EQ(s, expected);
 }
 
-TEST(SimpleControls, ApplySimpleEqualsTheThreeSlidersOneByOne) {
+TEST(SimpleControls, ApplySimpleEqualsTheTwoSlidersOneByOne) {
     EditSettings a;
     EditSettings b;
-    prism::gui::apply_simple(a, {30, -40, 70});
+    prism::gui::apply_simple(a, {30, 70});
     prism::gui::apply_simple_control(b, prism::gui::SimpleControl::brightness, 30);
-    prism::gui::apply_simple_control(b, prism::gui::SimpleControl::contrast, -40);
     prism::gui::apply_simple_control(b, prism::gui::SimpleControl::colour, 70);
     EXPECT_EQ(a, b);
 }

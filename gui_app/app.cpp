@@ -2716,7 +2716,7 @@ void App::draw_light_path_panel() {
     };
     cb.reset_slider = [this](gui::SimpleControl control) {
         gui::EditSettings s = session_.settings();
-        gui::apply_simple_control(s, control, 0);
+        gui::reset_simple_control(s, control);
         report(session_.set_settings(s));
     };
     cb.set_curve_kind = [this](gui::CurveKind kind) {

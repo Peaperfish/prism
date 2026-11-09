@@ -37,9 +37,8 @@ namespace prism::gui {
 [[nodiscard]] std::optional<float> typed_row_value(SimpleControl control, std::string_view text);
 
 // The slider position `text` stands for, converted through the settings maps and clamped to the
-// slider's range (for Contrast that is the older -100 to +100 map; the window's Contrast slider is
-// in half grades and uses typed_row_value) (a typed ×5 Contrast is the slider's top end); nothing if the text is rejected,
-// so the value stays.
+// slider's range; nothing if the text is rejected, so the value stays. Not for Contrast, whose
+// slider is in half grades: it always gives nothing (typed_row_value reads its text).
 [[nodiscard]] std::optional<float> typed_slider_position(SimpleControl control,
                                                          std::string_view text);
 

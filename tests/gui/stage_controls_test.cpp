@@ -7,6 +7,7 @@
 #include <limits>
 #include <string>
 
+#include "prism/gui/paper_grade.hpp"
 #include "prism/gui/stage_controls.hpp"
 
 using prism::gui::CurveKind;
@@ -19,14 +20,12 @@ namespace {
 constexpr SimpleControl all_controls[] = {SimpleControl::brightness, SimpleControl::contrast,
                                           SimpleControl::colour};
 
+// The controls with a position on the -100 to +100 scale; Contrast's slider is in paper grades.
+constexpr SimpleControl scale_controls[] = {SimpleControl::brightness, SimpleControl::colour};
+
 float position_of(const EditSettings& s, SimpleControl control) {
     const prism::gui::SimpleControls c = prism::gui::simple_from(s);
-    switch (control) {
-        case SimpleControl::brightness: return c.brightness;
-        case SimpleControl::contrast: return c.contrast;
-        case SimpleControl::colour: return c.colour;
-    }
-    return 0.0f;
+    return control == SimpleControl::brightness ? c.brightness : c.colour;
 }
 
 }  // namespace
@@ -63,26 +62,43 @@ TEST(StageSlider, EndsAndMiddleGiveTheDocumentedValues) {
     prism::gui::apply_simple_control(s, SimpleControl::colour, 0);
     EXPECT_EQ(s.saturation, 1.0f);
 
-    prism::gui::apply_simple_control(s, SimpleControl::contrast, 100);
-    EXPECT_FLOAT_EQ(s.contrast, 1.5f);
-    prism::gui::apply_simple_control(s, SimpleControl::contrast, -100);
-    EXPECT_FLOAT_EQ(s.contrast, 1.0f / 1.5f);
-    prism::gui::apply_simple_control(s, SimpleControl::contrast, 0);
-    EXPECT_EQ(s.contrast, 1.0f);
 }
 
 TEST(StageSlider, SliderToValueToSliderIsTheSameAtBothEndsAndZero) {
-    for (const SimpleControl control : all_controls) {
+    for (const SimpleControl control : scale_controls) {
         for (const float position : {-100.0f, 0.0f, 100.0f}) {
             EditSettings s;
             prism::gui::apply_simple_control(s, control, position);
             EXPECT_NEAR(position_of(s, control), position, 1e-3f)
                 << "control " << static_cast<int>(control) << " at " << position;
             EXPECT_FALSE(prism::gui::outside_simple_range(s).brightness);
-            EXPECT_FALSE(prism::gui::outside_simple_range(s).contrast);
             EXPECT_FALSE(prism::gui::outside_simple_range(s).colour);
         }
     }
+}
+
+TEST(StageSlider, ContrastsResetGivesExactlyOneAndTurnsOnOnlyItsStage) {
+    EditSettings s;
+    s.contrast = prism::gui::contrast_for_grade(3.5f);
+    s.contrast_on = false;
+    s.exposure_stops = 1.0f;
+    s.exposure_on = false;
+    EditSettings expected = s;
+    prism::gui::reset_simple_control(s, SimpleControl::contrast);
+    expected.contrast = 1.0f;
+    expected.contrast_on = true;
+    EXPECT_EQ(s.contrast, 1.0f);
+    EXPECT_EQ(s, expected);
+}
+
+TEST(StageSlider, ContrastHasNoPositionOnTheOldScale) {
+    EditSettings s;
+    s.contrast = 2.0f;
+    s.contrast_on = false;
+    const EditSettings before = s;
+    prism::gui::apply_simple_control(s, SimpleControl::contrast, 50);
+    EXPECT_EQ(s, before);
+    EXPECT_EQ(prism::gui::simple_position_for(SimpleControl::contrast, 1.5f), 0.0f);
 }
 
 TEST(StageSlider, MovingOneSliderLeavesTheOtherFieldsExactlyAsTheyWere) {
@@ -102,13 +118,10 @@ TEST(StageSlider, StageAndSimpleSlidersAgreeBecauseTheyAreOneFunction) {
     // the same position gives the same settings whichever was moved (existing Simple behaviour).
     EditSettings a;
     EditSettings b;
-    prism::gui::apply_simple(a, {30, -40, 70});
-    for (const StageId id : {StageId::exposure, StageId::contrast, StageId::saturation}) {
+    prism::gui::apply_simple(a, {30, 70});
+    for (const StageId id : {StageId::exposure, StageId::saturation}) {
         const SimpleControl c = *prism::gui::stage_slider(id);
-        const float v = c == SimpleControl::brightness ? 30.0f
-                        : c == SimpleControl::contrast ? -40.0f
-                                                       : 70.0f;
-        prism::gui::apply_simple_control(b, c, v);
+        prism::gui::apply_simple_control(b, c, c == SimpleControl::brightness ? 30.0f : 70.0f);
     }
     EXPECT_EQ(a, b);
 }

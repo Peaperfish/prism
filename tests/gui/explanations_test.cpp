@@ -208,16 +208,15 @@ TEST(LiveLines, ExposureFactorMatchesTheEngineOnAPixel) {
     }
 }
 
-TEST(LiveLines, ContrastIsOnePointFiveToTheSliderOverAHundred) {
+TEST(LiveLines, ContrastLineShowsTheGradeAndTheMultiplier) {
     EditSettings s;
-    apply_simple_control(s, SimpleControl::contrast, 50);
-    EXPECT_NEAR(s.contrast, std::pow(1.5, 0.5), 1e-6);
+    s.contrast = std::pow(1.5f, 0.5f);
     EXPECT_EQ(live_line("stage.contrast", s),
               "Grade 2.8 · ×1.22, each stop near middle grey is 22% wider");
-    apply_simple_control(s, SimpleControl::contrast, -100);
+    s.contrast = std::pow(1.5f, -1.0f);
     EXPECT_EQ(live_line("stage.contrast", s),
               "Softer than grade 0 · ×0.67, each stop near middle grey is 33% narrower");
-    apply_simple_control(s, SimpleControl::contrast, 0);
+    s.contrast = 1.0f;
     EXPECT_EQ(live_line("stage.contrast", s), "Grade 2 · ×1.00, no change");
 }
 
@@ -225,7 +224,7 @@ TEST(LiveLines, ContrastIsOnePointFiveToTheSliderOverAHundred) {
 TEST(LiveLines, ContrastPercentIsTheEnginesSlopeAtMiddleGrey) {
     for (const float position : {-100.0f, -40.0f, 25.0f, 50.0f, 100.0f}) {
         EditSettings s;
-        apply_simple_control(s, SimpleControl::contrast, position);
+        s.contrast = std::pow(1.5f, position / 100.0f);
         const double h = 0.01;
         const double hi = std::log2(contrast_reference(static_cast<float>(0.18 * std::exp2(h)), s.contrast) / 0.18);
         const double lo = std::log2(contrast_reference(static_cast<float>(0.18 * std::exp2(-h)), s.contrast) / 0.18);
@@ -264,9 +263,9 @@ TEST(LiveLines, AStageThatIsOffSaysSoInItsRow) {
     EXPECT_EQ(live_line("stage.exposure", s), "+0.70 stops, 1.62× the light");
 }
 
-TEST(LiveLines, TheSlidersMoveWhatTheRowsSay) {
+TEST(LiveLines, TheControlsMoveWhatTheRowsSay) {
     EditSettings s;
-    apply_simple_control(s, SimpleControl::contrast, 30);
+    s.contrast = std::pow(1.5f, 0.3f);
     apply_simple_control(s, SimpleControl::colour, -20);
     EXPECT_NE(live_line("stage.contrast", s).find(" · ×1.13,"), std::string::npos);
     EXPECT_EQ(live_line("stage.saturation", s), "×0.80 colour");
@@ -511,7 +510,7 @@ TEST(LiveLines, ThePreviewSizeIsEmptyWithoutAPhoto) {
 
 TEST(LiveLines, LiveLinesHaveNoPlaceholdersAndUseTheTimesSign) {
     EditSettings s = with_exposure_at(12);
-    apply_simple_control(s, SimpleControl::contrast, -33);
+    s.contrast = std::pow(1.5f, -0.33f);
     set_curve_kind(s, CurveKind::reinhard);
     StageHistogram h;
     h.pixel_count = 10;
@@ -583,7 +582,7 @@ TEST(Explanations, NoTextEverSaysBrightness) {
     for (const CurveKind kind :
          {CurveKind::none, CurveKind::gamma, CurveKind::reinhard, CurveKind::filmic}) {
         EditSettings s;
-        apply_simple_control(s, SimpleControl::contrast, 33);
+        s.contrast = std::pow(1.5f, 0.33f);
         apply_simple_control(s, SimpleControl::colour, -50);
         set_curve_kind(s, kind);
         settings.push_back(s);

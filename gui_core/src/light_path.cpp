@@ -141,12 +141,6 @@ LightPathRow light_path_row(const LightPathInputs& in, StageId stage) {
             const SimpleControls positions = simple_from(s);
             const SimpleOutOfRange beyond = outside_simple_range(s);
             row.slider = control;
-            row.slider_position = control == SimpleControl::brightness ? positions.brightness
-                                  : control == SimpleControl::contrast ? positions.contrast
-                                                                       : positions.colour;
-            row.beyond_slider = control == SimpleControl::brightness ? beyond.brightness
-                                : control == SimpleControl::contrast ? beyond.contrast
-                                                                     : beyond.colour;
             if (control == SimpleControl::contrast) {
                 // Contrast's slider is in half grades (0 to 10), snapped; an off-grid value shows
                 // at the nearest one and is left alone until the slider is moved.
@@ -154,6 +148,11 @@ LightPathRow light_path_row(const LightPathInputs& in, StageId stage) {
                 row.slider_position = s.contrast_on ? grade_slider_position(s.contrast)
                                                     : static_cast<float>(grade_slider_neutral);
                 row.beyond_slider = s.contrast_on && reading.end != GradeEnd::within;
+            } else {
+                row.slider_position = control == SimpleControl::brightness ? positions.brightness
+                                                                           : positions.colour;
+                row.beyond_slider = control == SimpleControl::brightness ? beyond.brightness
+                                                                         : beyond.colour;
             }
             row.slider_reset = "Reset to " + stage_value_text(EditSettings{}, stage);
             row.slider_typed = typed_field_text(s, control);

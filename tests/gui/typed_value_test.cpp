@@ -161,35 +161,33 @@ TEST(TypedValue, ExposureIsConvertedThroughTheStopsMap) {
     EXPECT_EQ(*prism::gui::typed_slider_position(SimpleControl::brightness, "-9 stops"), -100.0f);
 }
 
-TEST(TypedValue, SaturationAndContrastAreConvertedThroughTheirMaps) {
+TEST(TypedValue, SaturationIsConvertedThroughItsMap) {
     EXPECT_FLOAT_EQ(*prism::gui::typed_slider_position(SimpleControl::colour, "1.2"), 20.0f);
     EXPECT_FLOAT_EQ(*prism::gui::typed_slider_position(SimpleControl::colour, "1"), 0.0f);
     EXPECT_FLOAT_EQ(*prism::gui::typed_slider_position(SimpleControl::colour, "0"), -100.0f);
     EXPECT_EQ(*prism::gui::typed_slider_position(SimpleControl::colour, "3"), 100.0f);
     EXPECT_EQ(*prism::gui::typed_slider_position(SimpleControl::colour, "-4"), -100.0f);
-    EXPECT_NEAR(*prism::gui::typed_slider_position(SimpleControl::contrast, "1.5x"), 100.0f, 1e-3f);
-    EXPECT_FLOAT_EQ(*prism::gui::typed_slider_position(SimpleControl::contrast, "1x"), 0.0f);
-    EXPECT_EQ(*prism::gui::typed_slider_position(SimpleControl::contrast, "5x"), 100.0f);
-    EXPECT_EQ(*prism::gui::typed_slider_position(SimpleControl::contrast, "0.1x"), -100.0f);
-    // No slider position gives a contrast of 0 or less: the low end.
-    EXPECT_EQ(*prism::gui::typed_slider_position(SimpleControl::contrast, "0x"), -100.0f);
-    EXPECT_EQ(*prism::gui::typed_slider_position(SimpleControl::contrast, "-2x"), -100.0f);
 }
 
 TEST(TypedValue, SimplePositionForIsTheInverseOfApplySimpleControl) {
-    for (const SimpleControl control :
-         {SimpleControl::brightness, SimpleControl::contrast, SimpleControl::colour}) {
+    for (const SimpleControl control : {SimpleControl::brightness, SimpleControl::colour}) {
         for (float position = -100.0f; position <= 100.0f; position += 12.5f) {
             EditSettings s;
             prism::gui::apply_simple_control(s, control, position);
-            const float value = control == SimpleControl::brightness ? s.exposure_stops
-                                : control == SimpleControl::contrast ? s.contrast
-                                                                     : s.saturation;
+            const float value =
+                control == SimpleControl::brightness ? s.exposure_stops : s.saturation;
             EXPECT_NEAR(prism::gui::simple_position_for(control, value), position, 1e-3f)
                 << position;
         }
     }
     EXPECT_EQ(prism::gui::simple_position_for(SimpleControl::colour, std::nanf("")), 0.0f);
+}
+
+TEST(TypedValue, ContrastHasNoSliderPositionOnTheOldScale) {
+    for (const std::string_view text : {"1.5x", "1x", "3", "grade 4", "\xC3\x97" "1.2"}) {
+        EXPECT_TRUE(prism::gui::typed_row_value(SimpleControl::contrast, text)) << text;
+        EXPECT_FALSE(prism::gui::typed_slider_position(SimpleControl::contrast, text)) << text;
+    }
 }
 
 // Typed value -> field -> value line: the line shows what was typed, to the line's two places.

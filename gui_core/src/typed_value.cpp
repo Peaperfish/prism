@@ -195,6 +195,9 @@ std::optional<float> typed_row_value(SimpleControl control, std::string_view tex
 }
 
 std::optional<float> typed_slider_position(SimpleControl control, std::string_view text) {
+    if (control == SimpleControl::contrast) {
+        return std::nullopt;
+    }
     const std::optional<float> value = typed_row_value(control, text);
     if (!value) {
         return std::nullopt;

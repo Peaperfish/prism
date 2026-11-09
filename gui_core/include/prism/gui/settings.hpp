@@ -122,14 +122,15 @@ void set_stage_enabled(EditSettings& s, StageId id, bool enabled) noexcept;
 
 // --- The stage sliders ---------------------------------------------------------------------------
 //
-// Exposure, Saturation and Contrast have sliders from -100 to +100, each an invertible map onto one
-// field of EditSettings (plan section 7):
+// Exposure and Saturation have sliders from -100 to +100, each an invertible map onto one field of
+// EditSettings (plan section 7):
 //
 //   brightness b -> exposure_stops = b / 50          (-2 to +2 stops; 50 = +1 stop)
-//   contrast   c -> contrast       = 1.5^(c / 100)   (0.667 to 1.5; geometric, so -50 and +50
-//                                                     are mirror images in stops)
 //   colour     k -> saturation     = 1 + k / 100     (-100 = black and white, +100 = 2.0)
 //
+// Contrast's slider is not one of these: it is in half grades (paper_grade.hpp) and has no position
+// in this scale.
+
 // A field outside what its slider can show (e.g. saturation 3, from a recipe) is shown at
 // the slider's end, and outside_simple_range says so (the row says "beyond the slider"); moving the
 // slider then takes it over. A stage that is off shows as 0, its neutral position.
@@ -139,42 +140,44 @@ inline constexpr float simple_max = 100.0f;
 
 struct SimpleControls {
     float brightness = 0.0f;
-    float contrast = 0.0f;
     float colour = 0.0f;
 
     bool operator==(const SimpleControls&) const = default;
 };
 
-// Where the sliders sit for these settings, each clamped to [-100, +100].
+// Where the Exposure and Saturation sliders sit for these settings, each clamped to [-100, +100].
 [[nodiscard]] SimpleControls simple_from(const EditSettings& s);
 
 // Which fields the sliders cannot show exactly (they are at the slider's end instead).
 struct SimpleOutOfRange {
     bool brightness = false;
-    bool contrast = false;
     bool colour = false;
 };
 [[nodiscard]] SimpleOutOfRange outside_simple_range(const EditSettings& s);
 
-// Sets exposure, contrast and saturation from the sliders (each clamped to [-100, +100] first)
-// and turns those three stages on. Nothing else changes: the matrix, curve and RAW options are
-// not the sliders' and stay as they are.
+// Sets exposure and saturation from the sliders (each clamped to [-100, +100] first) and turns
+// those two stages on. Nothing else changes: contrast, the matrix, curve and RAW options are not
+// these sliders' and stay as they are.
 void apply_simple(EditSettings& s, const SimpleControls& c);
 
 // One of the sliders, for when the user moves just that one.
 enum class SimpleControl { brightness, contrast, colour };
 
 // Sets only the field behind `control` from its slider position (clamped to [-100, +100]) and
-// turns only that stage on. Unlike apply_simple, the other two fields stay exactly as they are,
-// even when they lie beyond their own sliders' ends or their stages are off: moving Exposure's
-// slider must not quietly clamp a saturation of 3 that a recipe set.
+// turns only that stage on. Unlike apply_simple, the other fields stay exactly as they are, even
+// when they lie beyond their own sliders' ends or their stages are off: moving Exposure's slider
+// must not quietly clamp a saturation of 3 that a recipe set. Contrast has no position in this
+// scale: for it this changes nothing (apply_contrast and reset_simple_control are its ways in).
 void apply_simple_control(EditSettings& s, SimpleControl control, float position);
 
 // The slider position (clamped to [-100, +100]) that gives `value` in the field behind `control`,
-// in that field's own unit: stops for brightness (exposure_stops), the multiplier for contrast
-// (contrast) and for colour (saturation). The inverse of apply_simple_control, for a value typed
-// in the unit a row's value line shows. NaN gives 0; a contrast of 0 or less, which no slider
-// position makes, gives the slider's low end.
+// in that field's own unit: stops for brightness (exposure_stops), the multiplier for colour
+// (saturation). The inverse of apply_simple_control, for a value typed in the unit a row's value
+// line shows. NaN gives 0. Contrast has no position in this scale and always gives 0.
 [[nodiscard]] float simple_position_for(SimpleControl control, float value);
+
+// Puts the field behind `control` back to neutral (exposure 0 stops, saturation 1, contrast exactly
+// 1.0) and turns only that stage on.
+void reset_simple_control(EditSettings& s, SimpleControl control);
 
 }  // namespace prism::gui

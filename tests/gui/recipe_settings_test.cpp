@@ -16,6 +16,7 @@
 #endif
 
 #include "prism/gui/explanations.hpp"
+#include "prism/gui/paper_grade.hpp"
 #include "prism/gui/presets.hpp"
 #include "prism/gui/recipe_settings.hpp"
 #include "prism/gui/session.hpp"
@@ -300,8 +301,7 @@ TEST(RecipeSettings, EverySimpleSliderPositionSurvivesSaving) {
     prism::gui::apply_preset(natural, prism::gui::default_preset(prism::gui::InputKind::raw));
     for (const EditSettings& start : {EditSettings{}, natural}) {
         for (const prism::gui::SimpleControl control :
-             {prism::gui::SimpleControl::brightness, prism::gui::SimpleControl::contrast,
-              prism::gui::SimpleControl::colour}) {
+             {prism::gui::SimpleControl::brightness, prism::gui::SimpleControl::colour}) {
             for (int quarter = -400; quarter <= 400; ++quarter) {
                 EditSettings s = start;
                 prism::gui::apply_simple_control(s, control, static_cast<float>(quarter) / 4.0f);
@@ -309,6 +309,13 @@ TEST(RecipeSettings, EverySimpleSliderPositionSurvivesSaving) {
                 ASSERT_EQ(back, s) << "position " << quarter / 4.0;
                 ASSERT_EQ(prism::gui::simple_from(back), prism::gui::simple_from(s));
             }
+        }
+        // Contrast's slider: every half grade, from 0 to 5.
+        for (int position = 0; position <= 10; ++position) {
+            EditSettings s = start;
+            prism::gui::apply_contrast(s, prism::gui::contrast_for_grade_position(
+                                              static_cast<float>(position)));
+            ASSERT_EQ(saved_and_applied(s), s) << "grade position " << position;
         }
     }
 }
@@ -547,12 +554,17 @@ TEST(RecipeComments, EachNumberIsTheOneTheExplainAreaShows) {
     std::vector<EditSettings> all = reachable_without_matrix();
     for (int position = -100; position <= 100; position += 5) {
         for (const prism::gui::SimpleControl control :
-             {prism::gui::SimpleControl::brightness, prism::gui::SimpleControl::contrast,
-              prism::gui::SimpleControl::colour}) {
+             {prism::gui::SimpleControl::brightness, prism::gui::SimpleControl::colour}) {
             EditSettings s;
             prism::gui::apply_simple_control(s, control, static_cast<float>(position));
             all.push_back(s);
         }
+    }
+    for (int position = 0; position <= 10; ++position) {
+        EditSettings s;
+        prism::gui::apply_contrast(s, prism::gui::contrast_for_grade_position(
+                                          static_cast<float>(position)));
+        all.push_back(s);
     }
     for (const EditSettings& s : all) {
         const std::string text = prism::write_recipe(prism::gui::recipe_from(s));

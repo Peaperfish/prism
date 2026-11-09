@@ -12,9 +12,6 @@ namespace prism::gui {
 
 namespace {
 
-// Contrast's slider mapping: contrast = base^(slider / 100).
-constexpr float simple_contrast_base = 1.5f;
-
 // The shortest decimal text that reads back as exactly `v` (std::to_chars guarantees that).
 std::string shortest(float v) {
     char buffer[32];
@@ -42,12 +39,10 @@ float clamp_simple(float v) {
     return std::isnan(v) ? 0.0f : std::clamp(v, simple_min, simple_max);
 }
 
-// The three fields' slider positions, not yet clamped. A stage that is off is at 0.
+// The two fields' slider positions, not yet clamped. A stage that is off is at 0.
 SimpleControls unclamped_simple(const EditSettings& s) {
     SimpleControls c;
     c.brightness = s.exposure_on ? s.exposure_stops * 50.0f : 0.0f;
-    c.contrast =
-        s.contrast_on ? 100.0f * std::log(s.contrast) / std::log(simple_contrast_base) : 0.0f;
     c.colour = s.saturation_on ? (s.saturation - 1.0f) * 100.0f : 0.0f;
     return c;
 }
@@ -190,17 +185,16 @@ ProcessSettings to_process_settings(const EditSettings& s, StageId stop_after) {
 
 SimpleControls simple_from(const EditSettings& s) {
     const SimpleControls c = unclamped_simple(s);
-    return {clamp_simple(c.brightness), clamp_simple(c.contrast), clamp_simple(c.colour)};
+    return {clamp_simple(c.brightness), clamp_simple(c.colour)};
 }
 
 SimpleOutOfRange outside_simple_range(const EditSettings& s) {
     const SimpleControls c = unclamped_simple(s);
-    return {outside(c.brightness), outside(c.contrast), outside(c.colour)};
+    return {outside(c.brightness), outside(c.colour)};
 }
 
 void apply_simple(EditSettings& s, const SimpleControls& c) {
     apply_simple_control(s, SimpleControl::brightness, c.brightness);
-    apply_simple_control(s, SimpleControl::contrast, c.contrast);
     apply_simple_control(s, SimpleControl::colour, c.colour);
 }
 
@@ -211,9 +205,7 @@ void apply_simple_control(EditSettings& s, SimpleControl control, float position
             s.exposure_on = true;
             break;
         case SimpleControl::contrast:
-            s.contrast = std::pow(simple_contrast_base, clamp_simple(position) / 100.0f);
-            s.contrast_on = true;
-            break;
+            break;  // no position in this scale: Contrast is in paper grades
         case SimpleControl::colour:
             s.saturation = 1.0f + clamp_simple(position) / 100.0f;
             s.saturation_on = true;
@@ -227,13 +219,19 @@ float simple_position_for(SimpleControl control, float value) {
     }
     switch (control) {
         case SimpleControl::brightness: return clamp_simple(value * 50.0f);
-        case SimpleControl::contrast:
-            return value > 0.0f
-                       ? clamp_simple(100.0f * std::log(value) / std::log(simple_contrast_base))
-                       : simple_min;
+        case SimpleControl::contrast: return 0.0f;  // no position in this scale
         case SimpleControl::colour: return clamp_simple((value - 1.0f) * 100.0f);
     }
     return 0.0f;
+}
+
+void reset_simple_control(EditSettings& s, SimpleControl control) {
+    if (control == SimpleControl::contrast) {
+        s.contrast = 1.0f;
+        s.contrast_on = true;
+        return;
+    }
+    apply_simple_control(s, control, 0.0f);
 }
 
 }  // namespace prism::gui
