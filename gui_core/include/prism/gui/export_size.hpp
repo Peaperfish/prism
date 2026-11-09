@@ -1,6 +1,9 @@
 #pragma once
 
 #include <optional>
+#include <string>
+
+#include "prism/resize.hpp"
 
 namespace prism::gui {
 
@@ -28,5 +31,31 @@ struct ExportSize {
 // ExportSize (long side < 1, percent outside 1..100) also gives nothing.
 [[nodiscard]] std::optional<int> export_long_side(const ExportSize& size, int file_width,
                                                   int file_height);
+
+// What an export will really write. `start` is the size it decodes at: the file's own size, or for
+// a RAW file with half-size decoding the half-size decode (Session::export_start_size). `size` is
+// what is saved: `start`, or smaller. `long_side` is set only when the export reduces the image,
+// so it is also the number a reduced export's file name carries (suggested_export_path).
+struct ExportPlan {
+    PixelSize start;
+    PixelSize size;
+    std::optional<int> long_side;
+
+    [[nodiscard]] bool reduced() const noexcept { return long_side.has_value(); }
+};
+
+// The plan for `size` on a file of `file` pixels that is decoded at `start`. The wanted side comes
+// from the FILE's size (export_long_side), but the image only shrinks if the decode is larger than
+// it: 50% of a 6000 x 4000 RAW is 3000, and its half-size decode (3000 x 2000) is already that.
+// The shorter side is worked out as downscale() does.
+[[nodiscard]] ExportPlan plan_export(const ExportSize& size, PixelSize file, PixelSize start);
+
+// The Export sheet's result line, with the real multiplication sign and no digit grouping:
+// "Exports at 2048 x 1365" when reduced, "Not smaller than the photo: exports at full size, W x H"
+// when a size was asked for that does not reduce it, "Exports at full size, W x H" for Original.
+[[nodiscard]] std::string export_result_text(const ExportSize& size, const ExportPlan& plan);
+
+// The sheet's value row for Original: "Full size, W x H" with the file's size.
+[[nodiscard]] std::string export_original_text(PixelSize file);
 
 }  // namespace prism::gui

@@ -130,6 +130,20 @@ public:
         return prism::gui::export_long_side(export_size_, file_width_, file_height_);
     }
 
+    // The size an export decodes at before any reduction: the file's own size, or for a RAW file
+    // with raw_half_size on, the half-size decode (the size the file was opened at). Zero before
+    // a file is open.
+    [[nodiscard]] PixelSize export_start_size() const {
+        if (kind_ == InputKind::raw && settings().raw_half_size) {
+            return {decoded_width_, decoded_height_};
+        }
+        return {file_width_, file_height_};
+    }
+    // What the current export size will write, for the open file and settings (see plan_export).
+    [[nodiscard]] ExportPlan export_plan() const {
+        return plan_export(export_size_, {file_width_, file_height_}, export_start_size());
+    }
+
     // A copy of what export_image() needs for the current file, settings and export size.
     [[nodiscard]] ExportJob export_job() const;
 

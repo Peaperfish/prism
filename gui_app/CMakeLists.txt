@@ -33,6 +33,7 @@ configure_file(fonts.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/fonts.cpp @ONLY)
 # prism_gui_app_tests can drive it with a headless ImGui.
 add_library(prism_gui_panels STATIC
   active_control.cpp
+  export_sheet.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/fonts.cpp
   light_path.cpp
   scopes_panel.cpp

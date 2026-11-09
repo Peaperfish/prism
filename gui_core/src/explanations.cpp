@@ -68,6 +68,13 @@ constexpr Explanation templates[] = {
     {"recipe.description", "One optional line on what the recipe is for.",
      "Written as description in the file, and shown when you point at the recipe's name after "
      "loading it. Prism suggests the one the recipe or look has. Leave it empty to write none."},
+    {"export.size", "Export at the photo's size, or smaller.",
+     "Long side sets the longer side in pixels, Percent a share of the photo's own size. The "
+     "photo is reduced by averaging the light in each area, and never enlarged. Prism remembers "
+     "your choice."},
+    {"export.value", "The number of pixels or percent to export at.",
+     "Long side takes any whole number from 1 up; Percent takes 1 to 99. A number outside that "
+     "range is moved to the nearest one when you leave the field."},
 
     // --- Pipeline stages ---------------------------------------------------------------------
     {"stage.decode", "The file turned into linear light.",
@@ -239,10 +246,11 @@ constexpr Explanation templates[] = {
 
 // Ids that have no enum of their own: the controls the window shows beyond the stages, the curve
 // kinds, the scopes and the presets.
-constexpr std::array<std::string_view, 34> other_ids{
+constexpr std::array<std::string_view, 36> other_ids{
     explain::look,         explain::look_reset,   explain::look_view_recipe,
     explain::recipe_load,  explain::recipe_save,
     explain::recipe_loaded, explain::recipe_name, explain::recipe_description,
+    explain::export_size,  explain::export_value,
     explain::curve_white,  explain::curve_gamma_value,
     explain::scope_skin,   explain::chip_over,    explain::chip_under,  explain::clip_overlay,
     explain::clip_dot,     explain::clip_summary, explain::clip_note,   explain::compare,
