@@ -400,13 +400,17 @@ TEST_F(ScopesHeadless, TheReadoutsTooltipHoldsTheClippingSentence) {
     const std::string middle_text = tooltip_at((p.rects.readout_min.x + p.rects.readout_max.x) * 0.5f);
     EXPECT_NE(middle_text.find(data_.clip_sentence), std::string::npos) << middle_text;
     EXPECT_EQ(middle_text.find("R 0."), std::string::npos) << middle_text;
+    const std::string note(gui::readout_overlay_note);
+    EXPECT_EQ(middle_text.find(note), std::string::npos) << middle_text;
     // An end adds its channels, as the old chips' tooltips had them.
     const std::string left_text = tooltip_at(p.rects.readout_min.x + 4.0f);
     EXPECT_NE(left_text.find(data_.clip_sentence), std::string::npos) << left_text;
     EXPECT_NE(left_text.find("Below black:  R 0.10%   G 0.00%   B 0.00%"), std::string::npos) << left_text;
+    EXPECT_NE(left_text.find(note), std::string::npos) << left_text;
     histogram_ = some_histogram(0, 20);
     const std::string right_text = tooltip_at(p.rects.readout_max.x - 4.0f);
     EXPECT_NE(right_text.find("Above white:  R 0.00%   G 2.00%   B 0.00%"), std::string::npos) << right_text;
+    EXPECT_NE(right_text.find(note), std::string::npos) << right_text;
 }
 
 TEST_F(ScopesHeadless, EveryControlAskedForHasAnEntry) {

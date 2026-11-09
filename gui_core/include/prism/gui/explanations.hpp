@@ -127,6 +127,12 @@ inline constexpr std::string_view pref_panel = "pref.panel";
 inline constexpr std::string_view pref_explain = "pref.explain";
 }  // namespace explain
 
+// The line at the foot of the scope readout's tooltip (under the R, G and B figures). The readout
+// counts what is out of range at the stage on view; J also keeps the marks an earlier stage's cut
+// left, so it can show marks while the readout reads 0.0%.
+inline constexpr std::string_view readout_overlay_note =
+    "J also marks pixels an earlier stage cut off, so it can show marks while this reads 0.0%.";
+
 // What a live line may need besides the settings. Anything missing gives an empty line for the
 // entries that need it.
 struct LiveContext {

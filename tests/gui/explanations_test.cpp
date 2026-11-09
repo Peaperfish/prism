@@ -626,6 +626,9 @@ TEST(Explanations, NoTextEverSaysBrightness) {
         }
     }
 
+    EXPECT_TRUE(clean(readout_overlay_note)) << readout_overlay_note;
+    EXPECT_NE(readout_overlay_note.find("J "), std::string_view::npos);
+
     for (const Explanation& e : explanations()) {
         EXPECT_TRUE(clean(e.summary)) << e.id << ": " << e.summary;
         EXPECT_TRUE(clean(e.detail)) << e.id << ": " << e.detail;

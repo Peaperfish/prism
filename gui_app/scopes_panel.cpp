@@ -312,6 +312,9 @@ void draw_readout(const ScopesData& data, ImVec2 at, float width, float height,
             ImGui::TextDisabled("%s  R %.2f%%   G %.2f%%   B %.2f%%",
                                 on_below ? "Below black:" : "Above white:", percent(h.red_clips),
                                 percent(h.green_clips), percent(h.blue_clips));
+            ImGui::PushTextWrapPos(m.tooltip_wrap);
+            ImGui::TextDisabled("%s", std::string(gui::readout_overlay_note).c_str());
+            ImGui::PopTextWrapPos();
         }
         ImGui::EndTooltip();
     }
