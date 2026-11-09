@@ -26,6 +26,7 @@ static_assert(LIBRAW_VERSION == LIBRAW_MAKE_VERSION(PRISM_EXPECT_LIBRAW_MAJOR,
 
 #include "file_ext.hpp"
 #include "prism/utf8_path.hpp"
+#include "prism/white_balance.hpp"
 #include "sample_ranges.hpp"
 
 namespace prism {
@@ -136,6 +137,21 @@ PhotoInfo photo_info_of(const LibRaw& raw) {
         if (ok && std::strftime(buf, sizeof buf, "%Y:%m:%d %H:%M:%S", &local) > 0) {
             info.date_taken = buf;
         }
+    }
+    // The light the camera was balanced for: cam_mul are the multipliers LibRaw applied
+    // (use_camera_wb), cam_xyz the model's XYZ -> camera matrix (its first three rows). This is
+    // the same whether or not the caller supplies its own camera_matrix: the multipliers are
+    // applied either way.
+    const libraw_colordata_t& c = d.color;
+    const std::array<double, 3> cam_mul = {c.cam_mul[0], c.cam_mul[1], c.cam_mul[2]};
+    Mat3 cam_xyz{};
+    for (std::size_t row = 0; row < 3; ++row) {
+        for (std::size_t col = 0; col < 3; ++col) {
+            cam_xyz[row][col] = c.cam_xyz[row][col];
+        }
+    }
+    if (const auto white = as_shot_white(cam_mul, cam_xyz)) {
+        info.as_shot_white_xy = std::array<double, 2>{white->x, white->y};
     }
     return info;
 }

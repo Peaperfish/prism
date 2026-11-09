@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <optional>
 
 #include "prism/camera_profile.hpp"
 #include "prism/pipeline.hpp"
@@ -56,6 +57,15 @@ struct Uv {
 // The light a photo without a known as-shot white is taken to have been lit by: exactly
 // (6500 K, tint 0). For such photos 6500 K / tint 0 is "no change".
 inline constexpr WhiteBalance default_as_shot{6500, 0};
+
+// The light a RAW file was shot under, from the camera's own numbers: `cam_mul` are the white
+// balance multipliers (red, green, blue) it stored for that light, and `cam_xyz` the first three
+// rows of its XYZ -> camera matrix. Equal camera channels after the multipliers are neutral, so
+// the light's camera RGB is n = 1 / cam_mul, and its XYZ is cam_xyz^-1 * n. nullopt if a
+// multiplier is not positive and finite, the matrix is all zero or singular, or the result is not
+// a finite chromaticity.
+[[nodiscard]] std::optional<Chromaticity> as_shot_white(const std::array<double, 3>& cam_mul,
+                                                        const Mat3& cam_xyz);
 
 // The linear sRGB matrix that re-lights a decoded photo as if it had been lit by `chosen`
 // instead of by the light whose chromaticity is `as_shot`. The decoded image was already adapted

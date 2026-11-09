@@ -144,3 +144,36 @@ TEST(WhiteBalance, ChoosingTheAsShotLightIsTheIdentity) {
         }
     }
 }
+
+// --- The as-shot white of a RAW file, from its multipliers and colour matrix --------------------
+
+namespace {
+
+// A plausible XYZ -> camera matrix (rows: camera red, green, blue).
+const prism::Mat3 camera_xyz = {{{0.9, -0.3, -0.1}, {-0.4, 1.2, 0.1}, {0.0, 0.1, 0.7}}};
+
+}  // namespace
+
+TEST(AsShotWhite, RecoversTheLightTheMultipliersWereMadeFor) {
+    for (const WhiteBalance wb : {WhiteBalance{2800, 5}, {5500, -10}, {7500, 20}}) {
+        const Chromaticity light = prism::white_of(wb);
+        const prism::Vec3 camera = prism::multiply(camera_xyz, prism::xyz_of(light));
+        // Multipliers scale each channel so the light comes out neutral; only ratios matter.
+        const std::array<double, 3> mul = {2.0 / camera[0], 2.0 / camera[1], 2.0 / camera[2]};
+        const auto white = prism::as_shot_white(mul, camera_xyz);
+        ASSERT_TRUE(white);
+        EXPECT_NEAR(white->x, light.x, 1e-12);
+        EXPECT_NEAR(white->y, light.y, 1e-12);
+    }
+}
+
+TEST(AsShotWhite, HasNoWhiteWithoutUsableNumbers) {
+    const std::array<double, 3> good = {2.0, 1.0, 1.5};
+    EXPECT_TRUE(prism::as_shot_white(good, camera_xyz));
+    EXPECT_FALSE(prism::as_shot_white({0.0, 1.0, 1.5}, camera_xyz));
+    EXPECT_FALSE(prism::as_shot_white({2.0, -1.0, 1.5}, camera_xyz));
+    EXPECT_FALSE(prism::as_shot_white({2.0, 1.0, std::nan("")}, camera_xyz));
+    EXPECT_FALSE(prism::as_shot_white(good, prism::Mat3{}));  // all zero
+    const prism::Mat3 singular = {{{1, 2, 3}, {2, 4, 6}, {0, 1, 1}}};
+    EXPECT_FALSE(prism::as_shot_white(good, singular));
+}

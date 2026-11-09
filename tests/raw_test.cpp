@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -21,6 +22,7 @@
 #include "prism/image.hpp"
 #include "prism/pipeline.hpp"
 #include "prism/raw.hpp"
+#include "prism/white_balance.hpp"
 #include "synthetic_dng.hpp"
 
 namespace fs = std::filesystem;
@@ -256,6 +258,18 @@ TEST(RawSyntheticDng, TruncatedFileGivesClearError) {
     fs::remove(path);
 }
 
+TEST(AsShot, AJpegHasNoAsShotWhite) {
+    prism::Image img;
+    img.width = 4;
+    img.height = 4;
+    img.pixels.assign(4 * 4 * 3, 0.18f);
+    const fs::path path = fs::path(testing::TempDir()) / "prism_as_shot_test.jpg";
+    prism::save_image(path, img);
+    const prism::Photo photo = prism::load_photo(path, 1);
+    fs::remove(path);
+    EXPECT_FALSE(photo.info.as_shot_white_xy);
+}
+
 // --- Integration tests: only with a real RAW file ------------------------------------------------
 //
 // RAW files are tens of MB, so none is checked in. Point PRISM_TEST_RAW at one to run these:
@@ -333,6 +347,21 @@ TEST_F(RawFile, PhotoInfoHasMakeAndIso) {
     if (photo.info.date_taken) {
         EXPECT_EQ(photo.info.date_taken->size(), 19u);  // YYYY:MM:DD HH:MM:SS
     }
+}
+
+TEST_F(RawFile, PhotoInfoHasAnAsShotWhiteInTheEditingRanges) {
+    prism::RawOptions options;
+    options.half_size = true;
+    const prism::Photo photo = prism::load_raw_photo(path_, options);
+    ASSERT_TRUE(photo.info.as_shot_white_xy);
+    const prism::WhiteBalance wb = prism::white_balance_of(
+        {(*photo.info.as_shot_white_xy)[0], (*photo.info.as_shot_white_xy)[1]});
+    std::cout << "as-shot white of " << photo.info.model.value_or("?") << ": " << wb.kelvin
+              << " K, tint " << wb.tint << '\n';
+    EXPECT_GE(wb.kelvin, 2000.0);
+    EXPECT_LE(wb.kelvin, 15000.0);
+    EXPECT_GE(wb.tint, -100.0);
+    EXPECT_LE(wb.tint, 100.0);
 }
 
 TEST_F(RawFile, FullSizeLoadsLinearValuesInRange) {

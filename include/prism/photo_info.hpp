@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -24,11 +25,17 @@ struct PhotoInfo {
     std::optional<double> exposure_seconds;
     std::optional<double> f_number;
     std::optional<double> focal_length_mm;
+    // RAW only: the CIE xy chromaticity of the light the camera was balanced for when it took the
+    // photo, worked out from the file's white balance multipliers and colour matrix
+    // (prism/white_balance.hpp: as_shot_white). Absent if the file has no usable ones, and for
+    // every other kind of file.
+    std::optional<std::array<double, 2>> as_shot_white_xy;
 
     // True if no field is set.
     [[nodiscard]] bool empty() const noexcept {
         return !make && !model && !lens && !date_taken && !iso && !orientation &&
-               !focal_length_35mm && !exposure_seconds && !f_number && !focal_length_mm;
+               !focal_length_35mm && !exposure_seconds && !f_number && !focal_length_mm &&
+               !as_shot_white_xy;
     }
 };
 

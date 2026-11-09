@@ -1,6 +1,7 @@
 #include "prism/white_balance.hpp"
 
 #include <cmath>
+#include <stdexcept>
 
 namespace prism {
 
@@ -100,6 +101,29 @@ WhiteBalance white_balance_of(Chromaticity xy) noexcept {
     const Uv n = locus_normal(kelvin);
     const double duv = (target.u - locus.u) * n.u + (target.v - locus.v) * n.v;
     return {kelvin, duv / tint_duv_per_unit};
+}
+
+std::optional<Chromaticity> as_shot_white(const std::array<double, 3>& cam_mul,
+                                          const Mat3& cam_xyz) {
+    Vec3 neutral{};
+    for (std::size_t i = 0; i < 3; ++i) {
+        if (!(cam_mul[i] > 0.0) || !std::isfinite(cam_mul[i])) {
+            return std::nullopt;
+        }
+        neutral[i] = 1.0 / cam_mul[i];
+    }
+    Vec3 xyz;
+    try {
+        xyz = multiply(invert(cam_xyz), neutral);
+    } catch (const std::domain_error&) {
+        return std::nullopt;  // all zero, or singular
+    }
+    const double sum = xyz[0] + xyz[1] + xyz[2];
+    const Chromaticity xy{xyz[0] / sum, xyz[1] / sum};
+    if (!std::isfinite(xy.x) || !std::isfinite(xy.y) || xy.y <= 0.0) {
+        return std::nullopt;
+    }
+    return xy;
 }
 
 Matrix3 white_balance_matrix(const WhiteBalance& chosen, Chromaticity as_shot) {
