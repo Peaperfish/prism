@@ -90,19 +90,14 @@ void draw_histogram_plot(const ScopesData& data, ImDrawList* draw, ImVec2 box_mi
     const gui::HistogramPaintSize size =
         scopes_histogram_size(box_max.x - box_min.x, data.pixel_density);
     const float density = std::max(data.pixel_density, 0.001f);
-    const float left = box_min.x + static_cast<float>(size.inset_x) / density;
-    const float right = box_max.x - static_cast<float>(size.inset_x) / density;
-    const float top = box_min.y + static_cast<float>(size.inset_top) / density;
-    const float bottom = box_max.y;
     const std::uint64_t full_count = gui::histogram_full_count(h);
-    constexpr std::int64_t precision = 1 << 16;
 
     const auto edge = [&](const gui::StageHistogram::Counts& counts, ImU32 colour) {
+        // The same place the painter's fill has it, in the picture's pixels, back to points.
         const auto at = [&](int bin) {
-            const std::int64_t bar = gui::histogram_bar_height(
-                counts[static_cast<std::size_t>(bin)], full_count, precision);
-            return ImVec2(left + static_cast<float>(bin) / 255.0f * (right - left),
-                          bottom - static_cast<float>(bar) / static_cast<float>(precision) * (bottom - top));
+            const gui::HistogramEdgePoint p = gui::histogram_edge_point(
+                bin, counts[static_cast<std::size_t>(bin)], full_count, size);
+            return ImVec2(box_min.x + p.x / density, box_min.y + p.y / density);
         };
         const auto has = [&](int bin) {
             return bin >= 0 && bin < gui::StageHistogram::bins &&

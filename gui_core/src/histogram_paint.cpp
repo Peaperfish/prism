@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 
 #include "prism/gui/theme_tokens.hpp"
@@ -149,14 +150,34 @@ std::int64_t histogram_bar_height(std::uint64_t count, std::uint64_t full_count,
     if (count >= full_count) {
         return full;
     }
-    // A long double would differ between compilers. Taken apart so that a count of any size can't
-    // overflow: count < full_count, and full is a small number.
     const std::uint64_t f = static_cast<std::uint64_t>(full);
-    const std::uint64_t whole = full_count / f;
-    if (whole == 0) {
+    // Exactly count * full / full_count, rounded down, whenever the product fits.
+    if (count <= UINT64_MAX / f) {
         return static_cast<std::int64_t>(count * f / full_count);
     }
+    // Only for counts beyond about 2^48 (a long double would differ between compilers): taken apart
+    // so that nothing overflows. Here count > UINT64_MAX / f and count < full_count, so full_count
+    // is more than f and `whole` is at least 1.
+    const std::uint64_t whole = full_count / f;
     return static_cast<std::int64_t>(std::min(count / whole, f));
+}
+
+HistogramEdgePoint histogram_edge_point(int bin, std::uint64_t count, std::uint64_t full_count,
+                                        const HistogramPaintSize& size) noexcept {
+    const int columns = size.width - 2 * size.inset_x;
+    const int rows = size.height - size.inset_top;
+    HistogramEdgePoint p;
+    // The painter puts bin b at column b * (columns - 1) / 255, and a column's centre is half a
+    // pixel in.
+    p.x = static_cast<float>(size.inset_x) +
+          (static_cast<float>(bin) * static_cast<float>(std::max(columns - 1, 0)) /
+               static_cast<float>(StageHistogram::bins - 1) +
+           0.5f);
+    const std::int64_t height =
+        rows > 0 ? histogram_bar_height(count, full_count, static_cast<std::int64_t>(rows) * subpixels)
+                 : 0;
+    p.y = static_cast<float>(size.height) - static_cast<float>(height) / static_cast<float>(subpixels);
+    return p;
 }
 
 void paint_histogram(const StageHistogram& h, const HistogramPaintSize& size,

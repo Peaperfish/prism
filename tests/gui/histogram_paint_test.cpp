@@ -4,6 +4,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <vector>
 
 #include "prism/gui/histogram.hpp"
@@ -11,6 +12,8 @@
 #include "prism/gui/preferences.hpp"
 
 using prism::gui::histogram_paint_colours;
+using prism::gui::histogram_bar_height;
+using prism::gui::histogram_edge_point;
 using prism::gui::HistogramPaintCache;
 using prism::gui::HistogramPaintColours;
 using prism::gui::HistogramPaintSize;
@@ -197,6 +200,70 @@ TEST(HistogramPaint, AHugeCountDoesNotOverflow) {
     EXPECT_EQ(p.fill_at(10, 99), (Bytes{255, 0, 0, 255}));
     EXPECT_EQ(p.fill_at(20, 49), (Bytes{255, 0, 0, 255}));
     EXPECT_EQ(p.fill_at(20, 50), (Bytes{0, 0, 0, 255}));
+}
+
+TEST(HistogramBarHeight, ATallestBinJustOverTheFullHeightStillScalesExactly) {
+    // 62,464 = 244 rows x 256. A tallest of 100,000 is between f and 2f: half of it is 80%.
+    constexpr std::int64_t f = 62464;
+    EXPECT_EQ(histogram_bar_height(50000, 100000, f), 50000 * f / 100000);
+    EXPECT_EQ(histogram_bar_height(100000, 100000, f), f);
+    EXPECT_EQ(histogram_bar_height(1, 100000, f), 0);
+}
+
+TEST(HistogramBarHeight, AHalfCountBinIsHalfTheHeightFarAboveTheFullHeight) {
+    constexpr std::int64_t f = 62464;
+    constexpr std::uint64_t tallest = 197000;  // more than 3f
+    EXPECT_EQ(histogram_bar_height(tallest, tallest, f), f);
+    // Half the count: half the height, to one sub-pixel.
+    EXPECT_LE(std::abs(histogram_bar_height(tallest / 2, tallest, f) - f / 2), 1);
+    EXPECT_LE(std::abs(histogram_bar_height(tallest / 4, tallest, f) - f / 4), 1);
+    EXPECT_EQ(histogram_bar_height(98500, tallest, f), 98500 * f / tallest);
+}
+
+TEST(HistogramBarHeight, CountsTooBigToMultiplyStillScale) {
+    constexpr std::int64_t f = 62464;
+    const std::uint64_t tallest = std::uint64_t{1} << 62;
+    EXPECT_EQ(histogram_bar_height(tallest, tallest, f), f);
+    EXPECT_LE(std::abs(histogram_bar_height(tallest / 2, tallest, f) - f / 2), 1);
+}
+
+TEST(HistogramEdgePoint, AnEdgeSitsOnTheTopOfItsFill) {
+    // 256 columns, 100 rows, and a tallest of 197,000 far above the 25,600 sub-pixels.
+    const HistogramPaintSize size = plain_size();
+    StageHistogram h;
+    fill(h.red, 197000);
+    h.red[50] = 98500;
+    h.red[60] = 49250;
+    const std::uint64_t full_count = prism::gui::histogram_full_count(h);
+    const Picture p = painted(h, size, pure_colours());
+    for (const int bin : {50, 60, 70}) {
+        const prism::gui::HistogramEdgePoint e =
+            histogram_edge_point(bin, h.red[static_cast<std::size_t>(bin)], full_count, size);
+        // The column's centre.
+        EXPECT_FLOAT_EQ(e.x, static_cast<float>(inset_x + bin) + 0.5f);
+        // The fill's top, in whole and part rows: every row below it is fully covered.
+        const std::int64_t height = histogram_bar_height(h.red[static_cast<std::size_t>(bin)],
+                                                         full_count, std::int64_t{100} * 256);
+        EXPECT_FLOAT_EQ(e.y, static_cast<float>(picture_height) - static_cast<float>(height) / 256.0f);
+        const int whole_rows = static_cast<int>(height / 256);
+        if (whole_rows > 0) {
+            EXPECT_EQ(p.fill_at(bin, whole_rows - 1)[0], 255) << bin;
+        }
+        EXPECT_LT(p.fill_at(bin, whole_rows)[0], 255) << bin;
+    }
+    // Half the count is half the plot: bin 50 stands 50 rows up, so its edge is 50 rows from the top.
+    EXPECT_FLOAT_EQ(histogram_edge_point(50, 98500, full_count, size).y,
+                    static_cast<float>(picture_height) - 50.0f);
+}
+
+TEST(HistogramEdgePoint, TheEndsAreTheFirstAndLastColumns) {
+    HistogramPaintSize size = plain_size();
+    size.width = 100 + 2 * inset_x;
+    const prism::gui::HistogramEdgePoint first = histogram_edge_point(0, 1, 1, size);
+    const prism::gui::HistogramEdgePoint last = histogram_edge_point(255, 1, 1, size);
+    EXPECT_FLOAT_EQ(first.x, static_cast<float>(inset_x) + 0.5f);
+    EXPECT_FLOAT_EQ(last.x, static_cast<float>(inset_x) + 99.5f);
+    EXPECT_FLOAT_EQ(first.y, static_cast<float>(inset_top));
 }
 
 TEST(HistogramPaint, TheDesignsColoursGiveTheseBytes) {

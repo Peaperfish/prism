@@ -61,6 +61,17 @@ struct HistogramPaintSize {
 [[nodiscard]] std::int64_t histogram_bar_height(std::uint64_t count, std::uint64_t full_count,
                                                 std::int64_t full) noexcept;
 
+// Where the 1 px edge of a fill passes through for `bin` (of `count`), in the picture's own pixels:
+// x from the left edge, y from the top. The painter's fills and the edge lines both place a bin and a
+// count with this, so a line sits on its fill: the column of a bin is the one whose centre is at x,
+// and y is the top of the height histogram_bar_height gives, in the same 256ths of a pixel.
+struct HistogramEdgePoint {
+    float x = 0.0f, y = 0.0f;
+};
+[[nodiscard]] HistogramEdgePoint histogram_edge_point(int bin, std::uint64_t count,
+                                                      std::uint64_t full_count,
+                                                      const HistogramPaintSize& size) noexcept;
+
 // Paints `h` into `rgba` (resized to width * height * 4, row by row from the top). A size with no
 // room in it gives no bytes.
 void paint_histogram(const StageHistogram& h, const HistogramPaintSize& size,
