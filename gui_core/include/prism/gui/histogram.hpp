@@ -10,16 +10,19 @@
 namespace prism::gui {
 
 // Out-of-range sample counts for one channel, measured on the stage's float values before the
-// 8-bit sRGB encode clamps [0, 1] to 0..255. Kept separate from the 256 in-range bins so clipped
+// 8-bit sRGB encode clamps [0, 1] to 0..255 (the luminance's under_black is plainer: Y < 0). Kept separate from the 256 in-range bins so clipped
 // pixels are distinguished from in-range black (0) and white (1) and do not spike the end bins.
 // +inf and -inf count as over-white and under-black; NaN counts in bin 0, as the encode shows it.
 struct ChannelClips {
-    std::uint64_t under_black = 0;  // values < 0
+    // Channels below 0 of pixels with no light left (below black, see clipping.hpp).
+    std::uint64_t under_black = 0;
     std::uint64_t over_white = 0;   // values > 1
     // Values in [1 - file_ceiling_epsilon, 1], counted only for a histogram of Decode (see
     // compute_stage_histogram's `file_ceiling`): already clipped in the file. They also stay in
     // the bins, so the graph is the same; the figures under the scope add them to over_white.
     std::uint64_t at_ceiling = 0;
+    // Channels below -gamut_tolerance of pixels that still have light: outside sRGB.
+    std::uint64_t outside_srgb = 0;
 
     // What the readout's R, G and B figures count above white: the same as any_over_white counts.
     [[nodiscard]] std::uint64_t high() const noexcept { return over_white + at_ceiling; }
@@ -47,14 +50,15 @@ struct StageHistogram {
 
     // Pixels with ANY of R, G, B out of range, each pixel counted once however many channels are: the
     // numbers under the scope, and what lights its clip triangles. Linear limits on the stage's
-    // floats, by pixel_below_black and pixel_above_white (clipping.hpp), the very test the
-    // clipping overlay uses for the same picture, not the 8-bit codes (a value of 0.999 encodes
-    // to 255 and has lost nothing). So a tiny negative on a pixel that still has light is not
-    // below black here, as it is not in the overlay. any_over_white also counts a channel at the
-    // file's ceiling when the histogram is of Decode (see `file_ceiling` below), as the overlay
-    // does. The per-channel counts above are plainer: any channel < 0, and over_white / at_ceiling.
-    std::uint64_t any_under_black = 0;  // pixel_below_black
-    std::uint64_t any_over_white = 0;   // pixel_above_white
+    // floats, by pixel_below_black, pixel_outside_srgb and pixel_above_white (clipping.hpp), the very
+    // tests the clipping overlay and the Light path use for the same picture, not the 8-bit codes (a
+    // value of 0.999 encodes to 255 and has lost nothing). Below black is a pixel with no light left;
+    // a pixel with light but a channel below 0 is outside sRGB instead, and a rounding-sized negative
+    // on one is neither. any_over_white also counts a channel at the file's ceiling when the
+    // histogram is of Decode (see `file_ceiling` below), as the overlay does.
+    std::uint64_t any_under_black = 0;   // pixel_below_black
+    std::uint64_t any_outside_srgb = 0;  // pixel_outside_srgb
+    std::uint64_t any_over_white = 0;    // pixel_above_white
 
     std::uint64_t pixel_count = 0;
 
@@ -89,5 +93,9 @@ struct ScopeReadout {
     bool operator==(const ScopeReadout&) const = default;
 };
 [[nodiscard]] ScopeReadout scope_readout(const StageHistogram& h);
+
+// For the readout's tooltip: the share of pixels outside sRGB, in plain words ("25.0% of pixels
+// have a colour outside sRGB: they still have light, but a channel is below 0."), or "" if none.
+[[nodiscard]] std::string outside_srgb_line(const StageHistogram& h);
 
 }  // namespace prism::gui

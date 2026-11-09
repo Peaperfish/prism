@@ -148,8 +148,8 @@ constexpr Explanation templates[] = {
      "ceiling). The red, green and blue figures count each channel alone.",
      LiveKind::over},
     {"chip.under", "Pixels darker than black.",
-     "Share of pixels with any channel below 0 at this stage. The red, green and blue figures "
-     "count each channel alone.",
+     "Share of pixels with no light left at this stage: a channel is below 0 and the pixel is black "
+     "or darker. A pixel with light and a channel below 0 is outside sRGB, counted apart.",
      LiveKind::under},
 
     // --- Clipping ----------------------------------------------------------------------------

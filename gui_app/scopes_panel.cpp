@@ -295,11 +295,17 @@ void draw_readout(const ScopesData& data, ImVec2 at, float width, float height,
              : on_above ? gui::explain::chip_over
                         : gui::explain::clip_summary);
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal) &&
-        (on_below || on_above || !data.clip_sentence.empty())) {
+        (on_below || on_above || !data.clip_sentence.empty() ||
+         gui::outside_srgb_line(h).empty() == false)) {
         ImGui::BeginTooltip();
         if (!data.clip_sentence.empty()) {
             ImGui::PushTextWrapPos(m.tooltip_wrap);
             ImGui::TextUnformatted(data.clip_sentence.c_str());
+            ImGui::PopTextWrapPos();
+        }
+        if (const std::string outside = gui::outside_srgb_line(h); !outside.empty()) {
+            ImGui::PushTextWrapPos(m.tooltip_wrap);
+            ImGui::TextUnformatted(outside.c_str());
             ImGui::PopTextWrapPos();
         }
         if (on_below || on_above) {

@@ -241,14 +241,28 @@ inline constexpr std::uint8_t clip_mask_high = 1;
 inline constexpr std::uint8_t clip_mask_low = 2;
 inline constexpr std::uint8_t clip_mask_gamut = 4;  // Y > 0 and a channel below -gamut_tolerance
 
-// Whether a pixel counts as below black / above white: THE definition. The clip mask (the J
-// overlay), the clip triangles and the scope's readout all ask these two, so they can't drift.
-// Below black: some channel is negative and either the pixel has no light (Y <= 0) or the channel
-// is below -gamut_tolerance. A rounding-sized negative (above -gamut_tolerance) on a pixel that
-// still has light is neither: it encodes to 0 anyway. Above white: some channel above 1.0, and
-// with `file_ceiling` (for Decode) also one at the file's ceiling.
+// What a pixel counts as: THE definitions. The clip mask (the J overlay), the clip report (the
+// Light path), the histogram's counts, the clip triangles and the scope's readout all ask these, so
+// they can't drift. There are three separate things, and a pixel is in at most one of the first two:
+//   Below black: the pixel has no light left (Y <= 0) and a channel is negative. The Light path's
+//     "under", J's blue.
+//   Outside sRGB: the pixel still has light (Y > 0) but a channel is below -gamut_tolerance, a
+//     colour sRGB cannot show. The Light path's "gamut", J's violet. A rounding-sized negative
+//     (above -gamut_tolerance) on a pixel that still has light is neither: it encodes to 0 anyway.
+//   Above white: some channel above 1.0, and with `file_ceiling` (for Decode) also one at the
+//     file's ceiling.
+// The *_channels functions give the channels (bit 0 red, 1 green, 2 blue) that make a pixel one.
+[[nodiscard]] constexpr std::uint8_t below_black_channels(const PixelRange& r) noexcept {
+    return r.low;
+}
+[[nodiscard]] constexpr std::uint8_t outside_srgb_channels(const PixelRange& r) noexcept {
+    return r.gamut;
+}
 [[nodiscard]] constexpr bool pixel_below_black(const PixelRange& r) noexcept {
-    return r.low != 0 || r.gamut != 0;
+    return below_black_channels(r) != 0;
+}
+[[nodiscard]] constexpr bool pixel_outside_srgb(const PixelRange& r) noexcept {
+    return outside_srgb_channels(r) != 0;
 }
 [[nodiscard]] constexpr bool pixel_above_white(const PixelRange& r,
                                                bool file_ceiling = false) noexcept {
@@ -257,8 +271,8 @@ inline constexpr std::uint8_t clip_mask_gamut = 4;  // Y > 0 and a channel below
 
 // The bits a stage about to clamp negatives would lose for this pixel (see mark_lost_negatives).
 [[nodiscard]] constexpr std::uint8_t clip_mask_lost_bits(const PixelRange& r) noexcept {
-    return static_cast<std::uint8_t>((r.low != 0 ? clip_mask_low : 0) |
-                                     (r.gamut != 0 ? clip_mask_gamut : 0));
+    return static_cast<std::uint8_t>((pixel_below_black(r) ? clip_mask_low : 0) |
+                                     (pixel_outside_srgb(r) ? clip_mask_gamut : 0));
 }
 
 // The mask's byte for a pixel, before any earlier stage's marks. With `file_ceiling` (for Decode),

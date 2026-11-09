@@ -102,8 +102,8 @@ ClipRecorder::Range ClipRecorder::measure(const Image& img, int stride, int firs
         for (int x = first; x < img.width; x += stride) {
             const PixelRange range = pixel_range(row + static_cast<std::size_t>(x) * 3);
             count(r.over, range.over);
-            count(r.under, range.low);
-            count(r.gamut, range.gamut);
+            count(r.under, below_black_channels(range));
+            count(r.gamut, outside_srgb_channels(range));
             // The ceiling band is [1 - epsilon, 1]: an integer source never goes above 1.0, so a
             // value above it can only come from a float image, where it is real highlight data.
             count(r.ceiling, range.ceiling);

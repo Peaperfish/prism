@@ -26,15 +26,16 @@ std::size_t require_consistent(const Image& img, const char* caller) {
     return expected;
 }
 
-// Counts one sample: below 0 and above 1 are clips, measured on the float. Anything else (NaN
-// included, which is in neither range) is binned by `code`, its 8-bit sRGB value.
+// Counts one sample: above 1 is a clip, measured on the float; below 0 is in no bin, and is counted
+// by the caller (it takes the whole pixel to tell below black from outside sRGB). Anything else
+// (NaN included, which is in neither range) is binned by `code`, its 8-bit sRGB value.
 void record_sample(float v, std::uint8_t code, StageHistogram::Counts& bins,
                    ChannelClips& clips, bool file_ceiling = false) noexcept {
     if (file_ceiling && v >= 1.0f - file_ceiling_epsilon && v <= 1.0f) {
         ++clips.at_ceiling;  // also binned below, unlike the other two
     }
     if (v < 0.0f) {
-        ++clips.under_black;
+        // not binned
     } else if (v > 1.0f) {
         ++clips.over_white;
     } else {
@@ -46,7 +47,8 @@ void record_sample(float v, std::uint8_t code, StageHistogram::Counts& bins,
 // of a value is the sRGB code linear_to_srgb8 gives it (NaN gives 0, black, as on screen). R, G and
 // B read that code from `encoded` (the bytes the encode already produced for the same samples)
 // when it is given, and look it up otherwise; luminance has no output byte, so it is encoded here.
-// The any-channel counts ask pixel_below_black and pixel_above_white, as the clip mask does.
+// The pixel counts and the channels' below-black and outside-sRGB counts ask the tests the clip mask
+// does (clipping.hpp).
 void count_range(const float* pixels, const std::uint8_t* encoded, std::size_t first,
                  std::size_t last, bool file_ceiling, StageHistogram& local) noexcept {
     for (std::size_t i = first; i < last; i += Image::channels) {
@@ -61,8 +63,19 @@ void count_range(const float* pixels, const std::uint8_t* encoded, std::size_t f
         record_sample(b, encoded ? encoded[i + 2] : linear_to_srgb8(b), local.blue,
                       local.blue_clips, file_ceiling);
         record_sample(y, linear_to_srgb8(y), local.luminance, local.luminance_clips);
+        local.luminance_clips.under_black += y < 0.0f;
         const PixelRange range = pixel_range(pixels + i);
+        const std::uint8_t black = below_black_channels(range);
+        const std::uint8_t outside = outside_srgb_channels(range);
+        const auto add = [&](ChannelClips& clips, unsigned bit) {
+            clips.under_black += (black & bit) != 0;
+            clips.outside_srgb += (outside & bit) != 0;
+        };
+        add(local.red_clips, 1u);
+        add(local.green_clips, 2u);
+        add(local.blue_clips, 4u);
         local.any_under_black += pixel_below_black(range);
+        local.any_outside_srgb += pixel_outside_srgb(range);
         local.any_over_white += pixel_above_white(range, file_ceiling);
     }
     local.pixel_count += (last - first) / Image::channels;
@@ -76,6 +89,7 @@ void add_counts(StageHistogram::Counts& into, const StageHistogram::Counts& from
 
 void add_clips(ChannelClips& into, const ChannelClips& from) noexcept {
     into.under_black += from.under_black;
+    into.outside_srgb += from.outside_srgb;
     into.over_white += from.over_white;
     into.at_ceiling += from.at_ceiling;
 }
@@ -92,6 +106,7 @@ StageHistogram merge_partials(const std::vector<StageHistogram>& partial) noexce
         add_clips(total.blue_clips, p.blue_clips);
         add_clips(total.luminance_clips, p.luminance_clips);
         total.any_under_black += p.any_under_black;
+        total.any_outside_srgb += p.any_outside_srgb;
         total.any_over_white += p.any_over_white;
         total.pixel_count += p.pixel_count;
     }
@@ -186,6 +201,14 @@ std::string readout_percent(std::uint64_t count, std::uint64_t total) {
 ScopeReadout scope_readout(const StageHistogram& h) {
     return {readout_percent(h.any_under_black, h.pixel_count) + " below black",
             readout_percent(h.any_over_white, h.pixel_count) + " above white"};
+}
+
+std::string outside_srgb_line(const StageHistogram& h) {
+    if (h.any_outside_srgb == 0) {
+        return {};
+    }
+    return readout_percent(h.any_outside_srgb, h.pixel_count) +
+           " of pixels have a colour outside sRGB: they still have light, but a channel is below 0.";
 }
 
 }  // namespace prism::gui
