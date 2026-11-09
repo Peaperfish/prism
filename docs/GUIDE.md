@@ -275,12 +275,22 @@ The **Undo** and **Redo** buttons in the panel's header, and **Edit → Undo** a
 
 ### Export
 
-**Export…** in the panel's header, or **File → Export…** (`Cmd+E` or `Ctrl+E`), saves the photo with your edits as a PNG or JPEG.
+**Export…** in the panel's header, or **File → Export…** (`Cmd+E` or `Ctrl+E`), saves the photo with your edits as a PNG or JPEG. It first opens the **Export sheet**, where you choose the size, and **Save As…** then opens the system's save dialog.
 
-- The file name is suggested as the photo's name plus `_prism` next to the original (`IMG_0001.jpg` becomes `IMG_0001_prism.jpg`). A PNG source suggests PNG; anything else, including RAW, suggests JPEG.
+**The Export sheet** has a **Size** control with three choices:
+
+- **Original** (the default) saves the photo at its own size. The sheet says what that is: "Full size, 6000 × 4000".
+- **Long side** saves it with its longer side that many pixels (1 or more), keeping the shape: 2048 gives 2048 × 1365 for a 6000 × 4000 photo, and 1365 × 2048 for the same photo held upright.
+- **Percent** saves it at that share of the photo's own size, from 1 to 99. 50% of a 6000 × 4000 photo is 3000 × 2000. The percentage is of the photo's size, not of the preview, and for a RAW file it is of the camera's full sensor size, even when half-size decoding is on.
+
+A line under the number says what will be written, for example "Exports at 2048 × 1365". Prism never enlarges: if the size you ask for is not smaller than the photo, the line says "Not smaller than the photo: exports at full size, 6000 × 4000" and the photo is saved as it is. For a RAW file the sizes shown are those that will be written: the full sensor size, or, if the half-size RAW option is on, the half-size decode, whatever size you ask for. A typed number outside the range is moved to the nearest valid one when you leave the field (0 becomes 1; a percentage of 150 becomes 99). The photo is reduced by averaging the light in each area, before the edit stages run.
+
+`Enter` is **Save As…** and `Esc` or **Cancel** closes the sheet and changes nothing. Prism remembers your choice, also the next time you start it, so the sheet opens on it. While the sheet is open, the other keys (`I`, `T`, `J`, zoom, undo) do nothing.
+
+- The file name is suggested as the photo's name plus `_prism` next to the original (`IMG_0001.jpg` becomes `IMG_0001_prism.jpg`). An export that is reduced says so with the longer side added: `IMG_0001_prism_2048.jpg`; one that is not reduced has no number. A PNG source suggests PNG; anything else, including RAW, suggests JPEG.
 - If you type a name without `.png`, `.jpg` or `.jpeg`, the extension is added.
 - Prism won't overwrite the photo you opened: choose another name.
-- Export decodes the file again at **full size** and runs every stage, so it does not depend on the preview. A **Saving…** window shows while it runs, with a **Cancel** button.
+- Export decodes the file again at **full size** (then reduces it, if you chose a smaller size) and runs every stage, so it does not depend on the preview. A **Saving…** window shows while it runs, with a **Cancel** button.
 - The result is 8-bit sRGB. JPEGs are saved at quality 95.
 
 ### Recipes
@@ -351,7 +361,7 @@ Notes:
 - The keypad's `+`, `-` and `0` also work with `Cmd`/`Ctrl` for the interface size, and its `+` and `-` alone for the zoom.
 - Undo, Redo, `J`, `T`, `I` and the zoom keys do nothing while you are dragging a slider.
 - `J`, `T`, `I`, the zoom keys and `Space` give way to a text field that has the keyboard, so typing a value never triggers them.
-- `Esc` is also Cancel in the "unsaved edits" window, in the recipe save sheet (inside a text field, the first `Esc` only leaves the field), and in the "Saving…" window while a quit or open is waiting for the export.
+- `Esc` is also Cancel in the "unsaved edits" window, in the recipe save sheet (inside a text field, the first `Esc` only leaves the field), in the Export sheet (also inside its number field), and in the "Saving…" window while a quit or open is waiting for the export.
 - In the menus: **File** has Open…, Export…, Load Recipe…, Save Recipe… and Quit (on Windows and Linux the menu shows `Ctrl+Q`; on macOS, Quit is in the **Prism** menu too). **Edit** has Undo, Redo and (on Windows and Linux) Preferences…. **View** has Bigger Interface, Smaller Interface, Interface Size: Auto, Test Strip, Sample Colour, Zoom In, Zoom Out, Zoom to Fit and 100% of Preview. **Help → About Prism** is on Windows and Linux; on macOS, About and Preferences are in the **Prism** menu (**Prism → About Prism**, **Prism → Preferences…**).
 
 Mouse and trackpad: click a stage row to view it; right-click a slider, or a Tone curve tab, to reset it; Ctrl-click (Cmd-click) a slider to type a value; drag the divider in a comparison; click a band in the test strip; drag the panel's left edge to resize the panel; pinch, scroll or use the wheel over the photo to zoom and move it, drag it when zoomed in, and double-click it to go between fit and 100% (see [Zoom and pan](#zoom-and-pan)); in Sample mode, point at the photo to read a pixel and click to pin it (see [Read a pixel](#read-a-pixel)).
