@@ -16,14 +16,18 @@ namespace prism {
 // A plain value type, so it can be copied to another thread and compared.
 struct ProcessSettings {
     std::optional<float> exposure_stops;
+    // The matrix prism::white_balance_matrix builds for the photo's as-shot light and the light
+    // chosen. "As shot" is no matrix at all: leave it empty.
+    std::optional<Matrix3> white_balance;
     std::optional<Matrix3> matrix;
     std::optional<float> saturation;
     std::optional<float> contrast;
     std::optional<ToneCurve> curve;
 };
 
-// How long one stage took. `name` is one of "exposure", "matrix", "saturation", "contrast" and
-// "curve" (the names prism --time prints); it points at a string literal, so it never dangles.
+// How long one stage took. `name` is one of "exposure", "white_balance", "matrix", "saturation",
+// "contrast" and "curve" (the names prism --time prints); it points at a string literal, so it
+// never dangles.
 struct StageTime {
     std::string_view name;
     double ms = 0;
@@ -41,9 +45,9 @@ enum class ProcessResult {
     cancelled,  // `stop` was requested: the image is valid but only partly processed
 };
 
-// Runs the pipeline on `img` in place, in the README's order: exposure -> colour matrix ->
-// saturation -> contrast -> tone curve. `threads` means the same as for each stage (0 = one per
-// hardware thread), and the result is the same as calling those stages by hand.
+// Runs the pipeline on `img` in place, in the README's order: exposure -> white balance ->
+// colour matrix -> saturation -> contrast -> tone curve. `threads` means the same as for each
+// stage (0 = one per hardware thread), and the result is the same as calling those stages by hand.
 //
 // `stop` is checked before each stage that would run (a stage itself is never interrupted). If a
 // stop was requested, process() returns cancelled at once: the stages that already ran are

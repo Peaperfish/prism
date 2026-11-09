@@ -12,6 +12,7 @@
 #include "prism/image.hpp"
 #include "prism/pipeline.hpp"
 #include "prism/process.hpp"
+#include "prism/white_balance.hpp"
 
 namespace {
 
@@ -171,6 +172,61 @@ TEST(Process, ThreadCountDoesNotChangeTheResult) {
     EXPECT_EQ(prism::process(one, all_stages(), 1), prism::ProcessResult::completed);
     EXPECT_EQ(prism::process(many, all_stages(), 4), prism::ProcessResult::completed);
     EXPECT_EQ(bits(one), bits(many));
+}
+
+// --- white balance ---------------------------------------------------------------------------
+
+namespace {
+
+prism::Matrix3 warmer() {
+    return prism::white_balance_matrix({8000, 20}, prism::white_of(prism::default_as_shot));
+}
+
+}  // namespace
+
+TEST(Process, WhiteBalanceRunsBetweenExposureAndMatrix) {
+    prism::ProcessSettings s = all_stages();
+    s.white_balance = warmer();
+    prism::Image expected = make_image();
+    prism::exposure(expected, *s.exposure_stops, 1);
+    prism::apply_matrix(expected, *s.white_balance, 1);
+    prism::apply_matrix(expected, *s.matrix, 1);
+    prism::saturation(expected, *s.saturation, 1);
+    prism::contrast(expected, *s.contrast, 1);
+    prism::tone_curve(expected, *s.curve, 1);
+
+    const Outcome r = run_process(s);
+    EXPECT_EQ(bits(r.img), bits(expected));
+    EXPECT_EQ(r.stages,
+              (Names{"exposure", "white_balance", "matrix", "saturation", "contrast", "curve"}));
+}
+
+TEST(Process, WhiteBalanceIsSkippedWhenAbsentOrIdentity) {
+    prism::ProcessSettings s = all_stages();
+    const Names without = {"exposure", "matrix", "saturation", "contrast", "curve"};
+    EXPECT_EQ(run_process(s).stages, without);
+    s.white_balance = prism::identity_matrix;
+    EXPECT_EQ(run_process(s).stages, without);
+}
+
+TEST(Process, WhiteBalanceIsBitIdenticalAtEveryThreadCountOnAnOddSizedImage) {
+    prism::Image base;
+    base.width = 1501;
+    base.height = 701;  // just over 1 MP, and odd in both directions
+    base.pixels.resize(static_cast<std::size_t>(base.width) * base.height * 3);
+    for (std::size_t i = 0; i < base.pixels.size(); ++i) {
+        base.pixels[i] = static_cast<float>(i % 997) / 600.0f;
+    }
+    prism::ProcessSettings s;
+    s.white_balance = warmer();
+    prism::Image reference = base;
+    EXPECT_EQ(prism::process(reference, s, 1), prism::ProcessResult::completed);
+    EXPECT_NE(bits(reference), bits(base));
+    for (const int threads : {2, 7, 12}) {
+        prism::Image img = base;
+        EXPECT_EQ(prism::process(img, s, threads), prism::ProcessResult::completed);
+        EXPECT_EQ(bits(img), bits(reference)) << threads << " threads";
+    }
 }
 
 // --- neutral settings -------------------------------------------------------------------------

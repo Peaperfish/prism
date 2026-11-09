@@ -22,6 +22,7 @@ ClipFate fate_of(std::uint64_t any, bool clamps) noexcept {
 
 }  // namespace
 
+// A name that is no row of the pipeline list, such as "white_balance", is not a StageId: nullopt.
 std::optional<StageId> stage_from_name(std::string_view name) noexcept {
     for (const StageInfo& info : pipeline_stages()) {
         if (info.slug == name) {
@@ -38,7 +39,10 @@ ProcessSettings process_settings_after(ProcessSettings full, StageId stop_after)
     if (reached(StageId::exposure)) {
         full.exposure_stops.reset();
     }
+    // White balance runs between exposure and the matrix, and the GUI has no row for it (yet): it
+    // is dropped with the stages before the matrix.
     if (reached(StageId::matrix)) {
+        full.white_balance.reset();
         full.matrix.reset();
     }
     if (reached(StageId::saturation)) {

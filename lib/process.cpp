@@ -33,6 +33,10 @@ ProcessResult process(Image& img, const ProcessSettings& settings, int threads,
         !run("exposure", [&] { exposure(img, *s.exposure_stops, threads); })) {
         return ProcessResult::cancelled;
     }
+    if (s.white_balance && *s.white_balance != identity_matrix &&
+        !run("white_balance", [&] { apply_matrix(img, *s.white_balance, threads); })) {
+        return ProcessResult::cancelled;
+    }
     if (s.matrix && *s.matrix != identity_matrix &&
         !run("matrix", [&] { apply_matrix(img, *s.matrix, threads); })) {
         return ProcessResult::cancelled;

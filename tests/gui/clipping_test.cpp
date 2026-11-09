@@ -7,6 +7,7 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <thread>
 #include <vector>
@@ -16,6 +17,7 @@
 #include "prism/gui/preview_renderer.hpp"
 #include "prism/gui/settings.hpp"
 #include "prism/image.hpp"
+#include "prism/process.hpp"
 
 using prism::Image;
 using prism::gui::ClipFate;
@@ -943,4 +945,38 @@ TEST(PixelRange, MatchesTheReportsCounts) {
             EXPECT_EQ(row.gamut, gamut);
         }
     }
+}
+
+TEST(Clipping, AStageNameThatIsNotARowOfThePipelineListIsNotAStage) {
+    EXPECT_FALSE(prism::gui::stage_from_name("white_balance"));
+    EXPECT_FALSE(prism::gui::stage_from_name(""));
+    EXPECT_EQ(prism::gui::stage_from_name("matrix"), StageId::matrix);
+
+    // The engine's white balance stage reports its name to the clip recorder's callback: it is
+    // ignored there, the report is the same as without the stage's name, and nothing crashes.
+    prism::ProcessSettings settings;
+    settings.white_balance = prism::Matrix3{1.1f, 0, 0, 0, 1, 0, 0, 0, 0.9f};
+    Image img = half_and_half(8, 8);
+    prism::gui::ClipRecorder recorder(img.width, img.height);
+    recorder.decoded(img);
+    std::vector<std::string> seen;
+    (void)prism::process(img, settings, 1, {}, [&](const prism::StageTime& t) {
+        seen.emplace_back(t.name);
+        if (const auto stage = prism::gui::stage_from_name(t.name)) {
+            recorder.stage_done(*stage, img);
+        }
+    });
+    recorder.finish();
+    EXPECT_EQ(seen, std::vector<std::string>{"white_balance"});
+    for (const auto& row : recorder.report().stages) {
+        EXPECT_EQ(row.ran, row.stage == StageId::decode || row.stage == StageId::encode);
+    }
+}
+
+TEST(Clipping, SettingsAfterTheMatrixDropWhiteBalanceToo) {
+    prism::ProcessSettings full;
+    full.white_balance = prism::identity_matrix;
+    full.matrix = prism::identity_matrix;
+    EXPECT_TRUE(prism::gui::process_settings_after(full, StageId::exposure).white_balance);
+    EXPECT_FALSE(prism::gui::process_settings_after(full, StageId::matrix).white_balance);
 }
