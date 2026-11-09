@@ -272,7 +272,7 @@ TEST(LightPathRows, ValuesAreInUnits) {
     s.contrast = 0.85f;
     EXPECT_EQ(row_for(StageId::exposure, s).value, "+1.00 stops");
     EXPECT_EQ(row_for(StageId::saturation, s).value, "×1.20");
-    EXPECT_EQ(row_for(StageId::contrast, s).value, "×0.85");
+    EXPECT_EQ(row_for(StageId::contrast, s).value, "Grade 1.2 · ×0.85");
     s.saturation = 0.0f;
     EXPECT_EQ(row_for(StageId::saturation, s).value, "black and white");
     s.exposure_stops = -0.5f;
@@ -319,7 +319,7 @@ TEST(LightPathRows, OnlyTheStagesWithAnEffectHaveSwitchesAndSliders) {
     }
     EXPECT_EQ(row_for(StageId::encode, s).subtitle, "sRGB for the screen");
     EXPECT_EQ(row_for(StageId::exposure, s).slider_reset, "Reset to +0.00 stops");
-    EXPECT_EQ(row_for(StageId::contrast, s).slider_reset, "Reset to ×1.00");
+    EXPECT_EQ(row_for(StageId::contrast, s).slider_reset, "Reset to Grade 2 · ×1.00");
 }
 
 TEST(LightPathRows, TheCurveRowCarriesItsNumber) {

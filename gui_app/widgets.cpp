@@ -368,11 +368,18 @@ bool styled_begin_combo(const char* id, const char* preview) {
 }
 
 bool styled_slider(const char* id, float* value, float min, float max, float neutral,
-                   ImGuiSliderFlags flags) {
+                   ImGuiSliderFlags flags, float step) {
     bool changed = false;
+    const float before = *value;
     {
         const HiddenSliderLook hidden;
         changed = ImGui::SliderFloat(id, value, min, max, "", flags);
+    }
+    if (changed && step > 0.0f) {
+        // Snapped before it is drawn, so the knob never shows between two positions. A move that
+        // lands on the position it started from is no change.
+        *value = std::clamp(std::round(*value / step) * step, min, max);
+        changed = *value != before;
     }
     draw_slider(position(*value, min, max), position(neutral, min, max));
     return changed;
@@ -411,7 +418,7 @@ Closed& last_closed() {
 
 bool styled_slider_typed(const char* id, float* value, float min, float max, float neutral,
                          std::string_view field_text, SliderTyping* typing,
-                         ImGuiSliderFlags flags) {
+                         ImGuiSliderFlags flags, float step) {
     SliderTyping none;
     SliderTyping& out = typing != nullptr ? *typing : none;
     out = {};
@@ -433,7 +440,7 @@ bool styled_slider_typed(const char* id, float* value, float min, float max, flo
         if (!wanted) {
             const Closed& closed = last_closed();
             out.just_closed = closed.id == item_id && g.FrameCount <= closed.frame + 1;
-            return styled_slider(id, value, min, max, neutral, flags | ImGuiSliderFlags_NoInput);
+            return styled_slider(id, value, min, max, neutral, flags | ImGuiSliderFlags_NoInput, step);
         }
         field = {};
         field.id = item_id;

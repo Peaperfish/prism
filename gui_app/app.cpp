@@ -20,6 +20,7 @@
 #include "prism/gui/explanations.hpp"
 #include "prism/gui/file_types.hpp"
 #include "prism/gui/layout.hpp"
+#include "prism/gui/paper_grade.hpp"
 #include "prism/gui/photo_format.hpp"
 #include "prism/gui/presets.hpp"
 #include "prism/gui/recipe_settings.hpp"
@@ -2704,6 +2705,13 @@ void App::draw_light_path_panel() {
         gui::EditSettings edited = session_.settings();
         gui::apply_simple_control(edited, control, position);
         // A drag updates the preview every frame but becomes one undo step, on release.
+        report(gui::apply_slider_frame(session_, frame, edited));
+    };
+    cb.contrast_slider = [this](std::optional<float> contrast, const gui::SliderFrame& frame) {
+        gui::EditSettings edited = session_.settings();
+        if (contrast) {
+            gui::apply_contrast(edited, *contrast);
+        }
         report(gui::apply_slider_frame(session_, frame, edited));
     };
     cb.reset_slider = [this](gui::SimpleControl control) {

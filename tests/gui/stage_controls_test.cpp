@@ -171,7 +171,7 @@ TEST(StageFormat, RowTextForEveryStage) {
     s.contrast = 1.2f;
     EXPECT_EQ(prism::gui::stage_value_text(s, StageId::exposure), "+0.70 stops");
     EXPECT_EQ(prism::gui::stage_value_text(s, StageId::saturation), "×1.20");
-    EXPECT_EQ(prism::gui::stage_value_text(s, StageId::contrast), "×1.20");
+    EXPECT_EQ(prism::gui::stage_value_text(s, StageId::contrast), "Grade 2.7 · ×1.20");
     EXPECT_EQ(prism::gui::stage_value_text(s, StageId::matrix), "none");
     EXPECT_EQ(prism::gui::stage_value_text(s, StageId::curve), "none");
     EXPECT_EQ(prism::gui::stage_value_text(s, StageId::decode), "");

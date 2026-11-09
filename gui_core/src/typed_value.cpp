@@ -5,7 +5,9 @@
 #include <cmath>
 #include <cstdint>
 
+#include "prism/gui/paper_grade.hpp"
 #include "prism/gui/stage_controls.hpp"
+#include "prism/ranges.hpp"
 
 namespace prism::gui {
 
@@ -53,6 +55,53 @@ double power_of_ten(int k) noexcept {
 }
 
 constexpr float largest_typed = 1e30f;
+
+// `text` without a leading `word` (any case) and the spaces after it; unchanged if it has none.
+std::string_view without_word(std::string_view text, std::string_view word) noexcept {
+    if (text.size() >= word.size() && same_word(text.substr(0, word.size()), word)) {
+        return trimmed(text.substr(word.size()));
+    }
+    return text;
+}
+
+// The multiplier the Contrast row takes from `text`. A "×" or an "x" anywhere makes it a multiplier,
+// as in "×1.2" or "1.2x"; anything else is a paper grade, "3", "3,5", "3½" or "grade 3".
+std::optional<float> typed_contrast_value(std::string_view text) {
+    constexpr std::string_view times = "\xC3\x97";  // "×" in UTF-8
+    constexpr std::string_view half = "\xC2\xBD";   // "½" in UTF-8
+    text = trimmed(text);
+    if (text.find(times) != std::string_view::npos || text.find_first_of("xX") != std::string_view::npos) {
+        if (text.substr(0, times.size()) == times) {
+            text.remove_prefix(times.size());
+        } else if (!text.empty() && (text.front() == 'x' || text.front() == 'X')) {
+            text.remove_prefix(1);
+        }
+        const std::optional<float> factor = parse_typed_number(text, factor_units);
+        if (!factor) {
+            return std::nullopt;
+        }
+        return static_cast<float>(
+            std::clamp(static_cast<double>(*factor), prism::contrast_range.min, prism::contrast_range.max));
+    }
+    text = without_word(text, "grade");
+    float extra = 0.0f;
+    if (text.size() >= half.size() && text.substr(text.size() - half.size()) == half) {
+        text = trimmed(text.substr(0, text.size() - half.size()));
+        extra = 0.5f;
+        if (text.empty()) {
+            return contrast_for_grade(extra);
+        }
+        // "3½" is a whole grade and a half: a sign or a mark before the half has no meaning.
+        if (text.find_first_of("+-.,") != std::string_view::npos) {
+            return std::nullopt;
+        }
+    }
+    const std::optional<float> grade = parse_typed_number(text, {});
+    if (!grade) {
+        return std::nullopt;
+    }
+    return contrast_for_grade(*grade + extra);
+}
 
 }  // namespace
 
@@ -139,6 +188,9 @@ std::span<const std::string_view> typed_units(SimpleControl control) noexcept {
 }
 
 std::optional<float> typed_row_value(SimpleControl control, std::string_view text) {
+    if (control == SimpleControl::contrast) {
+        return typed_contrast_value(text);
+    }
     return parse_typed_number(text, typed_units(control));
 }
 
@@ -153,6 +205,12 @@ std::optional<float> typed_slider_position(SimpleControl control, std::string_vi
 std::string typed_field_text(const EditSettings& s, SimpleControl control) {
     EditSettings stored = s;
     set_stage_enabled(stored, stage_of(control), true);  // the stored value, also when off
+    if (control == SimpleControl::contrast) {
+        // The grade, or the multiplier with its "×" where no grade can say it.
+        const GradeReading reading = grade_for_contrast(stored.contrast);
+        return reading.end == GradeEnd::within ? grade_number_text(reading.grade)
+                                               : format_multiplier(stored.contrast);
+    }
     const std::string line = stage_value_text(stored, stage_of(control));
     constexpr std::string_view times = "\xC3\x97";
     if (control != SimpleControl::brightness && line.compare(0, times.size(), times) == 0) {

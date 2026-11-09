@@ -3,6 +3,8 @@
 #include <string>
 #include <string_view>
 
+#include "prism/gui/settings.hpp"
+
 namespace prism::gui {
 
 // Contrast shown as a darkroom paper grade. The engine, recipes and the CLI keep the multiplier
@@ -43,6 +45,11 @@ struct GradeReading {
 // multiplier a position stands for.
 [[nodiscard]] float grade_slider_position(float contrast);
 [[nodiscard]] float contrast_for_grade_position(float position);
+
+// Sets only the contrast multiplier and turns only that stage on, as apply_simple_control does
+// for the other two sliders. The Contrast slider's position goes through contrast_for_grade_position
+// first, and a typed value is already a multiplier.
+void apply_contrast(EditSettings& s, float contrast);
 
 // The Contrast value line: "Grade 3 · ×1.29", "Grade 3½ · ×1.39", "Grade 2.7 · ×1.15", and past the
 // ends "Softer than grade 0 · ×0.60" and "Harder than grade 5 · ×2.00". A grade within 0.005 of a

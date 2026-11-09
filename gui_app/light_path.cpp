@@ -8,6 +8,7 @@
 
 #include "imgui_internal.h"
 #include "prism/gui/layout.hpp"
+#include "prism/gui/paper_grade.hpp"
 #include "prism/gui/typed_value.hpp"
 #include "theme.hpp"
 #include "widgets.hpp"
@@ -201,9 +202,55 @@ float draw_strip_button(const LightPathData& data, float right, float y, float l
     return left;
 }
 
+// Contrast's slider: half grades, 0 to 10, snapped. Typing takes a grade or a multiplier and gives
+// the multiplier; a drag gives the grade's multiplier only when it moved to another half grade, so
+// an off-grid value (from a recipe, or typed) is kept until then.
+void draw_grade_slider(const gui::LightPathRow& row, float x, float y, float width,
+                       const LightPathCallbacks& cb) {
+    ImGui::BeginDisabled(!row.enabled);
+    ImGui::SetCursorScreenPos(ImVec2(x, y));
+    ImGui::SetNextItemWidth(width);
+    float position = row.slider_position;
+    SliderTyping typing;
+    const bool changed = styled_slider_typed(
+        "##slider", &position, 0.0f, static_cast<float>(gui::grade_slider_steps),
+        static_cast<float>(gui::grade_slider_neutral), row.slider_typed, &typing,
+        ImGuiSliderFlags_AlwaysClamp, 1.0f);
+    if (typing.text) {
+        if (const std::optional<float> typed =
+                gui::typed_row_value(gui::SimpleControl::contrast, *typing.text)) {
+            if (cb.contrast_slider) {
+                cb.contrast_slider(*typed, gui::SliderFrame{true, true, true});
+            }
+        }
+    } else if (!typing.open && !typing.just_closed) {
+        const gui::SliderFrame frame{ImGui::IsItemActivated(), changed, ImGui::IsItemDeactivated()};
+        if ((frame.activated || frame.changed || frame.deactivated) && cb.contrast_slider) {
+            cb.contrast_slider(changed ? std::optional<float>(gui::contrast_for_grade_position(position))
+                                       : std::nullopt,
+                               frame);
+        }
+    }
+    cb.explain(gui::explain_id(row.stage), changed);
+    {
+        const FullStrength full;
+        if (!typing.open && ImGui::BeginPopupContextItem("reset")) {
+            if (ImGui::MenuItem(row.slider_reset.c_str())) {
+                cb.reset_slider(gui::SimpleControl::contrast);
+            }
+            ImGui::EndPopup();
+        }
+    }
+    ImGui::EndDisabled();
+}
+
 void draw_stage_slider(const gui::LightPathRow& row, float x, float y, float width,
                        const LightPathCallbacks& cb) {
     const gui::SimpleControl control = *row.slider;
+    if (control == gui::SimpleControl::contrast) {
+        draw_grade_slider(row, x, y, width, cb);
+        return;
+    }
     ImGui::BeginDisabled(!row.enabled);
     ImGui::SetCursorScreenPos(ImVec2(x, y));
     ImGui::SetNextItemWidth(width);

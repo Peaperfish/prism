@@ -4,6 +4,7 @@
 #include <charconv>
 #include <cmath>
 
+#include "prism/gui/paper_grade.hpp"
 #include "prism/utf8_path.hpp"
 
 namespace prism::gui {
@@ -68,7 +69,7 @@ std::string stage_value_text(const EditSettings& s, StageId stage) {
     switch (stage) {
         case StageId::exposure: return format_exposure(s.exposure_stops);
         case StageId::saturation: return format_saturation(s.saturation);
-        case StageId::contrast: return format_multiplier(s.contrast);
+        case StageId::contrast: return format_paper_grade(s.contrast);
         case StageId::matrix:
             if (!s.matrix) {
                 return "none";

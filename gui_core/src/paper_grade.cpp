@@ -81,6 +81,11 @@ float contrast_for_grade_position(float position) {
     return contrast_for_grade(position / 2.0f);
 }
 
+void apply_contrast(EditSettings& s, float contrast) {
+    s.contrast = contrast;
+    s.contrast_on = true;
+}
+
 std::string grade_number_text(float grade) {
     const double twice = static_cast<double>(grade) * 2.0;
     if (std::fabs(twice - std::round(twice)) <= 0.01) {  // within 0.005 of a whole or half grade

@@ -39,6 +39,9 @@ struct LightPathCallbacks {
     std::function<void(gui::StageId, bool on)> set_stage_on;
     // One frame of a slider's gesture, called only on a frame when something happened to it.
     std::function<void(gui::SimpleControl, float position, const gui::SliderFrame&)> slider;
+    // The Contrast slider, which is in paper grades and not a position for apply_simple_control:
+    // the new multiplier, or none when the frame moved nothing (a press, a release).
+    std::function<void(std::optional<float> contrast, const gui::SliderFrame&)> contrast_slider;
     std::function<void(gui::SimpleControl)> reset_slider;
     std::function<void(gui::CurveKind)> set_curve_kind;
     std::function<void(float value, const gui::SliderFrame&)> curve_parameter;

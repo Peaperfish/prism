@@ -16,6 +16,7 @@
 #include "light_path.hpp"
 #include "prism/gui/explanations.hpp"
 #include "prism/gui/light_path.hpp"
+#include "prism/gui/paper_grade.hpp"
 #include "prism/gui/settings.hpp"
 #include "theme.hpp"
 #include "widgets.hpp"
@@ -68,6 +69,9 @@ protected:
         cb.set_stage_on = [this](gui::StageId s, bool on) { switches_.push_back({s, on}); };
         cb.slider = [this](gui::SimpleControl c, float position, const gui::SliderFrame& f) {
             slider_frames_.push_back({c, position, f});
+        };
+        cb.contrast_slider = [this](std::optional<float> contrast, const gui::SliderFrame& f) {
+            contrast_frames_.push_back({contrast, f});
         };
         cb.reset_slider = [this](gui::SimpleControl c) { resets_.push_back(c); };
         cb.set_curve_kind = [this](gui::CurveKind k) { curves_.push_back(k); };
@@ -202,6 +206,11 @@ protected:
     std::vector<gui::StageId> viewed_calls_;
     std::vector<std::pair<gui::StageId, bool>> switches_;
     std::vector<SliderCall> slider_frames_;
+    struct ContrastCall {
+        std::optional<float> contrast;
+        gui::SliderFrame frame;
+    };
+    std::vector<ContrastCall> contrast_frames_;
     std::vector<gui::SimpleControl> resets_;
     std::vector<gui::CurveKind> curves_;
     int parameter_frames_ = 0;
@@ -378,6 +387,61 @@ TEST_F(LightPathHeadless, APressOnASliderMovesItAndDoesNotViewTheStage) {
     EXPECT_TRUE(slider_frames_.front().frame.activated);
     EXPECT_TRUE(slider_frames_.back().frame.deactivated);
     EXPECT_GT(slider_frames_.front().position, 0.0f);
+}
+
+// The Contrast slider is in paper grades: a drag lands on half grades, as one gesture, and a value
+// between two of them is left alone until the slider moves.
+TEST_F(LightPathHeadless, DraggingContrastLandsOnHalfGradesAsOneGesture) {
+    const std::vector<LightPathRowRect> rects = frame();
+    const LightPathRowRect& row = row_of(rects, gui::StageId::contrast);
+    const ImVec2 start = slider_of(row);
+    mouse_to(start);
+    frame();
+    frame();
+    mouse(true);
+    frame();
+    for (const float fraction : {0.7f, 0.83f, 0.9f}) {
+        mouse_to(ImVec2(row.min.x + (row.max.x - row.min.x) * fraction, start.y));
+        frame();
+    }
+    mouse(false);
+    frame();
+    frame();
+    EXPECT_TRUE(viewed_calls_.empty());
+    EXPECT_TRUE(slider_frames_.empty());  // not through the other sliders' callback
+    ASSERT_FALSE(contrast_frames_.empty());
+    int activated = 0;
+    int deactivated = 0;
+    std::optional<float> last;
+    for (const ContrastCall& call : contrast_frames_) {
+        activated += call.frame.activated;
+        deactivated += call.frame.deactivated;
+        if (call.contrast) {
+            last = call.contrast;
+            const float position = gui::grade_slider_position(*call.contrast);
+            EXPECT_EQ(*call.contrast, gui::contrast_for_grade(position / 2.0f));
+        }
+    }
+    EXPECT_EQ(activated, 1);
+    EXPECT_EQ(deactivated, 1);
+    ASSERT_TRUE(last.has_value());
+    EXPECT_GT(*last, 1.0f);  // dragged right of grade 2
+}
+
+TEST_F(LightPathHeadless, DrawingAnOffGridContrastChangesNothing) {
+    settings_.contrast = gui::contrast_for_grade(2.7f);
+    for (int i = 0; i < 4; ++i) {
+        frame();
+    }
+    EXPECT_TRUE(contrast_frames_.empty());
+    EXPECT_EQ(settings_.contrast, gui::contrast_for_grade(2.7f));
+    // Pressing the knob where it is drawn (nearest half grade, 2.5) is not a move either.
+    const std::vector<LightPathRowRect> rects = frame();
+    click_at(slider_of(row_of(rects, gui::StageId::contrast)));
+    for (const ContrastCall& call : contrast_frames_) {
+        EXPECT_FALSE(call.frame.changed && call.contrast &&
+                     *call.contrast == gui::contrast_for_grade(2.7f));
+    }
 }
 
 TEST_F(LightPathHeadless, ADragThatLeavesTheRowStaysTheSlidersAndIsOneGesture) {

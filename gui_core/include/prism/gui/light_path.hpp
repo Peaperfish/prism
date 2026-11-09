@@ -58,11 +58,13 @@ struct LightPathRow {
     // sits at its neutral position (never beyond the slider), though slider_typed and slider_reset
     // still go with the stored value, the one it comes back with.
     std::optional<SimpleControl> slider;
+    // Exposure's and Saturation's position is in settings.hpp's -100 to +100. Contrast's is in half
+    // grades, a whole number from 0 to 10 (paper_grade.hpp), which is where the slider snaps to.
     float slider_position = 0.0f;
     bool beyond_slider = false;  // the value lies past the slider's end
     std::string slider_reset;    // "Reset to +0.00 stops"
     // What Ctrl/Cmd-click types into: the value as the line above shows it, in its own unit
-    // ("+0.70 stops", "1.20"), see typed_field_text.
+    // ("+0.70 stops", "1.20", a grade "3½"), see typed_field_text.
     std::string slider_typed;
 
     // The Tone curve's tabs, and the number of the curves that take one.

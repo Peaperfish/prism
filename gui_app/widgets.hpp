@@ -20,9 +20,10 @@ namespace prism::gui_app {
 // the value that does nothing (0 for Exposure's position, the left end for a curve's number), so
 // the fill does not always start at the left end. Like ImGui::SliderFloat with an empty format; the item
 // is the last item afterwards (IsItemActivated, BeginPopupContextItem...). Set the width first
-// with SetNextItemWidth.
+// with SetNextItemWidth. A `step` above 0 snaps a drag to multiples of it (counted from 0) before
+// the knob is drawn; 0 leaves the slider continuous.
 bool styled_slider(const char* id, float* value, float min, float max, float neutral,
-                   ImGuiSliderFlags flags = 0);
+                   ImGuiSliderFlags flags = 0, float step = 0.0f);
 bool styled_slider_int(const char* id, int* value, int min, int max, int neutral,
                        ImGuiSliderFlags flags = 0);
 
@@ -45,7 +46,7 @@ struct SliderTyping {
 // never opens. Returns whether dragging changed *value.
 bool styled_slider_typed(const char* id, float* value, float min, float max, float neutral,
                          std::string_view field_text, SliderTyping* typing,
-                         ImGuiSliderFlags flags = 0);
+                         ImGuiSliderFlags flags = 0, float step = 0.0f);
 
 // A slider's height with the current font.
 [[nodiscard]] float slider_height();

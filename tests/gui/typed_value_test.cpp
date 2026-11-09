@@ -7,6 +7,7 @@
 #include <string>
 #include <string_view>
 
+#include "prism/gui/paper_grade.hpp"
 #include "prism/gui/stage_controls.hpp"
 #include "prism/gui/typed_value.hpp"
 
@@ -24,9 +25,17 @@ float parsed(std::string_view text, SimpleControl control = SimpleControl::colou
 }
 
 // What the row's value line shows after `text` was typed into the row, through the same path the
-// app takes: text -> slider position -> settings field -> value line.
+// app takes: text -> slider position -> settings field -> value line. Contrast's slider is in grades,
+// so its typed value goes straight to the multiplier, as the app does.
 std::string line_after_typing(SimpleControl control, std::string_view text,
                               EditSettings s = {}) {
+    if (control == SimpleControl::contrast) {
+        const std::optional<float> value = prism::gui::typed_row_value(control, text);
+        EXPECT_TRUE(value.has_value()) << text;
+        s.contrast = value.value_or(1.0f);
+        s.contrast_on = true;
+        return prism::gui::stage_value_text(s, prism::gui::stage_of(control));
+    }
     const std::optional<float> position = prism::gui::typed_slider_position(control, text);
     EXPECT_TRUE(position.has_value()) << text;
     prism::gui::apply_simple_control(s, control, position.value_or(0.0f));
@@ -95,7 +104,7 @@ TEST(TypedValue, TheMinusSignOfTheGuideIsAMinus) {
     EXPECT_FLOAT_EQ(parsed("\xE2\x88\x92" "0.5", SimpleControl::brightness), -0.5f);
     EXPECT_FLOAT_EQ(parsed(" \xE2\x88\x92" "0,5 stops ", SimpleControl::brightness), -0.5f);
     EXPECT_FLOAT_EQ(parsed("\xE2\x88\x92" "1 stop", SimpleControl::brightness), -1.0f);
-    EXPECT_FLOAT_EQ(parsed("\xE2\x88\x92" "0.2", SimpleControl::contrast), -0.2f);
+    EXPECT_FLOAT_EQ(parsed("\xE2\x88\x92" "0.2", SimpleControl::colour), -0.2f);
     for (const std::string_view bad : {"\xE2\x88\x92", "\xE2\x88\x92" "-1", "-" "\xE2\x88\x92" "1",
                                        "1\xE2\x88\x92", "\xE2\x88" "1", "+" "\xE2\x88\x92" "1"}) {
         EXPECT_FALSE(prism::gui::typed_row_value(SimpleControl::brightness, bad)) << bad;
@@ -110,9 +119,10 @@ TEST(TypedValue, SaturationAndContrastTakeATimesSign) {
         EXPECT_FLOAT_EQ(parsed(std::string("1.2") + std::string(times), control), 1.2f);
         EXPECT_FLOAT_EQ(parsed(std::string("1,2 ") + std::string(times) + " ", control), 1.2f);
         EXPECT_FALSE(prism::gui::typed_row_value(control, "1.2 stops"));
-        // The value line puts the sign first; the field takes it after the number.
-        EXPECT_FALSE(prism::gui::typed_row_value(control, std::string(times) + "1.2"));
     }
+    // The value line puts the sign first; Saturation's field takes it after the number (Contrast's
+    // takes it before too, see the paper grade tests).
+    EXPECT_FALSE(prism::gui::typed_row_value(SimpleControl::colour, std::string(times) + "1.2"));
 }
 
 TEST(TypedValue, RejectsEverythingElse) {
@@ -157,13 +167,13 @@ TEST(TypedValue, SaturationAndContrastAreConvertedThroughTheirMaps) {
     EXPECT_FLOAT_EQ(*prism::gui::typed_slider_position(SimpleControl::colour, "0"), -100.0f);
     EXPECT_EQ(*prism::gui::typed_slider_position(SimpleControl::colour, "3"), 100.0f);
     EXPECT_EQ(*prism::gui::typed_slider_position(SimpleControl::colour, "-4"), -100.0f);
-    EXPECT_NEAR(*prism::gui::typed_slider_position(SimpleControl::contrast, "1.5"), 100.0f, 1e-3f);
-    EXPECT_FLOAT_EQ(*prism::gui::typed_slider_position(SimpleControl::contrast, "1"), 0.0f);
-    EXPECT_EQ(*prism::gui::typed_slider_position(SimpleControl::contrast, "5"), 100.0f);
-    EXPECT_EQ(*prism::gui::typed_slider_position(SimpleControl::contrast, "0.1"), -100.0f);
+    EXPECT_NEAR(*prism::gui::typed_slider_position(SimpleControl::contrast, "1.5x"), 100.0f, 1e-3f);
+    EXPECT_FLOAT_EQ(*prism::gui::typed_slider_position(SimpleControl::contrast, "1x"), 0.0f);
+    EXPECT_EQ(*prism::gui::typed_slider_position(SimpleControl::contrast, "5x"), 100.0f);
+    EXPECT_EQ(*prism::gui::typed_slider_position(SimpleControl::contrast, "0.1x"), -100.0f);
     // No slider position gives a contrast of 0 or less: the low end.
-    EXPECT_EQ(*prism::gui::typed_slider_position(SimpleControl::contrast, "0"), -100.0f);
-    EXPECT_EQ(*prism::gui::typed_slider_position(SimpleControl::contrast, "-2"), -100.0f);
+    EXPECT_EQ(*prism::gui::typed_slider_position(SimpleControl::contrast, "0x"), -100.0f);
+    EXPECT_EQ(*prism::gui::typed_slider_position(SimpleControl::contrast, "-2x"), -100.0f);
 }
 
 TEST(TypedValue, SimplePositionForIsTheInverseOfApplySimpleControl) {
@@ -198,12 +208,12 @@ TEST(TypedValue, TheValueLineShowsWhatWasTyped) {
     EXPECT_EQ(line_after_typing(SimpleControl::colour, "2"), "\xC3\x97" "2.00");
     EXPECT_EQ(line_after_typing(SimpleControl::colour, "7"), "\xC3\x97" "2.00");  // clamped
 
-    EXPECT_EQ(line_after_typing(SimpleControl::contrast, "1.2"), "\xC3\x97" "1.20");
-    EXPECT_EQ(line_after_typing(SimpleControl::contrast, "0.8\xC3\x97"), "\xC3\x97" "0.80");
-    EXPECT_EQ(line_after_typing(SimpleControl::contrast, "1"), "\xC3\x97" "1.00");
-    EXPECT_EQ(line_after_typing(SimpleControl::contrast, "1.5"), "\xC3\x97" "1.50");
-    EXPECT_EQ(line_after_typing(SimpleControl::contrast, "9"), "\xC3\x97" "1.50");  // clamped
-    EXPECT_EQ(line_after_typing(SimpleControl::contrast, "0.01"), "\xC3\x97" "0.67");
+    EXPECT_EQ(line_after_typing(SimpleControl::contrast, "3"), "Grade 3 \xC2\xB7 \xC3\x97" "1.29");
+    EXPECT_EQ(line_after_typing(SimpleControl::contrast, "1x"), "Grade 2 \xC2\xB7 \xC3\x97" "1.00");
+    EXPECT_EQ(line_after_typing(SimpleControl::contrast, "50x"),
+              "Harder than grade 5 \xC2\xB7 \xC3\x97" "10.00");  // clamped to contrast_range
+    EXPECT_EQ(line_after_typing(SimpleControl::contrast, "0.01x"),
+              "Softer than grade 0 \xC2\xB7 \xC3\x97" "0.10");
 }
 
 TEST(TypedValue, EveryTwoPlaceValueTypedComesBackOnTheLine) {
@@ -219,7 +229,10 @@ TEST(TypedValue, EveryTwoPlaceValueTypedComesBackOnTheLine) {
         const std::string text = std::to_string(hundredths / 100) + "." +
                                  (hundredths % 100 < 10 ? "0" : "") +
                                  std::to_string(hundredths % 100);
-        EXPECT_EQ(line_after_typing(SimpleControl::contrast, text), "\xC3\x97" + text) << text;
+        const std::string line = line_after_typing(SimpleControl::contrast, text + "x");
+        const std::string tail = " \xC2\xB7 \xC3\x97" + text;
+        ASSERT_GE(line.size(), tail.size()) << text;
+        EXPECT_EQ(line.substr(line.size() - tail.size()), tail) << text;
     }
     for (int hundredths = -200; hundredths <= 200; ++hundredths) {  // Exposure's, in stops
         const int a = std::abs(hundredths);
@@ -233,10 +246,10 @@ TEST(TypedValue, TheFieldOpensOnTheStoredValueAndReadsBackAsIt) {
     EditSettings s;
     prism::gui::apply_simple_control(s, SimpleControl::brightness, 35.0f);
     prism::gui::apply_simple_control(s, SimpleControl::colour, 20.0f);
-    prism::gui::apply_simple_control(s, SimpleControl::contrast, -50.0f);
+    s.contrast = prism::gui::contrast_for_grade(3.5f);
     EXPECT_EQ(prism::gui::typed_field_text(s, SimpleControl::brightness), "+0.70 stops");
     EXPECT_EQ(prism::gui::typed_field_text(s, SimpleControl::colour), "1.20");
-    EXPECT_EQ(prism::gui::typed_field_text(s, SimpleControl::contrast), "0.82");
+    EXPECT_EQ(prism::gui::typed_field_text(s, SimpleControl::contrast), "3\xC2\xBD");
     // Re-typing what the field held changes nothing the line shows.
     for (const SimpleControl control :
          {SimpleControl::brightness, SimpleControl::colour, SimpleControl::contrast}) {

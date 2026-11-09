@@ -31,17 +31,21 @@ namespace prism::gui {
 [[nodiscard]] std::span<const std::string_view> typed_units(SimpleControl control) noexcept;
 
 // What `text` means for the field behind `control`, in the row's unit (stops, or the multiplier);
-// nothing if it is not a number the row accepts.
+// nothing if it is not a number the row accepts. Contrast's row takes a paper grade ("3", "3,5",
+// "3½", "grade 4"; clamped to 0 to 5) or, with a "×" or "x" ("×1.2", "1.2x"), the multiplier
+// (clamped to contrast_range); either way the result is the multiplier.
 [[nodiscard]] std::optional<float> typed_row_value(SimpleControl control, std::string_view text);
 
 // The slider position `text` stands for, converted through the settings maps and clamped to the
-// slider's range (a typed ×5 Contrast is the slider's top end); nothing if the text is rejected,
+// slider's range (for Contrast that is the older -100 to +100 map; the window's Contrast slider is
+// in half grades and uses typed_row_value) (a typed ×5 Contrast is the slider's top end); nothing if the text is rejected,
 // so the value stays.
 [[nodiscard]] std::optional<float> typed_slider_position(SimpleControl control,
                                                          std::string_view text);
 
 // What the field holds when it opens: the stored value as the row's value line shows it, without
-// the "×": "+0.70 stops", "1.20". It reads back as the same text with typed_row_value.
+// the "×": "+0.70 stops", "1.20". Contrast holds its grade, "3", "3½" or "2.7", or for a value
+// past grade 0 or 5 the multiplier with its "×" ("×0.60"). It reads back as the same text with typed_row_value.
 [[nodiscard]] std::string typed_field_text(const EditSettings& s, SimpleControl control);
 
 }  // namespace prism::gui

@@ -4,10 +4,13 @@
 #include <cmath>
 #include <cstdio>
 #include <limits>
+#include <optional>
 #include <string>
 
+#include "prism/gui/light_path.hpp"
 #include "prism/gui/paper_grade.hpp"
 #include "prism/gui/stage_controls.hpp"
+#include "prism/gui/typed_value.hpp"
 
 using prism::gui::contrast_for_grade;
 using prism::gui::format_paper_grade;
@@ -155,4 +158,135 @@ TEST(PaperGrade, NearWholeAndHalfGradesReadAsThem) {
     EXPECT_EQ(prism::gui::grade_number_text(3.496f), "3½");
     EXPECT_EQ(prism::gui::grade_number_text(3.02f), "3.0");
     EXPECT_EQ(prism::gui::grade_number_text(3.3f), "3.3");
+}
+
+// --- Typing ----------------------------------------------------------------------------------
+
+namespace {
+
+using prism::gui::SimpleControl;
+
+prism::gui::LightPathRow row_for(prism::gui::StageId stage, const prism::gui::EditSettings& s) {
+    return prism::gui::light_path_row({s, prism::gui::InputKind::raw, "RAW", prism::gui::final_stage,
+                                       std::nullopt, nullptr},
+                                      stage);
+}
+
+// The multiplier the Contrast row makes of `text`, or -1 for text it rejects.
+float typed(const std::string& text) {
+    const std::optional<float> v = prism::gui::typed_row_value(SimpleControl::contrast, text);
+    return v ? *v : -1.0f;
+}
+
+}  // namespace
+
+TEST(PaperGradeTyping, AGradeInAnyOfItsForms) {
+    EXPECT_EQ(typed("3"), contrast_for_grade(3.0f));
+    EXPECT_EQ(typed("3.5"), contrast_for_grade(3.5f));
+    EXPECT_EQ(typed("3,5"), contrast_for_grade(3.5f));
+    EXPECT_EQ(typed("3\xC2\xBD"), contrast_for_grade(3.5f));
+    EXPECT_EQ(typed("\xC2\xBD"), contrast_for_grade(0.5f));
+    EXPECT_EQ(typed("grade 4"), contrast_for_grade(4.0f));
+    EXPECT_EQ(typed("Grade 2\xC2\xBD"), contrast_for_grade(2.5f));
+    EXPECT_EQ(typed("GRADE3"), contrast_for_grade(3.0f));
+    EXPECT_EQ(typed("  3  "), contrast_for_grade(3.0f));
+}
+
+TEST(PaperGradeTyping, AGradeIsClampedToZeroToFive) {
+    EXPECT_EQ(typed("7"), contrast_for_grade(5.0f));
+    EXPECT_EQ(typed("-1"), contrast_for_grade(0.0f));
+    EXPECT_EQ(typed("grade 99"), contrast_for_grade(5.0f));
+    EXPECT_EQ(typed("5\xC2\xBD"), contrast_for_grade(5.0f));
+}
+
+TEST(PaperGradeTyping, AnXOrATimesSignMakesItAMultiplier) {
+    EXPECT_EQ(typed("\xC3\x97" "1.2"), 1.2f);
+    EXPECT_EQ(typed("1.2x"), 1.2f);
+    EXPECT_EQ(typed("x1,2"), 1.2f);
+    EXPECT_EQ(typed("1.2 \xC3\x97"), 1.2f);
+    EXPECT_EQ(typed("50x"), 10.0f);  // clamped to contrast_range
+    EXPECT_EQ(typed("0x"), 0.1f);
+    EXPECT_EQ(typed("\xC3\x97" "0.01"), 0.1f);
+}
+
+TEST(PaperGradeTyping, GarbageIsRejected) {
+    for (const char* bad : {"", " ", "abc", "grade", "grade x", "3 4", "3.5.1", "1e3", "x", "\xC3\x97",
+                            "3\xC2\xBD\xC2\xBD", "-3\xC2\xBD", "3x4", "grade 3x grade", "nan"}) {
+        EXPECT_FALSE(prism::gui::typed_row_value(SimpleControl::contrast, bad)) << bad;
+    }
+}
+
+TEST(PaperGradeTyping, TheFieldOpensOnTheGradeAndReadsBackAsIt) {
+    prism::gui::EditSettings s;
+    s.contrast = contrast_for_grade(3.0f);
+    EXPECT_EQ(prism::gui::typed_field_text(s, SimpleControl::contrast), "3");
+    s.contrast = contrast_for_grade(3.5f);
+    EXPECT_EQ(prism::gui::typed_field_text(s, SimpleControl::contrast), "3\xC2\xBD");
+    s.contrast = contrast_for_grade(2.7f);
+    EXPECT_EQ(prism::gui::typed_field_text(s, SimpleControl::contrast), "2.7");
+    s.contrast = 0.6f;  // past grade 0, where a grade cannot say it
+    EXPECT_EQ(prism::gui::typed_field_text(s, SimpleControl::contrast), "\xC3\x97" "0.60");
+    EXPECT_EQ(typed(prism::gui::typed_field_text(s, SimpleControl::contrast)), 0.6f);
+    s.contrast = 2.0f;
+    EXPECT_EQ(typed(prism::gui::typed_field_text(s, SimpleControl::contrast)), 2.0f);
+    s.contrast_on = false;  // still the stored value
+    EXPECT_EQ(prism::gui::typed_field_text(s, SimpleControl::contrast), "\xC3\x97" "2.00");
+}
+
+// --- The row and the slider ------------------------------------------------------------------
+
+TEST(PaperGradeRow, AHalfGradePositionSetsTheMultiplierAndTurnsTheStageOn) {
+    for (int position = 0; position <= 10; ++position) {
+        prism::gui::EditSettings s;
+        s.contrast_on = false;
+        s.saturation = 3.0f;  // not the slider's: stays
+        prism::gui::apply_contrast(
+            s, prism::gui::contrast_for_grade_position(static_cast<float>(position)));
+        EXPECT_EQ(s.contrast, contrast_for_grade(static_cast<float>(position) / 2.0f)) << position;
+        EXPECT_TRUE(s.contrast_on);
+        EXPECT_EQ(s.saturation, 3.0f);
+        const prism::gui::LightPathRow row = row_for(prism::gui::StageId::contrast, s);
+        EXPECT_EQ(row.slider_position, static_cast<float>(position));
+        EXPECT_FALSE(row.beyond_slider);
+    }
+}
+
+TEST(PaperGradeRow, AnOffGridValueShowsAtTheNearestHalfGradeAndIsNotChanged) {
+    prism::gui::EditSettings s;
+    s.contrast = contrast_for_grade(2.7f);
+    const float before = s.contrast;
+    const prism::gui::LightPathRow row = row_for(prism::gui::StageId::contrast, s);
+    EXPECT_EQ(row.slider_position, 5.0f);
+    EXPECT_FALSE(row.beyond_slider);
+    EXPECT_EQ(row.value, "Grade 2.7 \xC2\xB7 \xC3\x97" "1.19");
+    EXPECT_EQ(s.contrast, before);
+}
+
+TEST(PaperGradeRow, PastTheGradesIsBeyondTheSlider) {
+    prism::gui::EditSettings s;
+    s.contrast = 0.6f;
+    prism::gui::LightPathRow row = row_for(prism::gui::StageId::contrast, s);
+    EXPECT_TRUE(row.beyond_slider);
+    EXPECT_EQ(row.slider_position, 0.0f);
+    EXPECT_EQ(row.value, "Softer than grade 0 \xC2\xB7 \xC3\x97" "0.60");
+    s.contrast = 2.0f;
+    row = row_for(prism::gui::StageId::contrast, s);
+    EXPECT_TRUE(row.beyond_slider);
+    EXPECT_EQ(row.slider_position, 10.0f);
+    s.contrast_on = false;  // off: neutral, never beyond, and the value comes back with it
+    row = row_for(prism::gui::StageId::contrast, s);
+    EXPECT_FALSE(row.beyond_slider);
+    EXPECT_EQ(row.slider_position, 4.0f);
+    EXPECT_EQ(row.value, "Harder than grade 5 \xC2\xB7 \xC3\x97" "2.00 when on");
+}
+
+TEST(PaperGradeRow, ExposureAndSaturationKeepTheirSliders) {
+    prism::gui::EditSettings s;
+    s.exposure_stops = 0.7f;
+    s.saturation = 1.2f;
+    EXPECT_EQ(row_for(prism::gui::StageId::exposure, s).slider_position, 35.0f);
+    EXPECT_NEAR(row_for(prism::gui::StageId::saturation, s).slider_position, 20.0f,
+                1e-4f);
+    EXPECT_EQ(row_for(prism::gui::StageId::exposure, s).value, "+0.70 stops");
+    EXPECT_EQ(row_for(prism::gui::StageId::saturation, s).value, "\xC3\x97" "1.20");
 }

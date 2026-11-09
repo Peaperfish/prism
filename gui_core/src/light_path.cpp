@@ -4,6 +4,7 @@
 #include <charconv>
 
 #include "prism/gui/explanations.hpp"
+#include "prism/gui/paper_grade.hpp"
 #include "prism/gui/typed_value.hpp"
 #include "prism/utf8_path.hpp"
 
@@ -146,6 +147,14 @@ LightPathRow light_path_row(const LightPathInputs& in, StageId stage) {
             row.beyond_slider = control == SimpleControl::brightness ? beyond.brightness
                                 : control == SimpleControl::contrast ? beyond.contrast
                                                                      : beyond.colour;
+            if (control == SimpleControl::contrast) {
+                // Contrast's slider is in half grades (0 to 10), snapped; an off-grid value shows
+                // at the nearest one and is left alone until the slider is moved.
+                const GradeReading reading = grade_for_contrast(s.contrast);
+                row.slider_position = s.contrast_on ? grade_slider_position(s.contrast)
+                                                    : static_cast<float>(grade_slider_neutral);
+                row.beyond_slider = s.contrast_on && reading.end != GradeEnd::within;
+            }
             row.slider_reset = "Reset to " + stage_value_text(EditSettings{}, stage);
             row.slider_typed = typed_field_text(s, control);
             // The stored value, also while the stage is off: it comes back with that one.
