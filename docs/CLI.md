@@ -18,7 +18,7 @@ prism <input>... [-o <output> | --out-dir <dir>] [--histogram <file>] [options]
 - At least one of `-o`, `--out-dir` and `--histogram` is required. With only `--histogram`, the whole pipeline still runs and the histogram shows the processed result, but no image is written. That is a quick way to check clipping before you export.
 - Every option except `--help`, `--version`, `--time`, `--raw-half` takes the next argument as its value, even if it starts with a minus sign, so `--exposure -1` works.
 - An option given twice is an error.
-- **Options are always applied in pipeline order**, whatever order you type them: exposure, colour matrix, saturation, contrast, tone curve. See [How Prism thinks about light](GUIDE.md#how-prism-thinks-about-light).
+- **Options are always applied in pipeline order**, whatever order you type them: exposure, colour matrix, saturation, contrast, tone curve. `--long-side` comes first of all: the photo is reduced right after decoding, before exposure, so every later stage works on the small image. See [How Prism thinks about light](GUIDE.md#how-prism-thinks-about-light).
 - A stage left at its neutral value is skipped: exposure 0, the identity matrix, saturation 1 and contrast 1 leave every bit as it was. A tone curve always runs when you give one.
 - All processing is in linear light, in floating point. PNG and JPEG inputs are converted to linear light first and to 8-bit sRGB at the end. A RAW file is decoded to linear light with the camera's as-shot white balance (see the [README](../README.md#raw-files) for the details). A RAW file looks darker and flatter than the camera's JPEG until you add exposure and a tone curve; `--exposure +1 --curve filmic` is a good start.
 
@@ -32,7 +32,7 @@ The output image. The extension (`.png`, `.jpg` or `.jpeg`, in any case) picks t
 
 ### `--out-dir <dir>`
 
-Write each result into the folder `<dir>`, which must already exist, as `<input name>_prism.jpg` (or `.png`, see `--format`): `DSC03866.ARW` becomes `DSC03866_prism.jpg`, the name the app's **Export** suggests. A file of that name is replaced, as with `-o`. Needed for more than one input, and then `-o` and `--histogram` can't be used. With a single input it can take the place of `-o`, but not be given together with it. A folder that doesn't exist, or two inputs that would give the same name (such as `a/photo.jpg` and `b/photo.png`, or `photo.jpg` and `PHOTO.PNG`), is an error before any photo is processed. No default.
+Write each result into the folder `<dir>`, which must already exist, as `<input name>_prism.jpg` (or `.png`, see `--format`): `DSC03866.ARW` becomes `DSC03866_prism.jpg`, the name the app's **Export** suggests. With `--long-side 2048` it becomes `DSC03866_prism_2048.jpg`, for every input, including those too small to be reduced, so the names can be known in advance. A file of that name is replaced, as with `-o`. Needed for more than one input, and then `-o` and `--histogram` can't be used. With a single input it can take the place of `-o`, but not be given together with it. A folder that doesn't exist, or two inputs that would give the same name (such as `a/photo.jpg` and `b/photo.png`, or `photo.jpg` and `PHOTO.PNG`), is an error before any photo is processed. No default.
 
 ### `--format jpg|png`
 
@@ -80,6 +80,20 @@ clipped (0 / 255):  R 0.00% / 1.25%  G 0.00% / 0.80%  B 0.10% / 0.00%
 
 The file format follows the extension (`.png`, `.jpg`, `.jpeg`). The histogram is measured after the whole pipeline, on the 8-bit sRGB values that are saved (before any JPEG compression). It works with or without `-o`. No default.
 
+### `--long-side <pixels>`
+
+Shrink the photo so that its longer side is this many pixels, keeping the aspect ratio (the shorter side is rounded to the nearest pixel). A whole number of at least 1, written in digits only: `0`, `-5`, `2.5` and `1e3` are usage errors (exit code 2). It works for RAW files too, and with `--raw-half` it applies to the half-size decode.
+
+The reduction happens right after decoding and before exposure, with the same area averaging on linear light as the app's preview, so a small export matches what you see and is faster to make: every stage works on the small image.
+
+Smaller only: Prism never enlarges. A photo whose longer side is not larger than `<pixels>` keeps its size, and `prism` says so on stderr, as in:
+
+```
+note: IMG_0042.jpg is 1600x1067, not larger than --long-side 2048; kept its size
+```
+
+The note is not an error: the photo is still written and the exit code is unaffected. The name suffix described under `--out-dir` is added for every input of a batch, noted or not. A name you give yourself with `-o` is used as it is. Default: not applied.
+
 ### `--raw-half`
 
 RAW input only. Decode at half the width and height, which uses LibRaw's half-size mode (no demosaicing) and is much faster, about twice as fast on a 61-megapixel Sony α7R V file; good for previews. On a PNG or JPEG input it is an error ("only applies to RAW input"), so a wrong input file doesn't go unnoticed.
@@ -106,7 +120,7 @@ time (1 thread):
   total           8.2 ms
 ```
 
-The stages that can appear are `load`, `exposure`, `matrix`, `saturation`, `contrast`, `curve`, `save` and `histogram`. A stage that was skipped (a neutral value, or no `-o` or `--histogram`) isn't listed. The thread count shown is the number actually used.
+The stages that can appear are `load`, `resize` (with `--long-side`), `exposure`, `matrix`, `saturation`, `contrast`, `curve`, `save` and `histogram`. A stage that was skipped (a neutral value, or no `-o` or `--histogram`) isn't listed. The thread count shown is the number actually used.
 
 ### `-h`, `--help`
 
@@ -132,7 +146,7 @@ When you give stage flags alongside `--recipe`, **flags win stage by stage**:
 
 A recipe stage with `on = false` is skipped unless you give the flag for that stage. A stage left out of the recipe (and not given as a flag) **does nothing** on the command line, because `prism` starts each photo from no adjustments — unlike the app, where a recipe leaves omitted stages at whatever values the open photo already had.
 
-To process **several inputs** in one run, pass them on the command line with `--out-dir <dir>` (an existing folder). With more than one input, `-o` and `--histogram` are usage errors (exit code 2), and `--out-dir` is required. Each result is written into `<dir>` as `<input stem>_prism.jpg` (or `<input stem>_prism.png` with `--format png`), matching the name the app's **Export** suggests. If a file of that name already exists in `<dir>`, it is replaced. Before any photo is decoded, `prism` checks the whole batch: if `--out-dir` does not exist or is not a folder, or if two inputs would produce the same output name (ignoring case, such as `a/photo.jpg` and `b/PHOTO.png`), it exits with code 2 and writes nothing.
+To process **several inputs** in one run, pass them on the command line with `--out-dir <dir>` (an existing folder). With more than one input, `-o` and `--histogram` are usage errors (exit code 2), and `--out-dir` is required. Each result is written into `<dir>` as `<input stem>_prism.jpg` (or `<input stem>_prism.png` with `--format png`), matching the name the app's **Export** suggests. With `--long-side <n>` the name is `<input stem>_prism_<n>.jpg` for every input, including those too small to be reduced (they keep their size and get a `note:` on stderr). If a file of that name already exists in `<dir>`, it is replaced. Before any photo is decoded, `prism` checks the whole batch: if `--out-dir` does not exist or is not a folder, or if two inputs would produce the same output name (ignoring case, such as `a/photo.jpg` and `b/PHOTO.png`), it exits with code 2 and writes nothing.
 
 Photos in a batch are processed one after another (each photo already uses all hardware threads). Each photo that succeeds prints its usual `wrote <file> (<width>x<height>)` line. If one photo fails (unreadable, decode error or write error), `prism` prints an `error:` line naming that photo and carries on with the rest. At the end of a run with more than one input, it prints a summary line to stdout:
 
@@ -161,6 +175,12 @@ prism IMG_001.CR3 IMG_002.CR3 --raw-half --recipe look.prism --curve filmic --fo
 ```
 
 ## Examples
+
+A whole shoot for sharing online, each photo reduced to 2048 pixels on its longer side, written as `edited/<name>_prism_2048.jpg`:
+
+```sh
+prism *.jpg --long-side 2048 --out-dir edited
+```
 
 A JPEG, brightened by half a stop, with a warm grade and the filmic curve, written as a PNG, plus a histogram of the result:
 

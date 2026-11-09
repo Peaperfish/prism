@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cerrno>
 #include <chrono>
 #include <cmath>
@@ -7,6 +8,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <optional>
 #include <sstream>
@@ -24,6 +26,7 @@
 #include "prism/ranges.hpp"
 #include "prism/raw.hpp"
 #include "prism/recipe.hpp"
+#include "prism/resize.hpp"
 #include "prism/utf8_path.hpp"
 #include "prism/version.hpp"
 
@@ -41,8 +44,14 @@ void print_usage(const char* program) {
               << "\n"
               << "Several photos:\n"
               << "  --out-dir <dir>     write each result into this existing folder, as\n"
-              << "                      <input name>_prism.jpg; needed for more than one input\n"
+              << "                      <input name>_prism.jpg (<input name>_prism_<n>.jpg with\n"
+              << "                      --long-side <n>); needed for more than one input\n"
               << "  --format jpg|png    what --out-dir writes: JPEG (the default) or PNG\n"
+              << "\n"
+              << "Size:\n"
+              << "  --long-side <pixels>  shrink the photo right after loading so its longer side\n"
+              << "                        is this many pixels (smaller only: a photo that is not\n"
+              << "                        larger keeps its size); works for RAW too\n"
               << "\n"
               << "RAW input:\n"
               << "  --raw-half                  decode at half size (much faster; for previews)\n"
@@ -93,6 +102,7 @@ struct Options {
     std::optional<std::string> histogram_path;
     bool raw_half = false;
     std::optional<std::string> raw_camera_matrix_path;
+    std::optional<int> long_side;  // pixels, at least 1; unset = keep the size
     std::optional<int> threads;  // unset = automatic (one per hardware thread)
     bool time = false;
 
@@ -138,6 +148,19 @@ int parse_threads(const std::string& text) {
     return static_cast<int>(value);
 }
 
+// --long-side: a whole number of pixels, at least 1, written in plain digits.
+int parse_long_side(const std::string& text) {
+    const bool digits = !text.empty() && text.find_first_not_of("0123456789") == std::string::npos;
+    char* end = nullptr;
+    errno = 0;
+    const long long value = digits ? std::strtoll(text.c_str(), &end, 10) : 0;
+    if (!digits || errno == ERANGE || value < 1 || value > std::numeric_limits<int>::max()) {
+        throw UsageError("--long-side needs a whole number of pixels, at least 1, got '" + text +
+                         "'");
+    }
+    return static_cast<int>(value);
+}
+
 // Stores `value` into `slot`, rejecting a flag given twice (which is almost always a mistake).
 template <typename T>
 void set_once(std::optional<T>& slot, std::string_view flag, T value) {
@@ -158,11 +181,13 @@ std::string ascii_lower(std::string text) {
 }
 
 // The files --out-dir writes, one per input: <dir>/<input name>_prism<extension>, the name the
-// app's Export suggests. Checks the whole batch before anything runs: the folder must exist, and
+// app's Export suggests; with --long-side <n> it is <input name>_prism_<n><extension> for every
+// input, including those too small to be reduced, so the names can be known in advance. Checks the whole batch before anything runs: the folder must exist, and
 // no two inputs may give the same name (they would overwrite each other).
 std::vector<std::optional<std::string>> out_dir_outputs(const std::string& dir,
                                                         const std::vector<std::string>& inputs,
-                                                        const std::string& extension) {
+                                                        const std::string& extension,
+                                                        std::optional<int> long_side) {
     const std::filesystem::path folder = prism::path_from_utf8(dir);
     std::error_code ec;
     if (!std::filesystem::exists(folder, ec)) {
@@ -176,6 +201,9 @@ std::vector<std::optional<std::string>> out_dir_outputs(const std::string& dir,
     for (std::size_t i = 0; i < inputs.size(); ++i) {
         std::filesystem::path name = prism::path_from_utf8(inputs[i]).stem();
         name += "_prism";
+        if (long_side) {
+            name += "_" + std::to_string(*long_side);
+        }
         name += extension;
         const auto [it, added] = by_name.emplace(ascii_lower(prism::utf8(name)), i);
         if (!added) {
@@ -236,6 +264,8 @@ Options parse_args(int argc, char* argv[]) {
             set_once(opts.curve_spec, arg, next_value());
         } else if (arg == "--histogram") {
             set_once(opts.histogram_path, arg, next_value());
+        } else if (arg == "--long-side") {
+            set_once(opts.long_side, arg, parse_long_side(next_value()));
         } else if (arg == "--threads") {
             set_once(opts.threads, arg, parse_threads(next_value()));
         } else if (arg == "--time") {
@@ -293,8 +323,8 @@ Options parse_args(int argc, char* argv[]) {
             "name chooses the format)");
     }
     if (opts.out_dir) {
-        opts.outputs =
-            out_dir_outputs(*opts.out_dir, opts.inputs, "." + opts.format.value_or("jpg"));
+        opts.outputs = out_dir_outputs(*opts.out_dir, opts.inputs,
+                                       "." + opts.format.value_or("jpg"), opts.long_side);
     } else {
         opts.outputs = {opts.output};
     }
@@ -358,11 +388,29 @@ private:
 // they are.
 void run_one(const std::string& input, const std::optional<std::string>& output,
              const std::optional<std::string>& histogram_path, bool time,
-             const prism::ProcessSettings& settings, const prism::RawOptions& raw, int threads) {
+             const prism::ProcessSettings& settings, const prism::RawOptions& raw,
+             std::optional<int> long_side, int threads) {
     StageTimer timer;
 
     prism::Image img;
     timer.run("load", [&] { img = prism::load_image(prism::path_from_utf8(input), raw, threads); });
+    // Reduce before any editing, so every stage works on the small image. A photo that is not
+    // larger keeps its size (downscale never enlarges), and that is said, since the user asked for
+    // a size and gets another.
+    if (long_side) {
+        const int width = img.width;
+        const int height = img.height;
+        const bool larger = std::max(width, height) > *long_side;
+        timer.run("resize", [&] {
+            if (larger) {
+                img = prism::downscale(img, *long_side, threads);
+            }
+        });
+        if (!larger) {
+            std::cerr << "note: " << input << " is " << width << 'x' << height
+                      << ", not larger than --long-side " << *long_side << "; kept its size\n";
+        }
+    }
     // process() applies the stages in the README's order and skips those left at their
     // neutral value. Without a stop token it always runs to the end, so the result is always
     // ProcessResult::completed.
@@ -442,7 +490,7 @@ int main(int argc, char* argv[]) {
         if (opts.inputs.size() == 1) {
             // A failure is reported by the catch blocks below, as it always was.
             run_one(opts.inputs[0], opts.outputs[0], opts.histogram_path, opts.time, settings, raw,
-                    threads);
+                    opts.long_side, threads);
             return 0;
         }
 
@@ -452,7 +500,8 @@ int main(int argc, char* argv[]) {
         for (std::size_t i = 0; i < opts.inputs.size(); ++i) {
             const std::string& input = opts.inputs[i];
             try {
-                run_one(input, opts.outputs[i], std::nullopt, opts.time, settings, raw, threads);
+                run_one(input, opts.outputs[i], std::nullopt, opts.time, settings, raw,
+                        opts.long_side, threads);
                 ++written;
             } catch (const std::exception& e) {
                 // Keep the "wrote" lines before this one when both go to the same place.

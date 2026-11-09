@@ -6,6 +6,7 @@
 #include <iterator>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #ifdef _WIN32
@@ -109,6 +110,20 @@ protected:
         for (std::size_t i = 0; i < img.pixels.size(); ++i) {
             img.pixels[i] =
                 static_cast<float>((i * 7 + static_cast<std::size_t>(seed) * 13) % 23) / 23.0f;
+        }
+        const fs::path p = path(name);
+        prism::save_image(p, img);
+        return p;
+    }
+
+    // As write_input, at another size.
+    fs::path write_sized_input(const std::string& name, int width, int height) const {
+        prism::Image img;
+        img.width = width;
+        img.height = height;
+        img.pixels.resize(static_cast<std::size_t>(width) * height * 3);
+        for (std::size_t i = 0; i < img.pixels.size(); ++i) {
+            img.pixels[i] = static_cast<float>((i * 5) % 19) / 19.0f;
         }
         const fs::path p = path(name);
         prism::save_image(p, img);
@@ -524,4 +539,85 @@ TEST_F(CliBatch, ASingleInputPrintsNoSummaryLine) {
     EXPECT_EQ(r.exit_code, 0) << r.output;
     EXPECT_FALSE(contains(r.output, "photos written")) << r.output;
     EXPECT_EQ(lines_of(r.output).size(), 1u) << r.output;
+}
+
+// --- --long-side (#52) --------------------------------------------------------------------------
+
+TEST_F(CliBatch, LongSideNamesEveryOutputWithTheSizeAndShrinksWhatIsLarger) {
+    fs::create_directory(path("out"));
+    const fs::path wide = write_sized_input("wide.png", 60, 40);
+    const fs::path tall = write_sized_input("tall.png", 30, 50);
+    const fs::path tiny = write_sized_input("tiny.png", 6, 4);
+    const RunResult r = run_prism(quoted(wide) + " " + quoted(tall) + " " + quoted(tiny) +
+                                  " --long-side 20 --exposure 0.5 --out-dir " + quoted(path("out")));
+    ASSERT_EQ(r.exit_code, 0) << r.output;
+
+    std::vector<fs::path> written;
+    for (const fs::directory_entry& e : fs::directory_iterator(path("out"))) {
+        written.push_back(e.path().filename());
+    }
+    std::sort(written.begin(), written.end());
+    EXPECT_EQ(written, (std::vector<fs::path>{"tall_prism_20.jpg", "tiny_prism_20.jpg",
+                                              "wide_prism_20.jpg"}));
+
+    const auto size_of = [&](const std::string& name) {
+        const prism::Image img = prism::load_image(path("out") / name);
+        return std::make_pair(img.width, img.height);
+    };
+    EXPECT_EQ(size_of("wide_prism_20.jpg"), std::make_pair(20, 13));  // 40 * 20 / 60 = 13.3
+    EXPECT_EQ(size_of("tall_prism_20.jpg"), std::make_pair(12, 20));
+    EXPECT_EQ(size_of("tiny_prism_20.jpg"), std::make_pair(6, 4)) << "not enlarged";
+
+    // The note is only for the photo that was not larger, and goes with its own name.
+    const std::string output = r.output;
+    EXPECT_TRUE(contains(output, "note: " + tiny.string() +
+                                     " is 6x4, not larger than --long-side 20; kept its size\n"))
+        << output;
+    EXPECT_EQ(output.find("note:"), output.rfind("note:")) << "one note only: " << output;
+    EXPECT_TRUE(contains(output, "3 of 3 photos written.\n")) << output;
+    for (const std::string& name : {"wide_prism_20.jpg (20x13)", "tall_prism_20.jpg (12x20)",
+                                    "tiny_prism_20.jpg (6x4)"}) {
+        EXPECT_TRUE(contains(output, name + "\n")) << name << output;
+    }
+}
+
+TEST_F(CliBatch, LongSideNameSuffixAlsoAppliesToOneInputAndToPng) {
+    fs::create_directory(path("out"));
+    const fs::path wide = write_sized_input("wide.png", 60, 40);
+    RunResult r = run_prism(quoted(wide) + " --long-side 30 --format png --out-dir " +
+                            quoted(path("out")));
+    ASSERT_EQ(r.exit_code, 0) << r.output;
+    EXPECT_TRUE(fs::exists(path("out") / "wide_prism_30.png"));
+    EXPECT_FALSE(fs::exists(path("out") / "wide_prism.png"));
+}
+
+TEST_F(CliBatch, AnExplicitOutputPathIsUsedAsIsWithLongSide) {
+    const fs::path wide = write_sized_input("wide.png", 60, 40);
+    const fs::path chosen = path("my_name.png");
+    const RunResult r = run_prism(quoted(wide) + " --long-side 30 -o " + quoted(chosen));
+    ASSERT_EQ(r.exit_code, 0) << r.output;
+    EXPECT_TRUE(fs::exists(chosen));
+    EXPECT_EQ(prism::load_image(chosen).width, 30);
+    EXPECT_FALSE(fs::exists(path("wide_prism_30.png")));
+    EXPECT_FALSE(fs::exists(path("my_name_30.png")));
+}
+
+TEST_F(CliBatch, WithoutLongSideTheNamesHaveNoSizeInThem) {
+    fs::create_directory(path("out"));
+    const fs::path wide = write_sized_input("wide.png", 60, 40);
+    const RunResult r = run_prism(quoted(wide) + " --out-dir " + quoted(path("out")));
+    ASSERT_EQ(r.exit_code, 0) << r.output;
+    EXPECT_TRUE(fs::exists(path("out") / "wide_prism.jpg"));
+}
+
+TEST_F(CliBatch, LongSideMakesNoDifferenceToWhichInputsClash) {
+    // a.png and a.jpg both become a_prism_20.jpg: still caught before anything is written.
+    fs::create_directory(path("out"));
+    const fs::path a = write_sized_input("a.png", 60, 40);
+    const fs::path b = write_text("a.jpg", "not a picture");
+    const RunResult r = run_prism(quoted(a) + " " + quoted(b) + " --long-side 20 --out-dir " +
+                                  quoted(path("out")));
+    EXPECT_EQ(r.exit_code, 2) << r.output;
+    EXPECT_TRUE(contains(r.output, "would both be written as 'a_prism_20.jpg'")) << r.output;
+    EXPECT_TRUE(fs::is_empty(path("out")));
 }

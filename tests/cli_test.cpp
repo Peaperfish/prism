@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -17,6 +18,9 @@
 #include "heic_damage.hpp"
 #include "prism/heic.hpp"
 #include "prism/image.hpp"
+#include "prism/pipeline.hpp"
+#include "prism/process.hpp"
+#include "prism/resize.hpp"
 #include "prism/version.hpp"
 #include "run_command.hpp"
 #include "synthetic_exif.hpp"
@@ -368,4 +372,173 @@ TEST(Cli, SaturationAndContrastKeepMiddleGrey) {
     for (const fs::path& p : {input, plain, graded}) {
         fs::remove(p);
     }
+}
+
+// --- --long-side (#52) --------------------------------------------------------------------------
+
+namespace {
+
+// A width x height image of varied, repeatable values, so that reducing and editing it change it.
+fs::path write_sized_input(const std::string& name, int width, int height) {
+    prism::Image img;
+    img.width = width;
+    img.height = height;
+    img.pixels.resize(static_cast<std::size_t>(width) * height * 3);
+    for (std::size_t i = 0; i < img.pixels.size(); ++i) {
+        img.pixels[i] = static_cast<float>((i * 7) % 23) / 23.0f;
+    }
+    const fs::path path = temp_file(name);
+    prism::save_image(path, img);
+    return path;
+}
+
+// The output with Windows' "\r\n" turned into "\n".
+std::string plain(std::string text) {
+    std::string out;
+    for (const char c : text) {
+        if (c != '\r') {
+            out += c;
+        }
+    }
+    return out;
+}
+
+}  // namespace
+
+TEST(Cli, LongSideShrinksBeforeTheStagesRun) {
+    const fs::path input = write_sized_input("big.png", 40, 30);
+    const fs::path output = temp_file("small.png");
+    const RunResult r = run_prism(quoted(input) + " -o " + quoted(output) +
+                                  " --long-side 20 --exposure 1 --curve filmic");
+    ASSERT_EQ(r.exit_code, 0) << r.output;
+    EXPECT_FALSE(contains(plain(r.output), "note:")) << r.output;
+
+    prism::Image expected = prism::downscale(prism::load_image(input), 20);
+    prism::ProcessSettings settings;
+    settings.exposure_stops = 1.0f;
+    settings.curve = prism::parse_curve("filmic");
+    ASSERT_EQ(prism::process(expected, settings), prism::ProcessResult::completed);
+    const prism::Image written = prism::load_image(output);
+    EXPECT_EQ(written.width, 20);
+    EXPECT_EQ(written.height, 15);
+    EXPECT_EQ(prism::encode_srgb8(written), prism::encode_srgb8(expected));
+    EXPECT_TRUE(contains(plain(r.output), "(20x15)\n")) << r.output;
+    fs::remove(input);
+    fs::remove(output);
+}
+
+TEST(Cli, LongSideCountsThePortraitsLongerSide) {
+    const fs::path input = write_sized_input("tall.png", 30, 41);
+    const fs::path output = temp_file("tall_small.png");
+    const RunResult r = run_prism(quoted(input) + " -o " + quoted(output) + " --long-side 21");
+    ASSERT_EQ(r.exit_code, 0) << r.output;
+    const prism::Image written = prism::load_image(output);
+    EXPECT_EQ(written.height, 21);
+    EXPECT_EQ(written.width, 15);  // 30 * 21 / 41 = 15.4
+    fs::remove(input);
+    fs::remove(output);
+}
+
+TEST(Cli, LongSideNotSmallerKeepsTheSizeAndSaysSo) {
+    const fs::path input = write_sized_input("kept.png", 8, 6);
+    const fs::path reference = temp_file("kept_reference.png");
+    ASSERT_EQ(run_prism(quoted(input) + " -o " + quoted(reference) + " --exposure 1").exit_code, 0);
+    for (const int side : {8, 100}) {
+        const fs::path output = temp_file("kept_" + std::to_string(side) + ".png");
+        const RunResult r = run_prism(quoted(input) + " -o " + quoted(output) + " --exposure 1" +
+                                      " --long-side " + std::to_string(side));
+        ASSERT_EQ(r.exit_code, 0) << r.output;
+        const std::string expected_note = "note: " + input.string() + " is 8x6, not larger than " +
+                                          "--long-side " + std::to_string(side) +
+                                          "; kept its size\n";
+        EXPECT_TRUE(contains(plain(r.output), expected_note)) << r.output;
+        const prism::Image written = prism::load_image(output);
+        EXPECT_EQ(written.width, 8);
+        EXPECT_EQ(written.height, 6);
+        EXPECT_EQ(prism::encode_srgb8(written), prism::encode_srgb8(prism::load_image(reference)));
+        fs::remove(output);
+    }
+    fs::remove(input);
+    fs::remove(reference);
+}
+
+TEST(Cli, TimeListsTheResizeStageBetweenLoadAndTheOthers) {
+    const fs::path input = write_sized_input("timed_big.png", 40, 30);
+    const fs::path output = temp_file("timed_small.png");
+    const std::string args = quoted(input) + " -o " + quoted(output) + " --exposure 1 --time";
+
+    const std::string with = plain(run_prism(args + " --long-side 20").output);
+    const std::size_t load = with.find("  load ");
+    const std::size_t resize = with.find("  resize ");
+    const std::size_t exposure = with.find("  exposure ");
+    ASSERT_NE(resize, std::string::npos) << with;
+    EXPECT_LT(load, resize) << with;
+    EXPECT_LT(resize, exposure) << with;
+
+    EXPECT_FALSE(contains(plain(run_prism(args).output), "resize"));
+    fs::remove(input);
+    fs::remove(output);
+}
+
+TEST(Cli, LongSideWorksWithAHistogramAlone) {
+    const fs::path input = write_sized_input("hist_big.png", 40, 30);
+    const fs::path hist = temp_file("hist_small.png");
+    const RunResult r = run_prism(quoted(input) + " --histogram " + quoted(hist) + " --long-side 10");
+    EXPECT_EQ(r.exit_code, 0) << r.output;
+    EXPECT_TRUE(fs::exists(hist));
+    fs::remove(input);
+    fs::remove(hist);
+}
+
+TEST(Cli, BadLongSideIsUsageError) {
+    const fs::path input = write_grey_input();
+    const fs::path output = temp_file("bad_long_side.png");
+    for (const char* bad : {"0", "-3", "2.5", "abc", "", "+5", " 7", "7 ", "1e3", "0x10", "7px",
+                            "99999999999", "2147483648"}) {
+        const RunResult r =
+            run_prism(quoted(input) + " -o " + quoted(output) + " --long-side \"" + bad + "\"");
+        EXPECT_EQ(r.exit_code, 2) << "--long-side '" << bad << "': " << r.output;
+        EXPECT_TRUE(contains(r.output, "error: --long-side needs a whole number")) << r.output;
+        EXPECT_TRUE(contains(r.output, "Usage:")) << r.output;
+        EXPECT_FALSE(fs::exists(output));
+    }
+    // The largest value that fits is accepted (and keeps the size).
+    EXPECT_EQ(run_prism(quoted(input) + " -o " + quoted(output) + " --long-side 2147483647")
+                  .exit_code,
+              0);
+
+    RunResult r = run_prism(quoted(input) + " -o " + quoted(output) + " --long-side");
+    EXPECT_EQ(r.exit_code, 2) << r.output;
+    EXPECT_TRUE(contains(r.output, "--long-side needs a value")) << r.output;
+    r = run_prism(quoted(input) + " -o " + quoted(output) + " --long-side 2 --long-side 3");
+    EXPECT_EQ(r.exit_code, 2) << r.output;
+    EXPECT_TRUE(contains(r.output, "--long-side given more than once")) << r.output;
+    fs::remove(input);
+    fs::remove(output);
+}
+
+TEST(Cli, HelpDescribesLongSide) {
+    const RunResult r = run_prism("--help");
+    EXPECT_EQ(r.exit_code, 0) << r.output;
+    EXPECT_TRUE(contains(r.output, "--long-side <pixels>")) << r.output;
+    EXPECT_TRUE(contains(r.output, "_prism_<n>.jpg")) << r.output;
+}
+
+// Runs only with PRISM_TEST_RAW set; see raw_test.cpp.
+TEST(Cli, LongSideWorksOnRaw) {
+    const fs::path raw = prism_test::env_var("PRISM_TEST_RAW");
+    if (raw.empty()) {
+        GTEST_SKIP() << "set PRISM_TEST_RAW to a RAW file to run this test";
+    }
+    const fs::path output = temp_file("raw_small.png");
+    const RunResult r =
+        run_prism(quoted(raw) + " --raw-half --long-side 64 -o " + quoted(output));
+    if (contains(r.output, "built without LibRaw")) {
+        EXPECT_EQ(r.exit_code, 1) << r.output;
+    } else {
+        ASSERT_EQ(r.exit_code, 0) << r.output;
+        const prism::Image written = prism::load_image(output);
+        EXPECT_EQ(std::max(written.width, written.height), 64);
+    }
+    fs::remove(output);
 }
