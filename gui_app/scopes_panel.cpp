@@ -307,7 +307,7 @@ void draw_readout(const ScopesData& data, ImVec2 at, float width, float height,
         }
         if (on_below || on_above) {
             const auto percent = [&](const gui::ChannelClips& c) {
-                return gui::pixel_percent(on_below ? c.under_black : c.over_white, h.pixel_count);
+                return gui::pixel_percent(on_below ? c.under_black : c.high(), h.pixel_count);
             };
             ImGui::TextDisabled("%s  R %.2f%%   G %.2f%%   B %.2f%%",
                                 on_below ? "Below black:" : "Above white:", percent(h.red_clips),

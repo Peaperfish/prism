@@ -527,7 +527,7 @@ std::string live_line(std::string_view id, const EditSettings& s, const LiveCont
             const StageHistogram& h = *context.histogram;
             const bool over = entry->live == LiveKind::over;
             const auto percent = [&](const ChannelClips& c) {
-                return printf_string("%.2f", pixel_percent(over ? c.over_white : c.under_black,
+                return printf_string("%.2f", pixel_percent(over ? c.high() : c.under_black,
                                                            h.pixel_count)) +
                        "%";
             };

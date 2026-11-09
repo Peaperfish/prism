@@ -345,9 +345,9 @@ TEST(StageHistogramAnyChannel, TheCountsAreTheSameAtAnyThreadCount) {
     }
 }
 
-// The overlay's "above white" and the readout's are one count, for any stage. The readout's "below
-// black" is every negative channel, so it holds all the overlay marks at that end (the blue and the
-// violet ones) and adds only values too small to change an 8-bit code.
+// The overlay's "above white" and the readout's are one count, for any stage, and so are the two
+// "below black" counts (the blue and the violet marks): both ask pixel_below_black. A value too
+// small to change an 8-bit code, on a pixel that still has light, is in neither.
 TEST(StageHistogramAnyChannel, TheCountsAgreeWithTheClipMaskOnTheSamePicture) {
     const float ceiling = 1.0f - prism::gui::file_ceiling_epsilon;
     const prism::Image img = image_of({
@@ -372,7 +372,7 @@ TEST(StageHistogramAnyChannel, TheCountsAgreeWithTheClipMaskOnTheSamePicture) {
         }
         EXPECT_EQ(h.any_over_white, high) << file_ceiling;
         EXPECT_EQ(low_or_gamut, 2u);
-        EXPECT_EQ(h.any_under_black, low_or_gamut + 1u);
+        EXPECT_EQ(h.any_under_black, low_or_gamut);
     }
     EXPECT_EQ(prism::gui::compute_stage_histogram(img, 1, true).any_over_white, 3u);
     EXPECT_EQ(prism::gui::compute_stage_histogram(img, 1, false).any_over_white, 1u);
@@ -384,10 +384,50 @@ TEST(StageHistogramAnyChannel, ThePreviewCountsTheFilesCeilingAtDecodeOnly) {
     const auto decode = prism::gui::render_preview(base, settings, 1, {}, {}, StageId::decode);
     ASSERT_TRUE(decode.has_value());
     EXPECT_EQ(decode->histogram.any_over_white, 1u);
-    EXPECT_EQ(decode->histogram.red_clips.over_white, 0u);  // the channel figures stay as they were
+    EXPECT_EQ(decode->histogram.red_clips.over_white, 0u);  // nothing is above 1.0 ...
+    EXPECT_EQ(decode->histogram.red_clips.at_ceiling, 1u);  // ... one is at the ceiling
+    EXPECT_EQ(decode->histogram.red_clips.high(), 1u);      // which the tooltip's R counts
+    EXPECT_EQ(decode->histogram.green_clips.high(), 0u);
     const auto exposure = prism::gui::render_preview(base, settings, 1, {}, {}, StageId::exposure);
     ASSERT_TRUE(exposure.has_value());
     EXPECT_EQ(exposure->histogram.any_over_white, 0u);
+    EXPECT_EQ(exposure->histogram.red_clips.high(), 0u);  // the ceiling is Decode's alone
+}
+
+TEST(StageHistogramAnyChannel, TinyNegativesDoNotCountButRealOnesDo) {
+    const float tiny = -prism::gui::gamut_tolerance / 2.0f;
+    const prism::Image img = image_of({
+        tiny,  0.5f,  0.5f,   // rounding noise on a pixel with light: not below black
+        tiny,  tiny,  tiny,   // no light at all: below black
+        -0.01f, 0.5f, 0.5f,   // a real negative, a colour outside sRGB: below black
+        0.2f,  0.2f,  0.2f,
+    });
+    const StageHistogram h = prism::gui::compute_stage_histogram(img, 1);
+    EXPECT_EQ(h.any_under_black, 2u);
+    // The channel figures are plainer: every negative channel.
+    EXPECT_EQ(h.red_clips.under_black, 3u);
+}
+
+TEST(StageHistogramAnyChannel, TheHistogramAndTheMaskUseTheSharedPredicates) {
+    // Every combination of a red channel around the limits, with and without light elsewhere.
+    for (const float red : {-1.0f, -1e-3f, -1.5e-4f, -1e-5f, 0.0f, 1e-3f, 0.5f, 1.0f, 1.0f - 1e-7f, 1.5f}) {
+        for (const float other : {0.0f, 0.3f, 1.0f}) {
+            const prism::Image img = image_of({red, other, other});
+            const prism::gui::PixelRange range = prism::gui::pixel_range(img.pixels.data());
+            for (const bool file_ceiling : {false, true}) {
+                const StageHistogram h = prism::gui::compute_stage_histogram(img, 1, file_ceiling);
+                std::vector<std::uint8_t> mask;
+                prism::gui::compute_clip_mask(img, 1, mask, file_ceiling);
+                EXPECT_EQ(h.any_under_black, prism::gui::pixel_below_black(range) ? 1u : 0u)
+                    << red << " " << other;
+                EXPECT_EQ(h.any_over_white, prism::gui::pixel_above_white(range, file_ceiling) ? 1u : 0u)
+                    << red << " " << other << " " << file_ceiling;
+                EXPECT_EQ((mask[0] & (prism::gui::clip_mask_low | prism::gui::clip_mask_gamut)) != 0,
+                          h.any_under_black != 0);
+                EXPECT_EQ((mask[0] & prism::gui::clip_mask_high) != 0, h.any_over_white != 0);
+            }
+        }
+    }
 }
 
 TEST(ScopeReadoutText, IsTheSpecsFormWithOneDecimal) {

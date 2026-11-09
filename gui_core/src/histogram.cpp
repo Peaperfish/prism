@@ -29,7 +29,10 @@ std::size_t require_consistent(const Image& img, const char* caller) {
 // Counts one sample: below 0 and above 1 are clips, measured on the float. Anything else (NaN
 // included, which is in neither range) is binned by `code`, its 8-bit sRGB value.
 void record_sample(float v, std::uint8_t code, StageHistogram::Counts& bins,
-                   ChannelClips& clips) noexcept {
+                   ChannelClips& clips, bool file_ceiling = false) noexcept {
+    if (file_ceiling && v >= 1.0f - file_ceiling_epsilon && v <= 1.0f) {
+        ++clips.at_ceiling;  // also binned below, unlike the other two
+    }
     if (v < 0.0f) {
         ++clips.under_black;
     } else if (v > 1.0f) {
@@ -43,25 +46,24 @@ void record_sample(float v, std::uint8_t code, StageHistogram::Counts& bins,
 // of a value is the sRGB code linear_to_srgb8 gives it (NaN gives 0, black, as on screen). R, G and
 // B read that code from `encoded` (the bytes the encode already produced for the same samples)
 // when it is given, and look it up otherwise; luminance has no output byte, so it is encoded here.
-// The any-channel counts ask what pixel_range asks (over, and ceiling with `file_ceiling`).
+// The any-channel counts ask pixel_below_black and pixel_above_white, as the clip mask does.
 void count_range(const float* pixels, const std::uint8_t* encoded, std::size_t first,
                  std::size_t last, bool file_ceiling, StageHistogram& local) noexcept {
-    constexpr float ceiling = 1.0f - file_ceiling_epsilon;
     for (std::size_t i = first; i < last; i += Image::channels) {
         const float r = pixels[i];
         const float g = pixels[i + 1];
         const float b = pixels[i + 2];
         const float y = 0.2126f * r + 0.7152f * g + 0.0722f * b;
-        record_sample(r, encoded ? encoded[i] : linear_to_srgb8(r), local.red, local.red_clips);
+        record_sample(r, encoded ? encoded[i] : linear_to_srgb8(r), local.red, local.red_clips,
+                      file_ceiling);
         record_sample(g, encoded ? encoded[i + 1] : linear_to_srgb8(g), local.green,
-                      local.green_clips);
+                      local.green_clips, file_ceiling);
         record_sample(b, encoded ? encoded[i + 2] : linear_to_srgb8(b), local.blue,
-                      local.blue_clips);
+                      local.blue_clips, file_ceiling);
         record_sample(y, linear_to_srgb8(y), local.luminance, local.luminance_clips);
-        local.any_under_black += static_cast<unsigned>((r < 0.0f) | (g < 0.0f) | (b < 0.0f));
-        local.any_over_white +=
-            file_ceiling ? static_cast<unsigned>((r >= ceiling) | (g >= ceiling) | (b >= ceiling))
-                         : static_cast<unsigned>((r > 1.0f) | (g > 1.0f) | (b > 1.0f));
+        const PixelRange range = pixel_range(pixels + i);
+        local.any_under_black += pixel_below_black(range);
+        local.any_over_white += pixel_above_white(range, file_ceiling);
     }
     local.pixel_count += (last - first) / Image::channels;
 }
@@ -75,6 +77,7 @@ void add_counts(StageHistogram::Counts& into, const StageHistogram::Counts& from
 void add_clips(ChannelClips& into, const ChannelClips& from) noexcept {
     into.under_black += from.under_black;
     into.over_white += from.over_white;
+    into.at_ceiling += from.at_ceiling;
 }
 
 StageHistogram merge_partials(const std::vector<StageHistogram>& partial) noexcept {

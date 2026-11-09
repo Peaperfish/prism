@@ -241,6 +241,20 @@ inline constexpr std::uint8_t clip_mask_high = 1;
 inline constexpr std::uint8_t clip_mask_low = 2;
 inline constexpr std::uint8_t clip_mask_gamut = 4;  // Y > 0 and a channel below -gamut_tolerance
 
+// Whether a pixel counts as below black / above white: THE definition. The clip mask (the J
+// overlay), the clip triangles and the scope's readout all ask these two, so they can't drift.
+// Below black: some channel is negative and either the pixel has no light (Y <= 0) or the channel
+// is below -gamut_tolerance. A rounding-sized negative (above -gamut_tolerance) on a pixel that
+// still has light is neither: it encodes to 0 anyway. Above white: some channel above 1.0, and
+// with `file_ceiling` (for Decode) also one at the file's ceiling.
+[[nodiscard]] constexpr bool pixel_below_black(const PixelRange& r) noexcept {
+    return r.low != 0 || r.gamut != 0;
+}
+[[nodiscard]] constexpr bool pixel_above_white(const PixelRange& r,
+                                               bool file_ceiling = false) noexcept {
+    return r.over != 0 || (file_ceiling && r.ceiling != 0);
+}
+
 // The bits a stage about to clamp negatives would lose for this pixel (see mark_lost_negatives).
 [[nodiscard]] constexpr std::uint8_t clip_mask_lost_bits(const PixelRange& r) noexcept {
     return static_cast<std::uint8_t>((r.low != 0 ? clip_mask_low : 0) |
@@ -251,8 +265,8 @@ inline constexpr std::uint8_t clip_mask_gamut = 4;  // Y > 0 and a channel below
 // "high" means at the file's ceiling or above it.
 [[nodiscard]] constexpr std::uint8_t clip_mask_bits(const PixelRange& r,
                                                     bool file_ceiling = false) noexcept {
-    const bool high = r.over != 0 || (file_ceiling && r.ceiling != 0);
-    return static_cast<std::uint8_t>((high ? clip_mask_high : 0) | clip_mask_lost_bits(r));
+    return static_cast<std::uint8_t>((pixel_above_white(r, file_ceiling) ? clip_mask_high : 0) |
+                                     clip_mask_lost_bits(r));
 }
 
 // With `file_ceiling` (for Decode), "high" means at the file's ceiling, as counted at Decode.
