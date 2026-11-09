@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
+#include <tuple>
 #include <vector>
 
 #include "prism/image.hpp"
@@ -244,4 +245,22 @@ TEST(LongSideForPercent, BadArgumentsThrow) {
     EXPECT_THROW((void)prism::long_side_for_percent(100, 100, 101), std::invalid_argument);
     EXPECT_THROW((void)prism::long_side_for_percent(100, 100, -5), std::invalid_argument);
     EXPECT_THROW((void)prism::long_side_for_percent(0, 100, 50), std::invalid_argument);
+}
+
+TEST(DownscaledSize, MatchesWhatDownscaleMakes) {
+    for (const auto& [w, h, side] : {std::tuple{61, 41, 31}, {41, 61, 31}, {4000, 3000, 2048},
+                                     {3001, 2001, 990}, {49, 3, 7}, {10, 10, 3}}) {
+        const prism::Image out = prism::downscale(make_noise(w, h), side);
+        const prism::PixelSize size = prism::downscaled_size(w, h, side);
+        EXPECT_EQ(size.width, out.width) << w << "x" << h << " to " << side;
+        EXPECT_EQ(size.height, out.height) << w << "x" << h << " to " << side;
+    }
+}
+
+TEST(DownscaledSize, NeverEnlargesAndRejectsBadArguments) {
+    EXPECT_EQ(prism::downscaled_size(400, 300, 400), (prism::PixelSize{400, 300}));
+    EXPECT_EQ(prism::downscaled_size(400, 300, 9000), (prism::PixelSize{400, 300}));
+    EXPECT_EQ(prism::downscaled_size(3, 49, 1), (prism::PixelSize{1, 1}));
+    EXPECT_THROW((void)prism::downscaled_size(400, 300, 0), std::invalid_argument);
+    EXPECT_THROW((void)prism::downscaled_size(0, 300, 10), std::invalid_argument);
 }

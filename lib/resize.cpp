@@ -73,6 +73,22 @@ int long_side_for_percent(int width, int height, int percent) {
     return std::max(1, scale_rounded(std::max(width, height), percent, 100));
 }
 
+PixelSize downscaled_size(int width, int height, int max_long_side) {
+    if (width < 1 || height < 1) {
+        throw std::invalid_argument("downscaled_size: width and height must be at least 1");
+    }
+    if (max_long_side < 1) {
+        throw std::invalid_argument("downscaled_size: max_long_side must be at least 1");
+    }
+    if (std::max(width, height) <= max_long_side) {
+        return {width, height};
+    }
+    if (width >= height) {
+        return {max_long_side, std::max(1, scale_rounded(height, max_long_side, width))};
+    }
+    return {std::max(1, scale_rounded(width, max_long_side, height)), max_long_side};
+}
+
 Image downscale(const Image& img, int max_long_side, int threads) {
     detail::require_consistent(img, "downscale");
     if (max_long_side < 1) {
@@ -82,14 +98,10 @@ Image downscale(const Image& img, int max_long_side, int threads) {
         return img;
     }
 
+    const PixelSize size = downscaled_size(img.width, img.height, max_long_side);
     Image out;
-    if (img.width >= img.height) {
-        out.width = max_long_side;
-        out.height = std::max(1, scale_rounded(img.height, max_long_side, img.width));
-    } else {
-        out.height = max_long_side;
-        out.width = std::max(1, scale_rounded(img.width, max_long_side, img.height));
-    }
+    out.width = size.width;
+    out.height = size.height;
     out.pixels.resize(detail::sample_count(out.width, out.height));
 
     const Taps across(img.width, out.width);

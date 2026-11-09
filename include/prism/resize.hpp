@@ -16,6 +16,19 @@ namespace prism {
 // width * height * 3.
 [[nodiscard]] Image downscale(const Image& img, int max_long_side, int threads = 0);
 
+// A width and height in pixels.
+struct PixelSize {
+    int width = 0;
+    int height = 0;
+    bool operator==(const PixelSize&) const = default;
+};
+
+// The size downscale() gives a `width` x `height` image for `max_long_side`: the same size when its
+// longer side is already at most that, otherwise the longer side is `max_long_side` and the shorter
+// one is rounded to the nearest pixel (halves up), at least 1. Throws std::invalid_argument if
+// max_long_side < 1 or width or height is below 1.
+[[nodiscard]] PixelSize downscaled_size(int width, int height, int max_long_side);
+
 // The longer side, in pixels, of a `width` x `height` image reduced to `percent` percent of its
 // size: max(width, height) * percent / 100 rounded to the nearest pixel (halves up), and at least
 // 1. Pass it to downscale() to reduce by a percentage; the rounding is the one downscale uses for
