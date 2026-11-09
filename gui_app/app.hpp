@@ -74,7 +74,7 @@ public:
 
 private:
     // Asks for `path` to be opened. The open itself happens a frame later, so the window can
-    // first show "Opening …" (decoding a large RAW file takes about a second).
+    // first show "Opening…" (decoding a large RAW file takes about a second).
     void request_open(std::filesystem::path path);
     // The part of request_open that really starts it (after the unexported-edits question).
     void start_open(std::filesystem::path path);
@@ -327,7 +327,7 @@ private:
     std::vector<gui::ViewRect> canvas_taken_;  // this frame's chips and notes on the canvas
 
     std::optional<std::filesystem::path> pending_open_;
-    bool pending_open_shown_ = false;  // the "Opening …" frame has been drawn
+    bool pending_open_shown_ = false;  // the "Opening…" frame has been drawn
     bool dialog_open_ = false;         // a file dialog is up: don't open another
 
     bool drag_over_ = false;                      // files are being dragged over the window

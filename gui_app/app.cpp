@@ -1010,7 +1010,7 @@ bool App::animating() const {
 void App::frame() {
     ++quiet_frames_;
     take_dialog_results();
-    // The "Opening …" frame was presented: now decode (this frame shows the result).
+    // The "Opening…" frame was presented: now decode (this frame shows the result).
     if (pending_open_ && pending_open_shown_) {
         const fs::path path = std::move(*pending_open_);
         pending_open_.reset();
