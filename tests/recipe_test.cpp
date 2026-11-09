@@ -20,6 +20,7 @@
 #include "prism/atomic_file.hpp"
 #include "prism/recipe.hpp"
 #include "prism/utf8_path.hpp"
+#include "prism/white_balance.hpp"
 
 // The .prism recipe format (prism/recipe.hpp, docs/RECIPES.md).
 
@@ -106,6 +107,12 @@ void expect_same_bits(const Recipe& expected, const Recipe& actual) {
         EXPECT_EQ(bits(expected.exposure->stops), bits(actual.exposure->stops));
         EXPECT_EQ(expected.exposure->on, actual.exposure->on);
     }
+    ASSERT_EQ(expected.white_balance.has_value(), actual.white_balance.has_value());
+    if (expected.white_balance) {
+        EXPECT_EQ(bits(expected.white_balance->kelvin), bits(actual.white_balance->kelvin));
+        EXPECT_EQ(bits(expected.white_balance->tint), bits(actual.white_balance->tint));
+        EXPECT_EQ(expected.white_balance->on, actual.white_balance->on);
+    }
     ASSERT_EQ(expected.matrix.has_value(), actual.matrix.has_value());
     if (expected.matrix) {
         for (std::size_t i = 0; i < 9; ++i) {
@@ -159,6 +166,13 @@ public:
         }
         if (coin()) {
             r.exposure = prism::RecipeExposure{finite(), coin()};
+        }
+        if (coin()) {
+            float tint = in(prism::ValueRange{0.0, 100.0});
+            if (tint > 0.0f && coin()) {
+                tint = -tint;
+            }
+            r.white_balance = prism::RecipeWhiteBalance{in(prism::kelvin_range), tint, coin()};
         }
         if (coin()) {
             prism::RecipeMatrix m;
@@ -696,8 +710,8 @@ const ErrorCase error_cases[] = {
     {"DottedSection", "prism_recipe = 1\n[curve.gamma]\n", 2,
      "[curve.gamma] is not a section name: write it without quotes, dots or spaces, as in "
      "[exposure]"},
-    {"NewerFormat", "prism_recipe = 2\n\n[exposure]\nstops = +1.0\n", 1,
-     "this recipe needs recipe format 2, but this Prism reads up to format 1: update Prism to "
+    {"NewerFormat", "prism_recipe = 3\n\n[exposure]\nstops = +1.0\n", 1,
+     "this recipe needs recipe format 3, but this Prism reads up to format 2: update Prism to "
      "read it"},
 };
 
@@ -782,7 +796,7 @@ TEST(RecipeErrorList, MessagesNameTheSourceAndTheLine) {
 
 namespace {
 
-// This Prism's format plus a pretend version 2: a new key in [exposure] and a new section with a
+// This Prism's format plus a pretend version 3: a new key in [exposure] and a new section with a
 // required key.
 struct FormatWithVersion2 {
     std::vector<prism::RecipeSectionSpec> sections;
@@ -790,23 +804,23 @@ struct FormatWithVersion2 {
     prism::RecipeFormat format;
 
     FormatWithVersion2() {
-        const prism::RecipeFormat& v1 = prism::recipe_format();
-        sections.assign(v1.sections.begin(), v1.sections.end());
-        sections.push_back({"vignette", 2});
-        keys.assign(v1.keys.begin(), v1.keys.end());
+        const prism::RecipeFormat& real = prism::recipe_format();
+        sections.assign(real.sections.begin(), real.sections.end());
+        sections.push_back({"vignette", 3});
+        keys.assign(real.keys.begin(), real.keys.end());
         prism::RecipeKeySpec bias;
         bias.section = "exposure";
         bias.key = "bias";
-        bias.since = 2;
+        bias.since = 3;
         keys.push_back(bias);
         prism::RecipeKeySpec amount;
         amount.section = "vignette";
         amount.key = "amount";
-        amount.since = 2;
+        amount.since = 3;
         amount.required = true;
         amount.range = prism::ValueRange{0.0, 1.0};
         keys.push_back(amount);
-        format = {2, sections, keys};
+        format = {3, sections, keys};
     }
 };
 
@@ -822,14 +836,15 @@ std::vector<prism::RecipeIssue> issues_in(const std::string& text,
 
 }  // namespace
 
-TEST(RecipeVersions, ThisPrismReadsAndWritesFormat1) {
-    EXPECT_EQ(prism::recipe_format().latest, 1);
-    EXPECT_EQ(prism::recipe_format_version, 1);
+TEST(RecipeVersions, ThisPrismReadsUpToFormat2AndOnlyWhiteBalanceIsNew) {
+    EXPECT_EQ(prism::recipe_format().latest, 2);
+    EXPECT_EQ(prism::recipe_format_version, 2);
     for (const prism::RecipeKeySpec& spec : prism::recipe_format().keys) {
-        EXPECT_EQ(spec.since, 1) << spec.section << " " << spec.key;
+        EXPECT_EQ(spec.since, spec.section == "white_balance" ? 2 : 1)
+            << spec.section << " " << spec.key;
     }
     for (const prism::RecipeSectionSpec& spec : prism::recipe_format().sections) {
-        EXPECT_EQ(spec.since, 1) << spec.name;
+        EXPECT_EQ(spec.since, spec.name == "white_balance" ? 2 : 1) << spec.name;
     }
 }
 
@@ -837,10 +852,10 @@ TEST(RecipeVersions, AKeyFromALaterVersionNeedsThatVersion) {
     const FormatWithVersion2 v2;
     const std::string body = "\n[exposure]\nstops = +1.0\nbias = 0.5\n";
     const std::vector<prism::RecipeIssue> expected = {
-        {5, "'bias' needs recipe format 2, but this file says prism_recipe = 1"}};
-    EXPECT_EQ(issues_in("prism_recipe = 1\n" + body, v2.format), expected);
-    // The same file declaring version 2 reads, with its version-1 values.
-    const Recipe r = prism::parse_recipe("prism_recipe = 2\n" + body, "", v2.format);
+        {5, "'bias' needs recipe format 3, but this file says prism_recipe = 2"}};
+    EXPECT_EQ(issues_in("prism_recipe = 2\n" + body, v2.format), expected);
+    // The same file declaring version 3 reads, with its version-1 values.
+    const Recipe r = prism::parse_recipe("prism_recipe = 3\n" + body, "", v2.format);
     ASSERT_TRUE(r.exposure);
     EXPECT_EQ(r.exposure->stops, 1.0f);
 }
@@ -848,20 +863,20 @@ TEST(RecipeVersions, AKeyFromALaterVersionNeedsThatVersion) {
 TEST(RecipeVersions, ASectionFromALaterVersionNeedsThatVersion) {
     const FormatWithVersion2 v2;
     const std::vector<prism::RecipeIssue> expected = {
-        {2, "[vignette] needs recipe format 2, but this file says prism_recipe = 1"}};
-    EXPECT_EQ(issues_in("prism_recipe = 1\n[vignette]\namount = 0.3\n", v2.format), expected);
-    EXPECT_TRUE(issues_in("prism_recipe = 2\n[vignette]\namount = 0.3\n", v2.format).empty());
+        {2, "[vignette] needs recipe format 3, but this file says prism_recipe = 2"}};
+    EXPECT_EQ(issues_in("prism_recipe = 2\n[vignette]\namount = 0.3\n", v2.format), expected);
+    EXPECT_TRUE(issues_in("prism_recipe = 3\n[vignette]\namount = 0.3\n", v2.format).empty());
     // Its keys are checked as any other: required, and within their range.
     const std::vector<prism::RecipeIssue> missing = {{2, "[vignette] needs 'amount'"}};
-    EXPECT_EQ(issues_in("prism_recipe = 2\n[vignette]\n", v2.format), missing);
+    EXPECT_EQ(issues_in("prism_recipe = 3\n[vignette]\n", v2.format), missing);
     const std::vector<prism::RecipeIssue> range = {
         {3, "[vignette] amount must be from 0 to 1 (it is 2)"}};
-    EXPECT_EQ(issues_in("prism_recipe = 2\n[vignette]\namount = 2\n", v2.format), range);
+    EXPECT_EQ(issues_in("prism_recipe = 3\n[vignette]\namount = 2\n", v2.format), range);
 }
 
 TEST(RecipeVersions, AnOlderFileIsNotAskedForKeysAddedLater) {
-    // Version 1 files have no [vignette] at all, and are never told they lack one; a version 1
-    // file still reads with a Prism that knows version 2.
+    // Version 1 and 2 files have no [vignette] at all, and are never told they lack one; a version
+    // 1 file still reads with a Prism that knows version 2.
     const FormatWithVersion2 v2;
     const std::string text = read_text(fs::path(PRISM_TEST_DATA) / "recipe_complete.prism");
     expect_same_bits(complete_recipe(), prism::parse_recipe(text, "", v2.format));
@@ -870,15 +885,15 @@ TEST(RecipeVersions, AnOlderFileIsNotAskedForKeysAddedLater) {
 TEST(RecipeVersions, ANewerFileIsRefusedAsAWhole) {
     const FormatWithVersion2 v2;
     // Mistakes or not, the only message is about the version: a newer format may mean anything.
-    const std::string text = "# made by a newer Prism\nprism_recipe = 3\n[grain]\nsize = huge\n";
+    const std::string text = "# made by a newer Prism\nprism_recipe = 4\n[grain]\nsize = huge\n";
     const std::vector<prism::RecipeIssue> expected = {
         {2,
-         "this recipe needs recipe format 3, but this Prism reads up to format 2: update Prism "
+         "this recipe needs recipe format 4, but this Prism reads up to format 3: update Prism "
          "to read it"}};
     EXPECT_EQ(issues_in(text, v2.format), expected);
     const std::vector<prism::RecipeIssue> v1_expected = {
         {2,
-         "this recipe needs recipe format 3, but this Prism reads up to format 1: update Prism "
+         "this recipe needs recipe format 4, but this Prism reads up to format 2: update Prism "
          "to read it"}};
     EXPECT_EQ(issues_in(text, prism::recipe_format()), v1_expected);
 }
@@ -980,4 +995,110 @@ TEST(AtomicFile, AFailedWriteSaysWhichFileAndStep) {
     ASSERT_TRUE(error);
     EXPECT_EQ(error->step, prism::AtomicWriteError::Step::write);
     EXPECT_EQ(error->file, fs::path(path) += ".tmp");
+}
+
+// --- [white_balance], format 2 -------------------------------------------------------------------
+
+namespace {
+
+Recipe white_balance_recipe() {
+    Recipe r;
+    r.exposure = prism::RecipeExposure{0.5f, true};
+    r.white_balance = prism::RecipeWhiteBalance{5600.5f, -12.25f, false};
+    return r;
+}
+
+}  // namespace
+
+TEST(RecipeWhiteBalance, ReadsBackWhatWasWritten) {
+    const Recipe r = white_balance_recipe();
+    for (const prism::RecipeWriteOptions options : {prism::RecipeWriteOptions{}, bare}) {
+        const std::string text = prism::write_recipe(r, options);
+        EXPECT_EQ(prism::parse_recipe(text), r) << text;
+    }
+    EXPECT_EQ(prism::write_recipe(r, bare),
+              "prism_recipe = 2\n\n[exposure]\nstops = +0.5\n\n[white_balance]\nkelvin = "
+              "5600.5\ntint = -12.25\non = false\n");
+}
+
+TEST(RecipeWhiteBalance, TintAndOnTakeTheirDefaults) {
+    const Recipe r = prism::parse_recipe("prism_recipe = 2\n[white_balance]\nkelvin = 4200\n");
+    ASSERT_TRUE(r.white_balance);
+    EXPECT_EQ(*r.white_balance, (prism::RecipeWhiteBalance{4200.0f, 0.0f, true}));
+}
+
+TEST(RecipeWhiteBalance, ARecipeIsWrittenAsTheLowestVersionItNeeds) {
+    Recipe r = white_balance_recipe();
+    EXPECT_EQ(prism::write_recipe(r, bare).substr(0, 17), "prism_recipe = 2\n");
+    r.white_balance.reset();
+    EXPECT_EQ(prism::write_recipe(r, bare).substr(0, 17), "prism_recipe = 1\n");
+    EXPECT_EQ(prism::write_recipe(complete_recipe(), bare).substr(0, 17), "prism_recipe = 1\n");
+}
+
+TEST(RecipeWhiteBalance, AVersion1FileWithItIsRefused) {
+    const std::vector<prism::RecipeIssue> expected = {
+        {2, "[white_balance] needs recipe format 2, but this file says prism_recipe = 1"}};
+    EXPECT_EQ(issues_of("prism_recipe = 1\n[white_balance]\nkelvin = 5000\n"), expected);
+}
+
+TEST(RecipeWhiteBalance, RangesAndTheRequiredKeyAreChecked) {
+    const std::string head = "prism_recipe = 2\n[white_balance]\n";
+    EXPECT_EQ(issues_of(head + "kelvin = 1999\n"),
+              (std::vector<prism::RecipeIssue>{
+                  {3, "[white_balance] kelvin must be from 2000 to 15000 (it is 1999)"}}));
+    EXPECT_EQ(issues_of(head + "kelvin = 15001\n"),
+              (std::vector<prism::RecipeIssue>{
+                  {3, "[white_balance] kelvin must be from 2000 to 15000 (it is 15001)"}}));
+    EXPECT_EQ(issues_of(head + "kelvin = 5000\ntint = 100.5\n"),
+              (std::vector<prism::RecipeIssue>{
+                  {4, "[white_balance] tint must be from -100 to 100 (it is 100.5)"}}));
+    EXPECT_EQ(issues_of(head + "kelvin = 5000\ntint = -101\n"),
+              (std::vector<prism::RecipeIssue>{
+                  {4, "[white_balance] tint must be from -100 to 100 (it is -101)"}}));
+    EXPECT_EQ(issues_of(head + "tint = 5\n"),
+              (std::vector<prism::RecipeIssue>{{2, "[white_balance] needs 'kelvin'"}}));
+    EXPECT_TRUE(issues_of(head + "kelvin = 2000\ntint = -100\n").empty());
+    EXPECT_TRUE(issues_of(head + "kelvin = 15000\ntint = 100\n").empty());
+}
+
+TEST(RecipeWhiteBalance, BecomesAMatrixRelativeToTheAsShotLight) {
+    Recipe r;
+    r.white_balance = prism::RecipeWhiteBalance{8000.0f, 10.0f, true};
+    const prism::Chromaticity shot = prism::white_of({5200, -15});
+    EXPECT_EQ(prism::to_process_settings(r, shot).white_balance,
+              prism::white_balance_matrix({8000, 10}, shot));
+    // Without an as-shot light, 6500 K / tint 0 is the light that means "no change".
+    EXPECT_EQ(prism::to_process_settings(r).white_balance,
+              prism::white_balance_matrix({8000, 10}, prism::white_of(prism::default_as_shot)));
+    r.white_balance = prism::RecipeWhiteBalance{6500.0f, 0.0f, true};
+    EXPECT_EQ(prism::to_process_settings(r).white_balance, prism::identity_matrix);
+    r.white_balance->on = false;
+    EXPECT_FALSE(prism::to_process_settings(r).white_balance);
+    r.white_balance = prism::RecipeWhiteBalance{1000.0f, 0.0f, true};
+    EXPECT_THROW((void)prism::to_process_settings(r), std::invalid_argument);
+}
+
+TEST(RecipeWhiteBalance, AFlagReplacesTheRecipesStage) {
+    Recipe r;
+    r.white_balance = prism::RecipeWhiteBalance{8000.0f, 10.0f, false};  // even where it is off
+    prism::ProcessSettings flags;
+    flags.white_balance = prism::white_balance_matrix({4000, 0}, prism::white_of({6500, 0}));
+    EXPECT_EQ(prism::merge_recipe_and_flags(r, flags).white_balance, flags.white_balance);
+    r.white_balance->on = true;
+    EXPECT_EQ(prism::merge_recipe_and_flags(r, flags).white_balance, flags.white_balance);
+    EXPECT_NE(prism::merge_recipe_and_flags(r, {}).white_balance, flags.white_balance);
+}
+
+TEST(RecipeWhiteBalance, TheBuiltInLooksStayFormat1) {
+    int files = 0;
+    for (const auto& entry : fs::recursive_directory_iterator(PRISM_RECIPES_DIR)) {
+        if (entry.path().extension() == ".prism") {
+            ++files;
+            const std::string text = read_text(entry.path());
+            EXPECT_NE(text.find("\nprism_recipe = 1  # recipe format version\n"), std::string::npos)
+                << entry.path();
+            EXPECT_EQ(text.find("white_balance"), std::string::npos) << entry.path();
+        }
+    }
+    EXPECT_GT(files, 0);
 }

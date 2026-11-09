@@ -9,6 +9,7 @@
 #include <string_view>
 #include <vector>
 
+#include "prism/camera_profile.hpp"
 #include "prism/pipeline.hpp"
 #include "prism/process.hpp"
 #include "prism/ranges.hpp"
@@ -23,14 +24,25 @@ namespace prism {
 // when the recipe is applied; a stage that is absent stays as it was (the partial rule). Each
 // stage has an on/off switch, as in the GUI: a stage that is off keeps its values but is skipped.
 
-// The recipe format version this Prism reads up to and writes. recipe_format() lists what each
-// version has.
-inline constexpr int recipe_format_version = 1;
+// The newest recipe format version this Prism reads. recipe_format() lists what each version has.
+// write_recipe writes the lowest version a recipe's content needs, not this one: a recipe without
+// [white_balance] is still written as version 1, so older Prisms keep reading it.
+inline constexpr int recipe_format_version = 2;
 
 struct RecipeExposure {
     float stops = 0.0f;  // any finite number
     bool on = true;
     bool operator==(const RecipeExposure&) const = default;
+};
+
+// The light the photo was lit by, named as a colour temperature and a tint (prism/white_balance.hpp
+// says what they mean). A per-photo choice: unlike the other stages it only makes sense for the
+// photo it was set on, since the same Kelvin means a different edit on a photo lit differently.
+struct RecipeWhiteBalance {
+    float kelvin = 6500.0f;  // kelvin_range
+    float tint = 0.0f;       // tint_range
+    bool on = true;
+    bool operator==(const RecipeWhiteBalance&) const = default;
 };
 
 struct RecipeMatrix {
@@ -73,6 +85,7 @@ struct Recipe {
 
     // In pipeline order. Empty = not in the recipe: that stage is left as it is.
     std::optional<RecipeExposure> exposure;
+    std::optional<RecipeWhiteBalance> white_balance;
     std::optional<RecipeMatrix> matrix;
     std::optional<RecipeSaturation> saturation;
     std::optional<RecipeContrast> contrast;
@@ -90,13 +103,13 @@ struct RecipeWriteOptions {
     bool comments = true;
 };
 
-// The recipe as text, in the format of docs/RECIPES.md: `prism_recipe = 1`, the name and
-// description if there are any, then each section the recipe has, in pipeline order with a fixed
-// key order. Numbers are written in the shortest form that reads back as exactly the same float,
-// with ".0" added to whole numbers; exposure always has a sign, and -0 is written as 0. `on =
-// false` is written only for a stage that is off. No aligned = signs, and nothing that changes
-// from one save to the next (no date, no Prism version), so saved recipes diff cleanly. UTF-8
-// without a byte-order mark, LF line ends.
+// The recipe as text, in the format of docs/RECIPES.md: `prism_recipe = N` (the lowest version
+// that has everything the recipe uses), the name and description if there are any, then each
+// section the recipe has, in pipeline order with a fixed key order. Numbers are written in the
+// shortest form that reads back as exactly the same float, with ".0" added to whole numbers;
+// exposure always has a sign, and -0 is written as 0. `on = false` is written only for a stage that
+// is off. No aligned = signs, and nothing that changes from one save to the next (no date, no Prism
+// version), so saved recipes diff cleanly. UTF-8 without a byte-order mark, LF line ends.
 [[nodiscard]] std::string write_recipe(const Recipe& recipe,
                                        const RecipeWriteOptions& options = {});
 
@@ -210,17 +223,24 @@ struct RecipeFormat {
 // that is not given). The curve is prism::parse_curve(curve_spec(...)), exactly the curve --curve
 // builds from the same numbers. Throws std::invalid_argument for values outside their ranges,
 // which parse_recipe never returns.
-[[nodiscard]] ProcessSettings to_process_settings(const Recipe& recipe);
+//
+// [white_balance] names the light the photo was lit by, so its matrix depends on the photo:
+// `as_shot_white` is the photo's as-shot light (PhotoInfo::as_shot_white_xy), and without one the
+// as-shot light is (6500 K, tint 0), which makes that setting "no change".
+[[nodiscard]] ProcessSettings to_process_settings(
+    const Recipe& recipe, const std::optional<Chromaticity>& as_shot_white = std::nullopt);
 
 // What the CLI runs for a recipe together with the flags given on the command line. `flags` holds
 // one field per stage flag that was given (--exposure, --matrix, --saturation, --contrast,
-// --curve) and nothing for the others. Flags win stage by stage: a flag replaces its whole stage
+// --curve) and nothing for the others; `white_balance` is the finished matrix, which --kelvin and
+// --tint replace [white_balance] with. Flags win stage by stage: a flag replaces its whole stage
 // (the curve's shape and parameter together) and runs it even where the recipe switches that
 // stage off. Every other stage is as in to_process_settings(recipe): run if present and on, and
 // otherwise nothing, since the command line starts from no adjustments. With an empty recipe the
-// result is `flags` unchanged. Throws as to_process_settings does.
-[[nodiscard]] ProcessSettings merge_recipe_and_flags(const Recipe& recipe,
-                                                     const ProcessSettings& flags);
+// result is `flags` unchanged. Throws as to_process_settings does; `as_shot_white` is as there.
+[[nodiscard]] ProcessSettings merge_recipe_and_flags(
+    const Recipe& recipe, const ProcessSettings& flags,
+    const std::optional<Chromaticity>& as_shot_white = std::nullopt);
 
 // --- Files ---------------------------------------------------------------------------------------
 

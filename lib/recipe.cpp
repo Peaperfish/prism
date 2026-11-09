@@ -2,6 +2,7 @@
 
 #include "prism/atomic_file.hpp"
 #include "prism/utf8_path.hpp"
+#include "prism/white_balance.hpp"
 
 #include <algorithm>
 #include <cerrno>
@@ -118,6 +119,9 @@ private:
     std::string text_;
 };
 
+// The lowest format version that has every section the recipe uses (defined with the tables).
+int lowest_format_version(const Recipe& recipe);
+
 std::string row_text(const Matrix3& m, int row) {
     return "[" + number_text(m[row * 3]) + ", " + number_text(m[row * 3 + 1]) + ", " +
            number_text(m[row * 3 + 2]) + "]";
@@ -181,7 +185,8 @@ std::string write_recipe(const Recipe& recipe, const RecipeWriteOptions& options
         "Prism recipe: edit settings in plain text. Prism rewrites these comments when it saves.");
     w.comment_line(
         "What each line means: https://github.com/Peaperfish/prism/blob/main/docs/RECIPES.md");
-    w.setting("prism_recipe", std::to_string(recipe_format_version), "recipe format version");
+    w.setting("prism_recipe", std::to_string(lowest_format_version(recipe)),
+              "recipe format version");
     if (recipe.name) {
         w.setting("name", toml_string(*recipe.name));
     }
@@ -192,6 +197,14 @@ std::string write_recipe(const Recipe& recipe, const RecipeWriteOptions& options
         w.section("exposure");
         w.setting("stops", number_text(e->stops, true), exposure_comment(e->stops));
         w.switch_off_if(e->on);
+    }
+    if (const auto& wb = recipe.white_balance) {
+        w.section("white_balance");
+        w.setting("kelvin", number_text(wb->kelvin),
+                  "the light the photo was lit by; higher is warmer");
+        w.setting("tint", number_text(wb->tint),
+                  "positive is a greener light, which makes the photo more magenta");
+        w.switch_off_if(wb->on);
     }
     if (const auto& m = recipe.matrix) {
         w.section("matrix");
@@ -239,18 +252,22 @@ using ValueType = RecipeValueType;
 using KeySpec = RecipeKeySpec;
 
 constexpr RecipeSectionSpec section_specs[] = {
-    {"exposure", 1}, {"matrix", 1}, {"saturation", 1}, {"contrast", 1}, {"curve", 1},
+    {"exposure", 1},   {"white_balance", 2}, {"matrix", 1},
+    {"saturation", 1}, {"contrast", 1},      {"curve", 1},
 };
 
 constexpr std::string_view weights = "weights of input R, G, B";
 
-// Every key of format version 1, at the top of the file and then in pipeline order.
+// Every key of every format version, at the top of the file and then in pipeline order.
 constexpr RecipeKeySpec key_specs[] = {
     {"", "prism_recipe", ValueType::version, 1, true, {}, false, "format version", {}, {}},
     {"", "name", ValueType::text, 1, false, {}, false, "text", {}, "none"},
     {"", "description", ValueType::text, 1, false, {}, false, "text", {}, "none"},
     {"exposure", "stops", ValueType::number, 1, true, {}, false, "stops", {}, {}},
     {"exposure", "on", ValueType::boolean, 1, false, {}, false, "switch", {}, "true"},
+    {"white_balance", "kelvin", ValueType::number, 2, true, kelvin_range, false, "kelvin", {}, {}},
+    {"white_balance", "tint", ValueType::number, 2, false, tint_range, false, "tint", 0.0f, {}},
+    {"white_balance", "on", ValueType::boolean, 2, false, {}, false, "switch", {}, "true"},
     {"matrix", "red", ValueType::row, 1, true, {}, false, weights, {}, {}},
     {"matrix", "green", ValueType::row, 1, true, {}, false, weights, {}, {}},
     {"matrix", "blue", ValueType::row, 1, true, {}, false, weights, {}, {}},
@@ -275,7 +292,28 @@ constexpr RecipeKeySpec key_specs[] = {
     {"curve", "on", ValueType::boolean, 1, false, {}, false, "switch", {}, "true"},
 };
 
-constexpr RecipeFormat format_v1{recipe_format_version, section_specs, key_specs};
+constexpr RecipeFormat format_latest{recipe_format_version, section_specs, key_specs};
+
+int lowest_format_version(const Recipe& recipe) {
+    int version = 1;
+    const auto uses = [&](std::string_view section, bool present) {
+        if (!present) {
+            return;
+        }
+        for (const RecipeSectionSpec& spec : section_specs) {
+            if (spec.name == section) {
+                version = std::max(version, spec.since);
+            }
+        }
+    };
+    uses("exposure", recipe.exposure.has_value());
+    uses("white_balance", recipe.white_balance.has_value());
+    uses("matrix", recipe.matrix.has_value());
+    uses("saturation", recipe.saturation.has_value());
+    uses("contrast", recipe.contrast.has_value());
+    uses("curve", recipe.curve.has_value());
+    return version;
+}
 
 constexpr CurveShape all_shapes[] = {CurveShape::none, CurveShape::gamma, CurveShape::reinhard,
                                      CurveShape::filmic};
@@ -1122,6 +1160,8 @@ private:
     void start_section(std::string_view name) {
         if (name == "exposure") {
             recipe_.exposure.emplace();
+        } else if (name == "white_balance") {
+            recipe_.white_balance.emplace();
         } else if (name == "matrix") {
             recipe_.matrix.emplace();
         } else if (name == "saturation") {
@@ -1161,6 +1201,10 @@ private:
             }
         } else if (s == "exposure" && k == "stops") {
             recipe_.exposure->stops = v.number;
+        } else if (s == "white_balance" && k == "kelvin") {
+            recipe_.white_balance->kelvin = v.number;
+        } else if (s == "white_balance" && k == "tint") {
+            recipe_.white_balance->tint = v.number;
         } else if (s == "matrix" && k == "from") {
             if (v.text.empty()) {
                 fail(number, "'from' needs a file name, not empty text");
@@ -1235,6 +1279,8 @@ private:
     void set_on(std::string_view section, bool on) {
         if (section == "exposure") {
             recipe_.exposure->on = on;
+        } else if (section == "white_balance") {
+            recipe_.white_balance->on = on;
         } else if (section == "matrix") {
             recipe_.matrix->on = on;
         } else if (section == "saturation") {
@@ -1326,7 +1372,7 @@ RecipeError::RecipeError(std::string source, std::vector<RecipeIssue> issues)
       issues_(std::move(issues)) {}
 
 const RecipeFormat& recipe_format() noexcept {
-    return format_v1;
+    return format_latest;
 }
 
 std::string describe_values(const RecipeKeySpec& spec) {
@@ -1393,10 +1439,20 @@ std::optional<std::string> curve_spec(const RecipeCurve& curve) {
     return std::nullopt;
 }
 
-ProcessSettings to_process_settings(const Recipe& recipe) {
+ProcessSettings to_process_settings(const Recipe& recipe,
+                                    const std::optional<Chromaticity>& as_shot_white) {
     std::vector<std::string> problems;
     if (recipe.exposure && !std::isfinite(recipe.exposure->stops)) {
         problems.push_back("[exposure] stops must be a finite number");
+    }
+    if (const auto& wb = recipe.white_balance) {
+        if (!in_range(wb->kelvin, kelvin_range)) {
+            problems.push_back("[white_balance] " +
+                               range_message("kelvin", wb->kelvin, kelvin_range));
+        }
+        if (!in_range(wb->tint, tint_range)) {
+            problems.push_back("[white_balance] " + range_message("tint", wb->tint, tint_range));
+        }
     }
     if (recipe.matrix && !std::all_of(recipe.matrix->values.begin(), recipe.matrix->values.end(),
                                       [](float v) { return std::isfinite(v); })) {
@@ -1430,6 +1486,11 @@ ProcessSettings to_process_settings(const Recipe& recipe) {
     if (recipe.exposure && recipe.exposure->on) {
         p.exposure_stops = recipe.exposure->stops;
     }
+    if (recipe.white_balance && recipe.white_balance->on) {
+        p.white_balance =
+            white_balance_matrix({recipe.white_balance->kelvin, recipe.white_balance->tint},
+                                 as_shot_white.value_or(white_of(default_as_shot)));
+    }
     if (recipe.matrix && recipe.matrix->on) {
         p.matrix = recipe.matrix->values;
     }
@@ -1447,10 +1508,14 @@ ProcessSettings to_process_settings(const Recipe& recipe) {
     return p;
 }
 
-ProcessSettings merge_recipe_and_flags(const Recipe& recipe, const ProcessSettings& flags) {
-    ProcessSettings p = to_process_settings(recipe);
+ProcessSettings merge_recipe_and_flags(const Recipe& recipe, const ProcessSettings& flags,
+                                       const std::optional<Chromaticity>& as_shot_white) {
+    ProcessSettings p = to_process_settings(recipe, as_shot_white);
     if (flags.exposure_stops) {
         p.exposure_stops = flags.exposure_stops;
+    }
+    if (flags.white_balance) {
+        p.white_balance = flags.white_balance;
     }
     if (flags.matrix) {
         p.matrix = flags.matrix;

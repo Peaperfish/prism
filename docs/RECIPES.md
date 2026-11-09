@@ -1,6 +1,6 @@
 # Prism recipes
 
-A recipe is a small text file, ending in `.prism`, that writes down an edit: how much exposure, which colour matrix, how much saturation and contrast, and which tone curve. It holds numbers only, not pixels, so the same recipe can be used on any photo. You can open it in any text editor, read exactly what it does, change a number, and send it to someone else. Nothing in it is hidden: a look is just its recipe.
+A recipe is a small text file, ending in `.prism`, that writes down an edit: how much exposure, which light the photo was lit by, which colour matrix, how much saturation and contrast, and which tone curve. It holds numbers only, not pixels, so the same recipe can be used on any photo. You can open it in any text editor, read exactly what it does, change a number, and send it to someone else. Nothing in it is hidden: a look is just its recipe.
 
 Contents: [A recipe by hand](#a-recipe-by-hand) · [As Prism saves it](#as-prism-saves-it) · [Every setting](#every-setting) · [Leaving stages out](#leaving-stages-out) · [The built-in looks](#the-built-in-looks) · [The rules of the format](#the-rules-of-the-format) · [Versions](#versions) · [When a recipe has a mistake](#when-a-recipe-has-a-mistake)
 
@@ -78,6 +78,9 @@ A stage that is switched off is saved with `on = false` and keeps its values, so
 | (top) | `description` | text | one line | none | 1 |
 | `[exposure]` | `stops` | stops | any number | required | 1 |
 | `[exposure]` | `on` | switch | `true` or `false` | `true` | 1 |
+| `[white_balance]` | `kelvin` | kelvin | 2000 to 15000 | required | 2 |
+| `[white_balance]` | `tint` | tint | -100 to 100 | 0 | 2 |
+| `[white_balance]` | `on` | switch | `true` or `false` | `true` | 2 |
 | `[matrix]` | `red` | weights of input R, G, B | 3 numbers | required | 1 |
 | `[matrix]` | `green` | weights of input R, G, B | 3 numbers | required | 1 |
 | `[matrix]` | `blue` | weights of input R, G, B | 3 numbers | required | 1 |
@@ -97,6 +100,7 @@ A stage that is switched off is saved with `on = false` and keeps its values, so
 What the values mean:
 
 - **`[exposure]` `stops`**: +1 doubles the light, −1 halves it. Prism always writes the sign.
+- **`[white_balance]` `kelvin` and `tint`**: the light the photo was lit by, as a colour temperature and a green–magenta tint, as in Lightroom. A higher `kelvin` makes the photo warmer, and a positive `tint` (a greener light) makes it more magenta. Because it names the light of one scene, it is a per-photo choice: the same Kelvin is a different edit on a photo lit differently, so a recipe with `[white_balance]` is for the photo it was made on rather than a look to share. For a RAW file the edit is relative to the light the camera measured; for PNG, JPEG and HEIC files, which have no such record, 6500 K with a tint of 0 is "no change". Leave `[white_balance]` out to keep the photo as it was shot.
 - **`[matrix]`**: each row is one output channel as a mix of the input red, green and blue, in linear light. `red = [1.05, 0.03, -0.01]` means output red = 1.05 × red + 0.03 × green − 0.01 × blue. `from` is only a label saying which file the numbers came from: a file name, without folders, which Prism never opens.
 - **`[saturation]` `amount`**: 1 changes nothing, 0 is black and white, 2 doubles each colour's distance from grey. The same number as the command line's `--saturation`.
 - **`[contrast]` `amount`**: 1 changes nothing; above 1 spreads the stops near middle grey apart, below 1 brings them together. The same number as `--contrast`. The window shows this multiplier as a paper grade (an `amount` of 1.29 is "Grade 3"); see [Contrast as a paper grade](GUIDE.md#contrast-as-a-paper-grade).
@@ -158,7 +162,12 @@ A recipe is a small part of [TOML](https://toml.io), a common format for setting
 
 `prism_recipe = 1` says which version of the format the file is written in. When a later Prism adds a setting, it goes into a new format version, and the table above says which version each key arrived in.
 
-A Prism that reads up to format 1 refuses a recipe that says `prism_recipe = 2` as a whole, rather than guess at settings it does not know, and asks you to update Prism. A newer Prism reads every older recipe as it was meant.
+- **Version 1**: `[exposure]`, `[matrix]`, `[saturation]`, `[contrast]` and `[curve]`.
+- **Version 2**: adds `[white_balance]`.
+
+When Prism saves a recipe it writes the lowest version that has everything in it, so a recipe without `[white_balance]` is still written as version 1 and older Prisms keep reading it. Prism 0.4.0 reads up to format 1, so it refuses a recipe that says `prism_recipe = 2` as newer than it understands.
+
+A Prism that reads up to format 2 refuses a recipe that says `prism_recipe = 3` as a whole, rather than guess at settings it does not know, and asks you to update Prism. A newer Prism reads every older recipe as it was meant.
 
 The other way round, a file must not use a key from a later version than it declares: change `prism_recipe` to that version (and use a Prism that reads it).
 
@@ -216,9 +225,9 @@ shape = filmic
 
 A recipe from a newer Prism:
 
-<!-- recipe: error line 1: this recipe needs recipe format 2, but this Prism reads up to format 1: update Prism to read it -->
+<!-- recipe: error line 1: this recipe needs recipe format 3, but this Prism reads up to format 2: update Prism to read it -->
 ```toml
-prism_recipe = 2
+prism_recipe = 3
 
 [exposure]
 stops = +1.0

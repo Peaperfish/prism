@@ -29,6 +29,8 @@ CurveShape shape_of(CurveKind kind) {
 }  // namespace
 
 void apply_recipe(EditSettings& s, const Recipe& recipe) {
+    // A recipe's [white_balance] is ignored for now: the window has no white balance control yet,
+    // and what it would set depends on each photo's as-shot light.
     if (const auto& e = recipe.exposure) {
         s.exposure_stops = e->stops;
         s.exposure_on = e->on;

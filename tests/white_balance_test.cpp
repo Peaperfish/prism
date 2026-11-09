@@ -111,8 +111,8 @@ TEST(WhiteBalance, BradfordTakesTheChosenWhiteToTheAsShotWhite) {
     const Chromaticity as_shot = prism::white_of({6500, 0});
     for (const WhiteBalance chosen : {WhiteBalance{3000, 20}, {8000, -60}, {15000, 100}}) {
         const Chromaticity light = prism::white_of(chosen);
-        const prism::Vec3 mapped = prism::multiply(prism::bradford(light, as_shot),
-                                                   prism::xyz_of(light));
+        const prism::Vec3 mapped =
+            prism::multiply(prism::bradford(light, as_shot), prism::xyz_of(light));
         expect_proportional(mapped, prism::xyz_of(as_shot), 1e-9);
     }
 }
@@ -121,8 +121,8 @@ TEST(WhiteBalance, TheMatrixMapsTheChosenWhiteToTheAsShotWhiteInSrgb) {
     const Chromaticity as_shot = prism::white_of({5200, -15});
     const WhiteBalance chosen{7300, 30};
     const prism::Matrix3 m = prism::white_balance_matrix(chosen, as_shot);
-    const prism::Vec3 rgb = prism::multiply(prism::xyz_to_srgb(),
-                                            prism::xyz_of(prism::white_of(chosen)));
+    const prism::Vec3 rgb =
+        prism::multiply(prism::xyz_to_srgb(), prism::xyz_of(prism::white_of(chosen)));
     const prism::Vec3 out = {m[0] * rgb[0] + m[1] * rgb[1] + m[2] * rgb[2],
                              m[3] * rgb[0] + m[4] * rgb[1] + m[5] * rgb[2],
                              m[6] * rgb[0] + m[7] * rgb[1] + m[8] * rgb[2]};
