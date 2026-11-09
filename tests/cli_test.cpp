@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -20,6 +21,7 @@
 #include "prism/image.hpp"
 #include "prism/pipeline.hpp"
 #include "prism/process.hpp"
+#include "prism/raw.hpp"
 #include "prism/resize.hpp"
 #include "prism/version.hpp"
 #include "run_command.hpp"
@@ -541,4 +543,179 @@ TEST(Cli, LongSideWorksOnRaw) {
         EXPECT_EQ(std::max(written.width, written.height), 64);
     }
     fs::remove(output);
+}
+
+// --- --kelvin and --tint
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// A grey JPEG: it has no as-shot light, so 6500 K / tint 0 means "no change".
+fs::path write_grey_jpeg() {
+    prism::Image img;
+    img.width = 4;
+    img.height = 4;
+    img.pixels.assign(4 * 4 * 3, 0.18f);
+    const fs::path path = temp_file("grey.jpg");
+    prism::save_image(path, img);
+    return path;
+}
+
+std::string read_bytes(const fs::path& path) {
+    std::ifstream file(path, std::ios::binary);
+    std::stringstream text;
+    text << file.rdbuf();
+    return text.str();
+}
+
+// Runs prism on `input` with `flags`, returns the written PNG's bytes (empty if it failed).
+std::string run_to_bytes(const fs::path& input, const std::string& flags,
+                         int* exit_code = nullptr) {
+    const fs::path output = temp_file("wb_out.png");
+    fs::remove(output);
+    const RunResult r = run_prism(quoted(input) + " -o " + quoted(output) + " " + flags);
+    if (exit_code != nullptr) {
+        *exit_code = r.exit_code;
+    }
+    std::string bytes = r.exit_code == 0 ? read_bytes(output) : std::string();
+    fs::remove(output);
+    return bytes;
+}
+
+// The linear value of the first pixel of a PNG held as bytes.
+std::array<float, 3> first_pixel(const std::string& png_bytes) {
+    const fs::path path = temp_file("wb_pixel.png");
+    {
+        std::ofstream out(path, std::ios::binary);
+        out << png_bytes;
+    }
+    const prism::Image img = prism::load_image(path);
+    fs::remove(path);
+    return {img.pixels[0], img.pixels[1], img.pixels[2]};
+}
+
+}  // namespace
+
+TEST(CliWhiteBalance, AsShotValuesOnAJpegChangeNothing) {
+    const fs::path input = write_grey_jpeg();
+    const std::string plain_run = run_to_bytes(input, "--threads 1");
+    ASSERT_FALSE(plain_run.empty());
+    EXPECT_EQ(run_to_bytes(input, "--kelvin 6500 --tint 0 --threads 1"), plain_run);
+    // Either one alone keeps the other at 6500 / 0.
+    EXPECT_EQ(run_to_bytes(input, "--kelvin 6500"), plain_run);
+    EXPECT_EQ(run_to_bytes(input, "--tint 0"), plain_run);
+    fs::remove(input);
+}
+
+TEST(CliWhiteBalance, ALowerKelvinIsCoolerAndAHigherOneWarmer) {
+    const fs::path input = write_grey_jpeg();
+    const auto cool = first_pixel(run_to_bytes(input, "--kelvin 4000"));
+    EXPECT_LT(cool[0], cool[2]);
+    const auto warm = first_pixel(run_to_bytes(input, "--kelvin 9000"));
+    EXPECT_GT(warm[0], warm[2]);
+    fs::remove(input);
+}
+
+TEST(CliWhiteBalance, TintAloneKeepsTheKelvinAsShot) {
+    const fs::path input = write_grey_jpeg();
+    const std::string alone = run_to_bytes(input, "--tint 50");
+    EXPECT_EQ(alone, run_to_bytes(input, "--kelvin 6500 --tint 50"));
+    const auto magenta = first_pixel(alone);
+    EXPECT_LT(magenta[1], 0.5f * (magenta[0] + magenta[2]));
+    const auto green = first_pixel(run_to_bytes(input, "--tint -50"));
+    EXPECT_GT(green[1], 0.5f * (green[0] + green[2]));
+    fs::remove(input);
+}
+
+TEST(CliWhiteBalance, ARecipesWhiteBalanceIsReplacedByTheFlags) {
+    const fs::path input = write_grey_jpeg();
+    const fs::path recipe = temp_file("wb.prism");
+    {
+        std::ofstream out(recipe, std::ios::binary);
+        out << "prism_recipe = 2\n[white_balance]\nkelvin = 9000\ntint = 40\n";
+    }
+    const std::string plain_run = run_to_bytes(input, "");
+    const std::string with_recipe = run_to_bytes(input, "--recipe " + quoted(recipe));
+    EXPECT_NE(with_recipe, plain_run);
+    // The flag replaces the whole stage: the recipe's tint of 40 is not kept, so this is as shot.
+    EXPECT_EQ(run_to_bytes(input, "--recipe " + quoted(recipe) + " --kelvin 6500"), plain_run);
+    EXPECT_NE(run_to_bytes(input, "--recipe " + quoted(recipe) + " --kelvin 4000"), with_recipe);
+    fs::remove(input);
+    fs::remove(recipe);
+}
+
+TEST(CliWhiteBalance, BadValuesAreUsageErrors) {
+    const fs::path input = write_grey_jpeg();
+    const fs::path hist = temp_file("hist.png");
+    const std::string base = quoted(input) + " --histogram " + quoted(hist) + " ";
+    for (const char* bad : {"1999", "15001", "abc", "", "nan", "6500K"}) {
+        const RunResult r = run_prism(base + "--kelvin \"" + bad + "\"");
+        EXPECT_EQ(r.exit_code, 2) << "--kelvin '" << bad << "': " << r.output;
+        EXPECT_TRUE(contains(r.output, "--kelvin needs a number from 2000 to 15000")) << r.output;
+    }
+    for (const char* bad : {"101", "-101", "abc", "", "inf"}) {
+        const RunResult r = run_prism(base + "--tint \"" + bad + "\"");
+        EXPECT_EQ(r.exit_code, 2) << "--tint '" << bad << "': " << r.output;
+        EXPECT_TRUE(contains(r.output, "--tint needs a number from -100 to 100")) << r.output;
+    }
+    for (const char* flag : {"--kelvin", "--tint"}) {
+        const RunResult r = run_prism(base + flag);
+        EXPECT_EQ(r.exit_code, 2) << flag << ": " << r.output;
+        EXPECT_TRUE(contains(r.output, std::string(flag) + " needs a value")) << r.output;
+    }
+    for (const char* twice : {"--kelvin 5000 --kelvin 6000", "--tint 1 --tint 2"}) {
+        const RunResult r = run_prism(base + twice);
+        EXPECT_EQ(r.exit_code, 2) << twice << ": " << r.output;
+        EXPECT_TRUE(contains(r.output, "given more than once")) << r.output;
+    }
+    fs::remove(input);
+    fs::remove(hist);
+}
+
+TEST(CliWhiteBalance, TimeListsTheStageBetweenExposureAndTheRest) {
+    const fs::path input = write_grey_jpeg();
+    const fs::path output = temp_file("timed_wb.png");
+    const RunResult r = run_prism(quoted(input) + " -o " + quoted(output) +
+                                  " --saturation 1.5 --kelvin 4000 --exposure 1 --time");
+    EXPECT_EQ(r.exit_code, 0) << r.output;
+    const std::string text = plain(r.output);
+    const std::size_t exposure = text.find("  exposure ");
+    const std::size_t white = text.find("  white_balance ");
+    const std::size_t saturation = text.find("  saturation ");
+    ASSERT_NE(exposure, std::string::npos) << text;
+    ASSERT_NE(white, std::string::npos) << text;
+    ASSERT_NE(saturation, std::string::npos) << text;
+    EXPECT_LT(exposure, white);
+    EXPECT_LT(white, saturation);
+    // As shot adds no stage.
+    const RunResult none =
+        run_prism(quoted(input) + " -o " + quoted(output) + " --kelvin 6500 --time");
+    EXPECT_FALSE(contains(none.output, "white_balance")) << none.output;
+    fs::remove(input);
+    fs::remove(output);
+}
+
+TEST(CliWhiteBalance, HelpDescribesTheFlags) {
+    const RunResult r = run_prism("--help");
+    EXPECT_EQ(r.exit_code, 0) << r.output;
+    EXPECT_TRUE(contains(r.output, "--kelvin <K>")) << r.output;
+    EXPECT_TRUE(contains(r.output, "--tint <n>")) << r.output;
+}
+
+// Runs only with PRISM_TEST_RAW set; see raw_test.cpp. A RAW file's edit is relative to its own
+// as-shot light, so the same Kelvin differs from photo to photo; here the direction is checked.
+TEST(CliWhiteBalance, ARawPhotoIsRelativeToItsAsShotLight) {
+    const fs::path raw = prism_test::env_var("PRISM_TEST_RAW");
+    if (raw.empty()) {
+        GTEST_SKIP() << "set PRISM_TEST_RAW to a RAW file to run this test";
+    }
+    if (!prism::raw_support_available()) {
+        GTEST_SKIP() << "Prism was built without LibRaw";
+    }
+    const std::string plain_run = run_to_bytes(raw, "--raw-half --long-side 200");
+    ASSERT_FALSE(plain_run.empty());
+    const auto warm = first_pixel(run_to_bytes(raw, "--raw-half --long-side 200 --kelvin 15000"));
+    const auto cool = first_pixel(run_to_bytes(raw, "--raw-half --long-side 200 --kelvin 2000"));
+    EXPECT_GT(warm[0] / warm[2], cool[0] / cool[2]);
+    EXPECT_NE(run_to_bytes(raw, "--raw-half --long-side 200 --tint 30"), plain_run);
 }

@@ -29,6 +29,7 @@
 #include "prism/resize.hpp"
 #include "prism/utf8_path.hpp"
 #include "prism/version.hpp"
+#include "prism/white_balance.hpp"
 
 namespace {
 
@@ -62,6 +63,13 @@ void print_usage(const char* program) {
               << "  --recipe <file>     apply a recipe (.prism file); each option below that you\n"
               << "                      also give replaces that stage of the recipe\n"
               << "  --exposure <stops>  brighten (+) or darken (-) by this many stops\n"
+              << "  --kelvin <K>        the light the photo was lit by, 2000 to 15000: higher is\n"
+              << "                      warmer. For RAW the edit is relative to the camera's as-shot\n"
+              << "                      light; for other photos 6500 changes nothing\n"
+              << "  --tint <n>          green-magenta tint of that light, -100 to 100: positive (a\n"
+              << "                      greener light) is more magenta; for photos without an as-shot\n"
+              << "                      light 0 changes nothing. Either of --kelvin and --tint alone\n"
+              << "                      keeps the other as shot\n"
               << "  --matrix <file>     apply a 3x3 colour matrix (9 numbers, row-major)\n"
               << "  --saturation <s>    scale colourfulness around each pixel's luminance\n"
               << "                      (1 = unchanged, 0 = greyscale; 0 to 10)\n"
@@ -95,6 +103,8 @@ struct Options {
     std::optional<std::string> format;  // "jpg" or "png", for --out-dir
     std::optional<std::string> recipe_path;
     std::optional<float> exposure_stops;
+    std::optional<float> kelvin;
+    std::optional<float> tint;
     std::optional<std::string> matrix_path;
     std::optional<float> saturation;
     std::optional<float> contrast;
@@ -250,6 +260,13 @@ Options parse_args(int argc, char* argv[]) {
             set_once(opts.recipe_path, arg, next_value());
         } else if (arg == "--exposure") {
             set_once(opts.exposure_stops, arg, parse_stops(next_value()));
+        } else if (arg == "--kelvin") {
+            set_once(opts.kelvin, arg,
+                     parse_ranged(next_value(), arg, prism::kelvin_range.min,
+                                  prism::kelvin_range.max));
+        } else if (arg == "--tint") {
+            set_once(opts.tint, arg,
+                     parse_ranged(next_value(), arg, prism::tint_range.min, prism::tint_range.max));
         } else if (arg == "--matrix") {
             set_once(opts.matrix_path, arg, next_value());
         } else if (arg == "--saturation") {
@@ -366,11 +383,11 @@ public:
         std::cout << "time (" << threads << (threads == 1 ? " thread" : " threads") << "):\n"
                   << std::fixed << std::setprecision(1);
         for (const Stage& s : stages_) {
-            std::cout << "  " << std::left << std::setw(10) << s.name << std::right << std::setw(9)
+            std::cout << "  " << std::left << std::setw(14) << s.name << std::right << std::setw(9)
                       << s.ms << " ms\n";
             total += s.ms;
         }
-        std::cout << "  " << std::left << std::setw(10) << "total" << std::right << std::setw(9)
+        std::cout << "  " << std::left << std::setw(14) << "total" << std::right << std::setw(9)
                   << total << " ms\n";
     }
 
@@ -383,17 +400,61 @@ private:
     std::vector<Stage> stages_;
 };
 
-// Loads one photo, runs `settings` on it and writes what was asked for: the image to `output`
-// and the histogram to `histogram_path`, each when given. File names are UTF-8 text, printed as
-// they are.
+// --kelvin and --tint, as given. The matrix they make depends on the photo's as-shot light, so it
+// is built once the photo is loaded.
+struct WhiteBalanceFlags {
+    std::optional<float> kelvin;
+    std::optional<float> tint;
+};
+
+// `flags` plus what --kelvin and --tint ask of a photo whose as-shot light is `as_shot_white`
+// (none: 6500 K, tint 0). Either of the two given alone takes the other from the photo's as-shot
+// value. Like the other flags, they replace the recipe's stage, so the matrix goes into the flags.
+prism::ProcessSettings with_white_balance(prism::ProcessSettings flags,
+                                          const WhiteBalanceFlags& wb,
+                                          const std::optional<prism::Chromaticity>& as_shot_white) {
+    if (!wb.kelvin && !wb.tint) {
+        return flags;
+    }
+    const prism::Chromaticity shot_white =
+        as_shot_white.value_or(prism::white_of(prism::default_as_shot));
+    prism::WhiteBalance shot = prism::default_as_shot;
+    if (as_shot_white) {
+        // The editing ranges are narrower than the locus; the matrix still uses the true white.
+        shot = prism::white_balance_of(shot_white);
+        shot.kelvin = std::clamp(shot.kelvin, prism::kelvin_range.min, prism::kelvin_range.max);
+        shot.tint = std::clamp(shot.tint, prism::tint_range.min, prism::tint_range.max);
+    }
+    const prism::WhiteBalance chosen{wb.kelvin ? static_cast<double>(*wb.kelvin) : shot.kelvin,
+                                     wb.tint ? static_cast<double>(*wb.tint) : shot.tint};
+    flags.white_balance = prism::white_balance_matrix(chosen, shot_white);
+    return flags;
+}
+
+// Loads one photo, runs the recipe and flags on it and writes what was asked for: the image to
+// `output` and the histogram to `histogram_path`, each when given. File names are UTF-8 text,
+// printed as they are.
 void run_one(const std::string& input, const std::optional<std::string>& output,
              const std::optional<std::string>& histogram_path, bool time,
-             const prism::ProcessSettings& settings, const prism::RawOptions& raw,
+             const prism::Recipe& recipe, const prism::ProcessSettings& flags,
+             const WhiteBalanceFlags& wb_flags, const prism::RawOptions& raw,
              std::optional<int> long_side, int threads) {
     StageTimer timer;
 
     prism::Image img;
-    timer.run("load", [&] { img = prism::load_image(prism::path_from_utf8(input), raw, threads); });
+    prism::PhotoInfo info;
+    timer.run("load", [&] {
+        prism::Photo photo = prism::load_photo(prism::path_from_utf8(input), raw, threads);
+        img = std::move(photo.image);
+        info = std::move(photo.info);
+    });
+    std::optional<prism::Chromaticity> as_shot_white;
+    if (info.as_shot_white_xy) {
+        as_shot_white =
+            prism::Chromaticity{(*info.as_shot_white_xy)[0], (*info.as_shot_white_xy)[1]};
+    }
+    const prism::ProcessSettings settings = prism::merge_recipe_and_flags(
+        recipe, with_white_balance(flags, wb_flags, as_shot_white), as_shot_white);
     // Reduce before any editing, so every stage works on the small image. A photo that is not
     // larger keeps its size (downscale never enlarges), and that is said, since the user asked for
     // a size and gets another.
@@ -482,15 +543,18 @@ int main(int argc, char* argv[]) {
         if (opts.curve_spec) {
             flags.curve = prism::parse_curve(*opts.curve_spec);
         }
-        // Without --recipe the recipe is empty and this is exactly `flags`.
-        const prism::ProcessSettings settings = prism::merge_recipe_and_flags(recipe, flags);
+        // Without --recipe the recipe is empty and the result is exactly `flags`. Merged here once
+        // to refuse a bad recipe before any photo is opened; run_one merges again per photo, since
+        // white balance depends on the photo's as-shot light.
+        (void)prism::merge_recipe_and_flags(recipe, flags);
+        const WhiteBalanceFlags wb_flags{opts.kelvin, opts.tint};
 
         // 0 asks the library for one thread per hardware thread.
         const int threads = opts.threads.value_or(0);
         if (opts.inputs.size() == 1) {
             // A failure is reported by the catch blocks below, as it always was.
-            run_one(opts.inputs[0], opts.outputs[0], opts.histogram_path, opts.time, settings, raw,
-                    opts.long_side, threads);
+            run_one(opts.inputs[0], opts.outputs[0], opts.histogram_path, opts.time, recipe, flags,
+                    wb_flags, raw, opts.long_side, threads);
             return 0;
         }
 
@@ -500,8 +564,8 @@ int main(int argc, char* argv[]) {
         for (std::size_t i = 0; i < opts.inputs.size(); ++i) {
             const std::string& input = opts.inputs[i];
             try {
-                run_one(input, opts.outputs[i], std::nullopt, opts.time, settings, raw,
-                        opts.long_side, threads);
+                run_one(input, opts.outputs[i], std::nullopt, opts.time, recipe, flags, wb_flags,
+                        raw, opts.long_side, threads);
                 ++written;
             } catch (const std::exception& e) {
                 // Keep the "wrote" lines before this one when both go to the same place.

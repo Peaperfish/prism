@@ -67,7 +67,7 @@ Every command and option, with defaults, more examples (a folder of files in a s
 
 ```
 load (8-bit sRGB) → linearise ─┐
-                               ├→ exposure → colour matrix → saturation → contrast → tone curve → encode sRGB → save
+                               ├→ exposure → white balance → colour matrix → saturation → contrast → tone curve → encode sRGB → save
 load RAW (LibRaw, linear) ─────┘
 ```
 

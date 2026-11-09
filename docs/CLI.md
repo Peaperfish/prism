@@ -18,7 +18,7 @@ prism <input>... [-o <output> | --out-dir <dir>] [--histogram <file>] [options]
 - At least one of `-o`, `--out-dir` and `--histogram` is required. With only `--histogram`, the whole pipeline still runs and the histogram shows the processed result, but no image is written. That is a quick way to check clipping before you export.
 - Every option except `--help`, `--version`, `--time`, `--raw-half` takes the next argument as its value, even if it starts with a minus sign, so `--exposure -1` works.
 - An option given twice is an error.
-- **Options are always applied in pipeline order**, whatever order you type them: exposure, colour matrix, saturation, contrast, tone curve. `--long-side` comes first of all: the photo is reduced right after decoding, before exposure, so every later stage works on the small image. See [How Prism thinks about light](GUIDE.md#how-prism-thinks-about-light).
+- **Options are always applied in pipeline order**, whatever order you type them: reduction (`--long-side`), exposure, white balance, colour matrix, saturation, contrast, tone curve. `--long-side` comes first of all: the photo is reduced right after decoding, before exposure, so every later stage works on the small image. See [How Prism thinks about light](GUIDE.md#how-prism-thinks-about-light).
 - A stage left at its neutral value is skipped: exposure 0, the identity matrix, saturation 1 and contrast 1 leave every bit as it was. A tone curve always runs when you give one.
 - All processing is in linear light, in floating point. PNG and JPEG inputs are converted to linear light first and to 8-bit sRGB at the end. A RAW file is decoded to linear light with the camera's as-shot white balance (see the [README](../README.md#raw-files) for the details). A RAW file looks darker and flatter than the camera's JPEG until you add exposure and a tone curve; `--exposure +1 --curve filmic` is a good start.
 
@@ -40,11 +40,19 @@ The format `--out-dir` writes: `jpg` (the default) for JPEG at quality 95, exact
 
 ### `--recipe <file>`
 
-Apply the edit in a recipe file (`.prism`, described in [RECIPES.md](RECIPES.md)). The recipe is read and checked before any photo is opened: if it has mistakes, `prism` prints one `error:` line for each, with its line number, writes nothing and exits with code 1. A missing or unreadable recipe file is reported the same way. Any of `--exposure`, `--matrix`, `--saturation`, `--contrast` and `--curve` that you give as well replaces that stage of the recipe. No default.
+Apply the edit in a recipe file (`.prism`, described in [RECIPES.md](RECIPES.md)). The recipe is read and checked before any photo is opened: if it has mistakes, `prism` prints one `error:` line for each, with its line number, writes nothing and exits with code 1. A missing or unreadable recipe file is reported the same way. Any of `--exposure`, `--kelvin` and `--tint`, `--matrix`, `--saturation`, `--contrast` and `--curve` that you give as well replaces that stage of the recipe. No default.
 
 ### `--exposure <stops>`
 
 Brighten (`+`) or darken (`-`) by this many stops. Every value is multiplied by 2 to the power of the stops, in linear light: `+1` doubles the light, `-1` halves it, `+0.5` is about 1.4×. Any finite number is accepted. Default: not applied.
+
+### `--kelvin <K>`
+
+The light the photo was lit by, as a colour temperature from 2000 to 15000. It follows Lightroom's convention: a higher Kelvin makes the photo warmer, a lower one cooler. The edit runs right after exposure, in linear light. For a RAW file it is relative to the light the camera recorded as shot, so `--kelvin` names the light you now say the scene had; for PNG, JPEG and HEIC files, which have no such record, 6500 K with a tint of 0 means "no change". If you give only one of `--kelvin` and `--tint`, the other is taken from the photo's as-shot light (6500 and 0 where there is none). Replaces the recipe's `[white_balance]`. Default: not applied (as shot).
+
+### `--tint <n>`
+
+The green–magenta tint of that light, from −100 to 100. A positive tint is a greener light, which makes the photo more magenta; a negative one the opposite. Each unit moves the light 0.0002 away from the Planckian locus (the colours of glowing bodies) in the CIE 1960 uv plane. See `--kelvin` for how the two combine and what "no change" is. Replaces the recipe's `[white_balance]`. Default: not applied (as shot).
 
 ### `--matrix <file>`
 
@@ -112,15 +120,15 @@ Print how long each stage took, in milliseconds, and the total, as in:
 
 ```
 time (1 thread):
-  load            0.2 ms
-  exposure        0.0 ms
-  curve           0.0 ms
-  save            0.9 ms
-  histogram       7.0 ms
-  total           8.2 ms
+  load                0.2 ms
+  exposure            0.0 ms
+  curve               0.0 ms
+  save                0.9 ms
+  histogram           7.0 ms
+  total               8.2 ms
 ```
 
-The stages that can appear are `load`, `resize` (with `--long-side`), `exposure`, `matrix`, `saturation`, `contrast`, `curve`, `save` and `histogram`. A stage that was skipped (a neutral value, or no `-o` or `--histogram`) isn't listed. The thread count shown is the number actually used.
+The stages that can appear are `load`, `resize` (with `--long-side`), `exposure`, `white_balance`, `matrix`, `saturation`, `contrast`, `curve`, `save` and `histogram`. A stage that was skipped (a neutral value, or no `-o` or `--histogram`) isn't listed. The thread count shown is the number actually used.
 
 ### `-h`, `--help`
 
@@ -139,6 +147,7 @@ A recipe (`.prism`, described in [RECIPES.md](RECIPES.md)) lets you settle on a 
 When you give stage flags alongside `--recipe`, **flags win stage by stage**:
 
 - `--exposure` replaces `[exposure]` and switches that stage on;
+- `--kelvin` and `--tint` replace `[white_balance]` and switch it on; a recipe's other white balance value is not kept, so giving only one of the two takes the other from the photo's as-shot light;
 - `--matrix` replaces `[matrix]` and switches it on;
 - `--saturation` replaces `[saturation]` and switches it on;
 - `--contrast` replaces `[contrast]` and switches it on;
