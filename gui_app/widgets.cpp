@@ -1,6 +1,7 @@
 #include "widgets.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 
@@ -375,6 +376,106 @@ bool styled_slider(const char* id, float* value, float min, float max, float neu
     }
     draw_slider(position(*value, min, max), position(neutral, min, max));
     return changed;
+}
+
+namespace {
+
+// The one text field that is open in place of a slider. Typing takes the keyboard, so there is
+// never more than one.
+struct OpenField {
+    ImGuiID id = 0;
+    int last_frame = 0;      // the last frame it was drawn: an old one is stale
+    int frames = 0;          // frames it has been open
+    bool was_active = false; // it has had the keyboard
+    std::array<char, 64> text{};
+};
+
+OpenField& open_field() {
+    static OpenField field;
+    return field;
+}
+
+// The frame (and field) that closed last: the slider drawn right after it still sees the field's
+// deactivation as its own.
+struct Closed {
+    ImGuiID id = 0;
+    int frame = -10;
+};
+
+Closed& last_closed() {
+    static Closed closed;
+    return closed;
+}
+
+}  // namespace
+
+bool styled_slider_typed(const char* id, float* value, float min, float max, float neutral,
+                         std::string_view field_text, SliderTyping* typing,
+                         ImGuiSliderFlags flags) {
+    SliderTyping none;
+    SliderTyping& out = typing != nullptr ? *typing : none;
+    out = {};
+    ImGuiWindow* window = ImGui::GetCurrentWindow();
+    OpenField& field = open_field();
+    const ImGuiID item_id = window->GetID(id);
+    const ImGuiContext& g = *ImGui::GetCurrentContext();
+    if (field.id == item_id && field.last_frame < g.FrameCount - 1) {
+        field = {};  // left open on a frame it was not drawn: not any more
+    }
+
+    if (field.id != item_id) {
+        const ImVec2 at = ImGui::GetCursorScreenPos();
+        const ImVec2 size(ImGui::CalcItemWidth(), slider_height());
+        const bool wanted = !window->SkipItems && !(g.CurrentItemFlags & ImGuiItemFlags_Disabled) &&
+                            ImGui::GetIO().KeyCtrl && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+                            !ImGui::IsAnyItemActive() && ImGui::IsWindowHovered() &&
+                            ImGui::IsMouseHoveringRect(at, ImVec2(at.x + size.x, at.y + size.y));
+        if (!wanted) {
+            const Closed& closed = last_closed();
+            out.just_closed = closed.id == item_id && g.FrameCount <= closed.frame + 1;
+            return styled_slider(id, value, min, max, neutral, flags | ImGuiSliderFlags_NoInput);
+        }
+        field = {};
+        field.id = item_id;
+        const std::size_t n = std::min(field_text.size(), field.text.size() - 1);
+        std::copy_n(field_text.data(), n, field.text.data());
+        field.text[n] = '\0';
+    }
+
+    // The field, with the slider's height (a slider's own padding), at the slider's place.
+    field.last_frame = g.FrameCount;
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
+                        ImVec2(ImGui::GetStyle().FramePadding.x, slider_padding_y()));
+    if (field.frames == 0) {
+        ImGui::SetKeyboardFocusHere();
+    }
+    const bool entered =
+        ImGui::InputText(id, field.text.data(), field.text.size(),
+                         ImGuiInputTextFlags_AutoSelectAll | ImGuiInputTextFlags_EnterReturnsTrue);
+    ImGui::PopStyleVar();
+    const bool active = ImGui::IsItemActive();
+    const bool escape = ImGui::IsKeyPressed(ImGuiKey_Escape, false);
+    field.was_active = field.was_active || active;
+    ++field.frames;
+
+    bool close = false;
+    if (entered) {
+        out.text = field.text.data();
+        close = true;
+    } else if (field.was_active && !active) {
+        if (!escape && ImGui::IsItemDeactivatedAfterEdit()) {
+            out.text = field.text.data();
+        }
+        close = true;
+    } else if (!field.was_active && field.frames > 4) {
+        close = true;  // it never got the keyboard
+    }
+    out.open = true;  // the last item is the field, also on the frame it closes
+    if (close) {
+        field = {};
+        last_closed() = {item_id, g.FrameCount};
+    }
+    return false;
 }
 
 bool styled_slider_int(const char* id, int* value, int min, int max, int neutral,

@@ -55,6 +55,7 @@ add_library(prism_gui_core STATIC
   src/stage_controls.cpp
   src/test_strip.cpp
   src/theme_tokens.cpp
+  src/typed_value.cpp
   src/view_transform.cpp
   src/wheel_scaling.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/builtin_looks.cpp)

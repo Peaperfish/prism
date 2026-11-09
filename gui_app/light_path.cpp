@@ -8,6 +8,7 @@
 
 #include "imgui_internal.h"
 #include "prism/gui/layout.hpp"
+#include "prism/gui/typed_value.hpp"
 #include "theme.hpp"
 #include "widgets.hpp"
 
@@ -202,17 +203,27 @@ void draw_stage_slider(const gui::LightPathRow& row, float x, float y, float wid
     ImGui::SetCursorScreenPos(ImVec2(x, y));
     ImGui::SetNextItemWidth(width);
     float position = row.slider_position;
-    // Ctrl/Cmd-click still types a value.
-    const bool changed =
-        styled_slider("##slider", &position, gui::simple_min, gui::simple_max, 0.0f);
-    const gui::SliderFrame frame{ImGui::IsItemActivated(), changed, ImGui::IsItemDeactivated()};
-    if (frame.activated || frame.changed || frame.deactivated) {
-        cb.slider(control, position, frame);
+    // Ctrl/Cmd-click types a value in the unit of the value line (stops, or the multiplier), not
+    // the slider's position: the text is read by gui_core, and a value it accepts is one change
+    // (all three parts of the gesture at once, so one undo step). One it rejects leaves the value.
+    SliderTyping typing;
+    const bool changed = styled_slider_typed("##slider", &position, gui::simple_min,
+                                             gui::simple_max, 0.0f, row.slider_typed, &typing);
+    if (typing.text) {
+        if (const std::optional<float> typed = gui::typed_slider_position(control, *typing.text)) {
+            cb.slider(control, *typed, gui::SliderFrame{true, true, true});
+        }
+    } else if (!typing.open && !typing.just_closed) {
+        const gui::SliderFrame frame{ImGui::IsItemActivated(), changed,
+                                     ImGui::IsItemDeactivated()};
+        if (frame.activated || frame.changed || frame.deactivated) {
+            cb.slider(control, position, frame);
+        }
     }
     cb.explain(gui::explain_id(row.stage), changed);
     {
         const FullStrength full;
-        if (ImGui::BeginPopupContextItem("reset")) {
+        if (!typing.open && ImGui::BeginPopupContextItem("reset")) {
             if (ImGui::MenuItem(row.slider_reset.c_str())) {
                 cb.reset_slider(control);
             }

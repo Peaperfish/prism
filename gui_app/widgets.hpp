@@ -1,7 +1,10 @@
 #pragma once
 
 #include <functional>
+#include <optional>
 #include <span>
+#include <string>
+#include <string_view>
 
 #include "imgui.h"
 
@@ -22,6 +25,27 @@ bool styled_slider(const char* id, float* value, float min, float max, float neu
                    ImGuiSliderFlags flags = 0);
 bool styled_slider_int(const char* id, int* value, int min, int max, int neutral,
                        ImGuiSliderFlags flags = 0);
+
+// What typing into a slider did in one frame (see styled_slider_typed).
+struct SliderTyping {
+    bool open = false;                // the field is the last item (showing, or closing this frame)
+    std::optional<std::string> text;  // what was typed, once confirmed: Enter, or clicking away
+                                      // after an edit. Esc, or clicking away unedited, gives none.
+    // The slider is back after the field closed this frame or last: ImGui still counts the field's
+    // end as the item's deactivation then, which is not a drag ending. Ignore its gesture events.
+    bool just_closed = false;
+};
+
+// styled_slider whose Ctrl-click (Cmd-click on a Mac) opens a text field in the slider's place,
+// holding `field_text` selected, instead of ImGui's own typing (which would type the slider's
+// position). The caller reads the text, in whatever unit its row shows (gui_core's typed_value.hpp),
+// and applies it as one change. The field has the slider's height, so nothing around it moves. While it is
+// open the slider is not drawn and nothing is returned changed; the last item is the field's, so a
+// caller should not attach the slider's popup or gesture to it (check `typing->open`). Disabled, it
+// never opens. Returns whether dragging changed *value.
+bool styled_slider_typed(const char* id, float* value, float min, float max, float neutral,
+                         std::string_view field_text, SliderTyping* typing,
+                         ImGuiSliderFlags flags = 0);
 
 // A slider's height with the current font.
 [[nodiscard]] float slider_height();

@@ -4,6 +4,7 @@
 #include <charconv>
 
 #include "prism/gui/explanations.hpp"
+#include "prism/gui/typed_value.hpp"
 #include "prism/utf8_path.hpp"
 
 namespace prism::gui {
@@ -146,6 +147,7 @@ LightPathRow light_path_row(const LightPathInputs& in, StageId stage) {
                                 : control == SimpleControl::contrast ? beyond.contrast
                                                                      : beyond.colour;
             row.slider_reset = "Reset to " + stage_value_text(EditSettings{}, stage);
+            row.slider_typed = typed_field_text(s, control);
             // The stored value, also while the stage is off: it comes back with that one.
             EditSettings stored = s;
             set_stage_enabled(stored, stage, true);

@@ -59,6 +59,9 @@ struct LightPathRow {
     float slider_position = 0.0f;
     bool beyond_slider = false;  // the value lies past the slider's end
     std::string slider_reset;    // "Reset to +0.00 stops"
+    // What Ctrl/Cmd-click types into: the value as the line above shows it, in its own unit
+    // ("+0.70 stops", "1.20"), see typed_field_text.
+    std::string slider_typed;
 
     // The Tone curve's tabs, and the number of the curves that take one.
     bool curve_tabs = false;

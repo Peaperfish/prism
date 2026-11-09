@@ -442,6 +442,129 @@ TEST_F(LightPathHeadless, ARightClickOnASliderOffersItsReset) {
     EXPECT_TRUE(slider_frames_.empty());
 }
 
+// --- Typing a value into a slider ----------------------------------------------------------------
+
+// Ctrl-click on the row's slider, with the mouse resting there first: the field opens.
+#define PRISM_TYPED_OPEN(stage)                                                    \
+    const std::vector<LightPathRowRect> rects = frame();                           \
+    const ImVec2 slider_at = slider_of(row_of(rects, gui::StageId::stage));        \
+    ImGui::GetIO().ConfigMacOSXBehaviors = false;                                  \
+    mouse_to(slider_at);                                                           \
+    frame();                                                                       \
+    frame();                                                                       \
+    ImGui::GetIO().AddKeyEvent(ImGuiMod_Ctrl, true);                               \
+    frame();                                                                       \
+    mouse(true);                                                                   \
+    frame();                                                                       \
+    mouse(false);                                                                  \
+    ImGui::GetIO().AddKeyEvent(ImGuiMod_Ctrl, false);                              \
+    frame();                                                                       \
+    frame();                                                                       \
+    frame()
+
+TEST_F(LightPathHeadless, TypedValueOpensAFieldOnTheValueLinesUnit) {
+    PRISM_TYPED_OPEN(exposure);
+    EXPECT_TRUE(ImGui::GetIO().WantTextInput);
+    EXPECT_TRUE(slider_frames_.empty());  // opening changes nothing
+    EXPECT_TRUE(viewed_calls_.empty());
+    // Select-all on open: what is typed replaces "+0.50 stops".
+    ImGui::GetIO().AddInputCharactersUTF8("1.5");
+    frame();
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Enter, true);
+    frame();
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Enter, false);
+    frame();
+    frame();
+    // One call with the whole gesture in it (one undo step), at 1.5 stops = position 75.
+    ASSERT_EQ(slider_frames_.size(), 1u);
+    EXPECT_EQ(slider_frames_[0].control, gui::SimpleControl::brightness);
+    EXPECT_FLOAT_EQ(slider_frames_[0].position, 75.0f);
+    EXPECT_TRUE(slider_frames_[0].frame.activated);
+    EXPECT_TRUE(slider_frames_[0].frame.changed);
+    EXPECT_TRUE(slider_frames_[0].frame.deactivated);
+    EXPECT_FALSE(ImGui::GetIO().WantTextInput);  // the field closed
+}
+
+TEST_F(LightPathHeadless, TypedFactorOnSaturationIsAFactorNotAPosition) {
+    PRISM_TYPED_OPEN(saturation);
+    ImGui::GetIO().AddInputCharactersUTF8("1,4 x");
+    frame();
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Enter, true);
+    frame();
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Enter, false);
+    frame();
+    ASSERT_EQ(slider_frames_.size(), 1u);
+    EXPECT_EQ(slider_frames_[0].control, gui::SimpleControl::colour);
+    EXPECT_FLOAT_EQ(slider_frames_[0].position, 40.0f);  // ×1.4 is +40 on the slider
+}
+
+TEST_F(LightPathHeadless, TypedTextTheRowRejectsLeavesTheValue) {
+    PRISM_TYPED_OPEN(contrast);
+    ImGui::GetIO().AddInputCharactersUTF8("lots");
+    frame();
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Enter, true);
+    frame();
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Enter, false);
+    frame();
+    frame();
+    EXPECT_TRUE(slider_frames_.empty());
+    EXPECT_FALSE(ImGui::GetIO().WantTextInput);
+}
+
+TEST_F(LightPathHeadless, TypedClickingAwayAfterAnEditKeepsIt) {
+    PRISM_TYPED_OPEN(exposure);
+    ImGui::GetIO().AddInputCharactersUTF8("-1");
+    frame();
+    mouse_to(empty_of(row_of(rects, gui::StageId::contrast)));
+    frame();
+    mouse(true);
+    frame();
+    mouse(false);
+    frame();
+    frame();
+    ASSERT_EQ(slider_frames_.size(), 1u);
+    EXPECT_FLOAT_EQ(slider_frames_[0].position, -50.0f);
+}
+
+TEST_F(LightPathHeadless, TypedEscapeLeavesTheValue) {
+    {
+        PRISM_TYPED_OPEN(exposure);
+        ImGui::GetIO().AddInputCharactersUTF8("2");
+        frame();
+        ImGui::GetIO().AddKeyEvent(ImGuiKey_Escape, true);
+        frame();
+        ImGui::GetIO().AddKeyEvent(ImGuiKey_Escape, false);
+        frame();
+        frame();
+        EXPECT_TRUE(slider_frames_.empty());
+        EXPECT_FALSE(ImGui::GetIO().WantTextInput);
+    }
+}
+
+TEST_F(LightPathHeadless, TypedFieldKeepsEveryRowWhereItWas) {
+    const std::vector<float> before = heights_of(frame());
+    PRISM_TYPED_OPEN(exposure);
+    EXPECT_TRUE(ImGui::GetIO().WantTextInput);
+    EXPECT_EQ(heights_of(frame()), before);
+    EXPECT_EQ(heights_of(rects), before);
+}
+
+TEST_F(LightPathHeadless, TypedPlainClickStillDragsTheSlider) {
+    const std::vector<LightPathRowRect> rects = frame();
+    click_at(slider_of(row_of(rects, gui::StageId::exposure)));
+    ASSERT_FALSE(slider_frames_.empty());
+    EXPECT_FALSE(ImGui::GetIO().WantTextInput);
+    EXPECT_TRUE(slider_frames_.front().frame.activated);
+    EXPECT_TRUE(slider_frames_.back().frame.deactivated);
+}
+
+TEST_F(LightPathHeadless, TypedValueNeverOpensOnAStageThatIsOff) {
+    settings_.contrast_on = false;
+    PRISM_TYPED_OPEN(contrast);
+    EXPECT_FALSE(ImGui::GetIO().WantTextInput);
+    EXPECT_TRUE(slider_frames_.empty());
+}
+
 TEST_F(LightPathHeadless, TheCurveTabsChooseAndDoNotViewTheStage) {
     const std::vector<LightPathRowRect> rects = frame();
     const LightPathRowRect& row = row_of(rects, gui::StageId::curve);

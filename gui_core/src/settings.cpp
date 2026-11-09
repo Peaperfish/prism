@@ -221,4 +221,19 @@ void apply_simple_control(EditSettings& s, SimpleControl control, float position
     }
 }
 
+float simple_position_for(SimpleControl control, float value) {
+    if (std::isnan(value)) {
+        return 0.0f;
+    }
+    switch (control) {
+        case SimpleControl::brightness: return clamp_simple(value * 50.0f);
+        case SimpleControl::contrast:
+            return value > 0.0f
+                       ? clamp_simple(100.0f * std::log(value) / std::log(simple_contrast_base))
+                       : simple_min;
+        case SimpleControl::colour: return clamp_simple((value - 1.0f) * 100.0f);
+    }
+    return 0.0f;
+}
+
 }  // namespace prism::gui

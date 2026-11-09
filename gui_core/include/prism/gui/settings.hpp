@@ -170,4 +170,11 @@ enum class SimpleControl { brightness, contrast, colour };
 // slider must not quietly clamp a saturation of 3 that a recipe set.
 void apply_simple_control(EditSettings& s, SimpleControl control, float position);
 
+// The slider position (clamped to [-100, +100]) that gives `value` in the field behind `control`,
+// in that field's own unit: stops for brightness (exposure_stops), the multiplier for contrast
+// (contrast) and for colour (saturation). The inverse of apply_simple_control, for a value typed
+// in the unit a row's value line shows. NaN gives 0; a contrast of 0 or less, which no slider
+// position makes, gives the slider's low end.
+[[nodiscard]] float simple_position_for(SimpleControl control, float value);
+
 }  // namespace prism::gui

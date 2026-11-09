@@ -74,7 +74,7 @@ Under **Adjust** are three sliders, each from −100 to +100:
 | Contrast | Pushes tones apart around middle grey | ×0.67 to ×1.5 |
 | Colour | Makes colours stronger or weaker, without changing brightness | −100 is black and white, +100 doubles the colour |
 
-Drag a slider and the photo follows. Right-click a slider to get **Reset to 0**. Ctrl-click (Cmd-click on a Mac) a slider to type a value. A whole drag is one undo step. If a value is beyond what the slider can show, the slider shows **(custom)** and sits at its end until you move it.
+Drag a slider and the photo follows. Right-click a slider to get **Reset to 0**. Ctrl-click (Cmd-click on a Mac) an Exposure, Saturation or Contrast slider to type a value in the unit its value line shows (`1.5` or `1.5 stops` for Exposure, `1.2` or `1.2×` for the others; a comma works as the decimal mark; Enter confirms, Esc cancels, and a value past the slider's end stops at the end). A whole drag is one undo step. If a value is beyond what the slider can show, the slider shows **(custom)** and sits at its end until you move it.
 
 ### The Pipeline view
 

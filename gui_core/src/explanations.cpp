@@ -171,7 +171,8 @@ constexpr Explanation templates[] = {
     // --- Compare and the viewed stage --------------------------------------------------------
     {"light_path", "Every stage the light goes through, in order.",
      "Click a row to see the picture after that stage. Right-click a slider to reset it. "
-     "Ctrl-click (Cmd-click on Mac) to type its position, from -100 to 100.",
+     "Ctrl-click (Cmd-click on Mac) to type a value in its line's unit: stops, or a factor "
+     "such as 1.2.",
      LiveKind::none},
     {"compare", "Show two points in the pipeline side by side.",
      "The stage you click in the Light path is the right half; Compare picks the left half. "
