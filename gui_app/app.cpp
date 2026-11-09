@@ -11,6 +11,7 @@
 #include "about_info.hpp"
 #include "active_control.hpp"
 #include "imgui.h"
+#include "export_sheet.hpp"
 #include "imgui_internal.h"  // ClearActiveID: Esc leaves a text field without undoing the typing
 #include "light_path.hpp"
 #include "macos_menu.hpp"
@@ -18,6 +19,7 @@
 #include "theme.hpp"
 #include "widgets.hpp"
 #include "prism/gui/explanations.hpp"
+#include "prism/gui/export_size.hpp"
 #include "prism/gui/file_types.hpp"
 #include "prism/gui/layout.hpp"
 #include "prism/gui/paper_grade.hpp"
@@ -171,6 +173,7 @@ App::App(SDL_Window* window, SDL_Renderer* renderer, DialogQueue& dialogs,
     if (!prefs_file_.empty()) {
         prefs_ = gui::load_preferences(prefs_file_);  // the defaults if missing or unreadable
     }
+    session_.set_export_size(prefs_.export_size);  // the Export sheet opens on the last choice
     apply_minimum_size();
 #ifdef __APPLE__
     const Uint32 event = SDL_RegisterEvents(1);
@@ -245,6 +248,7 @@ void App::request_quit() {
     }
     close_open_path_.reset();  // a quit wins over an open that is still being decided
     recipe_sheet_.reset();     // and over a save sheet: it closes before the question
+    export_sheet_.reset();     // and over the Export sheet
     close_pending_.reset();
     close_phase_ = ClosePhase::none;
     begin_close(gui::Pending::quit);
@@ -288,9 +292,9 @@ void App::apply_close_step(gui::CloseStep step) {
             break;
         case gui::CloseStep::choose_file:
             close_phase_ = ClosePhase::saving_dialog;
-            show_save_dialog();
-            if (!dialog_open_) {
-                apply_close_step(gui::CloseStep::cancel);  // the dialog could not open
+            begin_export(true);
+            if (!export_sheet_) {
+                apply_close_step(gui::CloseStep::cancel);  // the sheet could not open
             }
             break;
         case gui::CloseStep::await_export:
@@ -357,7 +361,7 @@ void App::open_now(const fs::path& path) {
 }
 
 void App::show_open_dialog() {
-    if (dialog_open_ || recipe_sheet_) {
+    if (dialog_open_ || recipe_sheet_ || export_sheet_) {
         return;
     }
     dialog_open_ = true;
@@ -365,14 +369,31 @@ void App::show_open_dialog() {
     gui_app::show_open_dialog(window_, dialogs_, folder);
 }
 
+// Export…: the sheet first, on the remembered size. Its Save As… goes on to the save dialog.
+void App::begin_export(bool for_close) {
+    if (dialog_open_ || recipe_sheet_ || export_sheet_ || !session_.has_file() ||
+        exporter_.busy()) {
+        return;
+    }
+    ExportSheetState sheet;
+    sheet.size = session_.export_size();
+    export_sheet_ = sheet;
+    export_sheet_for_close_ = for_close;
+}
+
 void App::show_save_dialog() {
-    if (dialog_open_ || recipe_sheet_ || !session_.has_file() || exporter_.busy()) {
+    if (dialog_open_ || recipe_sheet_ || export_sheet_ || !session_.has_file() ||
+        exporter_.busy()) {
         return;
     }
     dialog_open_ = true;
     const gui::ExportFormat format = gui::default_export_format(session_.path());
-    gui_app::show_save_dialog(window_, dialogs_,
-                              gui::suggested_export_path(session_.path(), format), format);
+    // The name says the size only when the export is really reduced (a RAW file's half-size decode
+    // can already be what 50% asks for).
+    gui_app::show_save_dialog(
+        window_, dialogs_,
+        gui::suggested_export_path(session_.path(), format, session_.export_plan().long_side),
+        format);
 }
 
 void App::take_dialog_results() {
@@ -434,7 +455,8 @@ void App::take_export_dialog(DialogResult& result) {
 }
 
 bool App::recipes_available() const {
-    return session_.has_file() && !dialog_open_ && !recipe_sheet_ && !exporter_.busy() &&
+    return session_.has_file() && !dialog_open_ && !recipe_sheet_ && !export_sheet_ &&
+           !exporter_.busy() &&
            !close_pending_;
 }
 
@@ -442,7 +464,7 @@ bool App::recipes_available() const {
 void App::begin_save_recipe(bool for_close) {
     // The close prompt's Save Recipe… comes while a quit or open is pending, which otherwise
     // keeps recipes unavailable.
-    if (for_close ? (!session_.has_file() || dialog_open_ || recipe_sheet_ || exporter_.busy())
+    if (for_close ? (!session_.has_file() || dialog_open_ || recipe_sheet_ || export_sheet_ || exporter_.busy())
                   : !recipes_available()) {
         return;
     }
@@ -534,6 +556,66 @@ void App::draw_recipe_sheet() {
         if (for_close) {
             apply_close_step(gui::recipe_sheet_closed(false));
         }
+    }
+}
+
+// The Export sheet: Size, its number, what will be written, Cancel and Save As…. Modal, a fixed size
+// from export_sheet_size(). Save As… keeps the choice (for this session and in the preferences) and
+// opens the save dialog; Cancel, or Esc, closes it and changes nothing.
+void App::draw_export_popup() {
+    constexpr const char* popup = "export_sheet";
+    if (export_sheet_ && !ImGui::IsPopupOpen(popup)) {
+        ImGui::OpenPopup(popup);
+    }
+    const ImVec2 centre = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(centre, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(export_sheet_size());
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
+                        ImVec2(export_sheet_padding(), export_sheet_padding()));
+    const bool open = ImGui::BeginPopupModal(
+        popup, nullptr,
+        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+            ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings);
+    ImGui::PopStyleVar();
+    if (!open) {
+        return;
+    }
+    if (!export_sheet_ || !session_.has_file()) {
+        export_sheet_.reset();
+        ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+        return;
+    }
+    ExportSheetCallbacks callbacks;
+    callbacks.explain = [this](std::string_view id) { explain(id); };
+    const ExportSheetContext context{{session_.file_width(), session_.file_height()},
+                                     session_.export_start_size()};
+    const ExportSheetResult result = draw_export_sheet(*export_sheet_, context, callbacks);
+    if (result != ExportSheetResult::none) {
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+
+    if (result == ExportSheetResult::none) {
+        return;
+    }
+    const gui::ExportSize chosen = export_sheet_->size;
+    const bool for_close = export_sheet_for_close_;
+    export_sheet_.reset();
+    export_sheet_for_close_ = false;
+    if (result == ExportSheetResult::cancel) {
+        if (for_close) {
+            apply_close_step(gui::save_dialog_closed(false));
+        }
+        return;
+    }
+    session_.set_export_size(chosen);
+    gui::Preferences p = prefs_;
+    p.export_size = chosen;
+    set_preferences(std::move(p));
+    show_save_dialog();
+    if (for_close && !dialog_open_) {
+        apply_close_step(gui::CloseStep::cancel);  // the dialog could not open
     }
 }
 
@@ -983,7 +1065,8 @@ void App::take_drop() {
     dropped_.clear();
     gui::DropContext context;
     context.has_photo = session_.has_file();
-    context.busy = close_pending_.has_value() || recipe_sheet_.has_value() || dialog_open_ ||
+    context.busy = close_pending_.has_value() || recipe_sheet_.has_value() ||
+                   export_sheet_.has_value() || dialog_open_ ||
                    exporter_.busy();
     const gui::DropAction action = gui::classify_drop(paths, context);
     switch (action.kind) {
@@ -1098,6 +1181,7 @@ void App::frame() {
     draw_saving_popup();
     draw_close_prompt();
     draw_recipe_sheet();
+    draw_export_popup();
     ImGui::End();
     focused_window_this_frame_ = nullptr;
     draw_preferences();
@@ -1130,6 +1214,18 @@ void App::step_interface_size(int direction) {
 }
 
 void App::handle_shortcuts() {
+    // The Export sheet is modal, and ImGui lets global shortcuts through a modal: so while it is up
+    // nothing but quitting is handled here (Esc and Enter are the sheet's own, read in
+    // draw_export_sheet). No I, T, J, zoom, undo, open or interface size behind it.
+    if (export_sheet_) {
+        if (!ImGui::GetIO().ConfigMacOSXBehaviors &&
+            ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Q, ImGuiInputFlags_RouteGlobal)) {
+            SDL_Event quit{};
+            quit.type = SDL_EVENT_QUIT;
+            SDL_PushEvent(&quit);
+        }
+        return;
+    }
     // RouteGlobal: they work wherever the focus is, unless a focused widget (e.g. a text field)
     // claims the same keys.
     if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_O, ImGuiInputFlags_RouteGlobal)) {
@@ -1166,7 +1262,7 @@ void App::handle_shortcuts() {
     }
     if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_E, ImGuiInputFlags_RouteGlobal) ||
         ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S, ImGuiInputFlags_RouteGlobal)) {
-        show_save_dialog();
+        begin_export();
     }
     if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_O, ImGuiInputFlags_RouteGlobal)) {
         show_recipe_load_dialog();
@@ -1255,7 +1351,7 @@ void App::draw_menu() {
         }
         if (ImGui::MenuItem("Export…", shortcut_label("E").c_str(), false,
                             session_.has_file() && !dialog_open_ && !exporter_.busy())) {
-            show_save_dialog();
+            begin_export();
         }
         ImGui::Separator();
         if (ImGui::MenuItem("Load Recipe…", shortcut_label("Shift+O").c_str(), false,
@@ -2541,7 +2637,7 @@ void App::draw_panel_header(float width, float height) {
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, m.header_button_rounding);
     ImGui::BeginDisabled(dialog_open_ || exporter_.busy());
     if (ImGui::Button(label, ImVec2(export_width, export_h))) {
-        show_save_dialog();
+        begin_export();
     }
     ImGui::EndDisabled();
     ImGui::PopStyleVar();

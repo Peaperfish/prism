@@ -10,6 +10,7 @@
 #include <string_view>
 #include <vector>
 
+#include "export_sheet.hpp"
 #include "file_dialogs.hpp"
 #include "preview_texture.hpp"
 #include "scope_view.hpp"
@@ -85,6 +86,8 @@ private:
     void draw_close_prompt();
     void open_now(const std::filesystem::path& path);
     void show_open_dialog();
+    // Export…: the Export sheet first (begin_export), then the save dialog with the size chosen.
+    void begin_export(bool for_close = false);
     void show_save_dialog();
     void take_export_result();
     // Recipes (#18). Saving: the sheet asks for a name and a description, the system's dialog for
@@ -95,6 +98,7 @@ private:
     // for_close: the close prompt's Save Recipe… asks, while a quit or open waits on it.
     void begin_save_recipe(bool for_close = false);
     void draw_recipe_sheet();
+    void draw_export_popup();
     void show_recipe_save_dialog();
     // Writes the recipe to the chosen file; says how it ended.
     gui::RecipeEnd take_recipe_save_dialog(const DialogResult& result);
@@ -270,6 +274,9 @@ private:
         bool for_close = false;  // opened by the close prompt's Save Recipe…
     };
     std::optional<RecipeSheet> recipe_sheet_;
+    // The Export sheet while it is up, and whether the close prompt's Export… opened it.
+    std::optional<ExportSheetState> export_sheet_;
+    bool export_sheet_for_close_ = false;
     // The recipe the save dialog will write, and the settings it was made from (those on screen
     // when the sheet's Save… was pressed).
     Recipe saving_recipe_;
