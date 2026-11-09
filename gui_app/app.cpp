@@ -2560,11 +2560,12 @@ void App::draw_panel() {
         return;
     }
     draw_scopes_panel();
-    draw_sample_block();
 
     draw_presets();
 
     draw_light_path_panel();
+
+    draw_sample_block();  // last, as the spec's section 4
 }
 
 void App::draw_scopes_panel() {
