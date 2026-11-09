@@ -63,6 +63,16 @@ int scale_rounded(int a, int b, int c) {
 
 }  // namespace
 
+int long_side_for_percent(int width, int height, int percent) {
+    if (width < 1 || height < 1) {
+        throw std::invalid_argument("long_side_for_percent: width and height must be at least 1");
+    }
+    if (percent < 1 || percent > 100) {
+        throw std::invalid_argument("long_side_for_percent: percent must be from 1 to 100");
+    }
+    return std::max(1, scale_rounded(std::max(width, height), percent, 100));
+}
+
 Image downscale(const Image& img, int max_long_side, int threads) {
     detail::require_consistent(img, "downscale");
     if (max_long_side < 1) {

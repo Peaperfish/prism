@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "prism/image.hpp"
+#include "prism/parallel.hpp"
 #include "prism/resize.hpp"
 
 namespace {
@@ -197,4 +198,50 @@ TEST(Downscale, BadArgumentsThrow) {
     prism::Image broken = make_image(4, 4);
     broken.pixels.pop_back();
     EXPECT_THROW((void)prism::downscale(broken, 2), std::invalid_argument);
+}
+
+TEST(Downscale, ResultIsTheSameForAnyThreadCountOnAnOddSizedImage) {
+    // 1501 x 701 = 1,052,201 pixels: just over parallel_min_pixels, with odd sides all round.
+    const prism::Image img = make_noise(1501, 701);
+    ASSERT_GT(static_cast<std::size_t>(img.width) * img.height, prism::parallel_min_pixels);
+    const prism::Image reference = prism::downscale(img, 333, 1);
+    EXPECT_EQ(reference.width, 333);
+    EXPECT_EQ(reference.height, 156);  // 701 * 333 / 1501 = 155.5 -> 156
+    for (const int threads : {2, 7, 12}) {
+        EXPECT_EQ(bits(prism::downscale(img, 333, threads)), bits(reference))
+            << threads << " threads";
+    }
+}
+
+TEST(LongSideForPercent, RoundsHalfUpOnOddSizes) {
+    EXPECT_EQ(prism::long_side_for_percent(3001, 2001, 33), 990);   // 990.33
+    EXPECT_EQ(prism::long_side_for_percent(3001, 2001, 50), 1501);  // 1500.5 rounds up
+    EXPECT_EQ(prism::long_side_for_percent(2001, 3001, 50), 1501) << "the longer side counts";
+    EXPECT_EQ(prism::long_side_for_percent(3001, 2001, 67), 2011);  // 2010.67
+}
+
+TEST(LongSideForPercent, EndsOfTheRange) {
+    EXPECT_EQ(prism::long_side_for_percent(3001, 2001, 1), 30);
+    EXPECT_EQ(prism::long_side_for_percent(3001, 2001, 100), 3001);
+    EXPECT_EQ(prism::long_side_for_percent(4000, 3000, 100), 4000);
+}
+
+TEST(LongSideForPercent, IsAtLeastOne) {
+    EXPECT_EQ(prism::long_side_for_percent(10, 10, 1), 1);  // 0.1
+    EXPECT_EQ(prism::long_side_for_percent(1, 1, 1), 1);
+    EXPECT_EQ(prism::long_side_for_percent(49, 3, 1), 1);  // 0.49
+}
+
+TEST(LongSideForPercent, AgreesWithDownscale) {
+    const prism::Image img = make_noise(61, 41);
+    const prism::Image out = prism::downscale(img, prism::long_side_for_percent(61, 41, 50));
+    EXPECT_EQ(out.width, 31);  // 30.5 rounds up
+    EXPECT_EQ(out.height, 21);  // 41 * 31 / 61 = 20.8
+}
+
+TEST(LongSideForPercent, BadArgumentsThrow) {
+    EXPECT_THROW((void)prism::long_side_for_percent(100, 100, 0), std::invalid_argument);
+    EXPECT_THROW((void)prism::long_side_for_percent(100, 100, 101), std::invalid_argument);
+    EXPECT_THROW((void)prism::long_side_for_percent(100, 100, -5), std::invalid_argument);
+    EXPECT_THROW((void)prism::long_side_for_percent(0, 100, 50), std::invalid_argument);
 }
