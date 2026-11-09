@@ -19,7 +19,7 @@ Prism loads an image (PNG, JPEG, camera RAW or, on macOS, HEIC), runs it through
 Mainstream photo editors often come with a subscription and a cloud catalog, hide what their sliders do, and sell looks as presets you can't read. Prism is built on four principles instead:
 
 1. **Free for personal use.** No subscription, no cloud, no catalog: open a file, edit it, export it. (See [Licences](#licences).)
-2. **It teaches as you go.** Every control should say in plain words what it does to the light, and you should be able to see each step happen. Since [0.2.0](https://github.com/Peaperfish/prism/milestone/1): a pipeline view, colour scopes and a test strip. Since [0.3.0](https://github.com/Peaperfish/prism/milestone/3): zoom and pan, and a reader for the numbers of any pixel.
+2. **It teaches as you go.** Every control should say in plain words what it does to the light, and you should be able to see each step happen. Since [0.2.0](https://github.com/Peaperfish/prism/milestone/1): every stage of the edit in view, colour scopes and a test strip. Since [0.3.0](https://github.com/Peaperfish/prism/milestone/3): zoom and pan, and a reader for the numbers of any pixel.
 3. **No black-box presets.** A look should be a readable recipe you can see and adjust. The plain-text [recipe format](docs/RECIPES.md) is defined, the app saves and loads recipes ([Recipes](docs/GUIDE.md#recipes)), the command line applies them, and the built-in looks are [recipes you can read](recipes/): the app shows each look's numbers and its file.
 4. **Physical controls.** You adjust light rather than apply effects. Exposure is already in stops; white balance in Kelvin, contrast as paper grades, and dodge and burn are planned for [0.5.0](https://github.com/Peaperfish/prism/milestone/4).
 
@@ -48,6 +48,10 @@ Both include RAW support, and nothing needs installing beside them. The apps are
 - [x] Multithreaded processing (standard library threads, no dependencies)
 - [x] Camera matrices from camera profiles (`prism_profile`: LightCraft JSON, DNG files and DCP camera profiles)
 - [x] Colour sampler in the GUI: read any pixel's linear values at any stage, with stops from middle grey and what becomes of a clipped value
+- [x] The GUI's light path: one row per stage, in order, each with its own switch and slider (or curve tabs); click a row to see the photo after that stage, compare any two stages, and see where each one clips
+- [x] Scopes in the GUI: a filled histogram, parade, waveform and vectorscope, with clip triangles and a readout of what is below black and above white
+- [x] Looks as readable recipes, and recipes you can save and load
+- [x] A test strip, zoom and pan, and a plain-language explanation of every control
 - [ ] SIMD processing
 
 ## Usage
@@ -89,9 +93,9 @@ A stage set to its neutral value (exposure 0, the identity matrix, saturation 1,
 
 Both work in linear light, after the colour matrix and before the tone curve. A RAW decoded with no picture style looks flatter and less colourful than the camera's JPEG, and these two controls put some of that back.
 
-**Saturation.** Each pixel is split into its luminance `Y = 0.2126 R + 0.7152 G + 0.0722 B` (the Rec. 709 weights: how bright each sRGB primary looks) and its offset from grey, `RGB − Y`. Saturation scales only the offset: `out = Y + s · (RGB − Y)`. Brightness stays exactly the same, greys (offset 0) stay grey, and hue stays the same because all three offsets scale together.
+**Saturation.** Each pixel is split into its luminance `Y = 0.2126 R + 0.7152 G + 0.0722 B` (the Rec. 709 weights: how much light each sRGB primary carries) and its offset from grey, `RGB − Y`. Saturation scales only the offset: `out = Y + s · (RGB − Y)`. Luminance stays exactly the same, greys (offset 0) stay grey, and hue stays the same because all three offsets scale together.
 
-Pushing a strong colour away from grey can send its weakest channel below zero, for example the blue of a saturated yellow. Light can't be negative, and clipping that channel to 0 later would also change the pixel's hue and brightness. So where `s` would do that, the pixel gets the largest factor that brings its weakest channel to exactly 0 instead: `k = Y / (Y − min(R, G, B))`. That's the most saturated colour of the same hue and brightness that sRGB can show. Pixels with `Y ≤ 0` become black, and `--saturation 1` leaves the image exactly as it was.
+Pushing a strong colour away from grey can send its weakest channel below zero, for example the blue of a saturated yellow. Light can't be negative, and clipping that channel to 0 later would also change the pixel's hue and luminance. So where `s` would do that, the pixel gets the largest factor that brings its weakest channel to exactly 0 instead: `k = Y / (Y − min(R, G, B))`. That's the most saturated colour of the same hue and luminance that sRGB can show. Pixels with `Y ≤ 0` become black, and `--saturation 1` leaves the image exactly as it was.
 
 **Contrast.** Contrast is about *ratios* of light (stops), so it works in log2 space around middle grey, 0.18. A value `x` is `e = log2(x / 0.18)` stops from middle grey, and the curve is
 
@@ -100,7 +104,7 @@ u  = e / w                                 w = 2 stops
 e' = e + (c − 1) · w · u / √(1 + u²)
 ```
 
-Near middle grey the slope is `c`, so 1 stop becomes `c` stops. `u / √(1 + u²)` is an S-shaped function like `tanh` (slope 1 at 0, levelling off at ±1), but costs a square root where `tanh` costs about as much as the `log2` and `exp2` together. Further than a few `w` stops away it approaches ±1, so shadows and highlights move by at most `(c − 1) · w` stops instead of being stretched without limit: an S-curve. Because it acts on stops, a pixel one stop over middle grey and one stop under get mirror-image treatment at any brightness. The curve is strictly increasing for every `c > 0`, 0.18 never moves, and values `≤ 0` are scaled by the curve's slope at zero, so it stays continuous. It is applied to each channel separately, like the tone curves, so it also adds a little saturation when `c > 1`.
+Near middle grey the slope is `c`, so 1 stop becomes `c` stops. `u / √(1 + u²)` is an S-shaped function like `tanh` (slope 1 at 0, levelling off at ±1), but costs a square root where `tanh` costs about as much as the `log2` and `exp2` together. Further than a few `w` stops away it approaches ±1, so shadows and highlights move by at most `(c − 1) · w` stops instead of being stretched without limit: an S-curve. Because it acts on stops, a pixel one stop over middle grey and one stop under get mirror-image treatment at any level. The curve is strictly increasing for every `c > 0`, 0.18 never moves, and values `≤ 0` are scaled by the curve's slope at zero, so it stays continuous. It is applied to each channel separately, like the tone curves, so it also adds a little saturation when `c > 1`.
 
 On the α7R V test file (`--raw-half --exposure +1 --curve filmic`), `--saturation 1.25 --contrast 1.15` puts 2.3% of pixels at blue = 0 (gamut-limited yellows and oranges, against 0.01% without) and nothing at 255.
 
@@ -110,7 +114,7 @@ RAW files are recognised by their extension (`.arw`, `.dng`, `.cr2`, `.cr3`, `.n
 
 - **Linear output.** No gamma curve (gamma 1/1) and no auto-brightening, in 16 bits per channel, converted to float in [0, 1]. The sensor's white level maps to exactly 1.0, so `--exposure` means the same thing for every shot.
 - **As-shot white balance.** The camera's own white balance multipliers are used; LibRaw never guesses.
-- **Linear sRGB primaries.** LibRaw converts camera RGB to sRGB with its matrix for the camera model. A DNG carries this matrix in the file. For ARW (and CR3, NEF, ...) LibRaw uses its built-in table, derived from Adobe's colour data.
+- **Linear sRGB primaries.** LibRaw converts camera RGB to sRGB with its matrix for the camera model. A DNG carries this matrix in the file. For ARW (and CR3, NEF and the other RAW formats) LibRaw uses its built-in table, derived from Adobe's colour data.
 - **Orientation.** The camera's orientation flag is applied, so portrait shots come out upright (and the width and height swap).
 - **Highlights are clipped** at the sensor's white level, so blown areas stay neutral white.
 
@@ -200,7 +204,7 @@ Between the two outputs: mean CIE76 ΔE 5.7 (median 4.0, 95th percentile 16.7, m
 
 ## GUI
 
-A desktop app for macOS and Windows. `prism_gui` (`gui_app/`) is a window built with SDL3 and Dear ImGui; it is off by default and built with `-DPRISM_BUILD_GUI=ON` (see [Building the GUI](#building-the-gui)). How to use it is in the [user guide](docs/GUIDE.md): opening a photo, Simple mode, the Pipeline view, comparing stages, zoom and pan, reading a pixel, the test strip, clipping, the Explain area, export, every keyboard shortcut and the preferences. Packaging is done: see [Downloading and running Prism](#downloading-and-running-prism). What is planned is in the [Roadmap](#roadmap).
+A desktop app for macOS and Windows. `prism_gui` (`gui_app/`) is a window built with SDL3 and Dear ImGui; it is off by default and built with `-DPRISM_BUILD_GUI=ON` (see [Building the GUI](#building-the-gui)). The panel has the scopes, the Look menu and the light path, where each stage of the edit is a row with its own switch and slider. How to use it is in the [user guide](docs/GUIDE.md): opening a photo, the Look menu, the scopes, the light path, comparing stages, zoom and pan, reading a pixel, the test strip, the status bar, the Explain area, export, every keyboard shortcut and the preferences. Packaging is done: see [Downloading and running Prism](#downloading-and-running-prism). What is planned is in the [Roadmap](#roadmap).
 
 ### How the GUI measures things
 
@@ -208,7 +212,7 @@ The numbers behind what the guide describes, for people working on the code:
 
 - **Histogram.** It is computed on the render worker from the stage's float values *before* the 8-bit sRGB display encode, which is how it counts what clips separately from the end bins.
 - **Scopes.** The counts come from a sample of at most 250,000 pixels and are computed on the render worker only while a scope is shown.
-- **Clipping.** The counts come from a sample of at most 250,000 pixels and are computed on the render worker only while the Pipeline section is open. The overlay mask is computed only while the overlay is on. Decode counts any channel within 0.000001 of 1.0. The per-stage report for the status bar's clipping note is asked for whenever no control is being dragged, so dragging costs what it did before and the note settles when you let go.
+- **Clipping.** The counts come from a sample of at most 250,000 pixels and are computed on the render worker whenever the Light path is on screen, which is whenever a photo is open, except while the test strip is on (each band has its own light). A stage's marks follow its slider during a drag. The overlay mask is computed only while the overlay is on. Decode counts any channel within 0.000001 of 1.0.
 - **Gamut warning.** It is counted on the same sampled grid and in the same pass as the clipping, so it costs nothing extra. A pixel is outside the gamut when it has light (luminance `Y > 0`) but a channel is below −0.00015 in linear sRGB. It is counted at every stage the same way and independently of highlights and shadows.
 - **Colour sampler.** It runs one pixel through the same stages as the render, on the UI thread, in about 0.6 ms, since `contrast()` builds its table each time. A trace is kept until the pixel, the settings, the viewed stage, the comparison, the strip or the base changes, so a still cursor costs nothing. Every stage reads only its own pixel, so the values are bit-identical to the full render; if a stage ever reads its neighbours, `sample_trace` is the one function to change.
 - **Zoom and pan.** They only change where the picture is drawn, on the GPU, so neither ever starts a render. Nothing about the view is in the settings, undo or a recipe. The zoom is in device pixels per preview pixel, and the picture's corner is on a whole device pixel. Above 100% it is the 2560 px preview enlarged, not more of the file. A RAW file's real size comes from LibRaw's metadata in the same open as the decode.
@@ -230,7 +234,7 @@ prism_core (lib/)                            the pipeline, shared with the CLI
 
 | Part | What it does |
 |------|--------------|
-| `settings.hpp` | `EditSettings`: every value the GUI edits (exposure, colour matrix file, saturation, contrast, tone curve, an on/off switch per stage, RAW options), plus `StageId` and `pipeline_stages()` for the seven pipeline stages. `to_process_settings(s, stop_after)` turns it into what `prism::process` takes, disabling stages after a chosen tap; `validate()` explains bad values. Simple mode's brightness, contrast and colour sliders (−100…+100) are invertible maps onto three of its fields, so Simple and Advanced edit the same object |
+| `settings.hpp` | `EditSettings`: every value the GUI edits (exposure, colour matrix file, saturation, contrast, tone curve, an on/off switch per stage, RAW options), plus `StageId` and `pipeline_stages()` for the seven pipeline stages. `to_process_settings(s, stop_after)` turns it into what `prism::process` takes, disabling stages after a chosen tap; `validate()` explains bad values. The Light path's Exposure, Saturation and Contrast sliders (positions from −100 to +100) are invertible maps onto three of its fields, so a typed value and a drag edit the same object |
 | `histogram.hpp` | `StageHistogram`: 256-bin R, G, B and Rec. 709 luminance counts plus separate under-black (`< 0`) and over-white (`> 1`) clip counts per channel, computed from the stage's float image before the 8-bit sRGB encode (and fused with `encode_srgb8` in L1-sized slices on the preview worker) |
 | `scopes.hpp` | `Scopes`: RGB parade, Rec. 709 luma waveform and Cb/Cr vectorscope as 256 × 256 count grids, counted from the 8-bit sRGB bytes of the frame on screen (display scale) on a strided sample of at most 250k pixels. Computed on the render worker only when a scope is visible, so with scopes hidden the render costs the same as without them |
 | `clipping.hpp` | `ClipReport`: for every stage, the pixels of a sampled grid (at most 250,000) above 1.0, with no light (Y ≤ 0), and outside the sRGB gamut (Y > 0 with a channel below −0.00015), per channel, marked lost (the stage clamps) or recoverable, plus the first stage of each kind. `ClipRecorder` fills it while the pipeline runs; `compute_clip_mask` marks the out-of-range pixels of one stage; `describe_clipping` and `describe_gamut` word the result |
