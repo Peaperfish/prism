@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 
+#include "prism/gui/explanations.hpp"
 #include "prism/gui/light_path.hpp"
 #include "prism/gui/paper_grade.hpp"
 #include "prism/gui/stage_controls.hpp"
@@ -289,4 +290,18 @@ TEST(PaperGradeRow, ExposureAndSaturationKeepTheirSliders) {
                 1e-4f);
     EXPECT_EQ(row_for(prism::gui::StageId::exposure, s).value, "+0.70 stops");
     EXPECT_EQ(row_for(prism::gui::StageId::saturation, s).value, "\xC3\x97" "1.20");
+}
+
+// --- The explanation ---------------------------------------------------------------------------
+
+TEST(PaperGradeExplanation, SaysWhatGradesAreAndShowsTheCurrentOne) {
+    const prism::gui::Explanation* e = prism::gui::explanation_for("stage.contrast");
+    ASSERT_NE(e, nullptr);
+    EXPECT_NE(e->summary.find("2 is normal"), std::string_view::npos);
+    EXPECT_NE(e->summary.find("softer"), std::string_view::npos);
+    EXPECT_NE(e->summary.find("harder"), std::string_view::npos);
+    prism::gui::EditSettings s;
+    s.contrast = contrast_for_grade(3.5f);
+    EXPECT_EQ(prism::gui::live_line("stage.contrast", s).rfind("Grade 3\xC2\xBD \xC2\xB7 \xC3\x97" "1.39", 0),
+              0u);
 }

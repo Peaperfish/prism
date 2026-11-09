@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <vector>
 
+#include "prism/gui/paper_grade.hpp"
 #include "prism/gui/pixel_sample.hpp"
 #include "prism/gui/stage_controls.hpp"
 #include "prism/pipeline.hpp"
@@ -85,9 +86,9 @@ constexpr Explanation templates[] = {
      "colour that would go below zero stops at the most saturated version sRGB can show, so hues "
      "do not shift.",
      LiveKind::saturation},
-    {"stage.contrast", "An S-curve around middle grey, in stops.",
-     "Applied to each channel in log2 space around 0.18, so it works on ratios of light like the "
-     "eye. Slope at middle grey equals the setting. Strongest within 2 stops of grey.",
+    {"stage.contrast", "A paper grade: 2 is normal, lower is softer, higher is harder.",
+     "Each grade is a fixed contrast step, modelled on a real darkroom paper. It is an S-curve "
+     "around middle grey, in stops. Recipes and --contrast store its multiplier.",
      LiveKind::contrast_row},
     {"stage.curve", "Squeezes scene light to fit the screen.",
      "Linear light has more range than a screen shows. The curve compresses it: bright values are "
@@ -291,9 +292,9 @@ std::string stops_and_factor(float stops) {
 std::string contrast_text(float c) {
     const long pct = std::lround(std::fabs(static_cast<double>(c) - 1.0) * 100.0);
     if (pct == 0) {
-        return format_times(c) + ", no change";
+        return format_paper_grade(c) + ", no change";
     }
-    return format_times(c) + ", each stop near middle grey is " + std::to_string(pct) + "% " +
+    return format_paper_grade(c) + ", each stop near middle grey is " + std::to_string(pct) + "% " +
            (c > 1.0f ? "wider" : "narrower");
 }
 

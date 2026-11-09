@@ -99,7 +99,7 @@ What the values mean:
 - **`[exposure]` `stops`**: +1 doubles the light, −1 halves it. Prism always writes the sign.
 - **`[matrix]`**: each row is one output channel as a mix of the input red, green and blue, in linear light. `red = [1.05, 0.03, -0.01]` means output red = 1.05 × red + 0.03 × green − 0.01 × blue. `from` is only a label saying which file the numbers came from: a file name, without folders, which Prism never opens.
 - **`[saturation]` `amount`**: 1 changes nothing, 0 is black and white, 2 doubles each colour's distance from grey. The same number as the command line's `--saturation`.
-- **`[contrast]` `amount`**: 1 changes nothing; above 1 spreads the stops near middle grey apart, below 1 brings them together. The same number as `--contrast`.
+- **`[contrast]` `amount`**: 1 changes nothing; above 1 spreads the stops near middle grey apart, below 1 brings them together. The same number as `--contrast`. The window shows this multiplier as a paper grade (an `amount` of 1.29 is "Grade 3"); see [Contrast as a paper grade](GUIDE.md#contrast-as-a-paper-grade).
 - **`[curve]` `shape`**: `"none"`, `"gamma"`, `"reinhard"` or `"filmic"`, the same curves as `--curve`. `gamma` is used only by the gamma curve and `white` only by Reinhard, so a recipe gives only the one its shape uses. The filmic curve has no setting.
 - **`on`**: `false` switches the stage off. Its values are kept, but Prism skips it.
 

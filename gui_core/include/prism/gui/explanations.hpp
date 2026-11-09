@@ -152,7 +152,7 @@ struct LiveContext {
 // The live line for `id` with these settings: numbers worked out with the engine's own maths
 // (exposure's 2^stops, contrast's curve, saturation's scale, the tone curves), e.g.
 //   stage.exposure at +0.70:   "+0.70 stops, 1.62× the light"
-//   stage.contrast at 1.22:    "×1.22, each stop near middle grey is 22% wider"
+//   stage.contrast at 1.22:    "Grade 2.8 · ×1.22, each stop near middle grey is 22% wider"
 //   curve.gamma at 2.2:        "gamma 2.2: 18% grey becomes 46%"
 //   view.zoom on a 61 MP RAW:  "Preview 2560 px, file 9566 px on the long side: each preview pixel
 //                               stands for about 3.7 file pixels across"

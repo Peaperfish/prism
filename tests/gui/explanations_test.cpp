@@ -212,12 +212,13 @@ TEST(LiveLines, ContrastIsOnePointFiveToTheSliderOverAHundred) {
     EditSettings s;
     apply_simple_control(s, SimpleControl::contrast, 50);
     EXPECT_NEAR(s.contrast, std::pow(1.5, 0.5), 1e-6);
-    EXPECT_EQ(live_line("stage.contrast", s), "×1.22, each stop near middle grey is 22% wider");
+    EXPECT_EQ(live_line("stage.contrast", s),
+              "Grade 2.8 · ×1.22, each stop near middle grey is 22% wider");
     apply_simple_control(s, SimpleControl::contrast, -100);
     EXPECT_EQ(live_line("stage.contrast", s),
-              "×0.67, each stop near middle grey is 33% narrower");
+              "Softer than grade 0 · ×0.67, each stop near middle grey is 33% narrower");
     apply_simple_control(s, SimpleControl::contrast, 0);
-    EXPECT_EQ(live_line("stage.contrast", s), "×1.00, no change");
+    EXPECT_EQ(live_line("stage.contrast", s), "Grade 2 · ×1.00, no change");
 }
 
 // "Each stop near middle grey is N% wider" is the engine's slope at 0.18.
@@ -267,7 +268,7 @@ TEST(LiveLines, TheSlidersMoveWhatTheRowsSay) {
     EditSettings s;
     apply_simple_control(s, SimpleControl::contrast, 30);
     apply_simple_control(s, SimpleControl::colour, -20);
-    EXPECT_EQ(live_line("stage.contrast", s).find("×1.13"), 0u);
+    EXPECT_NE(live_line("stage.contrast", s).find(" · ×1.13,"), std::string::npos);
     EXPECT_EQ(live_line("stage.saturation", s), "×0.80 colour");
     s.saturation = 0.0f;
     EXPECT_EQ(live_line("stage.saturation", s), "black and white");

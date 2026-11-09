@@ -128,7 +128,7 @@ A thin rail runs down the left, with a dot for each stage. The **viewed stage**'
 | Exposure | `+1.00 stops` | a slider from −2 to +2 stops, and the **Test strip** button |
 | Colour matrix | the matrix: "Camera default" (RAW) or "None", the file's name, or "From recipe" | nothing else: the app gets a matrix only from a [recipe](#recipes) |
 | Saturation | `×1.00` (`black and white` at exactly 0) | a slider from `×0.00` to `×2.00` |
-| Contrast | `×1.00` | a slider from `×0.67` to `×1.50` |
+| Contrast | `Grade 2 · ×1.00` | a slider in half grades, from grade 0 to grade 5 (see [Contrast as a paper grade](#contrast-as-a-paper-grade)) |
 | Tone curve | none | four tabs: **None**, **Gamma**, **Reinhard**, **Filmic** |
 | Output encode | none | "sRGB for the screen" |
 
@@ -138,7 +138,22 @@ The three sliders are centred on no change. Hover over a row for a one-sentence 
 
 **The value line and dragging.** Drag a slider and the photo follows. A whole drag is one undo step. If a value is beyond what the slider can show (from a recipe, say), the row says **(beyond the slider)**, and the slider sits at its end until you move it.
 
-**Typing a value.** Ctrl-click (Cmd-click on a Mac) a slider of Exposure, Saturation or Contrast to type a value in the unit the row's value line uses: stops for Exposure, the factor for the other two. Examples:
+**Contrast as a paper grade.** Contrast is shown the way darkroom printers set it, as a paper grade from 0 (softest) to 5 (hardest), with 2 as normal. Each whole grade is the contrast of a real paper through one of its filters: the ISO range *R* of Ilford Multigrade RC Deluxe (current), from Ilford's MULTIGRADE RC papers technical information (ISO 6846, filters 0 to 5). A paper with a longer range of exposure is softer, so a grade's multiplier is 90 ÷ *R*, which makes grade 2 exactly ×1.00:
+
+| Grade | ISO range *R* | Multiplier |
+|---|---|---|
+| 0 | 130 | ×0.69 |
+| 1 | 110 | ×0.82 |
+| 2 | 90 | ×1.00 |
+| 3 | 70 | ×1.29 |
+| 4 | 60 | ×1.50 |
+| 5 | 50 | ×1.80 |
+
+Between two whole grades the multiplier moves by the same ratio at each step, so grade 3½ is ×1.39, the geometric mean of ×1.29 and ×1.50. The slider snaps to half grades. The row reads "Grade 3 · ×1.29", "Grade 3½ · ×1.39", or with a value between half grades, such as one from a recipe, one decimal: "Grade 2.7 · ×1.19". Past the ends it reads "Softer than grade 0 · ×0.60" or "Harder than grade 5 · ×2.00" and says **(beyond the slider)**. A value that is not on a half grade stays as it is until you move the slider.
+
+Only the display is new. What Prism stores, and what the engine uses, is still the multiplier, the slope at middle grey: a [recipe](#recipes) holds it as `[contrast]` `amount`, and `--contrast` on the command line takes it. A recipe written with `amount = 1.29` shows as grade 3 in the window.
+
+**Typing a value.** Ctrl-click (Cmd-click on a Mac) a slider of Exposure, Saturation or Contrast to type a value in the unit the row's value line uses: stops for Exposure, the factor for Saturation, a paper grade for Contrast. Examples:
 
 | Row | You can type | Meaning |
 |---|---|---|
@@ -147,11 +162,12 @@ The three sliders are centred on no change. Hover over a row for a one-sentence 
 | Exposure | `1 stop` | +1.00 stops |
 | Saturation | `1.2`, `1.2×` or `1.2x` | ×1.20 |
 | Saturation | `0` | black and white |
-| Contrast | `1.25` or `1.25x` | ×1.25 |
+| Contrast | `3`, `3.5`, `3,5`, `3½` or `grade 3` | grade 3, 3½ (a number outside 0 to 5 stops at the end) |
+| Contrast | `×1.2`, `1.2x` or `1.2×` | the multiplier ×1.20 |
 
-A comma works as the decimal mark (`1,5`). The word is `stops` or `stop`, in any case, and the minus can be a hyphen or a true minus sign (−). Enter confirms, Esc cancels, and a value past the slider's end stops at the end. Text that isn't a number in the row's unit leaves the value as it was. The field opens with the current value, for example `+0.70 stops` or `1.20`. The Tone curve's own slider does not take typed values.
+A comma works as the decimal mark (`1,5`). The word is `stops` or `stop`, in any case, and the minus can be a hyphen or a true minus sign (−). Enter confirms, Esc cancels, and a value past the slider's end stops at the end. Text that isn't a number in the row's unit leaves the value as it was. The field opens with the current value, for example `+0.70 stops`, `1.20` or, for Contrast, `3½`. The Tone curve's own slider does not take typed values.
 
-**Resetting.** Right-click a slider for **Reset to** its default (`+0.00 stops`, `×1.00`). Right-click a Tone curve tab for **Reset to None**. The curve's own slider has a **Reset to** menu as well.
+**Resetting.** Right-click a slider for **Reset to** its default (`+0.00 stops`, `×1.00`, `Grade 2 · ×1.00`). Right-click a Tone curve tab for **Reset to None**. The curve's own slider has a **Reset to** menu as well.
 
 **The Tone curve.** The tabs choose the curve; choosing one is one undo step. **Gamma** and **Reinhard** have a slider of their own under the tabs, with its value on the line above: Gamma's exponent (0.5 to 4, default 2.2) and Reinhard's white point (1 to 16, default 4). **None** and **Filmic** have no setting.
 
