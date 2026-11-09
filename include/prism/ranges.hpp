@@ -13,6 +13,8 @@ namespace prism {
 //   contrast    0.1 to 10 (1 = unchanged)
 //   gamma       any finite number above 0 (default 2.2)
 //   white       Reinhard's white point: any finite number above 0 (default 4)
+//   kelvin      2000 to 15000 (the light the photo was lit by; see prism/white_balance.hpp)
+//   tint        -100 to 100 (positive = a greener light, which makes the photo more magenta)
 //
 // The upper limits only catch typos, such as 125 for 1.25.
 
@@ -25,6 +27,8 @@ struct ValueRange {
 
 inline constexpr ValueRange saturation_range{0.0, 10.0};
 inline constexpr ValueRange contrast_range{0.1, 10.0};
+inline constexpr ValueRange kelvin_range{2000.0, 15000.0};
+inline constexpr ValueRange tint_range{-100.0, 100.0};
 
 inline constexpr float gamma_default = 2.2f;
 // 2 stops of highlight headroom above 1.0.

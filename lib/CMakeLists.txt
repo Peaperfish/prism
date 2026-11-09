@@ -15,7 +15,8 @@ add_library(prism_core STATIC
   resize.cpp
   raw.cpp
   tiff_reader.cpp
-  version.cpp)
+  version.cpp
+  white_balance.cpp)
 
 # PUBLIC: anything linking prism_core also gets include/ on its include path, so it can
 # write #include "prism/version.hpp". The "prism/" prefix avoids name clashes with other libraries.
