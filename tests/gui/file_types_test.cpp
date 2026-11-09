@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <optional>
 #include <string>
 
 #include "prism/gui/file_types.hpp"
@@ -66,6 +67,15 @@ TEST(FileTypes, SuggestsANameNextToTheSource) {
     EXPECT_EQ(suggested_export_path(fs::path("shots") / "DSC0001.ARW", ExportFormat::jpeg),
               fs::path("shots") / "DSC0001_prism.jpg");
     EXPECT_EQ(suggested_export_path("photo.png", ExportFormat::png), fs::path("photo_prism.png"));
+}
+
+TEST(FileTypes, SuggestedNameSaysWhenTheExportIsReduced) {
+    EXPECT_EQ(suggested_export_path(fs::path("shots") / "IMG_0001.jpg", ExportFormat::jpeg, 2048),
+              fs::path("shots") / "IMG_0001_prism_2048.jpg");
+    EXPECT_EQ(suggested_export_path("photo.png", ExportFormat::png, 1), fs::path("photo_prism_1.png"));
+    EXPECT_EQ(suggested_export_path("photo.png", ExportFormat::png, std::nullopt),
+              fs::path("photo_prism.png"))
+        << "no suffix without a reduction";
 }
 
 TEST(FileTypes, ExportsPngAsPngAndEverythingElseAsJpeg) {

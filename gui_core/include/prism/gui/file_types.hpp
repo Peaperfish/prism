@@ -28,9 +28,11 @@ enum class ExportFormat { png, jpeg };
                                                           ExportFormat format);
 
 // Where the save dialog starts: next to the source, named after it, so exporting never offers the
-// source file itself ("DSC0001.ARW" -> "DSC0001_prism.jpg" in the same folder).
-[[nodiscard]] std::filesystem::path suggested_export_path(const std::filesystem::path& source,
-                                                          ExportFormat format);
+// source file itself ("DSC0001.ARW" -> "DSC0001_prism.jpg" in the same folder). An export that
+// will be reduced to `long_side` pixels (see export_long_side) says so: "DSC0001_prism_2048.jpg".
+[[nodiscard]] std::filesystem::path suggested_export_path(
+    const std::filesystem::path& source, ExportFormat format,
+    std::optional<int> long_side = std::nullopt);
 
 // The photo to open at start-up, from the program's arguments (argv[1] onwards, without the program
 // name): the first argument that is not one macOS added. macOS launches add "-AppleLanguages (en)"

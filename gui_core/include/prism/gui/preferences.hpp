@@ -7,6 +7,8 @@
 #include <utility>
 #include <vector>
 
+#include "prism/gui/export_size.hpp"
+
 namespace prism::gui {
 
 // The app's own settings (not a photo's): how the window looks. Kept in a small text file of
@@ -21,11 +23,17 @@ namespace prism::gui {
 //   clip_overlay=off
 //   show_explanations=on
 //   recipe_folder=/Users/me/Looks
+//   export_size=long_side 2048
 //
 // Reading never fails: a missing or unreadable file gives the defaults, and a key whose value is
 // missing, malformed or out of range falls back to its default (or is clamped) on its own, without
 // affecting the other keys. Keys Prism doesn't know (e.g. from a newer version) are kept as they
 // are and written back, so going back and forth between versions loses nothing.
+//
+// export_size is how big Export makes the photo: `original`, `long_side <pixels>` (pixels >= 1) or
+// `percent <P>` (P from 1 to 99). Anything else loads as original. It is written only when not
+// original, and the pixels or percent of a mode that isn't chosen are not kept. The key is new (#52) and
+// 0.4.0 ignores it (it keeps it as an unknown key), so preferences_version stays 1.
 //
 // preferences_version (1 from 0.4.0 on): a file without it was last written by 0.3.x, which always
 // wrote panel_width=320, its default, whether or not anyone had chosen that. Such a file with
@@ -71,6 +79,8 @@ struct Preferences {
     // loaded through them. Empty until then; kept apart from the photos' folders. Written only
     // when set, as UTF-8.
     std::filesystem::path recipe_folder;
+    // The size Export starts from (#52). Original unless the file says otherwise.
+    ExportSize export_size;
     // Lines with keys this version doesn't know, as key/value pairs in file order.
     std::vector<std::pair<std::string, std::string>> unknown;
 

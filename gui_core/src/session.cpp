@@ -1,5 +1,6 @@
 #include "prism/gui/session.hpp"
 
+#include <algorithm>
 #include <exception>
 #include <new>
 #include <string>
@@ -221,7 +222,7 @@ MaybeError Session::update_preview_base() {
 }
 
 ExportJob Session::export_job() const {
-    return {path_, kind_, settings(), options_.threads};
+    return {path_, kind_, settings(), options_.threads, export_long_side()};
 }
 
 MaybeError export_image(const ExportJob& job, const fs::path& output, std::stop_token stop,
@@ -256,6 +257,19 @@ MaybeError export_image(const ExportJob& job, const fs::path& output, std::stop_
         return std::move(*e);
     }
     Image& img = std::get<Photo>(decoded).image;
+
+    // Reduce before editing: every stage then works on the small image. Assigning frees the full
+    // decode (which on a 60 MP photo is ~730 MB) before the pipeline allocates its own buffers.
+    if (job.long_side && std::max(img.width, img.height) > *job.long_side) {
+        try {
+            img = downscale(img, *job.long_side, job.threads);
+        } catch (const std::bad_alloc&) {
+            return Error{ErrorKind::out_of_memory, "Not enough memory to shrink this photo.", ""};
+        }
+        if (stop.stop_requested()) {
+            return cancelled();
+        }
+    }
 
     if (process(img, to_process_settings(job.settings), job.threads, stop, on_stage) ==
             ProcessResult::cancelled ||

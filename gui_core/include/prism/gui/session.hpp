@@ -6,6 +6,7 @@
 #include <stop_token>
 #include <string>
 
+#include "prism/gui/export_size.hpp"
 #include "prism/gui/history.hpp"
 #include "prism/gui/presets.hpp"
 #include "prism/gui/settings.hpp"
@@ -51,6 +52,11 @@ struct ExportJob {
     InputKind kind = InputKind::image;
     EditSettings settings;
     int threads = 0;
+    // Reduce the decoded image so its longer side is at most this many pixels, right after
+    // decoding and before any editing (area averaging on linear light, as downscale does). Nothing
+    // means the full decoded size; an image already this small is left as it is. With RAW
+    // half-size on, this applies to the half-size decode.
+    std::optional<int> long_side;
 };
 
 // The photo being edited: where it came from, what is known about the shot, the small image the
@@ -113,7 +119,18 @@ public:
     [[nodiscard]] MaybeError undo();
     [[nodiscard]] MaybeError redo();
 
-    // A copy of what export_image() needs for the current file and settings.
+    // The size exports are made at. Not part of the settings (so not undoable): it is how the
+    // result is delivered, not how it looks. Starts as the file's own size and is kept when
+    // another file is opened.
+    void set_export_size(const ExportSize& size) { export_size_ = size; }
+    [[nodiscard]] const ExportSize& export_size() const noexcept { return export_size_; }
+    // The longer side the current export size gives for the open file, or nothing for its own size
+    // (see export_long_side; a percentage is of file_width() x file_height()).
+    [[nodiscard]] std::optional<int> export_long_side() const {
+        return prism::gui::export_long_side(export_size_, file_width_, file_height_);
+    }
+
+    // A copy of what export_image() needs for the current file, settings and export size.
     [[nodiscard]] ExportJob export_job() const;
 
 private:
@@ -132,12 +149,13 @@ private:
     std::shared_ptr<const Image> preview_base_;
     std::optional<Matrix3> preview_camera_matrix_;  // what preview_base_ was decoded with
     History history_;
+    ExportSize export_size_;
 };
 
 // Renders `job` at full resolution and saves it as PNG or JPEG (by the extension of `output`;
 // the library's fixed JPEG quality), on the calling thread. The source file is decoded again:
-// RAW at full size unless job.settings.raw_half_size, with its camera matrix. `stop` is checked
-// between decoding, each stage and saving; once it is triggered the export returns
+// RAW at full size unless job.settings.raw_half_size, with its camera matrix, then reduced if
+// job.long_side asks for it. `stop` is checked between decoding, reducing, each stage and saving; once it is triggered the export returns
 // ErrorKind::cancelled and writes nothing. on_stage reports each pipeline stage, for progress.
 // Refuses to overwrite the source file itself.
 [[nodiscard]] MaybeError export_image(const ExportJob& job, const std::filesystem::path& output,

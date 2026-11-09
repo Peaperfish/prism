@@ -51,9 +51,13 @@ fs::path with_export_extension(const fs::path& chosen, ExportFormat format) {
     return result;
 }
 
-fs::path suggested_export_path(const fs::path& source, ExportFormat format) {
+fs::path suggested_export_path(const fs::path& source, ExportFormat format,
+                               std::optional<int> long_side) {
     fs::path name = source.stem();
     name += "_prism";
+    if (long_side) {
+        name += "_" + std::to_string(*long_side);
+    }
     name += extension_of(format);
     return source.parent_path() / name;
 }

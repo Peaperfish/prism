@@ -367,3 +367,82 @@ TEST(Preferences, ThemeResolution) {
         EXPECT_EQ(resolve_theme(ThemeChoice::dark, os), Theme::dark);
     }
 }
+
+// --- export size (#52) -------------------------------------------------------------------------
+
+namespace {
+
+using prism::gui::ExportSize;
+
+Preferences with_export_size(ExportSize size) {
+    Preferences p;
+    p.export_size = size;
+    return p;
+}
+
+ExportSize export_size_from(const std::string& value) {
+    return prism::gui::parse_preferences("export_size=" + value + "\n").export_size;
+}
+
+}  // namespace
+
+TEST(Preferences, ExportSizeIsOriginalByDefault) {
+    EXPECT_EQ(Preferences{}.export_size.mode, ExportSize::Mode::original);
+    EXPECT_EQ(prism::gui::parse_preferences("").export_size, ExportSize{});
+    EXPECT_EQ(prism::gui::serialize_preferences(Preferences{}).find("export_size"),
+              std::string::npos)
+        << "not written while original";
+}
+
+TEST(Preferences, ExportSizeRoundTripsInAllThreeModes) {
+    ExportSize long_side;
+    long_side.mode = ExportSize::Mode::long_side;
+    long_side.long_side = 1600;
+    ExportSize percent;
+    percent.mode = ExportSize::Mode::percent;
+    percent.percent = 25;
+    for (const ExportSize& size : {ExportSize{}, long_side, percent}) {
+        const Preferences p = with_export_size(size);
+        EXPECT_EQ(prism::gui::parse_preferences(prism::gui::serialize_preferences(p)), p);
+    }
+    EXPECT_NE(prism::gui::serialize_preferences(with_export_size(long_side))
+                  .find("export_size=long_side 1600\n"),
+              std::string::npos);
+    EXPECT_NE(prism::gui::serialize_preferences(with_export_size(percent))
+                  .find("export_size=percent 25\n"),
+              std::string::npos);
+}
+
+TEST(Preferences, ExportSizeEdgesOfTheRangeAreAccepted) {
+    EXPECT_EQ(export_size_from("long_side 1"), (ExportSize{ExportSize::Mode::long_side, 1, 50}));
+    EXPECT_EQ(export_size_from("percent 1"), (ExportSize{ExportSize::Mode::percent, 2048, 1}));
+    EXPECT_EQ(export_size_from("percent 99"), (ExportSize{ExportSize::Mode::percent, 2048, 99}));
+    EXPECT_EQ(export_size_from("  long_side   300 "),
+              (ExportSize{ExportSize::Mode::long_side, 300, 50}));
+}
+
+TEST(Preferences, BadExportSizesLoadAsOriginal) {
+    for (const char* bad : {"long_side 0", "long_side -5", "percent 100", "percent 0",
+                            "percent abc", "percent 50%", "long_side", "long_side 12px",
+                            "half", "", "Original ", "percent 50 60"}) {
+        EXPECT_EQ(export_size_from(bad), ExportSize{}) << '"' << bad << '"';
+    }
+}
+
+TEST(Preferences, ABadExportSizeDoesNotAffectOtherKeys) {
+    const Preferences p =
+        prism::gui::parse_preferences("theme=dark\nexport_size=percent 100\npanel_width=500\n");
+    EXPECT_EQ(p.theme, ThemeChoice::dark);
+    EXPECT_EQ(p.panel_width, 500);
+    EXPECT_EQ(p.export_size, ExportSize{});
+    EXPECT_TRUE(p.unknown.empty());
+}
+
+TEST(Preferences, ExportSizeNeedsNoVersionBump) {
+    EXPECT_EQ(prism::gui::preferences_version, 1);
+    EXPECT_NE(prism::gui::serialize_preferences(Preferences{}).find("preferences_version=1\n"),
+              std::string::npos);
+    // A 0.4.0 file has no export_size and loads as original; 0.4.0 keeps the key if it meets it.
+    const Preferences p = prism::gui::parse_preferences("preferences_version=1\ntheme=light\n");
+    EXPECT_EQ(p.export_size, ExportSize{});
+}

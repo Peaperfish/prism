@@ -86,6 +86,53 @@ std::optional<ScopeChoice> parse_scope(std::string_view s) {
     return std::nullopt;
 }
 
+// "original", "long_side 2048" or "percent 50"; nothing for anything else, including a long side
+// below 1 and a percentage outside 1..99 (100% is the original, and is written as that).
+std::optional<ExportSize> parse_export_size(std::string_view s) {
+    ExportSize size;
+    if (s == "original") {
+        return size;
+    }
+    const std::size_t space = s.find_first_of(" \t");
+    if (space == std::string_view::npos) {
+        return std::nullopt;
+    }
+    const std::string_view mode = s.substr(0, space);
+    const std::optional<int> number = parse_int(trim(s.substr(space + 1)));
+    if (!number) {
+        return std::nullopt;
+    }
+    if (mode == "long_side" && *number >= 1) {
+        size.mode = ExportSize::Mode::long_side;
+        size.long_side = *number;
+        return size;
+    }
+    if (mode == "percent" && *number >= 1 && *number <= 99) {
+        size.mode = ExportSize::Mode::percent;
+        size.percent = *number;
+        return size;
+    }
+    return std::nullopt;
+}
+
+std::string export_size_text(const ExportSize& size) {
+    switch (size.mode) {
+        case ExportSize::Mode::long_side:
+            if (size.long_side >= 1) {
+                return "long_side " + std::to_string(size.long_side);
+            }
+            break;
+        case ExportSize::Mode::percent:
+            if (size.percent >= 1 && size.percent <= 99) {
+                return "percent " + std::to_string(size.percent);
+            }
+            break;
+        case ExportSize::Mode::original:
+            break;
+    }
+    return "original";
+}
+
 }  // namespace
 
 Theme resolve_theme(ThemeChoice choice, SystemTheme system) {
@@ -180,6 +227,8 @@ Preferences parse_preferences(std::string_view text) {
             prefs.clip_overlay = value == "on";
         } else if (key == "show_explanations") {
             prefs.show_explanations = value != "off";  // on unless it says off
+        } else if (key == "export_size") {
+            prefs.export_size = parse_export_size(value).value_or(ExportSize{});
         } else if (key == "recipe_folder") {
             prefs.recipe_folder = path_from_utf8(value);
         } else if (!key.empty()) {
@@ -206,6 +255,9 @@ std::string serialize_preferences(const Preferences& prefs) {
     text += std::string("show_explanations=") + (prefs.show_explanations ? "on" : "off") + "\n";
     if (!prefs.recipe_folder.empty()) {
         text += "recipe_folder=" + utf8(prefs.recipe_folder) + "\n";
+    }
+    if (const std::string size = export_size_text(prefs.export_size); size != "original") {
+        text += "export_size=" + size + "\n";
     }
     for (const auto& [key, value] : prefs.unknown) {
         text += key + "=" + value + "\n";

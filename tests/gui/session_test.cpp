@@ -528,3 +528,172 @@ TEST(Session, RawExportIsFullSizeUnlessHalfSizeIsChosen) {
     fs::remove(dng);
     fs::remove(out);
 }
+
+// --- export at a smaller size (#52) -----------------------------------------------------------
+
+namespace {
+
+prism::gui::ExportSize long_side_size(int pixels) {
+    prism::gui::ExportSize size;
+    size.mode = prism::gui::ExportSize::Mode::long_side;
+    size.long_side = pixels;
+    return size;
+}
+
+prism::gui::ExportSize percent_size(int percent) {
+    prism::gui::ExportSize size;
+    size.mode = prism::gui::ExportSize::Mode::percent;
+    size.percent = percent;
+    return size;
+}
+
+}  // namespace
+
+TEST(Session, ExportSizeStartsAsOriginalAndGivesNoLongSide) {
+    const fs::path png = write_png("in.png", 300, 200);
+    Session session;
+    EXPECT_EQ(session.export_size(), prism::gui::ExportSize{});
+    ASSERT_EQ(session.open_file(png), std::nullopt);
+    EXPECT_EQ(session.export_long_side(), std::nullopt);
+    EXPECT_EQ(session.export_job().long_side, std::nullopt);
+    session.set_export_size(long_side_size(100));
+    EXPECT_EQ(session.export_job().long_side, 100);
+    fs::remove(png);
+}
+
+TEST(Session, ExportWithALongSideIsTheProcessedDownscaledImage) {
+    const fs::path png = write_png("in.png", 301, 199);
+    const fs::path out = temp_file("out.png");
+    Session session({.preview_long_side = 64, .threads = 0});
+    ASSERT_EQ(session.open_file(png), std::nullopt);
+    ASSERT_EQ(session.set_settings(vivid_look()), std::nullopt);
+    session.set_export_size(long_side_size(101));
+    ASSERT_EQ(prism::gui::export_image(session.export_job(), out), std::nullopt);
+
+    // Decode at full size, reduce, then edit: the order the export promises.
+    prism::Image expected = prism::downscale(prism::load_image(png), 101);
+    ASSERT_EQ(prism::process(expected, prism::gui::to_process_settings(vivid_look())),
+              prism::ProcessResult::completed);
+    const prism::Image written = prism::load_image(out);
+    EXPECT_EQ(written.width, 101);
+    EXPECT_EQ(written.height, 67);  // 199 * 101 / 301 = 66.8
+    EXPECT_EQ(prism::encode_srgb8(written), prism::encode_srgb8(expected));
+    fs::remove(png);
+    fs::remove(out);
+}
+
+TEST(Session, ExportWithAPercentIsAPercentOfTheFile) {
+    const fs::path png = write_png("in.png", 120, 200);  // portrait
+    const fs::path out = temp_file("out.png");
+    Session session;
+    ASSERT_EQ(session.open_file(png), std::nullopt);
+    session.set_export_size(percent_size(25));
+    ASSERT_EQ(prism::gui::export_image(session.export_job(), out), std::nullopt);
+    const prism::Image written = prism::load_image(out);
+    EXPECT_EQ(written.height, 50);
+    EXPECT_EQ(written.width, 30);
+    fs::remove(png);
+    fs::remove(out);
+}
+
+TEST(Session, ExportThatWouldNotBeSmallerIsTheFullSizeResult) {
+    const fs::path png = write_png("in.png", 80, 60);
+    const fs::path full = temp_file("full.png");
+    Session session;
+    ASSERT_EQ(session.open_file(png), std::nullopt);
+    ASSERT_EQ(session.set_settings(vivid_look()), std::nullopt);
+    ASSERT_EQ(prism::gui::export_image(session.export_job(), full), std::nullopt);
+
+    // The session says nothing to reduce for these, so the job carries no long side ...
+    for (const prism::gui::ExportSize& size : {long_side_size(80), long_side_size(5000)}) {
+        session.set_export_size(size);
+        EXPECT_EQ(session.export_job().long_side, std::nullopt);
+    }
+    // ... and a job that asks anyway (built by hand) leaves the image alone, too.
+    for (const int side : {80, 81, 5000}) {
+        prism::gui::ExportJob job = session.export_job();
+        job.long_side = side;
+        const fs::path out = temp_file("same_" + std::to_string(side) + ".png");
+        ASSERT_EQ(prism::gui::export_image(job, out), std::nullopt);
+        const prism::Image a = prism::load_image(out);
+        const prism::Image b = prism::load_image(full);
+        EXPECT_EQ(a.width, 80);
+        EXPECT_EQ(a.height, 60);
+        EXPECT_EQ(prism::encode_srgb8(a), prism::encode_srgb8(b)) << side;
+        fs::remove(out);
+    }
+    fs::remove(png);
+    fs::remove(full);
+}
+
+TEST(Session, ReducedExportCancelledBeforehandOrMidwayWritesNothing) {
+    const fs::path png = write_png("in.png", 120, 80);
+    const fs::path out = temp_file("out.png");
+    Session session;
+    ASSERT_EQ(session.open_file(png), std::nullopt);
+    ASSERT_EQ(session.set_settings(vivid_look()), std::nullopt);
+    session.set_export_size(long_side_size(60));
+
+    std::stop_source before;
+    before.request_stop();
+    MaybeError e = prism::gui::export_image(session.export_job(), out, before.get_token());
+    ASSERT_TRUE(e);
+    EXPECT_EQ(e->kind, ErrorKind::cancelled);
+    EXPECT_FALSE(fs::exists(out));
+
+    // Stopping after the first stage: the stages ran on the reduced image and nothing was saved.
+    // (There is no way to stop between the reduction and the first stage: the stop check right
+    // after the reduction and process's own check at its start are the same moment from outside.)
+    std::stop_source midway;
+    std::vector<std::string> stages;
+    e = prism::gui::export_image(session.export_job(), out, midway.get_token(),
+                                 [&](const prism::StageTime& t) {
+                                     stages.emplace_back(t.name);
+                                     midway.request_stop();
+                                 });
+    ASSERT_TRUE(e);
+    EXPECT_EQ(e->kind, ErrorKind::cancelled);
+    EXPECT_EQ(stages, std::vector<std::string>{"exposure"});
+    EXPECT_FALSE(fs::exists(out));
+    fs::remove(png);
+}
+
+TEST(Session, RawExportWithHalfSizeAndAPercentIsAPercentOfTheFile) {
+    if (!prism::raw_support_available()) {
+        GTEST_SKIP() << "needs LibRaw";
+    }
+    const fs::path dng = write_dng("in.dng");
+    const fs::path out = temp_file("out.png");
+    Session session;
+    ASSERT_EQ(session.open_file(dng), std::nullopt);
+    ASSERT_EQ(session.file_width(), prism_test::synthetic_dng_size);
+    EditSettings s = session.settings();
+    s.raw_half_size = true;
+    ASSERT_EQ(session.set_settings(s), std::nullopt);
+
+    // 25% of the file's 32 pixels is 8; the half-size decode is 16 pixels, so it is reduced to 8.
+    // (25% of the decoded size would have been 4.)
+    session.set_export_size(percent_size(25));
+    ASSERT_EQ(prism::gui::export_image(session.export_job(), out), std::nullopt);
+    EXPECT_EQ(prism::load_image(out).width, prism_test::synthetic_dng_size / 4);
+
+    // 50% is the half-size decode itself: nothing to reduce.
+    session.set_export_size(percent_size(50));
+    ASSERT_EQ(prism::gui::export_image(session.export_job(), out), std::nullopt);
+    EXPECT_EQ(prism::load_image(out).width, prism_test::synthetic_dng_size / 2);
+
+    // A long side of 20 is under the file (32) but over the half-size decode (16): unchanged.
+    session.set_export_size(long_side_size(20));
+    ASSERT_EQ(session.export_job().long_side, 20);
+    ASSERT_EQ(prism::gui::export_image(session.export_job(), out), std::nullopt);
+    EXPECT_EQ(prism::load_image(out).width, prism_test::synthetic_dng_size / 2);
+
+    // Full-size RAW, 25%: reduced from the full decode.
+    s.raw_half_size = false;
+    ASSERT_EQ(session.set_settings(s), std::nullopt);
+    session.set_export_size(percent_size(25));
+    ASSERT_EQ(prism::gui::export_image(session.export_job(), out), std::nullopt);
+    EXPECT_EQ(prism::load_image(out).width, prism_test::synthetic_dng_size / 4);
+    fs::remove(dng);
+    fs::remove(out);
+}
