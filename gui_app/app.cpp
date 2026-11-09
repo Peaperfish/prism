@@ -2349,7 +2349,7 @@ App::ExplainText App::explain_text() const {
     context.viewed = viewed_stage_;
     context.compare = gui::effective_compare(viewed_stage_, compare_stage_);
     context.histogram = histogram_ ? &*histogram_ : nullptr;
-    context.clips = note_report_ ? &*note_report_ : nullptr;
+    context.clips = gui::clip_report_to_show(note_report_, strip_.has_value());
     context.strip_step = strip_ ? strip_->step : strip_step_;
     context.recipe = recipes_.current();
     if (texture_.texture() != nullptr) {
@@ -2584,8 +2584,8 @@ void App::draw_scopes_panel() {
     data.clip_overlay_on = prefs_.clip_overlay;
     data.histogram = histogram_ ? &*histogram_ : nullptr;
     data.pixel_density = ImGui::GetIO().DisplayFramebufferScale.x;
-    if (note_report_) {
-        data.clip_sentence = gui::make_clip_note(*note_report_).full;
+    if (const gui::ClipReport* report = gui::clip_report_to_show(note_report_, strip_.has_value())) {
+        data.clip_sentence = gui::make_clip_note(*report).full;
     }
     SDL_Texture* picture = nullptr;
     if (prefs_.scope == gui::ScopeChoice::histogram) {
@@ -2838,7 +2838,7 @@ void App::draw_clip_note(float room) {
     const gui::ClipNote& note = *clip_note_;
     const Palette& colours = palette(theme());
     const gui::TokenMetrics& m = token_metrics();
-    const bool fresh = last_frame_had_clips_ && !preview_.rendering();
+    const bool fresh = last_frame_had_clips_ && !strip_ && !preview_.rendering();
     const float natural = clip_note_width(note);
     const float width = std::min(natural, std::max(1.0f, room - ImGui::GetStyle().ItemSpacing.x));
     ImGui::SameLine(std::max(ImGui::GetCursorPosX(),
@@ -2868,7 +2868,7 @@ void App::draw_clip_note(float room) {
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
         ImGui::BeginTooltip();
         ImGui::PushTextWrapPos(m.tooltip_wrap);
-        ImGui::TextUnformatted(note.full.c_str());
+        ImGui::TextUnformatted(gui::clip_note_tooltip(note, strip_.has_value()).c_str());
         ImGui::PopTextWrapPos();
         ImGui::EndTooltip();
     }

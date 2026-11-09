@@ -1,6 +1,8 @@
 #pragma once
 
+#include <optional>
 #include <string>
+#include <string_view>
 
 #include "prism/gui/clipping.hpp"
 
@@ -35,5 +37,16 @@ struct ClipNote {
 // first of those that exists is shown; the rest are counted as "+N more". An empty report gives
 // "No clipping".
 [[nodiscard]] ClipNote make_clip_note(const ClipReport& report);
+
+// A test strip's frames carry no clip report, so the last report is from before the strip: what
+// the readout's tooltip and the Explain area's live text may say about clipping is nothing while the
+// strip is on, and the report otherwise (null: no clipping sentence).
+[[nodiscard]] const ClipReport* clip_report_to_show(const std::optional<ClipReport>& report,
+                                                    bool test_strip_on) noexcept;
+
+// The status note's tooltip: its sentence, and while the test strip is on, a line saying the
+// sentence is from before it.
+inline constexpr std::string_view clip_note_strip_remark = "From before the test strip.";
+[[nodiscard]] std::string clip_note_tooltip(const ClipNote& note, bool test_strip_on);
 
 }  // namespace prism::gui

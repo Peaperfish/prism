@@ -70,4 +70,13 @@ ClipNote make_clip_note(const ClipReport& report) {
     return note;
 }
 
+const ClipReport* clip_report_to_show(const std::optional<ClipReport>& report,
+                                      bool test_strip_on) noexcept {
+    return report && !test_strip_on ? &*report : nullptr;
+}
+
+std::string clip_note_tooltip(const ClipNote& note, bool test_strip_on) {
+    return test_strip_on ? std::string(clip_note_strip_remark) + " " + note.full : note.full;
+}
+
 }  // namespace prism::gui

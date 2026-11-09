@@ -2,7 +2,10 @@
 
 #include <gtest/gtest.h>
 
+#include <optional>
+
 #include "prism/gui/clipping.hpp"
+#include "prism/gui/explanations.hpp"
 #include "prism/gui/settings.hpp"
 #include "prism/image.hpp"
 
@@ -127,4 +130,31 @@ TEST(ClipNote, TheNoteAgreesWithThePipelineViewsFilledDots) {
 }
 
 }  // namespace
+TEST(ClipNote, WhileTheTestStripIsOnNoClippingSentenceIsShown) {
+    // A report from before the strip, with highlights clipped in it.
+    std::optional<ClipReport> before = compute_clip_report(solid(10, 10, 2.0f, 2.0f, 2.0f), EditSettings{});
+    ASSERT_TRUE(before.has_value());
+    const ClipReport* shown = clip_report_to_show(before, false);
+    ASSERT_NE(shown, nullptr);
+    EXPECT_EQ(shown, &*before);
+    EXPECT_EQ(clip_report_to_show(before, true), nullptr);
+    EXPECT_EQ(clip_report_to_show(std::nullopt, false), nullptr);
+
+    // The Explain area's live text is then empty, and with the strip off it has the sentence.
+    LiveContext context;
+    context.clips = clip_report_to_show(before, false);
+    const std::string_view id = explain::clip_note;
+    EXPECT_FALSE(live_line(id, EditSettings{}, context).empty());
+    context.clips = clip_report_to_show(before, true);
+    EXPECT_EQ(live_line(id, EditSettings{}, context), "");
+}
+
+TEST(ClipNote, TheStatusNotesTooltipSaysItIsFromBeforeTheTestStrip) {
+    const ClipNote note = make_clip_note(compute_clip_report(solid(10, 10, 2.0f, 2.0f, 2.0f), EditSettings{}));
+    EXPECT_EQ(clip_note_tooltip(note, false), note.full);
+    const std::string with_strip = clip_note_tooltip(note, true);
+    EXPECT_EQ(with_strip.find("From before the test strip."), 0u);
+    EXPECT_NE(with_strip.find(note.full), std::string::npos);
+}
+
 }  // namespace prism::gui
