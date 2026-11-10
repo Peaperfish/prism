@@ -204,6 +204,48 @@ float draw_strip_button(const LightPathData& data, float right, float y, float l
     return left;
 }
 
+// The Pick neutral button at the right of White balance's subtitle line, drawn in its pressed look
+// while Pick mode is on. It is as tall as the line and its gap (which is empty above and below the
+// line anyway), so it adds nothing to the row. Acts on the press. Returns its left edge.
+float draw_pick_button(const LightPathData& data, float right, float line_y, float line_height,
+                       float gap, const LightPathCallbacks& cb) {
+    constexpr const char* label = "Pick neutral";
+    ImGui::PushFont(nullptr, token_type().small);
+    const float height = line_height + gap;
+    const float width = text_width(label) + 2 * px(6.0f);
+    const float left = right - width;
+    ImGui::SetCursorScreenPos(ImVec2(left, line_y - gap * 0.5f));
+    const bool can_act = data.pick_on || data.pick_available;
+    ImGui::BeginDisabled(!can_act);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, px(5.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(px(6.0f), 0.0f));
+    if (data.pick_on) {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+    }
+    ImGui::PushID("pick");
+    if (ImGui::ButtonEx(label, ImVec2(width, height), press_only) && cb.toggle_pick) {
+        cb.toggle_pick();
+    }
+    ImGui::PopID();
+    if (data.pick_on) {
+        ImGui::PopStyleColor();
+    }
+    ImGui::PopStyleVar(2);
+    ImGui::EndDisabled();
+    ImGui::PopFont();
+    const FullStrength full;
+    if (can_act) {
+        cb.describe(gui::explain::pick);
+    } else {
+        cb.explain(gui::explain::pick, false);
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal |
+                                 ImGuiHoveredFlags_AllowWhenDisabled)) {
+            ImGui::SetTooltip("%s", data.pick_hint.c_str());
+        }
+    }
+    return left;
+}
+
 // Contrast's slider: half grades, 0 to 10, snapped. Typing takes a grade or a multiplier and gives
 // the multiplier; a drag gives the grade's multiplier only when it moved to another half grade, so
 // an off-grid value (from a recipe, or typed) is kept until then.
@@ -509,10 +551,16 @@ void draw_row(const LightPathData& data, const gui::LightPathRow& row,
     }
 
     if (layout.subtitle_y) {
+        float subtitle_room = content;
+        if (row.pick_neutral) {
+            const float left = draw_pick_button(data, right, row_min.y + *layout.subtitle_y,
+                                                metrics.secondary, metrics.gap, cb);
+            subtitle_room = std::max(1.0f, left - px(8.0f) - x);
+        }
         ImGui::PushFont(nullptr, token_type().small);
         text_in_band(draw, x, row_min.y + *layout.subtitle_y, metrics.secondary,
                      ImGui::GetColorU32(ImGuiCol_TextDisabled),
-                     gui::ellipsize_middle(row.subtitle, content, measure));
+                     gui::ellipsize_middle(row.subtitle, subtitle_room, measure));
         ImGui::PopFont();
     }
     if (row.white_balance && layout.slider_y && layout.second_slider_y) {

@@ -92,6 +92,9 @@ struct LightPathRow {
     std::string parameter_reset;  // "Reset to 4"
 
     bool test_strip = false;  // the Test strip button shares the clip line
+    // White balance's Pick neutral button shares the subtitle line. It takes no room of its own, so
+    // it never changes the row's height (light_path_row_layout does not look at it).
+    bool pick_neutral = false;
     std::vector<ClipMark> marks;
 };
 

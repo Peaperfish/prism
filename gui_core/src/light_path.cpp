@@ -139,6 +139,7 @@ LightPathRow light_path_row(const LightPathInputs& in, StageId stage) {
             sliders.tint_typed = typed_field_text(stored, WhiteBalanceControl::tint);
             row.white_balance = std::move(sliders);
             row.slider_reset = "Reset to As shot";
+            row.pick_neutral = true;
             break;
         }
         case StageId::matrix:

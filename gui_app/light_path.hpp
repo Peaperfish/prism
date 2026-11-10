@@ -32,6 +32,9 @@ struct LightPathData {
     bool strip_on = false;
     bool strip_available = true;  // false: the button is greyed out, and says why
     std::string strip_hint;
+    bool pick_on = false;         // Pick mode is on: the White balance row's button is pressed in
+    bool pick_available = true;   // false: the button is greyed out, and says why
+    std::string pick_hint;
 };
 
 struct LightPathCallbacks {
@@ -53,6 +56,7 @@ struct LightPathCallbacks {
     std::function<void(float value, const gui::SliderFrame&)> curve_parameter;
     std::function<void()> reset_curve_parameter;
     std::function<void()> toggle_strip;
+    std::function<void()> toggle_pick;  // the White balance row's Pick neutral button
     std::function<void(std::optional<gui::StageId>)> set_compare;  // none: Off
     std::function<void()> swap_compare;
     // Called right after a control is submitted, as the app's explain() and describe() want: the

@@ -89,6 +89,7 @@ protected:
         cb.curve_parameter = [this](float, const gui::SliderFrame&) { ++parameter_frames_; };
         cb.reset_curve_parameter = [this] { ++parameter_resets_; };
         cb.toggle_strip = [this] { ++strip_toggles_; };
+        cb.toggle_pick = [this] { ++pick_toggles_; };
         cb.set_compare = [this](std::optional<gui::StageId> s) { compares_.push_back(s); };
         cb.swap_compare = [this] { ++swaps_; };
         const auto note = [this](std::string_view id) {
@@ -125,6 +126,9 @@ protected:
         data.strip_on = strip_on_;
         data.strip_available = strip_available_;
         data.strip_hint = "The hint.";
+        data.pick_on = pick_on_;
+        data.pick_available = pick_available_;
+        data.pick_hint = "The pick hint.";
         const std::vector<LightPathRowRect> rects = draw_light_path(data, callbacks());
         bottom_ = ImGui::GetCursorScreenPos().y;
         ImGui::End();
@@ -202,6 +206,18 @@ protected:
         return m;
     }
 
+    // The sizes the app's row_metrics gives, all of them: for the height a row is laid out at.
+    static gui::LightPathMetrics full_metrics() {
+        gui::LightPathMetrics m = metrics();
+        m.pad_bottom = std::round(mock(10.0f));
+        ImGui::PushFont(nullptr, token_type().small);
+        m.secondary = std::ceil(ImGui::GetFontSize());
+        ImGui::PopFont();
+        m.tabs = segmented_height();
+        m.strip_button = std::round(mock(24.0f));
+        return m;
+    }
+
     // Where an item that explained itself was drawn in the last frame.
     struct Placed {
         std::string id;
@@ -226,6 +242,17 @@ protected:
         }
         return {all[1], all[2]};
     }
+    // The Pick neutral buttons as the last frame drew them.
+    [[nodiscard]] std::vector<Placed> pick_buttons() const {
+        std::vector<Placed> all;
+        for (const Placed& p : placed_) {
+            if (p.id == gui::explain::pick) {
+                all.push_back(p);
+            }
+        }
+        return all;
+    }
+
     // The mouse rests at `from`, presses, moves to `to`, and lets go: one drag, a frame at a time.
     void drag(ImVec2 from, ImVec2 to) {
         mouse_to(from);
@@ -277,6 +304,9 @@ protected:
     std::optional<gui::ClipReport> clips_;
     bool strip_on_ = false;
     bool strip_available_ = true;
+    bool pick_on_ = false;
+    bool pick_available_ = true;
+    int pick_toggles_ = 0;
 
     struct SliderCall {
         gui::SimpleControl control;
@@ -922,6 +952,76 @@ TEST_F(LightPathHeadless, WhiteBalanceHasTwoSlidersInsideItsRowOneUnderTheOther)
     // The row is the next after Exposure and the one before Colour matrix.
     EXPECT_EQ(row.min.y, row_of(rects, gui::StageId::exposure).max.y);
     EXPECT_EQ(row.max.y, row_of(rects, gui::StageId::matrix).min.y);
+}
+
+TEST_F(LightPathHeadless, PickNeutralIsOneButtonInsideTheWhiteBalanceRowAboveItsSliders) {
+    frame();
+    const std::vector<LightPathRowRect> rects = frame();
+    const LightPathRowRect& row = row_of(rects, gui::StageId::white_balance);
+    const std::vector<Placed> buttons = pick_buttons();
+    ASSERT_EQ(buttons.size(), 1u);  // only that row has one
+    const Placed& button = buttons[0];
+    EXPECT_GE(button.min.y, row.min.y);
+    EXPECT_LE(button.max.y, row.max.y);
+    EXPECT_GT(button.min.x, row.min.x);
+    EXPECT_LE(button.max.x, row.max.x - std::round(mock(8.0f)));
+    // On the subtitle line: under the first line, and clear of the first slider.
+    const gui::LightPathMetrics m = metrics();
+    EXPECT_GE(button.min.y, row.min.y + m.pad_top + m.line);
+    EXPECT_LE(button.max.y, white_balance_sliders()[0].min.y);
+}
+
+TEST_F(LightPathHeadless, PickNeutralDoesNotChangeTheRowsHeight) {
+    frame();
+    const std::vector<LightPathRowRect> rects = frame();
+    const std::vector<float> heights = heights_of(rects);
+    // The height the layout gives a White balance row that has no button.
+    gui::LightPathRow without = gui::light_path_row({settings_, kind_, "RAW", viewed_, compare_,
+                                                    nullptr, as_shot_},
+                                                   gui::StageId::white_balance);
+    ASSERT_TRUE(without.pick_neutral);
+    const float with_button = gui::light_path_row_layout(without, full_metrics()).height;
+    without.pick_neutral = false;
+    EXPECT_EQ(gui::light_path_row_layout(without, full_metrics()).height, with_button);
+    const LightPathRowRect& row = row_of(rects, gui::StageId::white_balance);
+    EXPECT_EQ(row.max.y - row.min.y, with_button);
+    // And pressed in, or greyed out, it is the same row, in the same place, with the same parts.
+    const std::vector<Item> items = items_;
+    const float bottom = bottom_;
+    for (const auto [on, available] : {std::pair{true, true}, {false, false}, {true, false}}) {
+        pick_on_ = on;
+        pick_available_ = available;
+        frame();
+        EXPECT_EQ(heights_of(frame()), heights) << on << available;
+        EXPECT_EQ(items_, items) << on << available;
+        EXPECT_EQ(bottom_, bottom) << on << available;
+    }
+}
+
+TEST_F(LightPathHeadless, PressingPickNeutralTogglesPickModeAndDoesNotViewTheStage) {
+    frame();
+    frame();
+    const Placed button = pick_buttons().at(0);
+    click_at(button.centre());
+    EXPECT_EQ(pick_toggles_, 1);  // on the press
+    EXPECT_TRUE(viewed_calls_.empty());
+    EXPECT_TRUE(white_balance_frames_.empty());
+    // Pressed in, it still toggles (that leaves the mode).
+    pick_on_ = true;
+    click_at(button.centre());
+    EXPECT_EQ(pick_toggles_, 2);
+    // Greyed out (viewing Decode): no toggle, and still not a press on the row.
+    pick_on_ = false;
+    pick_available_ = false;
+    click_at(button.centre());
+    EXPECT_EQ(pick_toggles_, 2);
+    EXPECT_TRUE(viewed_calls_.empty());
+}
+
+TEST_F(LightPathHeadless, PickNeutralExplainsItself) {
+    frame();
+    frame();
+    EXPECT_TRUE(ids_.count(std::string(gui::explain::pick)));
 }
 
 TEST_F(LightPathHeadless, WhiteBalanceRowIsAsTallAsShotChosenAndOff) {

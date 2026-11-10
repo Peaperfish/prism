@@ -527,3 +527,23 @@ TEST(LightPathWhiteBalance, AnAsShotLightPastTheSlidersIsReadInFullAndTheSliders
     EXPECT_EQ(row.white_balance->kelvin_position, 0.0f);
     EXPECT_EQ(row.white_balance->kelvin_typed, "2000 K");
 }
+
+TEST(LightPathRowPick, OnlyWhiteBalanceHasThePickNeutralButtonAndItTakesNoRoom) {
+    const EditSettings s;
+    for (const StageInfo& stage : pipeline_stages()) {
+        EXPECT_EQ(row_for(stage.id, s).pick_neutral, stage.id == StageId::white_balance) << stage.name;
+    }
+    LightPathMetrics metrics;
+    metrics.pad_top = 9;
+    metrics.pad_bottom = 10;
+    metrics.line = 22;
+    metrics.secondary = 13;
+    metrics.slider = 20;
+    metrics.tabs = 26;
+    metrics.strip_button = 24;
+    metrics.gap = 4;
+    LightPathRow row = row_for(StageId::white_balance, s);
+    const LightPathRowLayout with = light_path_row_layout(row, metrics);
+    row.pick_neutral = false;
+    EXPECT_EQ(light_path_row_layout(row, metrics), with);
+}
