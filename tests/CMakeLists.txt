@@ -95,6 +95,7 @@ add_executable(prism_gui_core_tests
   gui/presets_test.cpp
   gui/photo_format_test.cpp
   gui/pixel_sample_test.cpp
+  gui/dodge_burn_stage_test.cpp
   gui/preview_renderer_test.cpp
   gui/recipe_settings_test.cpp
   gui/recipe_ui_test.cpp
