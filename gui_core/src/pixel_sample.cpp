@@ -346,14 +346,15 @@ std::string average_text(const SampleScale& scale) {
 
 std::optional<PixelTrace> sample_trace(const Image& base, const EditSettings& settings, int x,
                                        int y, const std::optional<Chromaticity>& as_shot_white) {
-    // The one pixel's place on the preview, for Dodge & burn's strokes.
-    const ProcessSettings process_settings = to_process_settings(
-        settings, final_stage, as_shot_white, stage_grid(base.width, base.height, x, y, 1, 1, 1));
     if (base.width < 0 || base.height < 0 ||
         base.pixels.size() != static_cast<std::size_t>(base.width) *
                                   static_cast<std::size_t>(base.height) * Image::channels) {
         throw std::invalid_argument("sample_trace: pixel buffer size does not match the image");
     }
+    // The one pixel's place on the preview, for Dodge & burn's strokes. Built once the base is
+    // known to be a picture; the settings are checked even for a pixel off it.
+    const ProcessSettings process_settings = to_process_settings(
+        settings, final_stage, as_shot_white, stage_grid(base.width, base.height, x, y, 1, 1, 1));
     if (x < 0 || y < 0 || x >= base.width || y >= base.height) {
         return std::nullopt;
     }
@@ -461,7 +462,8 @@ double file_pixels_across(int preview_long_side, int file_long_side) noexcept {
 
 std::string sample_dodge_burn_text(const PixelTrace& trace) {
     const float stops = trace.dodge_burn_stops;
-    if (stops == 0.0f || std::isnan(stops)) {
+    // Under half a tenth of a stop the number would read "0.0 stop": say nothing instead.
+    if (!(std::fabs(stops) >= 0.05f)) {
         return {};
     }
     const std::string amount = fixed(std::fabs(stops), 1);

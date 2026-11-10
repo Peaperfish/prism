@@ -558,7 +558,11 @@ TEST(DodgeBurnStage, TheSamplersLineSaysLighterOrDarkerAndStopOrStops) {
     EXPECT_EQ(text(1.06f), "Dodge & burn: 1.1 stops lighter here");
     EXPECT_EQ(text(-1.5f), "Dodge & burn: 1.5 stops darker here");
     EXPECT_EQ(text(-12.0f), "Dodge & burn: 12.0 stops darker here");
-    EXPECT_EQ(text(0.04f), "Dodge & burn: 0.0 stop lighter here");
+    EXPECT_EQ(text(0.049f), "");  // would read "0.0 stop": no line instead
+    EXPECT_EQ(text(-0.049f), "");
+    EXPECT_EQ(text(0.05f), "Dodge & burn: 0.1 stop lighter here");
+    EXPECT_EQ(text(-0.05f), "Dodge & burn: 0.1 stop darker here");
+    EXPECT_EQ(text(std::nanf("")), "");
     EXPECT_EQ(text(-0.5f).find("brightness"), std::string::npos);
 }
 
