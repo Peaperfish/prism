@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
+
 #include "prism/gui/history.hpp"
 #include "prism/gui/presets.hpp"
 
@@ -240,6 +242,107 @@ TEST(CloseGuard, ButtonsOnWindowsAndLinuxPutExportFirst) {
     EXPECT_EQ(b.order[2], PromptChoice::discard);
     EXPECT_EQ(b.order[3], PromptChoice::cancel);
     EXPECT_EQ(b.gap_after, 0);
+}
+
+// --- Dodge & burn strokes ------------------------------------------------------------------------
+
+namespace {
+Strokes one_stroke() {
+    auto field = std::make_shared<StrokeField>();
+    field->aspect = 1.5f;
+    field->strokes.push_back(
+        std::make_shared<const FieldStroke>(FieldStroke{{{0.5f, 0.5f}}, 0.1f, 0.5f, -1.0f}));
+    return Strokes(std::move(field));
+}
+
+CloseState state_of(const SavedBaseline& b, const EditSettings& current, bool export_running = false) {
+    CloseState state;
+    state.has_file = true;
+    state.dirty = b.dirty(current);
+    state.export_running = export_running;
+    state.has_strokes = !current.strokes.empty();
+    return state;
+}
+}  // namespace
+
+TEST(CloseGuardStrokes, StrokesAskEvenWhenNothingElseIsUnsaved) {
+    EditSettings s;
+    s.strokes = one_stroke();
+    SavedBaseline b;
+    b.opened(s);  // opened with them, say, or undone back to them
+    ASSERT_FALSE(b.dirty(s));
+    EXPECT_EQ(close_requested(state_of(b, s)), CloseStep::ask);
+}
+
+TEST(CloseGuardStrokes, StillAskRightAfterAnExport) {
+    SavedBaseline b;
+    b.opened(EditSettings{});
+    EditSettings s;
+    s.strokes = one_stroke();
+    b.exported(s, "photo_prism.jpg");
+    ASSERT_FALSE(b.dirty(s));  // the picture on disk is what's on screen
+    EXPECT_EQ(close_requested(state_of(b, s)), CloseStep::ask);
+    // A recipe save is no different.
+    SavedBaseline r;
+    r.opened(EditSettings{});
+    r.recipe_saved(s, "warm.prism");
+    EXPECT_EQ(close_requested(state_of(r, s)), CloseStep::ask);
+}
+
+TEST(CloseGuardStrokes, AnExportThatIsRunningIsStillWaitedForFirst) {
+    EditSettings s;
+    s.strokes = one_stroke();
+    SavedBaseline b;
+    b.opened(s);
+    EXPECT_EQ(close_requested(state_of(b, s, true)), CloseStep::wait_for_export);
+}
+
+TEST(CloseGuardStrokes, WithoutStrokesItIsAsItWas) {
+    EditSettings s;
+    SavedBaseline b;
+    b.opened(s);
+    EXPECT_EQ(close_requested(state_of(b, s)), CloseStep::proceed);
+    s.exposure_stops = 1.0f;
+    EXPECT_EQ(close_requested(state_of(b, s)), CloseStep::ask);
+    b.exported(s, "a.jpg");
+    EXPECT_EQ(close_requested(state_of(b, s)), CloseStep::proceed);
+    // Strokes made and then cleared: back to the exported state, nothing to ask about.
+    EditSettings drawn = s;
+    drawn.strokes = one_stroke();
+    EXPECT_EQ(close_requested(state_of(b, drawn)), CloseStep::ask);
+    EXPECT_EQ(close_requested(state_of(b, s)), CloseStep::proceed);
+}
+
+TEST(CloseGuardStrokes, ThePromptSaysTheyAreLostAndOffersNoRecipe) {
+    const PromptText with = prompt_text(Pending::quit, true);
+    EXPECT_EQ(with.strokes_note,
+              "Dodging and burning isn't saved in recipes and is lost when the photo closes.");
+    EXPECT_EQ(with.message, prompt_text(Pending::quit).message);
+    EXPECT_EQ(prompt_text(Pending::quit, false).strokes_note, "");
+    EXPECT_EQ(prompt_text(Pending::quit).strokes_note, "");
+    for (const bool mac : {true, false}) {
+        const PromptButtons b = prompt_buttons(mac, true);
+        ASSERT_EQ(b.count, 3);
+        for (int i = 0; i < b.count; ++i) {
+            EXPECT_NE(b.order[i], PromptChoice::save_recipe);
+        }
+        // Export…, the way out and Cancel are all there, once each.
+        int export_first = 0, discard = 0, cancel = 0;
+        for (int i = 0; i < b.count; ++i) {
+            export_first += b.order[i] == PromptChoice::export_first;
+            discard += b.order[i] == PromptChoice::discard;
+            cancel += b.order[i] == PromptChoice::cancel;
+        }
+        EXPECT_EQ(export_first, 1);
+        EXPECT_EQ(discard, 1);
+        EXPECT_EQ(cancel, 1);
+        // The platform's order is kept: macOS has the destructive one alone on the left.
+        EXPECT_EQ(b.order[0], mac ? PromptChoice::discard : PromptChoice::export_first);
+        EXPECT_EQ(b.gap_after, mac ? 1 : 0);
+        // Without strokes the four buttons are as on main.
+        EXPECT_EQ(prompt_buttons(mac).count, 4);
+        EXPECT_EQ(prompt_buttons(mac, false).count, 4);
+    }
 }
 
 }  // namespace

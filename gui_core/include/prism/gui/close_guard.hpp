@@ -58,6 +58,9 @@ struct CloseState {
     bool has_file = false;
     bool dirty = false;           // unsaved edits (SavedBaseline::dirty)
     bool export_running = false;  // an export is in progress right now
+    // The photo has Dodge & burn strokes. Neither an export nor a recipe keeps them, so they are
+    // never "saved": the prompt shows whenever they exist, even right after an export.
+    bool has_strokes = false;
 };
 
 // What the window does next.
@@ -82,7 +85,7 @@ enum class ExportEnd { saved, cancelled, failed };
 enum class RecipeEnd { saved, cancelled, failed };
 
 // A request to quit or to open another photo arrived.
-//  - no photo, or nothing unsaved: proceed (a running export of a clean photo still finishes
+//  - no photo, or nothing unsaved and no strokes: proceed (a running export of a clean photo still finishes
 //    first, so a quit never kills a write half-way);
 //  - an export is running: wait for it, then ask again with the new state;
 //  - otherwise: ask.
@@ -111,12 +114,14 @@ enum class RecipeEnd { saved, cancelled, failed };
 // The text of the prompt for `pending`.
 struct PromptText {
     std::string_view message;
+    // With strokes, the sentence under the message saying they are lost; otherwise empty.
+    std::string_view strokes_note;
     std::string_view export_button;
     std::string_view recipe_button;
     std::string_view discard_button;
     std::string_view cancel_button;
 };
-[[nodiscard]] PromptText prompt_text(Pending pending) noexcept;
+[[nodiscard]] PromptText prompt_text(Pending pending, bool has_strokes = false) noexcept;
 
 // The prompt's second line: what was saved last, "Last saved: exported as photo_prism.jpg" or
 // "Last saved: recipe warm.prism"; empty when nothing was saved since the photo was opened.
@@ -127,12 +132,16 @@ struct PromptText {
 // default last: [Quit Without Saving] ... [Cancel] [Save Recipe…] [Export…]. On Windows and
 // Linux the default comes first: [Export…] [Save Recipe…] [Quit Without Saving] [Cancel].
 // Export… is the default (Enter) everywhere, and Esc is Cancel.
+//
+// With strokes the prompt has no Save Recipe… (a recipe does not keep them): three buttons, and
+// `count` says so.
 struct PromptButtons {
     PromptChoice order[4];
     // A flexible gap goes after this many buttons (0: none, the row is packed).
     int gap_after = 0;
+    int count = 4;  // how many of `order` are drawn
 };
-[[nodiscard]] PromptButtons prompt_buttons(bool mac) noexcept;
+[[nodiscard]] PromptButtons prompt_buttons(bool mac, bool has_strokes = false) noexcept;
 
 // The text of the waiting dialog and its button.
 [[nodiscard]] std::string_view waiting_text(Pending pending) noexcept;

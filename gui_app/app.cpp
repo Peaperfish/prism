@@ -266,6 +266,7 @@ gui::CloseState App::close_state() const {
     gui::CloseState state;
     state.has_file = session_.has_file();
     state.dirty = state.has_file && baseline_.dirty(session_.settings());
+    state.has_strokes = state.has_file && !session_.settings().strokes.empty();
     state.export_running = exporter_.busy();
     return state;
 }
@@ -3399,11 +3400,16 @@ void App::draw_close_prompt() {
         ImGui::EndPopup();
         return;
     }
-    const gui::PromptText text = gui::prompt_text(*close_pending_);
+    const bool has_strokes = !session_.settings().strokes.empty();
+    const gui::PromptText text = gui::prompt_text(*close_pending_, has_strokes);
     const std::string detail = gui::prompt_detail(baseline_.last_save());
     const float wrap = token_metrics().prompt_wrap;
     ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + wrap);
     ImGui::TextUnformatted(text.message.data(), text.message.data() + text.message.size());
+    if (!text.strokes_note.empty()) {
+        ImGui::TextUnformatted(text.strokes_note.data(),
+                               text.strokes_note.data() + text.strokes_note.size());
+    }
     if (!detail.empty()) {
         ImGui::TextDisabled("%s", detail.c_str());
     }
@@ -3419,11 +3425,11 @@ void App::draw_close_prompt() {
         }
         return std::string();
     };
-    const gui::PromptButtons buttons = gui::prompt_buttons(ImGui::GetIO().ConfigMacOSXBehaviors);
+    const gui::PromptButtons buttons = gui::prompt_buttons(ImGui::GetIO().ConfigMacOSXBehaviors, has_strokes);
     const ImGuiStyle& style = ImGui::GetStyle();
     float widths[4];
     float packed = 0;
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < buttons.count; ++i) {
         widths[i] = ImGui::CalcTextSize(label(buttons.order[i]).c_str()).x + 2 * style.FramePadding.x;
         packed += widths[i] + (i > 0 ? style.ItemSpacing.x : 0.0f);
     }
@@ -3431,12 +3437,12 @@ void App::draw_close_prompt() {
     // the buttons after the gap sit at its right end.
     const float row = std::max(wrap, packed + 3 * style.ItemSpacing.x);
     float right_group = 0;
-    for (int i = buttons.gap_after; i < 4 && buttons.gap_after > 0; ++i) {
+    for (int i = buttons.gap_after; i < buttons.count && buttons.gap_after > 0; ++i) {
         right_group += widths[i] + (i > buttons.gap_after ? style.ItemSpacing.x : 0.0f);
     }
     const float row_x = ImGui::GetCursorPosX();
     std::optional<gui::PromptChoice> choice;
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < buttons.count; ++i) {
         if (i > 0) {
             if (buttons.gap_after > 0 && i == buttons.gap_after) {
                 ImGui::SameLine(row_x + row - right_group);

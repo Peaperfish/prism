@@ -35,7 +35,7 @@ CloseStep close_requested(const CloseState& state) noexcept {
     if (state.export_running) {
         return CloseStep::wait_for_export;
     }
-    return state.dirty ? CloseStep::ask : CloseStep::proceed;
+    return state.dirty || state.has_strokes ? CloseStep::ask : CloseStep::proceed;
 }
 
 CloseStep prompt_choice(PromptChoice choice) noexcept {
@@ -64,9 +64,12 @@ CloseStep recipe_save_finished(RecipeEnd end) noexcept {
     return end == RecipeEnd::saved ? CloseStep::proceed : CloseStep::cancel;
 }
 
-PromptText prompt_text(Pending pending) noexcept {
-    return {"You have edits that haven't been exported or saved as a recipe.", "Export…",
-            "Save Recipe…",
+PromptText prompt_text(Pending pending, bool has_strokes) noexcept {
+    return {"You have edits that haven't been exported or saved as a recipe.",
+            has_strokes ? "Dodging and burning isn't saved in recipes and is lost when the photo "
+                          "closes."
+                        : "",
+            "Export…", "Save Recipe…",
             pending == Pending::quit ? "Quit Without Saving" : "Open Without Saving", "Cancel"};
 }
 
@@ -78,15 +81,25 @@ std::string prompt_detail(const std::optional<LastSave>& last) {
                                                 : "Last saved: recipe " + last->file;
 }
 
-PromptButtons prompt_buttons(bool mac) noexcept {
+PromptButtons prompt_buttons(bool mac, bool has_strokes) noexcept {
+    if (has_strokes) {
+        if (mac) {
+            return {{PromptChoice::discard, PromptChoice::cancel, PromptChoice::export_first,
+                     PromptChoice::cancel},
+                    1, 3};
+        }
+        return {{PromptChoice::export_first, PromptChoice::discard, PromptChoice::cancel,
+                 PromptChoice::cancel},
+                0, 3};
+    }
     if (mac) {
         return {{PromptChoice::discard, PromptChoice::cancel, PromptChoice::save_recipe,
                  PromptChoice::export_first},
-                1};
+                1, 4};
     }
     return {{PromptChoice::export_first, PromptChoice::save_recipe, PromptChoice::discard,
              PromptChoice::cancel},
-            0};
+            0, 4};
 }
 
 std::string_view waiting_text(Pending pending) noexcept {
