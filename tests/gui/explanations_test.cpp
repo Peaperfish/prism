@@ -838,3 +838,34 @@ TEST(ExplainToShow, FocusWinsOverAStaleHoverAndANewHoverWinsOverFocus) {
 
 }  // namespace
 }  // namespace prism::gui
+
+namespace prism::gui {
+namespace {
+
+TEST(Explanations, TheLookTooltipSaysALookKeepsYourDodgingAndBurning) {
+    const Explanation* e = explanation_for(explain::look);
+    ASSERT_NE(e, nullptr);
+    EXPECT_NE(e->summary.find("Keeps your dodging and burning"), std::string_view::npos);
+}
+
+TEST(Explanations, DodgeAndBurnExplainsTheRowItsSwitchBrushStrengthAndClear) {
+    for (const std::string_view id :
+         {explain_id(StageId::dodge_burn), explain::dodge_burn_switch, explain::dodge_burn_brush,
+          explain::dodge_burn_strength, explain::dodge_burn_clear}) {
+        const Explanation* e = explanation_for(id);
+        ASSERT_NE(e, nullptr) << id;
+        EXPECT_FALSE(e->summary.empty()) << id;
+        for (const std::string_view text : {e->summary, e->detail}) {
+            for (const char* bad : {"rightness", "brighter", "darker", "brighten", "darken"}) {
+                EXPECT_EQ(text.find(bad), std::string_view::npos) << id << " has " << bad;
+            }
+        }
+    }
+    // The darkroom's words.
+    const std::string_view row = explanation_for(explain_id(StageId::dodge_burn))->detail;
+    EXPECT_NE(row.find("enlarger"), std::string_view::npos);
+    EXPECT_NE(row.find("stops"), std::string_view::npos);
+}
+
+}  // namespace
+}  // namespace prism::gui

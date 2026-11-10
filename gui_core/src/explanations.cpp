@@ -24,9 +24,10 @@ namespace {
 // expanded() below fills them in from the recipes, with expand_look_text.
 constexpr Explanation templates[] = {
     // --- Look ------------------------------------------------------------------------------
-    {"look", "A look is a saved recipe: three numbers and a curve.",
+    {"look", "A look: three numbers and a curve. Keeps your dodging and burning.",
      "Picking one sets Exposure, Saturation, Contrast and the Tone curve in the pipeline below; "
-     "nothing is hidden. Change any of them and the name becomes Custom.",
+     "nothing is hidden. Change any of them and the name becomes Custom. Dodging and burning stay "
+     "as they are.",
      LiveKind::look},
     {"look.natural", "A stop brighter with a filmic curve.",
      "RAW files are linear, so they look dark and flat as decoded. {raw.natural.exposure} and the "

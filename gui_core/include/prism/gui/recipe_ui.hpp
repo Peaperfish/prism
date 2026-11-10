@@ -166,6 +166,13 @@ struct DropAction {
 [[nodiscard]] DropAction classify_drop(std::span<const std::filesystem::path> paths,
                                        const DropContext& context);
 
+// --- Saving a recipe with strokes ----------------------------------------------------------------
+
+// The line the Save Recipe sheet adds when the photo has Dodge & burn strokes, which no recipe
+// keeps; empty without any.
+inline constexpr std::string_view recipe_strokes_note = "Dodging and burning isn't included.";
+[[nodiscard]] std::string_view recipe_sheet_strokes_note(const EditSettings& settings) noexcept;
+
 // --- When a recipe can't be loaded ---------------------------------------------------------------
 
 struct RecipeErrorRow {

@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <cstddef>
+#include <memory>
 #include <set>
 #include <span>
 #include <stdexcept>
@@ -493,6 +494,21 @@ TEST(RecipeErrorView, AtTheLimitItSaysPrismStopsThere) {
     EXPECT_EQ(view.rows.size(), recipe_max_errors);
     EXPECT_EQ(view.header, "Nothing was changed. 'w.prism' has 10 mistakes:");
     EXPECT_EQ(view.note, "Prism stops at 10. Fix these and load again.");
+}
+
+TEST(RecipeSheetStrokes, SaysDodgingAndBurningIsNotIncludedOnlyWhenThereAreStrokes) {
+    EditSettings s;
+    EXPECT_EQ(recipe_sheet_strokes_note(s), "");
+    auto field = std::make_shared<StrokeField>();
+    field->aspect = 1.5f;
+    field->strokes.push_back(
+        std::make_shared<const FieldStroke>(FieldStroke{{{0.5f, 0.5f}}, 0.1f, 0.5f, 0.5f}));
+    s.strokes = Strokes(std::move(field));
+    EXPECT_EQ(recipe_sheet_strokes_note(s), "Dodging and burning isn't included.");
+    s.dodge_burn_on = false;  // off or on, the strokes are not in the file
+    EXPECT_EQ(recipe_sheet_strokes_note(s), "Dodging and burning isn't included.");
+    s.strokes = Strokes{};
+    EXPECT_EQ(recipe_sheet_strokes_note(s), "");
 }
 
 }  // namespace

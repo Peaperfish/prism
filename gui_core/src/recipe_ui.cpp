@@ -238,6 +238,10 @@ DropAction classify_drop(std::span<const fs::path> paths, const DropContext& con
     return action;
 }
 
+std::string_view recipe_sheet_strokes_note(const EditSettings& settings) noexcept {
+    return settings.strokes.empty() ? std::string_view() : recipe_strokes_note;
+}
+
 RecipeErrorView recipe_error_view(const RecipeError& error, std::string_view file_name) {
     RecipeErrorView view;
     const std::size_t count = error.issues().size();

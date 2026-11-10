@@ -538,6 +538,10 @@ void App::draw_recipe_sheet() {
             ? "Saves all five stages and the white balance you chose. The photo and RAW decoding "
               "options aren't included."
             : "Saves all five stages. The photo and RAW decoding options aren't included.");
+    if (const std::string_view note = gui::recipe_sheet_strokes_note(session_.settings());
+        !note.empty()) {
+        ImGui::TextUnformatted(note.data(), note.data() + note.size());
+    }
     ImGui::PopStyleColor();
     ImGui::PopTextWrapPos();
     ImGui::Spacing();
