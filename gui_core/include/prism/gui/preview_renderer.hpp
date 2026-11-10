@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "prism/gui/clipping.hpp"
+#include "prism/gui/field_cache.hpp"
 #include "prism/gui/histogram.hpp"
 #include "prism/gui/scopes.hpp"
 #include "prism/gui/settings.hpp"
@@ -111,12 +112,18 @@ struct PreviewFrame {
 // two, not two renders. Everything else in the frame is exactly what it is without it. Nothing if
 // `stop` was requested before it finished. Throws std::invalid_argument for invalid settings (see
 // to_process_settings).
+//
+// With `field_cache`, the strokes' field is taken from it (brought up to date first: see
+// FieldCache) instead of being rasterised by the Dodge & burn stage, by every band of a test
+// strip and by the clip report's sample grid; the frame is bit-identical either way. Only the
+// thread that owns the cache may pass it. Without one, a render rasterises as it always did.
 [[nodiscard]] std::optional<PreviewFrame> render_preview(const Image& base,
                                                          const EditSettings& settings, int threads,
                                                          std::stop_token stop,
                                                          const StageCallback& on_stage = {},
                                                          StageId stop_after = final_stage,
-                                                         PreviewOptions options = {});
+                                                         PreviewOptions options = {},
+                                                         FieldCache* field_cache = nullptr);
 
 // Renders previews on a worker thread, so the UI never waits for one.
 //
@@ -154,7 +161,8 @@ public:
         const Image& base, const EditSettings& settings, StageId stop_after,
         const PreviewOptions& options, std::stop_token stop)>;
 
-    // `threads` as for the pipeline: 0 = one per hardware thread.
+    // `threads` as for the pipeline: 0 = one per hardware thread. The worker keeps a FieldCache
+    // of its own for the strokes, used by no other thread.
     explicit PreviewRenderer(int threads = 0);
     explicit PreviewRenderer(RenderFunction render);
     explicit PreviewRenderer(StageRenderFunction render);

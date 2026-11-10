@@ -4,6 +4,7 @@
 #include <atomic>
 #include <exception>
 #include <mutex>
+#include <span>
 #include <stdexcept>
 #include <string_view>
 #include <thread>
@@ -34,12 +35,38 @@ std::optional<Image> render_stage_image(const Image& base, const EditSettings& s
 
 namespace {
 
+// The strokes' field on the grid of the image being rendered (from the field cache), or nothing
+// (empty): then the Dodge & burn stage rasterises it itself.
+struct FieldView {
+    std::span<const float> values;
+    PixelGrid grid;
+};
+
+// Hands the field to the Dodge & burn stage of `p`, if `p` has one and the field is on its grid.
+// The clip report's sample grid and a band are parts of the picture: their values are copied
+// into `storage`, which must live as long as `p` is used.
+void use_field(ProcessSettings& p, const FieldView& view, std::vector<float>& storage) {
+    if (p.dodge_burn.field.strokes.empty() || view.values.empty()) {
+        return;
+    }
+    const PixelGrid& g = p.dodge_burn.grid;
+    const PixelGrid& v = view.grid;
+    if (g.full_w == v.full_w && g.full_h == v.full_h && g.x0 == v.x0 && g.y0 == v.y0 &&
+        g.stride == v.stride && g.width() == v.width() && g.height() == v.height()) {
+        p.dodge_burn.precomputed = view.values;
+    } else if (field_at(view.values, view.grid, g, storage)) {
+        p.dodge_burn.precomputed = storage;
+    }
+}
+
 // render_preview for an image that sits on the photo at `grid` (the whole picture, or a band of
 // it): the strokes of Dodge & burn are placed by it. render_preview is this on the whole picture.
+// `field` is the strokes' field on `grid`, or empty.
 std::optional<PreviewFrame> render_plain(const Image& base, const PixelGrid& grid,
                                          const EditSettings& settings, int threads,
                                          std::stop_token stop, const StageCallback& on_stage,
-                                         StageId stop_after, PreviewOptions options);
+                                         StageId stop_after, PreviewOptions options,
+                                         const FieldView& field);
 
 // The test strip: every band is the same render_preview of its crop of `base` at its own exposure,
 // so a band is bit-identical to rendering that crop alone, and the pipeline itself is untouched.
@@ -55,7 +82,7 @@ std::optional<PreviewFrame> render_plain(const Image& base, const PixelGrid& gri
 std::optional<PreviewFrame> render_strip(const Image& base, const EditSettings& settings,
                                          int threads, std::stop_token stop,
                                          const StageCallback& on_stage, StageId stop_after,
-                                         const PreviewOptions& options) {
+                                         const PreviewOptions& options, const FieldView& field) {
     using Clock = std::chrono::steady_clock;
     const auto start = Clock::now();
     const TestStrip strip = *options.test_strip;
@@ -120,9 +147,15 @@ std::optional<PreviewFrame> render_strip(const Image& base, const EditSettings& 
         // The band's place on the picture: the strokes keep their positions in every band.
         const PixelGrid band_grid =
             stage_grid(base.width, base.height, r.x, r.y, 1, r.width, r.height);
+        // The band's part of the picture's field (read-only here: every band reads it at once).
+        std::vector<float> band_field;
+        FieldView band_view;
+        if (field_at(field.values, field.grid, band_grid, band_field) && !band_field.empty()) {
+            band_view = {band_field, band_grid};
+        }
         std::optional<PreviewFrame> part =
             render_plain(crop, band_grid, band_settings, band_threads, band_stop.get_token(),
-                         report, stop_after, band_options);
+                         report, stop_after, band_options, band_view);
         if (!part) {
             band_stop.request_stop();
             return;
@@ -203,12 +236,15 @@ namespace {
 std::optional<PreviewFrame> render_plain(const Image& base, const PixelGrid& grid,
                                          const EditSettings& settings, int threads,
                                          std::stop_token stop, const StageCallback& on_stage,
-                                         StageId stop_after, PreviewOptions options) {
+                                         StageId stop_after, PreviewOptions options,
+                                         const FieldView& field) {
     using Clock = std::chrono::steady_clock;
     options.test_strip.reset();
     const auto start = Clock::now();
-    const ProcessSettings process_settings =
+    std::vector<float> field_part;  // only if `field` is not on `grid` (it always is)
+    ProcessSettings process_settings =
         to_process_settings(settings, stop_after, options.as_shot_white, grid);
+    use_field(process_settings, field, field_part);
 
     PreviewFrame frame;
     frame.stage = stop_after;
@@ -282,8 +318,9 @@ std::optional<PreviewFrame> render_plain(const Image& base, const PixelGrid& gri
         if (!compare_late) {
             return true;
         }
-        const ProcessSettings more = process_settings_after(
+        ProcessSettings more = process_settings_after(
             to_process_settings(settings, *compare, options.as_shot_white, grid), stop_after);
+        use_field(more, field, field_part);
         if (process(current, more, threads, stop) == ProcessResult::cancelled ||
             stop.stop_requested()) {
             return false;
@@ -309,10 +346,12 @@ std::optional<PreviewFrame> render_plain(const Image& base, const PixelGrid& gri
                     recorder->stage_done_samples(*id, sampled);
                 }
             };
-            const ProcessSettings rest = process_settings_after(
+            ProcessSettings rest = process_settings_after(
                 to_process_settings(settings, final_stage, options.as_shot_white,
                                     recorder->grid(grid)),
                 stop_after);
+            std::vector<float> sampled_field;  // the field at the sampled pixels
+            use_field(rest, field, sampled_field);
             // The grid is at most 250,000 pixels: one thread, below the parallel threshold anyway.
             if (process(sampled, rest, 1, stop, record_stage) == ProcessResult::cancelled ||
                 stop.stop_requested()) {
@@ -382,20 +421,38 @@ std::optional<PreviewFrame> render_plain(const Image& base, const PixelGrid& gri
 std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings& settings,
                                            int threads, std::stop_token stop,
                                            const StageCallback& on_stage, StageId stop_after,
-                                           PreviewOptions options) {
+                                           PreviewOptions options, FieldCache* field_cache) {
+    const PixelGrid whole = stage_grid(base.width, base.height);
+    // Whether the Dodge & burn stage can run in this render: up to the viewed stage, or after it
+    // for the clip report or a later compare stage.
+    const auto reaches = [](StageId stage) {
+        return static_cast<int>(stage) >= static_cast<int>(StageId::dodge_burn);
+    };
+    const bool stage_runs =
+        !settings.strokes.empty() && settings.dodge_burn_on &&
+        (reaches(stop_after) || options.clip_report ||
+         (options.compare_stage && reaches(*options.compare_stage)));
+    FieldView field;
+    if (field_cache && (settings.strokes.empty() || stage_runs)) {
+        field_cache->update(settings.strokes, whole, threads);
+        field = {field_cache->field(), whole};
+    }
     if (options.test_strip && stop_after != StageId::decode && options.test_strip->count >= 1 &&
         base.width > 0 && base.height > 0) {
-        return render_strip(base, settings, threads, stop, on_stage, stop_after, options);
+        return render_strip(base, settings, threads, stop, on_stage, stop_after, options, field);
     }
-    return render_plain(base, stage_grid(base.width, base.height), settings, threads, stop,
-                        on_stage, stop_after, std::move(options));
+    return render_plain(base, whole, settings, threads, stop, on_stage, stop_after,
+                        std::move(options), field);
 }
 
+// The cache is the worker's: only the worker thread calls render_.
 PreviewRenderer::PreviewRenderer(int threads)
     : PreviewRenderer(OptionsRenderFunction(
-          [threads](const Image& base, const EditSettings& settings, StageId stop_after,
-                    const PreviewOptions& options, std::stop_token stop) {
-              return render_preview(base, settings, threads, stop, {}, stop_after, options);
+          [threads, cache = std::make_shared<FieldCache>()](
+              const Image& base, const EditSettings& settings, StageId stop_after,
+              const PreviewOptions& options, std::stop_token stop) {
+              return render_preview(base, settings, threads, stop, {}, stop_after, options,
+                                    cache.get());
           })) {}
 
 PreviewRenderer::PreviewRenderer(RenderFunction render)

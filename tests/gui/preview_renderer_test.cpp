@@ -1208,3 +1208,58 @@ TEST(PreviewStripConcurrent, AnExceptionThroughTheWorkerBecomesTheFrameError) {
     EXPECT_FALSE(frame->error.empty());
     EXPECT_TRUE(frame->rgb8.empty());
 }
+
+// The worker keeps a field cache for the strokes: a stroke drawn point by point, a second stroke,
+// undo and a weight change, each submitted and rendered in turn, give exactly the frames of a
+// render without a cache. Two renderers share nothing (each has its own cache).
+TEST(PreviewRenderer, ItsFieldCacheGivesTheFramesOfARenderWithoutOne) {
+    const auto base = make_base(640, 400);
+    const float aspect = prism::aspect_of(640, 400);
+    const auto field_of = [aspect](std::vector<std::shared_ptr<const prism::FieldStroke>> strokes) {
+        auto f = std::make_shared<prism::StrokeField>();
+        f->aspect = aspect;
+        f->strokes = std::move(strokes);
+        return prism::gui::Strokes(std::move(f));
+    };
+    const auto stroke = [](std::vector<prism::FieldPoint> points, float weight) {
+        return std::make_shared<const prism::FieldStroke>(
+            prism::FieldStroke{std::move(points), 0.06f, 0.5f, weight});
+    };
+    std::vector<prism::gui::Strokes> steps;
+    std::vector<prism::FieldPoint> drawn;
+    std::shared_ptr<const prism::FieldStroke> first;
+    for (const prism::FieldPoint p : {prism::FieldPoint{0.2f, 0.2f}, {0.4f, 0.3f}, {0.6f, 0.5f},
+                                      {0.4f, 0.6f}, {0.3f, 0.25f}}) {
+        drawn.push_back(p);
+        first = stroke(drawn, 1.0f);
+        steps.push_back(field_of({first}));
+    }
+    const auto second = stroke({{0.7f, 0.2f}, {0.8f, 0.8f}}, -0.7f);
+    steps.push_back(field_of({first, second}));
+    steps.push_back(field_of({first}));  // undo
+    steps.push_back(field_of({stroke(drawn, 0.5f)}));
+    steps.emplace_back();  // cleared
+
+    PreviewRenderer renderer(2);
+    PreviewRenderer other(2);
+    for (std::size_t k = 0; k < steps.size(); ++k) {
+        EditSettings s = every_stage();
+        s.strokes = steps[k];
+        prism::gui::PreviewOptions options;
+        options.clip_report = k % 2 == 1;
+        renderer.submit(base, s, prism::gui::final_stage, options);
+        other.submit(base, s, prism::gui::final_stage, options);
+        ASSERT_TRUE(renderer.wait_until_idle(timeout));
+        ASSERT_TRUE(other.wait_until_idle(timeout));
+        const std::optional<PreviewFrame> got = renderer.poll();
+        const std::optional<PreviewFrame> got_other = other.poll();
+        const std::optional<PreviewFrame> want = prism::gui::render_preview(
+            *base, s, 1, {}, {}, prism::gui::final_stage, options, nullptr);
+        ASSERT_TRUE(got && got_other && want) << k;
+        ASSERT_TRUE(got->error.empty()) << got->error;
+        EXPECT_TRUE(got->rgb8 == want->rgb8) << "step " << k;
+        EXPECT_TRUE(got->histogram == want->histogram) << "step " << k;
+        EXPECT_TRUE(got->clips == want->clips) << "step " << k;
+        EXPECT_TRUE(got_other->rgb8 == want->rgb8) << "step " << k;
+    }
+}
