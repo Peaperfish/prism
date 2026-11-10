@@ -1467,7 +1467,7 @@ gui::ClipReport one_mark_report(gui::ClipMarkKind kind, std::uint64_t count) {
 // The panel at its minimum width, as the app draws it (the panel's padding, and a scrollbar), with
 // the worst cases of every text in it, one after the other. Every text that has to fit is written
 // down by the panel (LightPathData::fits) and must have been drawn in full.
-class MinimumWidth : public LightPathHeadless {
+class MinimumWidthHeadless : public LightPathHeadless {
 protected:
     void SetUp() override {
         LightPathHeadless::SetUp();
@@ -1614,7 +1614,7 @@ protected:
     std::vector<TextFit> fits_seen_;
 };
 
-TEST_F(MinimumWidth, EveryWorstCaseTextIsDrawnInFullAtTheMinimumWidth) {
+TEST_F(MinimumWidthHeadless, EveryWorstCaseTextIsDrawnInFullAtTheMinimumWidth) {
     for (const float scale : {1.0f, 1.5f, 2.0f}) {
         fits_seen_.clear();
         run_all_cases(scale);
@@ -1656,7 +1656,7 @@ TEST_F(MinimumWidth, EveryWorstCaseTextIsDrawnInFullAtTheMinimumWidth) {
     }
 }
 
-TEST_F(MinimumWidth, DodgeAndBurnDoesNotMakeThePanelWiderThanItWas) {
+TEST_F(MinimumWidthHeadless, DodgeAndBurnDoesNotMakeThePanelWiderThanItWas) {
     apply_style(gui::Theme::dark, 1.0f);
     ImGui::NewFrame();
     // 428 pixels at the interface size 1, as before the Dodge & burn row (layout_test.cpp).
@@ -1664,7 +1664,7 @@ TEST_F(MinimumWidth, DodgeAndBurnDoesNotMakeThePanelWiderThanItWas) {
     ImGui::EndFrame();
 }
 
-TEST_F(MinimumWidth, ThePanelReportsTextsThatDoNotFitWhenItIsNarrower) {
+TEST_F(MinimumWidthHeadless, ThePanelReportsTextsThatDoNotFitWhenItIsNarrower) {
     // The test above is only worth something if it can fail: 40 mock pixels narrower than the
     // minimum, the worst cases of the rows that set it are reported as cut.
     ImGui::NewFrame();
@@ -1688,7 +1688,7 @@ TEST_F(MinimumWidth, ThePanelReportsTextsThatDoNotFitWhenItIsNarrower) {
     EXPECT_GE(cut, 2);
 }
 
-TEST_F(MinimumWidth, AWhiteBalanceNumberBeyondTheColumnIsReportedAsNotFitting) {
+TEST_F(MinimumWidthHeadless, AWhiteBalanceNumberBeyondTheColumnIsReportedAsNotFitting) {
     const TextFit wide{"Kelvin value", "115000 K", "115000 K", 80.0f, 60.0f};
     EXPECT_FALSE(wide.whole());
     const TextFit cut{"Value", "Chosen when on", "Cho\xE2\x80\xA6", 40.0f, 60.0f};
@@ -1697,7 +1697,7 @@ TEST_F(MinimumWidth, AWhiteBalanceNumberBeyondTheColumnIsReportedAsNotFitting) {
     EXPECT_TRUE(fine.whole());
 }
 
-TEST_F(MinimumWidth, ASavedWidthBelowTheMinimumIsWidenedToIt) {
+TEST_F(MinimumWidthHeadless, ASavedWidthBelowTheMinimumIsWidenedToIt) {
     ImGui::NewFrame();
     const float minimum = light_path_min_width();
     ImGui::EndFrame();
@@ -1717,7 +1717,7 @@ TEST_F(MinimumWidth, ASavedWidthBelowTheMinimumIsWidenedToIt) {
     EXPECT_NEAR(bigger, minimum * 1.5f, minimum * 0.03f);
 }
 
-TEST_F(MinimumWidth, TheWhiteBalanceValuesLineUpWhateverTheyRead) {
+TEST_F(MinimumWidthHeadless, TheWhiteBalanceValuesLineUpWhateverTheyRead) {
     app_padding_ = true;
     ImGui::NewFrame();
     width_ = light_path_min_width();
