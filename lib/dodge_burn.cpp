@@ -29,15 +29,45 @@ void dodge_burn(Image& img, const LocalExposure& local, int threads) {
             std::to_string(local.grid.height()) + " pixels but the image is " +
             std::to_string(img.width) + " x " + std::to_string(img.height));
     }
-    if (img.width == 0 || img.height == 0) {
+    const std::size_t width = static_cast<std::size_t>(img.width);
+    const std::size_t pixels = width * static_cast<std::size_t>(img.height);
+    if (!local.precomputed.empty() && local.precomputed.size() != pixels) {
+        throw std::invalid_argument("dodge_burn: the precomputed field has " +
+                                    std::to_string(local.precomputed.size()) +
+                                    " values but the image has " + std::to_string(pixels) +
+                                    " pixels");
+    }
+    if (pixels == 0) {
+        return;
+    }
+    const int n = threads_for_pixels(pixels, threads);
+
+    // The gain of one pixel, where its field is not exactly 0: the same few operations whether the
+    // field was rasterised here or handed in.
+    const auto apply = [](const float* field, std::size_t count, float* px) {
+        for (std::size_t p = 0; p < count; ++p, px += 3) {
+            const float f = field[p];
+            if (f != 0.0f) {
+                const float gain = stroke_gain(f);
+                px[0] *= gain;
+                px[1] *= gain;
+                px[2] *= gain;
+            }
+        }
+    };
+
+    if (!local.precomputed.empty()) {
+        parallel_for_rows(img.height, n, [&](int begin, int end) {
+            const std::size_t first = static_cast<std::size_t>(begin) * width;
+            apply(local.precomputed.data() + first,
+                  static_cast<std::size_t>(end - begin) * width, img.pixels.data() + first * 3);
+        });
         return;
     }
 
     // The segments and their boxes, once for the whole call; each tile only picks out the ones
     // that reach its rows.
     const PreparedField prepared(local.field, local.grid);
-    const std::size_t width = static_cast<std::size_t>(img.width);
-    const int n = threads_for_pixels(width * static_cast<std::size_t>(img.height), threads);
 
     // A worker must not throw (parallel_for); the first error is kept and rethrown here.
     std::exception_ptr error;
@@ -52,16 +82,8 @@ void dodge_burn(Image& img, const LocalExposure& local, int threads) {
                 }
                 tile.resize(static_cast<std::size_t>(t_end - t) * width);
                 prepared.rasterise(t, t_end, tile);
-                float* px = img.pixels.data() + static_cast<std::size_t>(t) * width * 3;
-                for (std::size_t p = 0; p < tile.size(); ++p, px += 3) {
-                    const float f = tile[p];
-                    if (f != 0.0f) {
-                        const float gain = stroke_gain(f);
-                        px[0] *= gain;
-                        px[1] *= gain;
-                        px[2] *= gain;
-                    }
-                }
+                apply(tile.data(), tile.size(),
+                      img.pixels.data() + static_cast<std::size_t>(t) * width * 3);
             }
         } catch (...) {
             const std::lock_guard lock(error_mutex);

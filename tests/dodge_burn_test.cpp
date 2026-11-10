@@ -380,6 +380,53 @@ TEST(DodgeBurn, ThrowsWhenTheGridDoesNotFit) {
     }
 }
 
+// A field handed in (the preview's cache) gives the very pixels rasterising it in the stage does:
+// on the whole image, a strided grid and a band, alone and in the full pipeline, at any thread
+// count. A buffer of the wrong size is refused before a pixel is touched.
+TEST(DodgeBurn, PrecomputedFieldEqualsRasterising) {
+    constexpr int W = 1501;
+    constexpr int H = 701;
+    const StrokeField f = boundary_strokes(W, H);
+    struct Case {
+        PixelGrid grid;
+        int w;
+        int h;
+    };
+    for (const Case c : {Case{PixelGrid::whole(W, H), W, H},
+                         Case{PixelGrid{W, H, 1, 2, 3}, (W - 1 + 2) / 3, (H - 2 + 2) / 3},
+                         Case{PixelGrid{W, H, 300, 100, 1, 400, 500}, 400, 500}}) {
+        ASSERT_EQ(c.grid.width(), c.w);
+        ASSERT_EQ(c.grid.height(), c.h);
+        const std::vector<float> field = field_of(f, c.grid);
+        for (const int threads : {1, 3, 8}) {
+            Image rasterised = make_image(c.w, c.h);
+            prism::dodge_burn(rasterised, {f, c.grid}, threads);
+            Image handed_in = make_image(c.w, c.h);
+            prism::dodge_burn(handed_in, {f, c.grid, field}, threads);
+            ASSERT_NE(first_difference(rasterised, make_image(c.w, c.h)), -1);  // it did something
+            EXPECT_EQ(first_difference(handed_in, rasterised), -1)
+                << c.w << " x " << c.h << ", " << threads << " threads";
+
+            ProcessSettings s = all_stages(f, W, H);
+            s.dodge_burn.grid = c.grid;
+            Image full_rasterised = make_image(c.w, c.h);
+            ASSERT_EQ(prism::process(full_rasterised, s, threads), prism::ProcessResult::completed);
+            s.dodge_burn.precomputed = field;
+            Image full_handed_in = make_image(c.w, c.h);
+            ASSERT_EQ(prism::process(full_handed_in, s, threads), prism::ProcessResult::completed);
+            EXPECT_EQ(first_difference(full_handed_in, full_rasterised), -1)
+                << c.w << " x " << c.h << ", " << threads << " threads, whole pipeline";
+        }
+    }
+
+    const PixelGrid g = PixelGrid::whole(40, 30);
+    const std::vector<float> short_field(40 * 30 - 1, 0.5f);
+    Image img = make_image(40, 30);
+    EXPECT_THROW(prism::dodge_burn(img, {some_strokes(40, 30), g, short_field}, 1),
+                 std::invalid_argument);
+    EXPECT_EQ(first_difference(img, make_image(40, 30)), -1);
+}
+
 TEST(DodgeBurn, BandEqualsCrop) {
     constexpr int W = 240;
     constexpr int H = 160;
