@@ -1009,6 +1009,32 @@ TEST_F(LightPathHeadless, TheBrushStrengthAndClearAreInsideTheDodgeAndBurnRowOnO
     EXPECT_TRUE(ids_.count(std::string(gui::explain::dodge_burn_switch)));
 }
 
+TEST_F(LightPathHeadless, TheStrengthLabelAndValueHaveTheirRoomBesideTheSlider) {
+    std::vector<TextFit> fits;
+    fits_ = &fits;
+    frame();
+    fits.clear();
+    frame();
+    fits_ = nullptr;
+    const Placed brush = placed_with(gui::explain::dodge_burn_brush);
+    const Placed strength = placed_with(gui::explain::dodge_burn_strength);
+    const Placed clear = placed_with(gui::explain::dodge_burn_clear);
+    const auto fit = [&](const char* what) {
+        const auto it = std::find_if(fits.begin(), fits.end(),
+                                     [&](const TextFit& f) { return f.what == what; });
+        EXPECT_NE(it, fits.end()) << what;
+        return it == fits.end() ? TextFit{} : *it;
+    };
+    const TextFit label = fit("Strength label");
+    const TextFit value = fit("Strength value");
+    EXPECT_EQ(label.text, "Strength");
+    EXPECT_GT(label.width, 0.0f);
+    // "Strength" between Brush and the slider, the widest value between the slider and Clear,
+    // each with a gap on both sides.
+    EXPECT_GT(strength.min.x - brush.max.x, label.width);
+    EXPECT_GT(clear.min.x - strength.max.x, value.room);
+}
+
 TEST_F(LightPathHeadless, PressingBrushTogglesTheBrushAndDoesNotViewTheStage) {
     frame();
     frame();
