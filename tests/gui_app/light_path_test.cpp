@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
@@ -875,6 +876,55 @@ TEST_F(LightPathHeadless, SwapSidesIsOfferedOnlyWhileComparing) {
     EXPECT_EQ(swaps_, 1);
 }
 
+TEST_F(LightPathHeadless, NoStrokesChangesNothingInTheLightPathOrTheComparePopup) {
+    // Dodge & burn is a stage, but has no row and no entry in the compare popup yet: the panel is
+    // what it was, with or without strokes.
+    viewed_ = gui::StageId::contrast;
+    std::size_t popup_entries[2] = {0, 0};
+    std::size_t rows[2] = {0, 0};
+    for (int with = 0; with < 2; ++with) {
+        settings_ = {};
+        settings_.exposure_stops = 0.5f;
+        if (with) {
+            auto field = std::make_shared<prism::StrokeField>();
+            field->aspect = 1.5f;
+            field->strokes.push_back(std::make_shared<const prism::FieldStroke>(
+                prism::FieldStroke{{{0.5f, 0.5f}}, 0.1f, 0.5f, -1.0f}));
+            settings_.strokes = gui::Strokes(std::move(field));
+        }
+        std::vector<LightPathRowRect> rects = frame();
+        rows[with] = rects.size();
+        const ImVec2 action(rects.front().max.x - 12.0f, rects.front().min.y - 12.0f);
+        click_at(action);
+        frame();
+        // The header's Compare action, then every entry of the popup (Off and a stage each)
+        // describe themselves once.
+        const auto compare_entries = [&] {
+            std::size_t n = 0;
+            for (const auto& p : placed_) {
+                n += p.id == gui::explain::compare ? 1 : 0;
+            }
+            return n;
+        };
+        popup_entries[with] = compare_entries();
+        for (const auto& p : placed_) {
+            EXPECT_NE(p.id, gui::explain_id(gui::StageId::dodge_burn));
+        }
+        // Close it for the next round.
+        mouse_to(ImVec2(590, 1400));
+        frame();
+        mouse(true);
+        frame();
+        mouse(false);
+        frame();
+        frame();
+    }
+    EXPECT_EQ(rows[0], 8u);  // as on main: Decode, six edits, Output encode
+    EXPECT_EQ(rows[1], 8u);
+    EXPECT_EQ(popup_entries[0], 10u);  // the action, Off and those eight stages: as on main
+    EXPECT_EQ(popup_entries[1], 10u);
+}
+
 // --- Explanations ------------------------------------------------------------------------------
 
 TEST_F(LightPathHeadless, EveryControlAskedForHasAnEntry) {
@@ -1386,6 +1436,9 @@ protected:
         // The header with Compare on, at its longest.
         viewed_ = gui::StageId::curve;
         for (const gui::StageInfo& stage : gui::pipeline_stages()) {
+            if (stage.hidden) {
+                continue;
+            }
             compare_ = stage.id;
             run_case();
         }
