@@ -8,6 +8,7 @@
 
 #include "prism/gui/field_cache.hpp"
 #include "prism/gui/recipe_settings.hpp"
+#include "prism/gui/stage_controls.hpp"
 
 namespace prism::gui {
 
@@ -520,6 +521,83 @@ TEST(StrokeMask, IsClearWithoutStrokesAndTowardsEachColourWithTheStops) {
     EXPECT_LT(alpha(0.5f), alpha(1.0f));
     EXPECT_LT(alpha(-0.5f), alpha(-1.5f));
     EXPECT_EQ(alpha(1.0f), 97u);  // 0xC0 (192) × 64 / 127 at one stop (byte 192), rounded
+}
+
+// --- Leaving Brush mode --------------------------------------------------------------------------
+
+TEST(BrushLeaves, WhenTheViewMovesBeforeDodgeAndBurn) {
+    EXPECT_TRUE(brush_leaves(true, BrushEvent::view_changed, StageId::decode));
+    EXPECT_TRUE(brush_leaves(true, BrushEvent::view_changed, StageId::exposure));
+    EXPECT_FALSE(brush_leaves(true, BrushEvent::view_changed, StageId::dodge_burn));
+    EXPECT_FALSE(brush_leaves(true, BrushEvent::view_changed, StageId::white_balance));
+    EXPECT_FALSE(brush_leaves(true, BrushEvent::view_changed, final_stage));
+}
+
+TEST(BrushLeaves, WhenAnotherPhotoIsOpenedWhateverIsViewed) {
+    for (const StageId viewed : {StageId::decode, StageId::dodge_burn, final_stage}) {
+        EXPECT_TRUE(brush_leaves(true, BrushEvent::photo_opened, viewed));
+    }
+    // The brush's own settings stay with it, as the strength does.
+    BrushMode b = brush_on();
+    b.set_tone(BrushTone::burn);
+    b.set_radius(0.1f);
+    b.set_softness(0.2f);
+    b.opened();
+    EXPECT_FALSE(b.on());
+    EXPECT_EQ(b.tone(), BrushTone::burn);
+    EXPECT_EQ(b.radius(), 0.1f);
+    EXPECT_EQ(b.softness(), 0.2f);
+}
+
+TEST(BrushLeaves, OnEscWithNoStrokeUnderWay) {
+    // Esc reaches the brush (escape_action), the brush has no stroke to cancel (BrushGesture),
+    // and so Brush mode ends.
+    EscapeContext c;
+    c.brushing = true;
+    c.viewing_earlier = true;
+    ASSERT_EQ(escape_action(c), EscapeAction::leave_brush);
+    BrushGesture g;
+    ASSERT_EQ(kinds(g.escape()), (std::vector<Kind>{Kind::leave_brush}));
+    EXPECT_TRUE(brush_leaves(true, BrushEvent::escape, final_stage));
+    // With a stroke under way the same Esc cancels the stroke and Brush mode stays.
+    (void)press(g, {0.0f, 0.0f});
+    EXPECT_EQ(kinds(g.escape()), (std::vector<Kind>{Kind::cancel_stroke}));
+}
+
+TEST(BrushLeaves, NeverWhenItIsOffAlready) {
+    for (const BrushEvent event :
+         {BrushEvent::view_changed, BrushEvent::photo_opened, BrushEvent::escape}) {
+        EXPECT_FALSE(brush_leaves(false, event, StageId::decode));
+    }
+}
+
+TEST(BrushMenu, IsCheckedWhileOnAndTurnsOnOnlyWhereTheBrushWorks) {
+    // On: checked, and it can always be turned off, even where the brush isn't available.
+    EXPECT_EQ(brush_menu_item(true, true, final_stage), (BrushMenuItem{true, true, false}));
+    EXPECT_EQ(brush_menu_item(true, true, StageId::exposure), (BrushMenuItem{true, true, false}));
+    // Off with a photo: on where it works, else greyed out with the reason.
+    EXPECT_EQ(brush_menu_item(false, true, final_stage), (BrushMenuItem{false, true, false}));
+    EXPECT_EQ(brush_menu_item(false, true, StageId::dodge_burn),
+              (BrushMenuItem{false, true, false}));
+    EXPECT_EQ(brush_menu_item(false, true, StageId::exposure), (BrushMenuItem{false, false, true}));
+    // No photo: greyed out, with nothing to explain.
+    EXPECT_EQ(brush_menu_item(false, false, final_stage), (BrushMenuItem{false, false, false}));
+}
+
+TEST(BrushMenu, ChoosingItTogglesBrushModeAsBDoes) {
+    // The item calls the same toggle as B and the row's button: tools_after_key with the menu's
+    // own availability.
+    const CanvasTools off{};
+    const CanvasTools on{false, false, false, true};
+    EXPECT_EQ(tools_after_key(off, ToolKey::brush, true, true,
+                              brush_menu_item(false, true, final_stage).enabled),
+              on);
+    EXPECT_EQ(tools_after_key(on, ToolKey::brush, true, true,
+                              brush_menu_item(true, true, final_stage).enabled),
+              off);
+    EXPECT_EQ(tools_after_key(off, ToolKey::brush, true, true,
+                              brush_menu_item(false, true, StageId::exposure).enabled),
+              off);
 }
 
 }  // namespace

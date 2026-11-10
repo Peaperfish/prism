@@ -299,6 +299,29 @@ private:
     float softness_ = brush_softness_default;
 };
 
+// What can end Brush mode besides the tool keys (tools_after_key).
+enum class BrushEvent {
+    view_changed,  // the viewed stage is now `viewed`
+    photo_opened,  // another photo was opened
+    escape,        // Esc with no stroke under way (BrushGesture::escape says leave_brush)
+};
+
+// Whether `event` ends Brush mode, which is `on`: moving the view to a stage before Dodge & burn
+// (the strokes' effect isn't in the picture there), opening another photo, and Esc. Never when it
+// is off already.
+[[nodiscard]] bool brush_leaves(bool on, BrushEvent event, StageId viewed) noexcept;
+
+// View > Brush: checked while Brush mode is on; it can always be turned off, and turned on only
+// with a photo open and the Brush available at the viewed stage (as tools_after_key's brush_ok).
+struct BrushMenuItem {
+    bool checked = false;
+    bool enabled = false;
+    bool shows_hint = false;  // greyed out for the stage: the tooltip says why (brush_unavailable_hint)
+
+    bool operator==(const BrushMenuItem&) const = default;
+};
+[[nodiscard]] BrushMenuItem brush_menu_item(bool on, bool has_file, StageId viewed) noexcept;
+
 // Which of the canvas's tools are on.
 struct CanvasTools {
     bool sampling = false;

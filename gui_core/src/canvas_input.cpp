@@ -221,6 +221,25 @@ bool brush_available(StageId viewed) noexcept {
     return static_cast<int>(viewed) >= static_cast<int>(StageId::dodge_burn);
 }
 
+bool brush_leaves(bool on, BrushEvent event, StageId viewed) noexcept {
+    if (!on) {
+        return false;
+    }
+    switch (event) {
+        case BrushEvent::view_changed:
+            return !brush_available(viewed);
+        case BrushEvent::photo_opened:
+        case BrushEvent::escape:
+            return true;
+    }
+    return false;
+}
+
+BrushMenuItem brush_menu_item(bool on, bool has_file, StageId viewed) noexcept {
+    const bool available = brush_available(viewed);
+    return {on, on || (has_file && available), has_file && !on && !available};
+}
+
 float snap_brush_strength(float strength) noexcept {
     if (std::isnan(strength)) {
         return brush_strength_default;

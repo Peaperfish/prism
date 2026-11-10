@@ -361,9 +361,13 @@ void App::open_now(const fs::path& path) {
     strip_bands_.clear();
     view_ = {};  // each photo starts whole
     sample_.opened();
-    brush_.opened();
-    brush_gesture_ = {};  // the new photo's history has no gesture in it
+    // The new photo's history has no gesture in it: what the brush was doing is dropped, not
+    // committed, before it leaves.
+    brush_gesture_ = {};
     stroke_painter_ = {};
+    if (gui::brush_leaves(brush_.on(), gui::BrushEvent::photo_opened, viewed_stage_)) {
+        leave_brush();
+    }
     sample_click_.cancel();
     leave_pick();
     sample_pin_trace_.clear();
@@ -890,7 +894,7 @@ void App::update_preview() {
     if (pick_.on() && !gui::pick_available(viewed_stage_, compare_stage_)) {
         leave_pick();  // White balance isn't in the picture, so there is nothing to judge a grey by
     }
-    if (brush_.on() && !gui::brush_available(viewed_stage_)) {
+    if (gui::brush_leaves(brush_.on(), gui::BrushEvent::view_changed, viewed_stage_)) {
         leave_brush();  // the strokes aren't in the picture before Dodge & burn
     }
     gui::PreviewOptions options;
@@ -1544,12 +1548,12 @@ void App::draw_menu() {
             ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled)) {
             ImGui::SetTooltip("%s", gui::view_hint(viewed_stage_, compare_stage_).c_str());
         }
-        const bool can_brush = gui::brush_available(viewed_stage_);
-        if (ImGui::MenuItem("Brush", "B", brush_.on(),
-                            brush_.on() || (session_.has_file() && can_brush))) {
+        const gui::BrushMenuItem brush_item =
+            gui::brush_menu_item(brush_.on(), session_.has_file(), viewed_stage_);
+        if (ImGui::MenuItem("Brush", "B", brush_item.checked, brush_item.enabled)) {
             toggle_brush();
         }
-        if (session_.has_file() && !brush_.on() && !can_brush &&
+        if (brush_item.shows_hint &&
             ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled)) {
             ImGui::SetTooltip("%s", gui::brush_unavailable_hint);
         }
@@ -1947,7 +1951,9 @@ void App::apply_brush(const std::vector<gui::BrushAction>& actions) {
     for (const gui::BrushAction& action : actions) {
         switch (action.kind) {
             case gui::BrushActionKind::leave_brush:
-                leave_brush();
+                if (gui::brush_leaves(brush_.on(), gui::BrushEvent::escape, viewed_stage_)) {
+                    leave_brush();
+                }
                 break;
             case gui::BrushActionKind::passthrough:
                 break;  // the hand's: update_hand_drag moves the picture
