@@ -28,6 +28,7 @@ inline constexpr std::string_view pick_neutral = "Pick neutral";
 inline constexpr std::string_view test_strip = "Test strip";
 inline constexpr std::string_view brush = "Brush";
 inline constexpr std::string_view clear_strokes = "Clear";
+inline constexpr std::string_view strength = "Strength";  // the label before the Strength slider
 // The widest Strength reads "2.0 stops" (brush_strength_text); the controls line measures it.
 inline constexpr std::string_view widest_strength = "2.0 stops";
 }  // namespace light_path_text

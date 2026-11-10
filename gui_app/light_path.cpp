@@ -289,7 +289,7 @@ float draw_pick_button(const LightPathData& data, float right, float line_y, flo
     return left;
 }
 
-// Dodge & burn's controls line: Brush, the Strength slider with its value, and Clear. The Brush is
+// Dodge & burn's controls line: Brush, the Strength slider with its label and value, and Clear. The Brush is
 // drawn in its pressed look while Brush mode is on, and acts on the press like Pick neutral. The
 // buttons are as tall as the line. Strength is the brush's setting, so it works whether the stage
 // is on or off; Clear is greyed out with no strokes.
@@ -303,9 +303,11 @@ void draw_brush_controls(const LightPathData& data, const gui::LightPathRow& row
     const float brush_width = text_width(brush_label) + 2 * brush_button_padding();
     const float clear_width = text_width(clear_label) + 2 * brush_button_padding();
     const float value_width = text_width(gui::light_path_text::widest_strength);
+    const float label_width = text_width(gui::light_path_text::strength);
     ImGui::PopFont();
     const float gap = first_line_gap();
-    const float track = std::max(1.0f, width - brush_width - clear_width - value_width - 3 * gap);
+    const float track = std::max(
+        1.0f, width - brush_width - label_width - clear_width - value_width - 4 * gap);
 
     const auto button = [&](const std::string& label, float left, float button_width, bool pressed,
                             bool can_act, const char* id, std::string_view explain_id,
@@ -343,8 +345,18 @@ void draw_brush_controls(const LightPathData& data, const gui::LightPathRow& row
     button(brush_label, x, brush_width, data.brush_on, data.brush_on || data.brush_available,
            "brush", gui::explain::dodge_burn_brush, data.brush_hint, cb.toggle_brush);
 
+    // The slider's label, muted like White balance's captions.
+    const float label_left = x + brush_width + gap;
+    ImGui::PushFont(nullptr, token_type().small);
+    text_in_band(ImGui::GetWindowDrawList(), label_left, y, height,
+                 ImGui::GetColorU32(ImGuiCol_TextDisabled), gui::light_path_text::strength);
+    note_fit(data, "Strength label", gui::light_path_text::strength,
+             gui::light_path_text::strength, label_width);
+    ImGui::PopFont();
+    const float track_left = label_left + label_width + gap;
+
     ImGui::PushID("strength");
-    ImGui::SetCursorScreenPos(ImVec2(x + brush_width + gap, y));
+    ImGui::SetCursorScreenPos(ImVec2(track_left, y));
     ImGui::SetNextItemWidth(track);
     float strength = controls.strength;
     const bool changed =
@@ -366,7 +378,7 @@ void draw_brush_controls(const LightPathData& data, const gui::LightPathRow& row
         }
     }
     ImGui::PopID();
-    const float value_left = x + brush_width + gap + track + gap;
+    const float value_left = track_left + track + gap;
     const std::string value = changed ? gui::brush_strength_text(snapped) : controls.strength_text;
     ImGui::PushFont(nullptr, token_type().small);
     text_in_band(ImGui::GetWindowDrawList(), value_left + value_width - text_width(value), y, height,
@@ -936,11 +948,12 @@ float light_path_min_width() {
         }
     }
 
-    // Dodge & burn's controls line: Brush, a track, the value and Clear.
-    row_need = std::max(row_need, small_text(gui::light_path_text::brush) + wb_min_track() +
+    // Dodge & burn's controls line: Brush, the Strength label, a track, the value and Clear.
+    row_need = std::max(row_need, small_text(gui::light_path_text::brush) +
+                                      small_text(gui::light_path_text::strength) + wb_min_track() +
                                       small_text(gui::light_path_text::widest_strength) +
                                       small_text(gui::light_path_text::clear_strokes) +
-                                      4 * brush_button_padding() + 3 * first_line_gap());
+                                      4 * brush_button_padding() + 4 * first_line_gap());
 
     // White balance's sliders: caption, a track, value.
     row_need = std::max(row_need, white_balance_caption_width() + wb_min_track() +

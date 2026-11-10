@@ -1638,9 +1638,10 @@ TEST_F(MinimumWidthHeadless, EveryWorstCaseTextIsDrawnInFullAtTheMinimumWidth) {
         EXPECT_TRUE(seen("Kelvin value", "15000 K")) << scale;
         EXPECT_TRUE(seen("Tint value", "\xE2\x88\x92" "100")) << scale;
         EXPECT_TRUE(seen("Value", "Camera default")) << scale;
-        // Dodge & burn: the longest value, and the controls line's value and track.
+        // Dodge & burn: the longest value, and the controls line's label, value and track.
         EXPECT_TRUE(seen("Value", std::string(gui::widest_strokes_value))) << scale;
         EXPECT_TRUE(seen("Value", "999 dodges when on")) << scale;
+        EXPECT_TRUE(seen("Strength label", "Strength")) << scale;
         EXPECT_TRUE(seen("Strength value", "2.0 stops")) << scale;
         EXPECT_TRUE(seen("Strength track", "track")) << scale;
         EXPECT_TRUE(seen("Value", "From recipe")) << scale;
