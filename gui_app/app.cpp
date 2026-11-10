@@ -2786,7 +2786,7 @@ void App::draw_light_path_panel() {
     LightPathData data;
     data.view = gui::light_path_view({session_.settings(), session_.kind(), file_kind,
                                       viewed_stage_, compare_stage_,
-                                      clips_ ? &*clips_ : nullptr});
+                                      clips_ ? &*clips_ : nullptr, session_.as_shot_white()});
     data.theme = theme();
     data.strip_on = strip_.has_value();
     data.strip_available = gui::strip_available(viewed_stage_);
@@ -2815,6 +2815,19 @@ void App::draw_light_path_panel() {
     cb.reset_slider = [this](gui::SimpleControl control) {
         gui::EditSettings s = session_.settings();
         gui::reset_simple_control(s, control);
+        report(session_.set_settings(s));
+    };
+    cb.white_balance_slider = [this](gui::WhiteBalanceControl control, std::optional<double> value,
+                                     const gui::SliderFrame& frame) {
+        gui::EditSettings edited = session_.settings();
+        if (value) {
+            gui::set_white_balance(edited, control, *value, session_.as_shot_white());
+        }
+        report(gui::apply_slider_frame(session_, frame, edited));
+    };
+    cb.reset_white_balance = [this] {
+        gui::EditSettings s = session_.settings();
+        gui::reset_white_balance(s);
         report(session_.set_settings(s));
     };
     cb.set_curve_kind = [this](gui::CurveKind kind) {

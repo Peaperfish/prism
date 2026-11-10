@@ -43,6 +43,12 @@ struct LightPathCallbacks {
     // the new multiplier, or none when the frame moved nothing (a press, a release).
     std::function<void(std::optional<float> contrast, const gui::SliderFrame&)> contrast_slider;
     std::function<void(gui::SimpleControl)> reset_slider;
+    // One of the White balance row's two sliders: the new Kelvin or tint (gui::set_white_balance
+    // snaps it), or none when the frame moved nothing (a press, a release).
+    std::function<void(gui::WhiteBalanceControl, std::optional<double> value,
+                       const gui::SliderFrame&)>
+        white_balance_slider;
+    std::function<void()> reset_white_balance;  // back to As shot
     std::function<void(gui::CurveKind)> set_curve_kind;
     std::function<void(float value, const gui::SliderFrame&)> curve_parameter;
     std::function<void()> reset_curve_parameter;

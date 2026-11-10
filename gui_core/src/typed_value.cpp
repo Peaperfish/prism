@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <string>
 
 #include "prism/gui/paper_grade.hpp"
 #include "prism/gui/stage_controls.hpp"
@@ -15,6 +16,7 @@ namespace {
 
 constexpr std::array<std::string_view, 2> exposure_units{"stops", "stop"};
 constexpr std::array<std::string_view, 2> factor_units{"\xC3\x97", "x"};  // "×" in UTF-8, and x
+constexpr std::array<std::string_view, 2> kelvin_units{"K", "kelvin"};
 
 bool is_space(char c) noexcept {
     return c == ' ' || c == '\t' || c == '\n' || c == '\r';
@@ -203,6 +205,40 @@ std::optional<float> typed_slider_position(SimpleControl control, std::string_vi
         return std::nullopt;
     }
     return simple_position_for(control, *value);
+}
+
+std::optional<double> typed_white_balance_value(WhiteBalanceControl control,
+                                                std::string_view text) {
+    if (control == WhiteBalanceControl::tint) {
+        const std::optional<float> tint = parse_typed_number(text, {});
+        return tint ? std::optional<double>(snap_tint(*tint)) : std::nullopt;
+    }
+    // Kelvin is a whole number of thousands: drop the spaces, and a mark that only groups them.
+    std::string digits;
+    for (const char c : text) {
+        if (!is_space(c)) {
+            digits += c;
+        }
+    }
+    const auto is_digit = [&](std::size_t i) {
+        return i < digits.size() && digits[i] >= '0' && digits[i] <= '9';
+    };
+    const std::size_t mark = digits.find_first_of(".,");
+    if (mark != std::string::npos && digits.find_first_of(".,", mark + 1) == std::string::npos &&
+        mark >= 1 && mark <= 2 && is_digit(0) && is_digit(mark - 1) && is_digit(mark + 1) &&
+        is_digit(mark + 2) && is_digit(mark + 3) && !is_digit(mark + 4)) {
+        digits.erase(mark, 1);
+    }
+    const std::optional<float> kelvin = parse_typed_number(digits, kelvin_units);
+    if (!kelvin || !(*kelvin > 0.0f)) {
+        return std::nullopt;  // no light has a temperature of zero or below
+    }
+    return snap_kelvin(*kelvin);
+}
+
+std::string typed_field_text(const WhiteBalance& shown, WhiteBalanceControl control) {
+    return control == WhiteBalanceControl::kelvin ? format_kelvin(shown.kelvin)
+                                                  : format_tint(shown.tint);
 }
 
 std::string typed_field_text(const EditSettings& s, SimpleControl control) {

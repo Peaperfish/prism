@@ -9,6 +9,8 @@
 
 #include "prism/gui/paper_grade.hpp"
 #include "prism/gui/stage_controls.hpp"
+#include "prism/ranges.hpp"
+#include "prism/white_balance.hpp"
 
 using prism::gui::CurveKind;
 using prism::gui::EditSettings;
@@ -165,9 +167,9 @@ TEST(StageFormat, MultipliersUseTheTimesSignInEveryOutput) {
         s.saturation = v;
         s.contrast = v == 0.0f ? 0.1f : v;
         s.exposure_stops = v - 1;
-        for (const StageId stage : {StageId::decode, StageId::exposure, StageId::matrix,
-                                    StageId::saturation, StageId::contrast, StageId::curve,
-                                    StageId::encode}) {
+        for (const StageId stage : {StageId::decode, StageId::exposure, StageId::white_balance,
+                                    StageId::matrix, StageId::saturation, StageId::contrast,
+                                    StageId::curve, StageId::encode}) {
             EXPECT_FALSE(has_ascii_x_times(prism::gui::stage_value_text(s, stage))) << v;
         }
         EXPECT_FALSE(has_ascii_x_times(prism::gui::format_multiplier(v)));
@@ -553,4 +555,229 @@ TEST(Escape, SampleModeAloneIsOnePress) {
     EXPECT_EQ(escape_action(c), EscapeAction::clear_sample);
     c.sampling = false;
     EXPECT_EQ(escape_action(c), EscapeAction::none);
+}
+
+// --- White balance -----------------------------------------------------------------------------
+
+namespace {
+
+using prism::WhiteBalance;
+using prism::gui::WhiteBalanceControl;
+
+// The as-shot white of a photo lit by `wb`.
+std::optional<prism::Chromaticity> lit_by(WhiteBalance wb) {
+    return prism::white_of(wb);
+}
+
+double mired(double kelvin) {
+    return 1e6 / kelvin;
+}
+
+}  // namespace
+
+TEST(WhiteBalanceSlider, TheEndsAreTheEndsOfTheKelvinRange) {
+    EXPECT_EQ(prism::kelvin_range.min, 2000.0);
+    EXPECT_EQ(prism::kelvin_range.max, 15000.0);
+    EXPECT_EQ(prism::gui::kelvin_at_slider_position(0.0), 2000.0);
+    EXPECT_EQ(prism::gui::kelvin_at_slider_position(1.0), 15000.0);
+    EXPECT_EQ(prism::gui::kelvin_slider_position(2000.0), 0.0);
+    EXPECT_EQ(prism::gui::kelvin_slider_position(15000.0), 1.0);
+    // Past the ends, and no number at all.
+    EXPECT_EQ(prism::gui::kelvin_at_slider_position(-0.5), 2000.0);
+    EXPECT_EQ(prism::gui::kelvin_at_slider_position(1.5), 15000.0);
+    EXPECT_EQ(prism::gui::kelvin_slider_position(500.0), 0.0);
+    EXPECT_EQ(prism::gui::kelvin_slider_position(40000.0), 1.0);
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    EXPECT_EQ(prism::gui::kelvin_at_slider_position(nan), 2000.0);
+    EXPECT_EQ(prism::gui::kelvin_slider_position(nan), prism::gui::kelvin_slider_position(6500.0));
+}
+
+TEST(WhiteBalanceSlider, TheMiddleIsTheMiredMidpointNotTheKelvinOne) {
+    const double middle_mired = (mired(2000.0) + mired(15000.0)) / 2.0;
+    const double middle_kelvin = 1e6 / middle_mired;
+    EXPECT_NEAR(middle_kelvin, 3529.4, 0.05);  // 60 / 17 thousand
+    EXPECT_NEAR(prism::gui::kelvin_at_slider_position(0.5), middle_kelvin, 1e-6);
+    EXPECT_NEAR(prism::gui::kelvin_slider_position(middle_kelvin), 0.5, 1e-12);
+    // Linear in Kelvin it would be 8500 K, far to the right of this slider's middle.
+    EXPECT_GT(prism::gui::kelvin_slider_position(8500.0), 0.85);
+}
+
+TEST(WhiteBalanceSlider, EqualStepsAlongItAreEqualStepsInMireds) {
+    const double step = (mired(2000.0) - mired(15000.0)) / 20.0;
+    for (int i = 0; i <= 20; ++i) {
+        const double kelvin = prism::gui::kelvin_at_slider_position(i / 20.0);
+        EXPECT_NEAR(mired(kelvin), mired(2000.0) - i * step, 1e-9) << i;
+        if (i > 0) {
+            EXPECT_GT(kelvin, prism::gui::kelvin_at_slider_position((i - 1) / 20.0));
+        }
+    }
+}
+
+TEST(WhiteBalanceSlider, PositionAndKelvinRoundTrip) {
+    for (double kelvin = 2000.0; kelvin <= 15000.0; kelvin += 10.0) {
+        const double position = prism::gui::kelvin_slider_position(kelvin);
+        EXPECT_GE(position, 0.0);
+        EXPECT_LE(position, 1.0);
+        EXPECT_NEAR(prism::gui::kelvin_at_slider_position(position), kelvin, 1e-6) << kelvin;
+        // Through the slider's own float, a drag still lands on the same 10 K.
+        const float as_float = static_cast<float>(position);
+        EXPECT_EQ(prism::gui::snap_kelvin(prism::gui::kelvin_at_slider_position(as_float)), kelvin)
+            << kelvin;
+    }
+    for (int i = 0; i <= 1000; ++i) {
+        const double position = i / 1000.0;
+        EXPECT_NEAR(prism::gui::kelvin_slider_position(
+                        prism::gui::kelvin_at_slider_position(position)),
+                    position, 1e-12);
+    }
+}
+
+TEST(WhiteBalanceSlider, SnapsKelvinToTenAndTintToWholeNumbersWithinTheirRanges) {
+    EXPECT_EQ(prism::gui::snap_kelvin(5327.0), 5330.0);
+    EXPECT_EQ(prism::gui::snap_kelvin(5324.9), 5320.0);
+    EXPECT_EQ(prism::gui::snap_kelvin(1200.0), 2000.0);
+    EXPECT_EQ(prism::gui::snap_kelvin(99999.0), 15000.0);
+    EXPECT_EQ(prism::gui::snap_tint(26.6), 27.0);
+    EXPECT_EQ(prism::gui::snap_tint(-26.6), -27.0);
+    EXPECT_EQ(prism::gui::snap_tint(-140.0), -100.0);
+    EXPECT_EQ(prism::gui::snap_tint(140.0), 100.0);
+    EXPECT_FALSE(std::signbit(prism::gui::snap_tint(-0.2)));
+}
+
+TEST(WhiteBalanceFormat, KelvinToTenAndTintWithItsSignAndARealMinus) {
+    EXPECT_EQ(prism::gui::format_kelvin(5327.0), "5330 K");
+    EXPECT_EQ(prism::gui::format_kelvin(6500.0), "6500 K");
+    EXPECT_EQ(prism::gui::format_kelvin(15000.0), "15000 K");
+    EXPECT_EQ(prism::gui::format_tint(26.6), "+27");
+    EXPECT_EQ(prism::gui::format_tint(10.0), "+10");
+    EXPECT_EQ(prism::gui::format_tint(0.0), "0");
+    EXPECT_EQ(prism::gui::format_tint(-0.3), "0");
+    EXPECT_EQ(prism::gui::format_tint(-10.0), "\xE2\x88\x92" "10");  // U+2212, not a hyphen
+    EXPECT_EQ(prism::gui::format_tint(-10.0).find('-'), std::string::npos);
+}
+
+TEST(WhiteBalanceValue, AsShotOnARawFileShowsTheCamerasLight) {
+    const EditSettings s;
+    EXPECT_EQ(prism::gui::white_balance_value_text(s, lit_by({5328, 26.7})),
+              "As shot \xC2\xB7 5330 K, tint +27");
+    EXPECT_EQ(prism::gui::white_balance_value_text(s, lit_by({4000, -12.3})),
+              "As shot \xC2\xB7 4000 K, tint \xE2\x88\x92" "12");
+    EXPECT_EQ(prism::gui::white_balance_value_text(s, lit_by({6500, 0})),
+              "As shot \xC2\xB7 6500 K, tint 0");
+}
+
+TEST(WhiteBalanceValue, AsShotWithoutACamerasLightIsTakenAs6500) {
+    EXPECT_EQ(prism::gui::white_balance_value_text(EditSettings{}, std::nullopt),
+              "As shot \xC2\xB7 taken as 6500 K");
+}
+
+TEST(WhiteBalanceValue, AChosenLightShowsItsKelvinAndTint) {
+    EditSettings s;
+    s.white_balance = WhiteBalance{5200, 10};
+    // The same with and without the photo's own light: the choice is what is shown.
+    for (const auto& as_shot : {std::optional<prism::Chromaticity>{}, lit_by({5328, 26.7})}) {
+        EXPECT_EQ(prism::gui::white_balance_value_text(s, as_shot), "5200 K \xC2\xB7 tint +10");
+    }
+    EXPECT_EQ(prism::gui::stage_value_text(s, StageId::white_balance), "5200 K \xC2\xB7 tint +10");
+    s.white_balance = WhiteBalance{5200, 0};
+    EXPECT_EQ(prism::gui::white_balance_value_text(s, std::nullopt), "5200 K \xC2\xB7 tint 0");
+    s.white_balance = WhiteBalance{3200, -10};
+    EXPECT_EQ(prism::gui::white_balance_value_text(s, std::nullopt),
+              "3200 K \xC2\xB7 tint \xE2\x88\x92" "10");
+    EXPECT_EQ(prism::gui::stage_value_text(EditSettings{}, StageId::white_balance), "As shot");
+}
+
+TEST(WhiteBalanceControls, AsShotTheSlidersSitAtTheAsShotLightClampedToTheirRanges) {
+    const EditSettings s;
+    EXPECT_EQ(prism::gui::slider_white_balance(s, lit_by({5328, 26.7})), (WhiteBalance{5330, 27}));
+    EXPECT_EQ(prism::gui::slider_white_balance(s, std::nullopt), (WhiteBalance{6500, 0}));
+    // A light the sliders cannot reach sits at their ends.
+    const WhiteBalance hot = prism::gui::slider_white_balance(s, lit_by({1500, 0}));
+    EXPECT_EQ(hot.kelvin, 2000.0);
+    EXPECT_GE(hot.tint, -100.0);
+    EXPECT_LE(hot.tint, 100.0);
+    // The unrounded light is what the value line reads from.
+    const WhiteBalance as_shot = prism::gui::as_shot_white_balance(lit_by({5328, 26.7}));
+    EXPECT_NEAR(as_shot.kelvin, 5328.0, 1.0);
+    EXPECT_NEAR(as_shot.tint, 26.7, 0.2);
+    EXPECT_EQ(prism::gui::as_shot_white_balance(std::nullopt), prism::default_as_shot);
+}
+
+TEST(WhiteBalanceControls, MovingOneSliderTakesTheOtherNumberFromAsShot) {
+    const auto as_shot = lit_by({5328, 26.7});
+    EditSettings kelvin;
+    prism::gui::set_white_balance(kelvin, WhiteBalanceControl::kelvin, 4204.0, as_shot);
+    EXPECT_EQ(kelvin.white_balance, (WhiteBalance{4200, 27}));
+
+    EditSettings tint;
+    prism::gui::set_white_balance(tint, WhiteBalanceControl::tint, -3.4, as_shot);
+    EXPECT_EQ(tint.white_balance, (WhiteBalance{5330, -3}));
+
+    // Without a camera's light the other number is 6500 K, or tint 0.
+    EditSettings plain;
+    prism::gui::set_white_balance(plain, WhiteBalanceControl::tint, 12.0, std::nullopt);
+    EXPECT_EQ(plain.white_balance, (WhiteBalance{6500, 12}));
+    // Nothing but the white balance changed.
+    plain.white_balance.reset();
+    EXPECT_EQ(plain, EditSettings{});
+}
+
+TEST(WhiteBalanceControls, OnceChosenEachSliderChangesOnlyItsOwnNumber) {
+    EditSettings s;
+    s.white_balance = WhiteBalance{5234.5, 3.25};  // off the sliders' grid, as a recipe may be
+    const auto as_shot = lit_by({3000, -40});
+    prism::gui::set_white_balance(s, WhiteBalanceControl::tint, 15.0, as_shot);
+    EXPECT_EQ(s.white_balance, (WhiteBalance{5234.5, 15}));
+    prism::gui::set_white_balance(s, WhiteBalanceControl::kelvin, 7000.0, as_shot);
+    EXPECT_EQ(s.white_balance, (WhiteBalance{7000, 15}));
+    // Values are clamped to the sliders' ranges.
+    prism::gui::set_white_balance(s, WhiteBalanceControl::kelvin, 90000.0, as_shot);
+    prism::gui::set_white_balance(s, WhiteBalanceControl::tint, -500.0, as_shot);
+    EXPECT_EQ(s.white_balance, (WhiteBalance{15000, -100}));
+    EXPECT_TRUE(prism::gui::validate(s).empty());
+}
+
+TEST(WhiteBalanceControls, ASliderSetToWhereItSitsLeavesAnAsShotPhotoAsShot) {
+    const auto as_shot = lit_by({5328, 26.7});
+    EditSettings s;
+    prism::gui::set_white_balance(s, WhiteBalanceControl::kelvin, 5331.0, as_shot);
+    prism::gui::set_white_balance(s, WhiteBalanceControl::tint, 27.2, as_shot);
+    prism::gui::set_white_balance(s, WhiteBalanceControl::tint,
+                                  std::numeric_limits<double>::quiet_NaN(), as_shot);
+    EXPECT_EQ(s, EditSettings{});
+    // Once chosen, the same numbers are a choice and stay one.
+    prism::gui::set_white_balance(s, WhiteBalanceControl::kelvin, 5400.0, as_shot);
+    prism::gui::set_white_balance(s, WhiteBalanceControl::kelvin, 5330.0, as_shot);
+    EXPECT_EQ(s.white_balance, (WhiteBalance{5330, 27}));
+}
+
+TEST(WhiteBalanceControls, MovingASliderTurnsTheStageOnAndResetGoesBackToAsShotExactly) {
+    EditSettings s;
+    s.white_balance_on = false;
+    prism::gui::set_white_balance(s, WhiteBalanceControl::kelvin, 4000.0, std::nullopt);
+    EXPECT_TRUE(s.white_balance_on);
+    ASSERT_TRUE(s.white_balance);
+
+    s.white_balance_on = false;
+    prism::gui::reset_white_balance(s);
+    EXPECT_EQ(s.white_balance, std::nullopt);
+    EXPECT_TRUE(s.white_balance_on);
+    EXPECT_EQ(s, EditSettings{});
+    EXPECT_FALSE(prism::gui::to_process_settings(s).white_balance);
+}
+
+TEST(WhiteBalanceControls, EveryChoiceTheSlidersCanMakeIsValid) {
+    for (const double position : {0.0, 0.001, 0.37, 0.5, 0.999, 1.0}) {
+        for (const double tint : {-100.0, -0.4, 0.0, 33.3, 100.0}) {
+            EditSettings s;
+            prism::gui::set_white_balance(s, WhiteBalanceControl::kelvin,
+                                          prism::gui::kelvin_at_slider_position(position),
+                                          lit_by({9000, 60}));
+            prism::gui::set_white_balance(s, WhiteBalanceControl::tint, tint, lit_by({9000, 60}));
+            ASSERT_TRUE(s.white_balance);
+            EXPECT_TRUE(prism::gui::validate(s).empty());
+            EXPECT_EQ(std::fmod(s.white_balance->kelvin, 10.0), 0.0);
+            EXPECT_EQ(s.white_balance->tint, std::round(s.white_balance->tint));
+        }
+    }
 }

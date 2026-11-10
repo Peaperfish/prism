@@ -1,8 +1,14 @@
 #include <gtest/gtest.h>
 
+#include <initializer_list>
+#include <optional>
+
 #include "prism/gui/session.hpp"
 #include "prism/gui/settings.hpp"
 #include "prism/gui/slider_gesture.hpp"
+#include "prism/gui/stage_controls.hpp"
+#include "prism/gui/typed_value.hpp"
+#include "prism/white_balance.hpp"
 
 using prism::gui::apply_slider_frame;
 using prism::gui::EditSettings;
@@ -135,4 +141,77 @@ TEST(SliderGesture, UndoDuringADragUndoesTheWholeDrag) {
     // The release that follows changes nothing.
     EXPECT_EQ(apply_slider_frame(session, release, session.settings()), std::nullopt);
     EXPECT_FALSE(session.history().can_undo());
+}
+
+// --- White balance: the same gesture, through set_white_balance as the window calls it -----------
+
+namespace {
+
+using prism::WhiteBalance;
+using prism::gui::WhiteBalanceControl;
+
+// One frame of a White balance slider, as App's callback applies it.
+void white_balance_frame(Session& session, const SliderFrame& frame, WhiteBalanceControl control,
+                         std::optional<double> value,
+                         const std::optional<prism::Chromaticity>& as_shot) {
+    EditSettings edited = session.settings();
+    if (value) {
+        prism::gui::set_white_balance(edited, control, *value, as_shot);
+    }
+    EXPECT_EQ(apply_slider_frame(session, frame, edited), std::nullopt);
+}
+
+}  // namespace
+
+TEST(SliderGesture, AWhiteBalanceDragFromAsShotIsOneUndoStepBackToAsShot) {
+    const std::optional<prism::Chromaticity> as_shot = prism::white_of(WhiteBalance{5328, 26.7});
+    Session session;
+    white_balance_frame(session, press, WhiteBalanceControl::kelvin, std::nullopt, as_shot);
+    EXPECT_FALSE(session.settings().white_balance) << "a press alone chooses nothing";
+    for (const double kelvin : {5001.0, 4803.0, 4498.0, 4204.0}) {
+        white_balance_frame(session, move, WhiteBalanceControl::kelvin, kelvin, as_shot);
+    }
+    EXPECT_EQ(session.history().undo_steps(), 0u) << "still dragging";
+    white_balance_frame(session, release, WhiteBalanceControl::kelvin, std::nullopt, as_shot);
+    EXPECT_EQ(session.settings().white_balance, (WhiteBalance{4200, 27}));
+    EXPECT_EQ(session.history().undo_steps(), 1u);
+
+    EXPECT_EQ(session.undo(), std::nullopt);
+    EXPECT_EQ(session.settings(), EditSettings{}) << "As shot again, exactly";
+    EXPECT_FALSE(session.history().can_undo());
+}
+
+TEST(SliderGesture, ATypedWhiteBalanceValueAndAResetAreOneStepEach) {
+    const std::optional<prism::Chromaticity> as_shot = prism::white_of(WhiteBalance{5328, 26.7});
+    Session session;
+    const std::optional<double> typed =
+        prism::gui::typed_white_balance_value(WhiteBalanceControl::kelvin, "5 200 K");
+    ASSERT_TRUE(typed);
+    white_balance_frame(session, SliderFrame{true, true, true}, WhiteBalanceControl::kelvin, typed,
+                        as_shot);
+    EXPECT_EQ(session.settings().white_balance, (WhiteBalance{5200, 27}));
+    EXPECT_EQ(session.history().undo_steps(), 1u);
+
+    white_balance_frame(session, SliderFrame{true, true, true}, WhiteBalanceControl::tint,
+                        prism::gui::typed_white_balance_value(WhiteBalanceControl::tint, "-10"),
+                        as_shot);
+    EXPECT_EQ(session.settings().white_balance, (WhiteBalance{5200, -10}));
+    EXPECT_EQ(session.history().undo_steps(), 2u);
+
+    EditSettings reset = session.settings();
+    prism::gui::reset_white_balance(reset);
+    EXPECT_EQ(session.set_settings(reset), std::nullopt);
+    EXPECT_EQ(session.settings().white_balance, std::nullopt);
+    EXPECT_EQ(session.history().undo_steps(), 3u);
+    EXPECT_EQ(session.undo(), std::nullopt);
+    EXPECT_EQ(session.settings().white_balance, (WhiteBalance{5200, -10}));
+}
+
+TEST(SliderGesture, ATypedWhiteBalanceValueThatIsWhereAsShotSitsLeavesNoStep) {
+    const std::optional<prism::Chromaticity> as_shot = prism::white_of(WhiteBalance{5328, 26.7});
+    Session session;
+    white_balance_frame(session, SliderFrame{true, true, true}, WhiteBalanceControl::kelvin, 5330.0,
+                        as_shot);
+    EXPECT_EQ(session.settings(), EditSettings{});
+    EXPECT_EQ(session.history().undo_steps(), 0u);
 }

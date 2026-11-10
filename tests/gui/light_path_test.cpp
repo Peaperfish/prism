@@ -14,6 +14,10 @@ using namespace prism::gui;
 
 namespace {
 
+using prism::Chromaticity;
+using prism::WhiteBalance;
+using prism::white_of;
+
 constexpr StageId all_stages[] = {StageId::decode,   StageId::exposure,   StageId::white_balance,
                                   StageId::matrix,   StageId::saturation, StageId::contrast,
                                   StageId::curve,    StageId::encode};
@@ -50,7 +54,14 @@ ClipReport report_with(ClipFate fate) {
 LightPathRow row_for(StageId stage, const EditSettings& s, const ClipReport* clips = nullptr,
                      StageId viewed = final_stage, std::optional<StageId> compare = {},
                      InputKind kind = InputKind::raw) {
-    return light_path_row({s, kind, "RAW", viewed, compare, clips}, stage);
+    return light_path_row({s, kind, "RAW", viewed, compare, clips, std::nullopt}, stage);
+}
+
+// The White balance row of a photo whose as-shot light is `as_shot`.
+LightPathRow white_balance_row(const EditSettings& s, std::optional<Chromaticity> as_shot = {}) {
+    return light_path_row(
+        {s, InputKind::raw, "RAW", final_stage, std::nullopt, nullptr, as_shot},
+        StageId::white_balance);
 }
 
 float height_of(const LightPathRow& row) {
@@ -104,6 +115,7 @@ TEST(LightPathLayout, ARowsHeightDoesNotFollowItsValuesOrItsState) {
         extreme.exposure_stops = 9.0f;
         extreme.saturation = 0.0f;
         extreme.contrast = 7.0f;
+        extreme.white_balance = WhiteBalance{15000, -100};
         extreme.matrix = MatrixFile{};
         extreme.matrix->path = "a very long file name for a colour matrix that goes on and on.txt";
         extreme.raw_camera_matrix = MatrixFile{};
@@ -184,6 +196,43 @@ TEST(LightPathLayout, PartsFollowOneAnotherInsideTheRow) {
     const LightPathRowLayout matrix = light_path_row_layout(row_for(StageId::matrix, s), metrics);
     EXPECT_EQ(matrix.clip_height, metrics.secondary);
     EXPECT_FALSE(matrix.slider_y || matrix.subtitle_y || matrix.tabs_y);
+}
+
+TEST(LightPathLayout, WhiteBalanceHasASubtitleAndTwoSlidersOneUnderTheOther) {
+    const LightPathRowLayout wb = light_path_row_layout(white_balance_row(EditSettings{}), metrics);
+    EXPECT_EQ(wb.line_y, metrics.pad_top);
+    ASSERT_TRUE(wb.subtitle_y && wb.slider_y && wb.second_slider_y);
+    EXPECT_FALSE(wb.tabs_y || wb.parameter_y || wb.parameter_slider_y);
+    EXPECT_EQ(*wb.subtitle_y, metrics.pad_top + metrics.line + metrics.gap);
+    EXPECT_EQ(*wb.slider_y, *wb.subtitle_y + metrics.secondary + metrics.gap);
+    EXPECT_EQ(*wb.second_slider_y, *wb.slider_y + metrics.slider + metrics.gap);
+    EXPECT_EQ(wb.clip_y, *wb.second_slider_y + metrics.slider + metrics.gap);
+    EXPECT_EQ(wb.clip_height, metrics.secondary);
+    EXPECT_EQ(wb.height, wb.clip_y + metrics.secondary + metrics.pad_bottom);
+    // No other row has a second slider.
+    for (const StageId stage : all_stages) {
+        EXPECT_EQ(light_path_row_layout(row_for(stage, EditSettings{}), metrics)
+                      .second_slider_y.has_value(),
+                  stage == StageId::white_balance);
+    }
+}
+
+TEST(LightPathLayout, WhiteBalanceIsTheSameAsShotChosenAndOffWithOrWithoutACamerasLight) {
+    const LightPathRowLayout expected =
+        light_path_row_layout(white_balance_row(EditSettings{}), metrics);
+    EditSettings chosen;
+    chosen.white_balance = WhiteBalance{2000, -100};
+    EditSettings off = chosen;
+    off.white_balance_on = false;
+    EditSettings as_shot_off;
+    as_shot_off.white_balance_on = false;
+    for (const EditSettings& s : {EditSettings{}, chosen, off, as_shot_off}) {
+        for (const std::optional<Chromaticity>& as_shot :
+             {std::optional<Chromaticity>{}, std::optional<Chromaticity>(white_of({5328, 26.7})),
+              std::optional<Chromaticity>(white_of({15000, 100}))}) {
+            EXPECT_EQ(light_path_row_layout(white_balance_row(s, as_shot), metrics), expected);
+        }
+    }
 }
 
 // --- Clip marks ---------------------------------------------------------------------------------
@@ -314,9 +363,13 @@ TEST(LightPathRows, OnlyTheStagesWithAnEffectHaveSwitchesAndSliders) {
         EXPECT_EQ(row.slider.has_value(), stage_slider(stage).has_value());
         EXPECT_EQ(row.curve_tabs, stage == StageId::curve);
         EXPECT_EQ(row.test_strip, stage == StageId::exposure);
-        EXPECT_EQ(!row.subtitle.empty(), stage == StageId::decode || stage == StageId::encode);
-        EXPECT_EQ(row.slider_reset.empty(), !row.slider.has_value());
+        EXPECT_EQ(!row.subtitle.empty(), stage == StageId::decode || stage == StageId::encode ||
+                                             stage == StageId::white_balance);
+        // White balance has its own two sliders, and no other row has them.
+        EXPECT_EQ(row.white_balance.has_value(), stage == StageId::white_balance);
+        EXPECT_EQ(row.slider_reset.empty(), !row.slider && !row.white_balance);
     }
+    EXPECT_FALSE(stage_slider(StageId::white_balance));
     EXPECT_EQ(row_for(StageId::encode, s).subtitle, "sRGB for the screen");
     EXPECT_EQ(row_for(StageId::exposure, s).slider_reset, "Reset to +0.00 stops");
     EXPECT_EQ(row_for(StageId::contrast, s).slider_reset, "Reset to Grade 2 · ×1.00");
@@ -367,7 +420,8 @@ TEST(LightPathRows, RowsPastWhatIsOnScreenAreDimmedAndSayWhy) {
 TEST(LightPathRows, TheViewHasOneRowPerStageInOrderAndTheCompareWords) {
     const EditSettings s;
     const LightPathView view =
-        light_path_view({s, InputKind::raw, "RAW", StageId::contrast, StageId::decode, nullptr});
+        light_path_view({s, InputKind::raw, "RAW", StageId::contrast, StageId::decode, nullptr,
+                         std::nullopt});
     ASSERT_EQ(view.rows.size(), std::size(all_stages));
     for (std::size_t i = 0; i < view.rows.size(); ++i) {
         EXPECT_EQ(view.rows[i].stage, all_stages[i]);
@@ -387,4 +441,89 @@ TEST(LightPathRows, ClipMarksReachTheirRows) {
     for (const StageId stage : all_stages) {
         EXPECT_EQ(row_for(stage, s, &report).marks.size(), stage == StageId::contrast ? 1u : 0u);
     }
+}
+
+// --- White balance -----------------------------------------------------------------------------
+
+TEST(LightPathWhiteBalance, AsShotOnARawFileReadsTheCamerasLightAndTheSlidersSitThere) {
+    const LightPathRow row = white_balance_row(EditSettings{}, white_of({5328, 26.7}));
+    EXPECT_EQ(row.name, "White balance");
+    EXPECT_EQ(row.subtitle, "The light the photo was lit by");
+    EXPECT_EQ(row.value, "As shot \xC2\xB7 5330 K, tint +27");
+    EXPECT_FALSE(row.value_muted);
+    EXPECT_TRUE(row.can_toggle);
+    EXPECT_TRUE(row.enabled);
+    EXPECT_EQ(row.slider_reset, "Reset to As shot");
+    EXPECT_FALSE(row.slider);  // not one of the -100 to +100 sliders
+    ASSERT_TRUE(row.white_balance);
+    EXPECT_EQ(row.white_balance->kelvin_position, static_cast<float>(kelvin_slider_position(5330)));
+    EXPECT_EQ(row.white_balance->tint_position, 27.0f);
+    EXPECT_EQ(row.white_balance->kelvin_as_shot, row.white_balance->kelvin_position);
+    EXPECT_EQ(row.white_balance->tint_as_shot, 27.0f);
+    EXPECT_EQ(row.white_balance->kelvin_typed, "5330 K");
+    EXPECT_EQ(row.white_balance->tint_typed, "+27");
+    EXPECT_FALSE(row.tooltip.empty());
+}
+
+TEST(LightPathWhiteBalance, AsShotWithoutACamerasLightIsTakenAs6500) {
+    for (const InputKind kind : {InputKind::image, InputKind::raw}) {
+        const EditSettings s;
+        const LightPathRow row = light_path_row(
+            {s, kind, kind == InputKind::raw ? "RAW" : "JPEG", final_stage, std::nullopt, nullptr,
+             std::nullopt},
+            StageId::white_balance);
+        EXPECT_EQ(row.value, "As shot \xC2\xB7 taken as 6500 K");
+        ASSERT_TRUE(row.white_balance);
+        EXPECT_EQ(row.white_balance->kelvin_position,
+                  static_cast<float>(kelvin_slider_position(6500)));
+        EXPECT_EQ(row.white_balance->tint_position, 0.0f);
+        EXPECT_EQ(row.white_balance->kelvin_typed, "6500 K");
+        EXPECT_EQ(row.white_balance->tint_typed, "0");
+    }
+}
+
+TEST(LightPathWhiteBalance, AChosenLightIsShownAndTheFillStillStartsAtAsShot) {
+    EditSettings s;
+    s.white_balance = WhiteBalance{5200, -10};
+    const LightPathRow row = white_balance_row(s, white_of({5328, 26.7}));
+    EXPECT_EQ(row.value, "5200 K \xC2\xB7 tint \xE2\x88\x92" "10");
+    EXPECT_FALSE(row.value_muted);
+    ASSERT_TRUE(row.white_balance);
+    EXPECT_EQ(row.white_balance->kelvin_position, static_cast<float>(kelvin_slider_position(5200)));
+    EXPECT_EQ(row.white_balance->tint_position, -10.0f);
+    EXPECT_EQ(row.white_balance->kelvin_as_shot, static_cast<float>(kelvin_slider_position(5330)));
+    EXPECT_EQ(row.white_balance->tint_as_shot, 27.0f);
+    EXPECT_EQ(row.white_balance->kelvin_typed, "5200 K");
+    EXPECT_EQ(row.white_balance->tint_typed, "\xE2\x88\x92" "10");
+    s.white_balance = WhiteBalance{5200, 0};
+    EXPECT_EQ(white_balance_row(s).value, "5200 K \xC2\xB7 tint 0");
+}
+
+TEST(LightPathWhiteBalance, SwitchedOffItKeepsTheChoiceAndTheSlidersGoBackToAsShot) {
+    EditSettings s;
+    s.white_balance = WhiteBalance{5200, 10};
+    s.white_balance_on = false;
+    const LightPathRow row = white_balance_row(s, white_of({5328, 26.7}));
+    EXPECT_FALSE(row.enabled);
+    EXPECT_EQ(row.value, "5200 K \xC2\xB7 tint +10 when on");
+    EXPECT_TRUE(row.value_muted);
+    ASSERT_TRUE(row.white_balance);
+    EXPECT_EQ(row.white_balance->kelvin_position, row.white_balance->kelvin_as_shot);
+    EXPECT_EQ(row.white_balance->tint_position, 27.0f);
+    EXPECT_EQ(row.white_balance->kelvin_typed, "5200 K");  // what it comes back with
+    EXPECT_EQ(row.white_balance->tint_typed, "+10");
+
+    // As shot is the same picture on or off: there is nothing to come back.
+    s.white_balance.reset();
+    const LightPathRow as_shot = white_balance_row(s, white_of({5328, 26.7}));
+    EXPECT_EQ(as_shot.value, "As shot \xC2\xB7 5330 K, tint +27");
+    EXPECT_TRUE(as_shot.value_muted);
+}
+
+TEST(LightPathWhiteBalance, AnAsShotLightPastTheSlidersIsReadInFullAndTheSlidersStopAtTheirEnds) {
+    const LightPathRow row = white_balance_row(EditSettings{}, white_of({1800, 0}));
+    EXPECT_EQ(row.value.rfind("As shot \xC2\xB7 1800 K", 0), 0u) << row.value;
+    ASSERT_TRUE(row.white_balance);
+    EXPECT_EQ(row.white_balance->kelvin_position, 0.0f);
+    EXPECT_EQ(row.white_balance->kelvin_typed, "2000 K");
 }

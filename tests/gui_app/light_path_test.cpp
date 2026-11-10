@@ -18,6 +18,8 @@
 #include "prism/gui/light_path.hpp"
 #include "prism/gui/paper_grade.hpp"
 #include "prism/gui/settings.hpp"
+#include "prism/gui/stage_controls.hpp"
+#include "prism/white_balance.hpp"
 #include "theme.hpp"
 #include "widgets.hpp"
 
@@ -74,6 +76,15 @@ protected:
             contrast_frames_.push_back({contrast, f});
         };
         cb.reset_slider = [this](gui::SimpleControl c) { resets_.push_back(c); };
+        // As the app does: the value goes through gui_core's setter, so a drag carries on.
+        cb.white_balance_slider = [this](gui::WhiteBalanceControl c, std::optional<double> value,
+                                         const gui::SliderFrame& f) {
+            white_balance_frames_.push_back({c, value, f});
+            if (value) {
+                gui::set_white_balance(settings_, c, *value, as_shot_);
+            }
+        };
+        cb.reset_white_balance = [this] { ++white_balance_resets_; };
         cb.set_curve_kind = [this](gui::CurveKind k) { curves_.push_back(k); };
         cb.curve_parameter = [this](float, const gui::SliderFrame&) { ++parameter_frames_; };
         cb.reset_curve_parameter = [this] { ++parameter_resets_; };
@@ -85,6 +96,7 @@ protected:
             alphas_.push_back(ImGui::GetStyle().Alpha);
             // Every control's place this frame, in order: a row's parts must not move.
             items_.push_back({ImGui::GetItemRectMin().y, ImGui::GetItemRectMax().y});
+            placed_.push_back({std::string(id), ImGui::GetItemRectMin(), ImGui::GetItemRectMax()});
         };
         cb.explain = [note](std::string_view id, bool) { note(id); };
         cb.describe = [this, note](std::string_view id) {
@@ -98,6 +110,7 @@ protected:
     // One frame of the panel in a window like the app's panel.
     std::vector<LightPathRowRect> frame() {
         items_.clear();
+        placed_.clear();
         ImGui::GetIO().DeltaTime = 1.0f / 60.0f;
         ImGui::NewFrame();
         ImGui::SetNextWindowPos(ImVec2(0, 0));
@@ -107,7 +120,7 @@ protected:
                          ImGuiWindowFlags_NoTitleBar);
         LightPathData data;
         data.view = gui::light_path_view({settings_, kind_, "RAW", viewed_, compare_,
-                                          clips_ ? &*clips_ : nullptr});
+                                          clips_ ? &*clips_ : nullptr, as_shot_});
         data.theme = gui::Theme::dark;
         data.strip_on = strip_on_;
         data.strip_available = strip_available_;
@@ -189,8 +202,75 @@ protected:
         return m;
     }
 
+    // Where an item that explained itself was drawn in the last frame.
+    struct Placed {
+        std::string id;
+        ImVec2 min;
+        ImVec2 max;
+        [[nodiscard]] ImVec2 centre() const {
+            return ImVec2((min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f);
+        }
+    };
+    // White balance's sliders as the last frame drew them: Kelvin, then Tint. The row explains
+    // itself four times, in the order it submits its items: the switch, the two sliders, the row.
+    [[nodiscard]] std::vector<Placed> white_balance_sliders() const {
+        std::vector<Placed> all;
+        for (const Placed& p : placed_) {
+            if (p.id == gui::explain_id(gui::StageId::white_balance)) {
+                all.push_back(p);
+            }
+        }
+        if (all.size() != 4) {
+            ADD_FAILURE() << "the White balance row drew " << all.size() << " items";
+            return {Placed{}, Placed{}};
+        }
+        return {all[1], all[2]};
+    }
+    // The mouse rests at `from`, presses, moves to `to`, and lets go: one drag, a frame at a time.
+    void drag(ImVec2 from, ImVec2 to) {
+        mouse_to(from);
+        frame();
+        frame();
+        mouse(true);
+        frame();
+        mouse_to(ImVec2((from.x + to.x) * 0.5f, (from.y + to.y) * 0.5f));
+        frame();
+        mouse_to(to);
+        frame();
+        frame();
+        mouse(false);
+        frame();
+        frame();
+    }
+    // Ctrl-click at `at`, with the mouse resting there first: a slider there opens its field.
+    void ctrl_click(ImVec2 at) {
+        ImGui::GetIO().ConfigMacOSXBehaviors = false;
+        mouse_to(at);
+        frame();
+        frame();
+        ImGui::GetIO().AddKeyEvent(ImGuiMod_Ctrl, true);
+        frame();
+        mouse(true);
+        frame();
+        mouse(false);
+        ImGui::GetIO().AddKeyEvent(ImGuiMod_Ctrl, false);
+        frame();
+        frame();
+        frame();
+    }
+    void type_and_enter(const char* text) {
+        ImGui::GetIO().AddInputCharactersUTF8(text);
+        frame();
+        ImGui::GetIO().AddKeyEvent(ImGuiKey_Enter, true);
+        frame();
+        ImGui::GetIO().AddKeyEvent(ImGuiKey_Enter, false);
+        frame();
+        frame();
+    }
+
     ImGuiContext* context_ = nullptr;
     gui::EditSettings settings_;
+    std::optional<prism::Chromaticity> as_shot_;
     gui::InputKind kind_ = gui::InputKind::raw;
     gui::StageId viewed_ = gui::final_stage;
     std::optional<gui::StageId> compare_;
@@ -212,6 +292,14 @@ protected:
     };
     std::vector<ContrastCall> contrast_frames_;
     std::vector<gui::SimpleControl> resets_;
+    struct WhiteBalanceCall {
+        gui::WhiteBalanceControl control;
+        std::optional<double> value;
+        gui::SliderFrame frame;
+    };
+    std::vector<WhiteBalanceCall> white_balance_frames_;
+    int white_balance_resets_ = 0;
+    std::vector<Placed> placed_;
     std::vector<gui::CurveKind> curves_;
     int parameter_frames_ = 0;
     int parameter_resets_ = 0;
@@ -803,6 +891,247 @@ TEST_F(LightPathHeadless, ADimmedRowStillWorks) {
     click_at(empty_of(row));
     ASSERT_EQ(viewed_calls_.size(), 1u);
     EXPECT_EQ(viewed_calls_[0], gui::StageId::saturation);
+}
+
+// --- White balance -----------------------------------------------------------------------------
+
+TEST_F(LightPathHeadless, WhiteBalanceHasTwoSlidersInsideItsRowOneUnderTheOther) {
+    frame();
+    const std::vector<LightPathRowRect> rects = frame();
+    const LightPathRowRect& row = row_of(rects, gui::StageId::white_balance);
+    const std::vector<Placed> sliders = white_balance_sliders();
+    ASSERT_EQ(sliders.size(), 2u);
+    const Placed& kelvin = sliders[0];
+    const Placed& tint = sliders[1];
+    for (const Placed& slider : sliders) {
+        EXPECT_GE(slider.min.y, row.min.y);
+        EXPECT_LE(slider.max.y, row.max.y);
+        EXPECT_GT(slider.min.x, row.min.x);
+        EXPECT_LT(slider.max.x, row.max.x);
+        EXPECT_FLOAT_EQ(slider.max.y - slider.min.y, slider_height());
+        EXPECT_GT(slider.max.x - slider.min.x, 100.0f);
+    }
+    // Tint under Kelvin, the same width, starting at the same place after the captions.
+    EXPECT_GE(tint.min.y, kelvin.max.y);
+    EXPECT_EQ(tint.min.x, kelvin.min.x);
+    EXPECT_EQ(tint.max.x, kelvin.max.x);
+    // Under the first line and the subtitle, and above the row's clip line.
+    const gui::LightPathMetrics m = metrics();
+    EXPECT_GT(kelvin.min.y, row.min.y + m.pad_top + m.line + m.gap);
+    EXPECT_LT(tint.max.y, row.max.y - m.gap);
+    // The row is the next after Exposure and the one before Colour matrix.
+    EXPECT_EQ(row.min.y, row_of(rects, gui::StageId::exposure).max.y);
+    EXPECT_EQ(row.max.y, row_of(rects, gui::StageId::matrix).min.y);
+}
+
+TEST_F(LightPathHeadless, WhiteBalanceRowIsAsTallAsShotChosenAndOff) {
+    frame();
+    const std::vector<float> heights = heights_of(frame());
+    const std::vector<Item> items = items_;
+    const float bottom = bottom_;
+    const auto same = [&](const char* what) {
+        frame();
+        EXPECT_EQ(heights_of(frame()), heights) << what;
+        EXPECT_EQ(items_, items) << what;
+        EXPECT_EQ(bottom_, bottom) << what;
+    };
+    settings_.white_balance = prism::WhiteBalance{2000, -100};
+    same("chosen");
+    settings_.white_balance_on = false;
+    same("chosen, off");
+    settings_.white_balance.reset();
+    same("as shot, off");
+    settings_.white_balance_on = true;
+    as_shot_ = prism::white_of(prism::WhiteBalance{5328, 26.7});
+    same("as shot, with the camera's light");
+    settings_.white_balance = prism::WhiteBalance{15000, 100};
+    same("chosen, with the camera's light");
+    kind_ = gui::InputKind::image;
+    as_shot_.reset();
+    same("a JPEG");
+}
+
+TEST_F(LightPathHeadless, DraggingKelvinChangesOnlyKelvinAsOneGesture) {
+    as_shot_ = prism::white_of(prism::WhiteBalance{5328, 26.7});
+    frame();
+    frame();
+    const Placed kelvin = white_balance_sliders()[0];
+    const float width = kelvin.max.x - kelvin.min.x;
+    // From the slider's middle (the mired midpoint, about 3530 K) a fifth of the way right.
+    drag(kelvin.centre(), ImVec2(kelvin.centre().x + width * 0.2f, kelvin.centre().y + 40.0f));
+    EXPECT_TRUE(viewed_calls_.empty());
+    EXPECT_TRUE(slider_frames_.empty());
+    EXPECT_TRUE(contrast_frames_.empty());
+    ASSERT_FALSE(white_balance_frames_.empty());
+    int activated = 0;
+    int deactivated = 0;
+    for (const WhiteBalanceCall& call : white_balance_frames_) {
+        EXPECT_EQ(call.control, gui::WhiteBalanceControl::kelvin);
+        activated += call.frame.activated;
+        deactivated += call.frame.deactivated;
+        // A frame that moved nothing carries no value.
+        EXPECT_EQ(call.value.has_value(), call.frame.changed);
+    }
+    EXPECT_EQ(activated, 1);
+    EXPECT_EQ(deactivated, 1);
+    ASSERT_TRUE(settings_.white_balance);
+    EXPECT_EQ(settings_.white_balance->tint, 27.0);  // from as shot, untouched
+    const double chosen = settings_.white_balance->kelvin;
+    EXPECT_EQ(std::fmod(chosen, 10.0), 0.0);
+    // Past the mired midpoint, and well short of where a slider linear in Kelvin would be (11100).
+    EXPECT_GT(chosen, 3600.0);
+    EXPECT_LT(chosen, 6000.0);
+    // The knob is where the choice is.
+    frame();
+    const gui::LightPathRow row = gui::light_path_row(
+        {settings_, kind_, "RAW", viewed_, compare_, nullptr, as_shot_},
+        gui::StageId::white_balance);
+    EXPECT_NEAR(row.white_balance->kelvin_position, 0.7f, 0.05f);
+}
+
+TEST_F(LightPathHeadless, DraggingTintChangesOnlyTintAsOneGesture) {
+    as_shot_ = prism::white_of(prism::WhiteBalance{5328, 26.7});
+    frame();
+    frame();
+    const Placed tint = white_balance_sliders()[1];
+    const float width = tint.max.x - tint.min.x;
+    // From the middle (tint 0) a quarter of the way left: towards green.
+    drag(tint.centre(), ImVec2(tint.centre().x - width * 0.25f, tint.centre().y - 40.0f));
+    EXPECT_TRUE(viewed_calls_.empty());
+    EXPECT_TRUE(slider_frames_.empty());
+    ASSERT_FALSE(white_balance_frames_.empty());
+    int activated = 0;
+    int deactivated = 0;
+    for (const WhiteBalanceCall& call : white_balance_frames_) {
+        EXPECT_EQ(call.control, gui::WhiteBalanceControl::tint);
+        activated += call.frame.activated;
+        deactivated += call.frame.deactivated;
+    }
+    EXPECT_EQ(activated, 1);
+    EXPECT_EQ(deactivated, 1);
+    ASSERT_TRUE(settings_.white_balance);
+    EXPECT_EQ(settings_.white_balance->kelvin, 5330.0);  // from as shot, untouched
+    EXPECT_EQ(settings_.white_balance->tint, std::round(settings_.white_balance->tint));
+    EXPECT_NEAR(settings_.white_balance->tint, -50.0, 6.0);
+}
+
+TEST_F(LightPathHeadless, APressOnAWhiteBalanceSliderWhereItSitsLeavesThePhotoAsShot) {
+    frame();
+    frame();
+    // As shot without a camera's light: tint 0 is the middle of its slider.
+    click_at(white_balance_sliders()[1].centre());
+    ASSERT_FALSE(white_balance_frames_.empty());
+    EXPECT_TRUE(white_balance_frames_.front().frame.activated);
+    EXPECT_TRUE(white_balance_frames_.back().frame.deactivated);
+    EXPECT_FALSE(settings_.white_balance);
+    EXPECT_TRUE(viewed_calls_.empty());
+}
+
+TEST_F(LightPathHeadless, AWhiteBalanceSliderThatIsOffDoesNothing) {
+    settings_.white_balance = prism::WhiteBalance{5200, 10};
+    settings_.white_balance_on = false;
+    frame();
+    frame();
+    const std::vector<Placed> sliders = white_balance_sliders();
+    click_at(sliders[0].centre());
+    click_at(sliders[1].centre());
+    ctrl_click(sliders[0].centre());
+    EXPECT_FALSE(ImGui::GetIO().WantTextInput);
+    EXPECT_TRUE(white_balance_frames_.empty());
+    EXPECT_TRUE(viewed_calls_.empty());
+    EXPECT_EQ(settings_.white_balance, (prism::WhiteBalance{5200, 10}));
+}
+
+TEST_F(LightPathHeadless, ARightClickOnAWhiteBalanceSliderOffersResetToAsShot) {
+    settings_.white_balance = prism::WhiteBalance{5200, 10};
+    for (const std::size_t which : {std::size_t{0}, std::size_t{1}}) {
+        white_balance_resets_ = 0;
+        frame();
+        frame();
+        const ImVec2 at = white_balance_sliders()[which].centre();
+        mouse_to(at);
+        frame();
+        frame();
+        mouse(true, 1);
+        frame();
+        mouse(false, 1);
+        frame();
+        frame();
+        // The popup's only item is right under the cursor, a little down.
+        mouse_to(ImVec2(at.x + 12, at.y + 12));
+        frame();
+        frame();
+        mouse(true);
+        frame();
+        mouse(false);
+        frame();
+        frame();
+        EXPECT_EQ(white_balance_resets_, 1) << which;
+    }
+    EXPECT_TRUE(resets_.empty());
+    EXPECT_TRUE(white_balance_frames_.empty());
+    EXPECT_TRUE(viewed_calls_.empty());
+}
+
+TEST_F(LightPathHeadless, TypedKelvinIsOneChangeAndLeavesTint) {
+    as_shot_ = prism::white_of(prism::WhiteBalance{5328, 26.7});
+    frame();
+    frame();
+    ctrl_click(white_balance_sliders()[0].centre());
+    EXPECT_TRUE(ImGui::GetIO().WantTextInput);
+    EXPECT_TRUE(white_balance_frames_.empty());  // opening changes nothing
+    type_and_enter("5 200");  // replaces "5330 K", which opens selected
+    ASSERT_EQ(white_balance_frames_.size(), 1u);
+    const WhiteBalanceCall& call = white_balance_frames_[0];
+    EXPECT_EQ(call.control, gui::WhiteBalanceControl::kelvin);
+    EXPECT_EQ(call.value, 5200.0);
+    EXPECT_TRUE(call.frame.activated && call.frame.changed && call.frame.deactivated);
+    EXPECT_EQ(settings_.white_balance, (prism::WhiteBalance{5200, 27}));
+    EXPECT_FALSE(ImGui::GetIO().WantTextInput);
+    EXPECT_TRUE(viewed_calls_.empty());
+}
+
+TEST_F(LightPathHeadless, TypedTintTakesARealMinusSignAndLeavesKelvin) {
+    as_shot_ = prism::white_of(prism::WhiteBalance{5328, 26.7});
+    frame();
+    frame();
+    ctrl_click(white_balance_sliders()[1].centre());
+    EXPECT_TRUE(ImGui::GetIO().WantTextInput);
+    type_and_enter("\xE2\x88\x92" "10");
+    ASSERT_EQ(white_balance_frames_.size(), 1u);
+    EXPECT_EQ(white_balance_frames_[0].control, gui::WhiteBalanceControl::tint);
+    EXPECT_EQ(white_balance_frames_[0].value, -10.0);
+    EXPECT_TRUE(white_balance_frames_[0].frame.activated &&
+                white_balance_frames_[0].frame.deactivated);
+    EXPECT_EQ(settings_.white_balance, (prism::WhiteBalance{5330, -10}));
+}
+
+TEST_F(LightPathHeadless, TypedWhiteBalanceTextThatIsNotANumberLeavesThePhotoAsShot) {
+    frame();
+    frame();
+    ctrl_click(white_balance_sliders()[0].centre());
+    type_and_enter("warm");
+    EXPECT_TRUE(white_balance_frames_.empty());
+    EXPECT_FALSE(settings_.white_balance);
+    EXPECT_FALSE(ImGui::GetIO().WantTextInput);
+}
+
+TEST_F(LightPathHeadless, TypedWhiteBalanceFieldKeepsEveryRowWhereItWas) {
+    frame();
+    const std::vector<float> heights = heights_of(frame());
+    const std::vector<Placed> sliders = white_balance_sliders();
+    for (const Placed& slider : sliders) {
+        ctrl_click(slider.centre());
+        EXPECT_TRUE(ImGui::GetIO().WantTextInput);
+        EXPECT_EQ(heights_of(frame()), heights);
+        ImGui::GetIO().AddKeyEvent(ImGuiKey_Escape, true);
+        frame();
+        ImGui::GetIO().AddKeyEvent(ImGuiKey_Escape, false);
+        frame();
+        frame();
+        EXPECT_EQ(heights_of(frame()), heights);
+    }
+    EXPECT_TRUE(white_balance_frames_.empty());
 }
 
 }  // namespace

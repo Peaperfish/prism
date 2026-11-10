@@ -10,6 +10,7 @@
 #include "prism/gui/paper_grade.hpp"
 #include "prism/gui/stage_controls.hpp"
 #include "prism/gui/typed_value.hpp"
+#include "prism/white_balance.hpp"
 
 namespace {
 
@@ -261,4 +262,94 @@ TEST(TypedValue, TheFieldOpensOnTheStoredValueAndReadsBackAsIt) {
     EXPECT_EQ(prism::gui::typed_field_text(s, SimpleControl::colour), "0.00");
     s.exposure_on = false;
     EXPECT_EQ(prism::gui::typed_field_text(s, SimpleControl::brightness), "+0.70 stops");
+}
+
+// --- White balance -----------------------------------------------------------------------------
+
+namespace {
+
+using prism::gui::WhiteBalanceControl;
+
+std::optional<double> kelvin_typed(std::string_view text) {
+    return prism::gui::typed_white_balance_value(WhiteBalanceControl::kelvin, text);
+}
+
+std::optional<double> tint_typed(std::string_view text) {
+    return prism::gui::typed_white_balance_value(WhiteBalanceControl::tint, text);
+}
+
+}  // namespace
+
+TEST(TypedWhiteBalance, KelvinTakesTheNumberWithOrWithoutItsK) {
+    for (const std::string_view text :
+         {"5200", "5200 K", "5200K", "5 200", "5200 k", " 5200 ", "5 200 K", "5200 kelvin",
+          "5,200", "5.200 K", "5200.4", "5204"}) {
+        EXPECT_EQ(kelvin_typed(text), 5200.0) << text;
+    }
+    EXPECT_EQ(kelvin_typed("12 500"), 12500.0);
+    EXPECT_EQ(kelvin_typed("12,500"), 12500.0);
+    EXPECT_EQ(kelvin_typed("5206"), 5210.0);  // to 10 K, as a drag
+}
+
+TEST(TypedWhiteBalance, KelvinIsClampedToItsRange) {
+    EXPECT_EQ(kelvin_typed("1000"), 2000.0);
+    EXPECT_EQ(kelvin_typed("20000 K"), 15000.0);
+    EXPECT_EQ(kelvin_typed("99999999999"), 15000.0);
+    EXPECT_EQ(kelvin_typed("5.2"), 2000.0);  // a decimal, not thousands
+}
+
+TEST(TypedWhiteBalance, KelvinRejectsWhatIsNotATemperature) {
+    for (const std::string_view text :
+         {"", "K", "warm", "5200 stops", "5200 x", "-5200", "0", "5200 K K", "1e4", "5,200,0"}) {
+        EXPECT_EQ(kelvin_typed(text), std::nullopt) << text;
+    }
+}
+
+TEST(TypedWhiteBalance, TintTakesASignedWholeNumber) {
+    EXPECT_EQ(tint_typed("10"), 10.0);
+    EXPECT_EQ(tint_typed("+10"), 10.0);
+    EXPECT_EQ(tint_typed("-10"), -10.0);
+    EXPECT_EQ(tint_typed("\xE2\x88\x92" "10"), -10.0);  // U+2212, as the row shows it
+    EXPECT_EQ(tint_typed(" 0 "), 0.0);
+    EXPECT_EQ(tint_typed("9.6"), 10.0);
+    EXPECT_EQ(tint_typed("-9,6"), -10.0);
+}
+
+TEST(TypedWhiteBalance, TintIsClampedAndRejectsWords) {
+    EXPECT_EQ(tint_typed("250"), 100.0);
+    EXPECT_EQ(tint_typed("-250"), -100.0);
+    for (const std::string_view text : {"", "+", "green", "10 K", "10 stops", "1 0"}) {
+        EXPECT_EQ(tint_typed(text), std::nullopt) << text;
+    }
+}
+
+TEST(TypedWhiteBalance, TheFieldOpensOnWhatTheSliderShowsAndReadsBackAsIt) {
+    for (const prism::WhiteBalance shown :
+         {prism::WhiteBalance{5330, 27}, prism::WhiteBalance{2000, -100},
+          prism::WhiteBalance{15000, 0}, prism::WhiteBalance{6500, -1}}) {
+        const std::string kelvin =
+            prism::gui::typed_field_text(shown, WhiteBalanceControl::kelvin);
+        const std::string tint = prism::gui::typed_field_text(shown, WhiteBalanceControl::tint);
+        EXPECT_EQ(kelvin_typed(kelvin), shown.kelvin) << kelvin;
+        EXPECT_EQ(tint_typed(tint), shown.tint) << tint;
+    }
+    EXPECT_EQ(prism::gui::typed_field_text(prism::WhiteBalance{5330, 27},
+                                           WhiteBalanceControl::kelvin),
+              "5330 K");
+    EXPECT_EQ(prism::gui::typed_field_text(prism::WhiteBalance{5330, 27},
+                                           WhiteBalanceControl::tint),
+              "+27");
+}
+
+TEST(TypedWhiteBalance, ATypedValueIsOneChangeThroughTheSameSetterAsADrag) {
+    EditSettings s;
+    const auto as_shot = std::optional<prism::Chromaticity>(
+        prism::white_of(prism::WhiteBalance{5328, 26.7}));
+    prism::gui::set_white_balance(s, WhiteBalanceControl::kelvin, *kelvin_typed("5 200"), as_shot);
+    EXPECT_EQ(s.white_balance, (prism::WhiteBalance{5200, 27}));
+    prism::gui::set_white_balance(s, WhiteBalanceControl::tint, *tint_typed("\xE2\x88\x92" "10"),
+                                  as_shot);
+    EXPECT_EQ(s.white_balance, (prism::WhiteBalance{5200, -10}));
+    EXPECT_EQ(prism::gui::white_balance_value_text(s, as_shot),
+              "5200 K \xC2\xB7 tint \xE2\x88\x92" "10");
 }

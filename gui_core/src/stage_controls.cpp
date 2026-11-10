@@ -6,6 +6,7 @@
 #include <string>
 
 #include "prism/gui/paper_grade.hpp"
+#include "prism/ranges.hpp"
 #include "prism/utf8_path.hpp"
 
 namespace prism::gui {
@@ -114,6 +115,108 @@ std::string stage_value_text(const EditSettings& s, StageId stage) {
         case StageId::encode: return {};
     }
     return {};
+}
+
+WhiteBalance as_shot_white_balance(const std::optional<Chromaticity>& as_shot_white) noexcept {
+    return as_shot_white ? white_balance_of(*as_shot_white) : default_as_shot;
+}
+
+double snap_kelvin(double kelvin) noexcept {
+    if (std::isnan(kelvin)) {
+        return default_as_shot.kelvin;
+    }
+    // Both ends of the range are whole tens, so rounding never leaves it.
+    return std::round(std::clamp(kelvin, kelvin_range.min, kelvin_range.max) / 10.0) * 10.0;
+}
+
+double snap_tint(double tint) noexcept {
+    if (std::isnan(tint)) {
+        return default_as_shot.tint;
+    }
+    const double whole = std::round(std::clamp(tint, tint_range.min, tint_range.max));
+    return whole == 0.0 ? 0.0 : whole;  // never -0
+}
+
+WhiteBalance slider_white_balance(const EditSettings& s,
+                                  const std::optional<Chromaticity>& as_shot_white) {
+    if (s.white_balance) {
+        const auto within = [](double v, ValueRange r, double if_nan) {
+            return std::isnan(v) ? if_nan : std::clamp(v, r.min, r.max);
+        };
+        return {within(s.white_balance->kelvin, kelvin_range, default_as_shot.kelvin),
+                within(s.white_balance->tint, tint_range, default_as_shot.tint)};
+    }
+    const WhiteBalance as_shot = as_shot_white_balance(as_shot_white);
+    return {snap_kelvin(as_shot.kelvin), snap_tint(as_shot.tint)};
+}
+
+namespace {
+
+constexpr double mired_at_min = 1e6 / kelvin_range.min;  // the warm end: the most mireds
+constexpr double mired_at_max = 1e6 / kelvin_range.max;
+
+}  // namespace
+
+double kelvin_slider_position(double kelvin) noexcept {
+    if (std::isnan(kelvin)) {
+        kelvin = default_as_shot.kelvin;
+    }
+    kelvin = std::clamp(kelvin, kelvin_range.min, kelvin_range.max);
+    if (kelvin == kelvin_range.min) {
+        return 0.0;
+    }
+    if (kelvin == kelvin_range.max) {
+        return 1.0;
+    }
+    return std::clamp((mired_at_min - 1e6 / kelvin) / (mired_at_min - mired_at_max), 0.0, 1.0);
+}
+
+double kelvin_at_slider_position(double position) noexcept {
+    const double t = std::isnan(position) ? 0.0 : std::clamp(position, 0.0, 1.0);
+    if (t == 0.0) {
+        return kelvin_range.min;
+    }
+    if (t == 1.0) {
+        return kelvin_range.max;
+    }
+    return std::clamp(1e6 / (mired_at_min - t * (mired_at_min - mired_at_max)),
+                      kelvin_range.min, kelvin_range.max);
+}
+
+void set_white_balance(EditSettings& s, WhiteBalanceControl control, double value,
+                       const std::optional<Chromaticity>& as_shot_white) {
+    if (std::isnan(value)) {
+        return;
+    }
+    const WhiteBalance as_shot = slider_white_balance(EditSettings{}, as_shot_white);
+    WhiteBalance next = s.white_balance ? *s.white_balance : as_shot;
+    if (control == WhiteBalanceControl::kelvin) {
+        next.kelvin = snap_kelvin(value);
+    } else {
+        next.tint = snap_tint(value);
+    }
+    if (!s.white_balance && next == as_shot) {
+        return;  // where the slider already sits: still As shot
+    }
+    s.white_balance = next;
+    s.white_balance_on = true;
+}
+
+void reset_white_balance(EditSettings& s) {
+    s.white_balance.reset();
+    s.white_balance_on = true;
+}
+
+std::string white_balance_value_text(const EditSettings& s,
+                                     const std::optional<Chromaticity>& as_shot_white) {
+    if (s.white_balance) {
+        return stage_value_text(s, StageId::white_balance);
+    }
+    if (!as_shot_white) {
+        return "As shot \u00B7 taken as " + format_kelvin(default_as_shot.kelvin);
+    }
+    const WhiteBalance as_shot = as_shot_white_balance(as_shot_white);
+    return "As shot \u00B7 " + format_kelvin(as_shot.kelvin) + ", tint " + format_tint(as_shot.tint);
 }
 
 std::string_view curve_kind_name(CurveKind kind) noexcept {

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <utility>
 
 #include "prism/gui/explanations.hpp"
 #include "prism/gui/paper_grade.hpp"
@@ -115,10 +116,31 @@ LightPathRow light_path_row(const LightPathInputs& in, StageId stage) {
         case StageId::encode:
             row.subtitle = "sRGB for the screen";
             break;
-        case StageId::white_balance:
-            row.value = stage_value_text(s, stage);
-            row.value_muted = !row.enabled;
+        case StageId::white_balance: {
+            row.subtitle = "The light the photo was lit by";
+            row.value = white_balance_value_text(s, in.as_shot_white);
+            if (!row.enabled) {
+                // A chosen light comes back when the stage is turned on; As shot is the same
+                // picture on or off.
+                row.value += s.white_balance ? " when on" : "";
+                row.value_muted = true;
+            }
+            const WhiteBalance as_shot = slider_white_balance(EditSettings{}, in.as_shot_white);
+            const WhiteBalance shown =
+                row.enabled ? slider_white_balance(s, in.as_shot_white) : as_shot;
+            LightPathRow::WhiteBalanceSliders sliders;
+            sliders.kelvin_position = static_cast<float>(kelvin_slider_position(shown.kelvin));
+            sliders.tint_position = static_cast<float>(shown.tint);
+            sliders.kelvin_as_shot = static_cast<float>(kelvin_slider_position(as_shot.kelvin));
+            sliders.tint_as_shot = static_cast<float>(as_shot.tint);
+            // The stored light, also while the stage is off: it comes back with that one.
+            const WhiteBalance stored = slider_white_balance(s, in.as_shot_white);
+            sliders.kelvin_typed = typed_field_text(stored, WhiteBalanceControl::kelvin);
+            sliders.tint_typed = typed_field_text(stored, WhiteBalanceControl::tint);
+            row.white_balance = std::move(sliders);
+            row.slider_reset = "Reset to As shot";
             break;
+        }
         case StageId::matrix:
             row.value = matrix_value(s, in.kind);
             row.value_muted = true;
@@ -222,6 +244,10 @@ LightPathRowLayout light_path_row_layout(const LightPathRow& row,
             }
             break;
         case StageId::white_balance:
+            layout.subtitle_y = take(m.secondary);
+            layout.slider_y = take(m.slider);
+            layout.second_slider_y = take(m.slider);
+            break;
         case StageId::matrix:
             break;
     }

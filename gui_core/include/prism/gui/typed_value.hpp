@@ -6,6 +6,7 @@
 #include <string_view>
 
 #include "prism/gui/settings.hpp"
+#include "prism/gui/stage_controls.hpp"
 
 namespace prism::gui {
 
@@ -46,5 +47,20 @@ namespace prism::gui {
 // the "×": "+0.70 stops", "1.20". Contrast holds its grade, "3", "3½" or "2.7", or for a value
 // past grade 0 or 5 the multiplier with its "×" ("×0.60"). It reads back as the same text with typed_row_value.
 [[nodiscard]] std::string typed_field_text(const EditSettings& s, SimpleControl control);
+
+// --- White balance -------------------------------------------------------------------------------
+
+// What `text` means typed into one of the White balance row's sliders, clamped to the slider's range
+// and snapped as a drag is (snap_kelvin, snap_tint); nothing if it is not such a number.
+//   Kelvin: a number above 0 with an optional "K" or "kelvin": "5200", "5200 K", "5200K". Spaces
+//           between the digits are ignored ("5 200"), and so is one "," or "." that groups
+//           thousands, with exactly three digits after it ("5,200").
+//   Tint:   a number with an optional sign, "-" or the minus sign U+2212: "10", "+10", "−10".
+[[nodiscard]] std::optional<double> typed_white_balance_value(WhiteBalanceControl control,
+                                                              std::string_view text);
+
+// What the field holds when it opens, for a slider at `shown` (slider_white_balance): "5330 K" for
+// Kelvin, and for Tint "+27", "−10" or "0". It reads back with typed_white_balance_value.
+[[nodiscard]] std::string typed_field_text(const WhiteBalance& shown, WhiteBalanceControl control);
 
 }  // namespace prism::gui

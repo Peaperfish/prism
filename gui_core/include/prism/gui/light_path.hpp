@@ -42,7 +42,7 @@ struct ClipMark {
 struct LightPathRow {
     StageId stage = StageId::decode;
     std::string name;
-    std::string subtitle;  // the line under the name: Decode's and Output encode's
+    std::string subtitle;  // the line under the name: Decode's, White balance's, Output encode's
     // On the first line, at the right: "+1.00 stops", "×1.20", "black and white", the matrix's name.
     // A stage that is off gives the value it comes back with ("+1.00 stops when on").
     std::string value;
@@ -67,6 +67,22 @@ struct LightPathRow {
     // ("+0.70 stops", "1.20", a grade "3½"), see typed_field_text.
     std::string slider_typed;
 
+    // White balance's two sliders, Kelvin over Tint. While the stage is off, or nothing is chosen
+    // (As shot), both sit at the as-shot light. `slider_reset` is their reset's words.
+    struct WhiteBalanceSliders {
+        float kelvin_position = 0.0f;  // 0 to 1, even in mireds: kelvin_slider_position
+        float tint_position = 0.0f;    // tint_range, -100 to +100
+        // Where As shot is on each slider: where its fill starts from.
+        float kelvin_as_shot = 0.0f;
+        float tint_as_shot = 0.0f;
+        // What Ctrl/Cmd-click types into: "5330 K" and "+27" (typed_field_text).
+        std::string kelvin_typed;
+        std::string tint_typed;
+
+        bool operator==(const WhiteBalanceSliders&) const = default;
+    };
+    std::optional<WhiteBalanceSliders> white_balance;
+
     // The Tone curve's tabs, and the number of the curves that take one.
     bool curve_tabs = false;
     CurveKind curve = CurveKind::none;
@@ -87,6 +103,9 @@ struct LightPathInputs {
     StageId viewed = final_stage;
     std::optional<StageId> compare;
     const ClipReport* clips = nullptr;  // none until a frame with a report has arrived
+    // The photo's as-shot light (Session::as_shot_white): what As shot reads, and where the White
+    // balance sliders sit until a light is chosen.
+    std::optional<Chromaticity> as_shot_white;
 };
 
 // "RAW, camera colour", "RAW, your camera matrix", "JPEG, read as sRGB", "PNG, read as sRGB" or
@@ -132,6 +151,7 @@ struct LightPathRowLayout {
     float line_y = 0;
     std::optional<float> subtitle_y;
     std::optional<float> slider_y;
+    std::optional<float> second_slider_y;  // White balance's Tint, under its Kelvin
     std::optional<float> tabs_y;
     std::optional<float> parameter_y;
     std::optional<float> parameter_slider_y;
@@ -146,6 +166,8 @@ struct LightPathRowLayout {
 // choice of the user's opens or closes a row, so nothing below it moves on its own.
 [[nodiscard]] bool row_expanded(const LightPathRow& row) noexcept;
 
+// White balance has a subtitle and two sliders, whatever is chosen.
+//
 // A row's layout, from its stage and row_expanded alone: never from the values it shows, its clip
 // marks, whether it is viewed, dimmed or off, or the mouse. A height that followed any of those
 // would move the rows below under a still cursor (#38).

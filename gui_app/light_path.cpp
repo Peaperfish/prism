@@ -9,6 +9,8 @@
 #include "imgui_internal.h"
 #include "prism/gui/layout.hpp"
 #include "prism/gui/paper_grade.hpp"
+#include "prism/gui/stage_controls.hpp"
+#include "prism/ranges.hpp"
 #include "prism/gui/typed_value.hpp"
 #include "theme.hpp"
 #include "widgets.hpp"
@@ -285,6 +287,74 @@ void draw_stage_slider(const gui::LightPathRow& row, float x, float y, float wid
     ImGui::EndDisabled();
 }
 
+// The captions of White balance's two sliders, and the room they take at the sliders' left: the
+// wider caption's width, so both sliders start at the same place whatever they are set to.
+constexpr const char* kelvin_caption = "Kelvin";
+constexpr const char* tint_caption = "Tint";
+
+float white_balance_caption_width() {
+    ImGui::PushFont(nullptr, token_type().small);
+    const float width = std::max(text_width(kelvin_caption), text_width(tint_caption));
+    ImGui::PopFont();
+    return std::ceil(width) + px(8.0f);
+}
+
+// One of White balance's sliders, with its caption at the left. Kelvin's position is even in
+// mireds (gui_core maps it); Tint's is the tint itself, in whole numbers. Typing takes the number
+// as the value line shows it. A drag reports the value only on a frame that moved it, so a press
+// alone leaves an As shot photo As shot.
+void draw_white_balance_slider(const gui::LightPathRow& row, gui::WhiteBalanceControl control,
+                               float x, float y, float width, const LightPathCallbacks& cb) {
+    const gui::LightPathRow::WhiteBalanceSliders& wb = *row.white_balance;
+    const bool kelvin = control == gui::WhiteBalanceControl::kelvin;
+    const float caption = white_balance_caption_width();
+    ImGui::PushFont(nullptr, token_type().small);
+    text_in_band(ImGui::GetWindowDrawList(), x, y, slider_height(),
+                 ImGui::GetColorU32(ImGuiCol_TextDisabled), kelvin ? kelvin_caption : tint_caption);
+    ImGui::PopFont();
+
+    ImGui::PushID(kelvin ? "kelvin" : "tint");
+    ImGui::BeginDisabled(!row.enabled);
+    ImGui::SetCursorScreenPos(ImVec2(x + caption, y));
+    ImGui::SetNextItemWidth(std::max(1.0f, width - caption));
+    float position = kelvin ? wb.kelvin_position : wb.tint_position;
+    SliderTyping typing;
+    const bool changed =
+        kelvin ? styled_slider_typed("##slider", &position, 0.0f, 1.0f, wb.kelvin_as_shot,
+                                     wb.kelvin_typed, &typing, ImGuiSliderFlags_AlwaysClamp)
+               : styled_slider_typed("##slider", &position, static_cast<float>(tint_range.min),
+                                     static_cast<float>(tint_range.max), wb.tint_as_shot,
+                                     wb.tint_typed, &typing, ImGuiSliderFlags_AlwaysClamp, 1.0f);
+    if (typing.text) {
+        if (const std::optional<double> typed =
+                gui::typed_white_balance_value(control, *typing.text)) {
+            if (cb.white_balance_slider) {
+                cb.white_balance_slider(control, *typed, gui::SliderFrame{true, true, true});
+            }
+        }
+    } else if (!typing.open && !typing.just_closed) {
+        const gui::SliderFrame frame{ImGui::IsItemActivated(), changed, ImGui::IsItemDeactivated()};
+        if ((frame.activated || frame.changed || frame.deactivated) && cb.white_balance_slider) {
+            const double value = kelvin ? gui::kelvin_at_slider_position(position)
+                                        : static_cast<double>(position);
+            cb.white_balance_slider(control, changed ? std::optional<double>(value) : std::nullopt,
+                                    frame);
+        }
+    }
+    cb.explain(gui::explain_id(row.stage), changed);
+    {
+        const FullStrength full;
+        if (!typing.open && ImGui::BeginPopupContextItem("reset")) {
+            if (ImGui::MenuItem(row.slider_reset.c_str()) && cb.reset_white_balance) {
+                cb.reset_white_balance();
+            }
+            ImGui::EndPopup();
+        }
+    }
+    ImGui::EndDisabled();
+    ImGui::PopID();
+}
+
 // One tab per curve: choosing one is one undo step. Greyed out and fixed while the stage is off.
 void draw_curve_tabs(const gui::LightPathRow& row, float x, float y, float width,
                      const LightPathCallbacks& cb) {
@@ -445,7 +515,12 @@ void draw_row(const LightPathData& data, const gui::LightPathRow& row,
                      gui::ellipsize_middle(row.subtitle, content, measure));
         ImGui::PopFont();
     }
-    if (layout.slider_y) {
+    if (row.white_balance && layout.slider_y && layout.second_slider_y) {
+        draw_white_balance_slider(row, gui::WhiteBalanceControl::kelvin, x,
+                                  row_min.y + *layout.slider_y, content, cb);
+        draw_white_balance_slider(row, gui::WhiteBalanceControl::tint, x,
+                                  row_min.y + *layout.second_slider_y, content, cb);
+    } else if (layout.slider_y && row.slider) {
         draw_stage_slider(row, x, row_min.y + *layout.slider_y, content, cb);
     }
     if (layout.tabs_y) {

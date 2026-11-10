@@ -50,6 +50,53 @@ inline constexpr std::string_view recipe_matrix_label = "From recipe";
 // Shows the stored value even when the stage is off (the row greys it out).
 [[nodiscard]] std::string stage_value_text(const EditSettings& s, StageId stage);
 
+// --- White balance -------------------------------------------------------------------------------
+//
+// The White balance row names the light the photo was lit by with two sliders, Kelvin and Tint.
+// With nothing chosen the photo is "As shot": the sliders sit at the as-shot light and nothing is
+// applied.
+
+// The row's two sliders.
+enum class WhiteBalanceControl { kelvin, tint };
+
+// The photo's as-shot light as Kelvin and tint: prism::white_balance_of its as-shot white, or
+// prism::default_as_shot (6500 K, tint 0) for a photo without one. Not rounded, not clamped.
+[[nodiscard]] WhiteBalance as_shot_white_balance(
+    const std::optional<Chromaticity>& as_shot_white) noexcept;
+
+// What the sliders set: Kelvin rounded to 10 K within kelvin_range, tint rounded to a whole number
+// within tint_range. A NaN gives the as-shot default's number (6500 K, tint 0).
+[[nodiscard]] double snap_kelvin(double kelvin) noexcept;
+[[nodiscard]] double snap_tint(double tint) noexcept;
+
+// Where the two sliders sit: at the chosen light (clamped to the ranges), or with none chosen at
+// the as-shot light, snapped as above.
+[[nodiscard]] WhiteBalance slider_white_balance(const EditSettings& s,
+                                                const std::optional<Chromaticity>& as_shot_white);
+
+// The Kelvin slider is even in mireds (a million over the Kelvin), the scale on which equal steps
+// look about equally big: position 0 is kelvin_range.min (2000 K), 1 is kelvin_range.max
+// (15000 K), and the middle is their mired midpoint, about 3529 K. Both clamp; the ends are exact.
+[[nodiscard]] double kelvin_slider_position(double kelvin) noexcept;
+[[nodiscard]] double kelvin_at_slider_position(double position) noexcept;
+
+// Sets one of the two numbers, snapped (snap_kelvin, snap_tint), and turns the stage on. The other
+// number stays as chosen; with nothing chosen yet it is taken from the as-shot light, snapped.
+// Setting a slider to where it already sits on an As shot photo leaves it As shot.
+void set_white_balance(EditSettings& s, WhiteBalanceControl control, double value,
+                       const std::optional<Chromaticity>& as_shot_white);
+
+// Back to As shot exactly (no white balance), with the stage on.
+void reset_white_balance(EditSettings& s);
+
+// The White balance row's value:
+//   as shot, with the photo's as-shot light known (RAW):  "As shot · 5330 K, tint +27"
+//   as shot, without one (JPEG, PNG, HEIC, some RAW):     "As shot · taken as 6500 K"
+//   chosen:                                               "5200 K · tint +10"
+// Kelvin is rounded to 10 K and tint to a whole number (format_kelvin, format_tint).
+[[nodiscard]] std::string white_balance_value_text(
+    const EditSettings& s, const std::optional<Chromaticity>& as_shot_white);
+
 // --- Tone curve ----------------------------------------------------------------------------------
 
 inline constexpr CurveKind curve_kinds[] = {CurveKind::none, CurveKind::gamma, CurveKind::reinhard,

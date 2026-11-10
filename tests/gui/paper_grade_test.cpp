@@ -169,7 +169,7 @@ using prism::gui::SimpleControl;
 
 prism::gui::LightPathRow row_for(prism::gui::StageId stage, const prism::gui::EditSettings& s) {
     return prism::gui::light_path_row({s, prism::gui::InputKind::raw, "RAW", prism::gui::final_stage,
-                                       std::nullopt, nullptr},
+                                       std::nullopt, nullptr, std::nullopt},
                                       stage);
 }
 
