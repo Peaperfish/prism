@@ -121,6 +121,9 @@ public:
     // set_settings: one undo step, or none if it changes nothing. A recipe never changes the RAW
     // options, so this never decodes the file again.
     [[nodiscard]] MaybeError apply_recipe(const Recipe& recipe);
+    // Takes every Dodge & burn stroke off the photo (the Clear button): one undo step, or none if
+    // there are no strokes. Undo brings them back (the strokes are shared, not copied).
+    [[nodiscard]] MaybeError clear_strokes();
     void begin_gesture() { history_.begin_gesture(); }
     void end_gesture() { history_.end_gesture(); }
     // Undo and redo, which may also re-decode, as set_settings does. Use history().can_undo() and

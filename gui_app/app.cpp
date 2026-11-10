@@ -359,6 +359,7 @@ void App::open_now(const fs::path& path) {
     strip_bands_.clear();
     view_ = {};  // each photo starts whole
     sample_.opened();
+    brush_.opened();
     sample_click_.cancel();
     leave_pick();
     sample_pin_trace_.clear();
@@ -881,6 +882,9 @@ void App::update_preview() {
     if (pick_.on() && !gui::pick_available(viewed_stage_, compare_stage_)) {
         leave_pick();  // White balance isn't in the picture, so there is nothing to judge a grey by
     }
+    if (brush_.on() && !gui::brush_available(viewed_stage_)) {
+        leave_brush();  // the strokes aren't in the picture before Dodge & burn
+    }
     gui::PreviewOptions options;
     options.scopes = prefs_.scope != gui::ScopeChoice::histogram;
     // The Light path is on screen whenever a photo is open, and shows every stage's clipping, so
@@ -1304,6 +1308,7 @@ void App::handle_shortcuts() {
     // has the keyboard focus, so Esc did nothing until the picture was clicked.
     if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
         gui::EscapeContext esc;
+        esc.brushing = brush_.on();
         esc.picking = pick_.on();
         esc.sampling = sample_.on();
         esc.test_strip = strip_.has_value();
@@ -1316,6 +1321,9 @@ void App::handle_shortcuts() {
         switch (gui::escape_action(esc)) {
             case gui::EscapeAction::close_window:
                 *focused_window_last_frame_ = false;  // the window's own open flag
+                break;
+            case gui::EscapeAction::leave_brush:
+                leave_brush();
                 break;
             case gui::EscapeAction::leave_pick:
                 leave_pick();
@@ -1745,6 +1753,7 @@ void App::toggle_sample() {
     } else if (session_.has_file()) {
         sample_.toggle();
         leave_pick();  // one tool at a time
+        leave_brush();
     }
 }
 
@@ -1757,7 +1766,7 @@ void App::clear_sample() {
 }
 
 void App::toggle_pick() {
-    const gui::CanvasTools before{sample_.on(), pick_.on(), strip_.has_value()};
+    const gui::CanvasTools before{sample_.on(), pick_.on(), strip_.has_value(), brush_.on()};
     const gui::CanvasTools after = gui::tools_after_key(
         before, gui::ToolKey::pick,
         session_.has_file() && gui::pick_available(viewed_stage_, compare_stage_), true);
@@ -1776,6 +1785,39 @@ void App::toggle_pick() {
     if (before.strip) {
         strip_.reset();
     }
+    leave_brush();
+}
+
+void App::toggle_brush() {
+    const gui::CanvasTools before{sample_.on(), pick_.on(), strip_.has_value(), brush_.on()};
+    const gui::CanvasTools after = gui::tools_after_key(
+        before, gui::ToolKey::brush, true, true,
+        session_.has_file() && gui::brush_available(viewed_stage_));
+    if (after == before) {
+        return;
+    }
+    if (!after.brushing) {
+        leave_brush();
+        return;
+    }
+    brush_.toggle();
+    if (before.sampling) {
+        clear_sample();
+    }
+    if (before.picking) {
+        leave_pick();
+    }
+    if (before.strip) {
+        strip_.reset();
+    }
+}
+
+void App::leave_brush() {
+    brush_.leave();
+}
+
+void App::clear_strokes() {
+    report(session_.clear_strokes());  // one undo step, or none without strokes
 }
 
 void App::leave_pick() {
@@ -2067,6 +2109,7 @@ void App::toggle_test_strip() {
     strip_ = strip;
     compare_stage_.reset();  // a comparison and a strip don't mix
     leave_pick();
+    leave_brush();
 }
 
 void App::set_strip_step(gui::StripStep step) {
@@ -2959,7 +3002,8 @@ void App::draw_light_path_panel() {
     LightPathData data;
     data.view = gui::light_path_view({session_.settings(), session_.kind(), file_kind,
                                       viewed_stage_, compare_stage_,
-                                      clips_ ? &*clips_ : nullptr, session_.as_shot_white()});
+                                      clips_ ? &*clips_ : nullptr, session_.as_shot_white(),
+                                      brush_.strength()});
     data.theme = theme();
     data.strip_on = strip_.has_value();
     data.strip_available = gui::strip_available(viewed_stage_);
@@ -2967,6 +3011,9 @@ void App::draw_light_path_panel() {
     data.pick_on = pick_.on();
     data.pick_available = gui::pick_available(viewed_stage_, compare_stage_);
     data.pick_hint = gui::view_hint(viewed_stage_, compare_stage_);
+    data.brush_on = brush_.on();
+    data.brush_available = gui::brush_available(viewed_stage_);
+    data.brush_hint = "Not visible here: view Dodge & burn or a later stage to use the Brush.";
 
     LightPathCallbacks cb;
     cb.view_stage = [this](gui::StageId stage) { viewed_stage_ = stage; };
@@ -3025,6 +3072,9 @@ void App::draw_light_path_panel() {
     };
     cb.toggle_strip = [this] { toggle_test_strip(); };
     cb.toggle_pick = [this] { toggle_pick(); };
+    cb.toggle_brush = [this] { toggle_brush(); };
+    cb.brush_strength = [this](float strength) { brush_.set_strength(strength); };
+    cb.clear_strokes = [this] { clear_strokes(); };
     cb.set_compare = [this](std::optional<gui::StageId> stage) {
         compare_stage_ = stage;
         if (stage) {

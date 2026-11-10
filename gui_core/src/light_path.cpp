@@ -57,7 +57,8 @@ std::string strokes_text(std::size_t burns, std::size_t dodges) {
     if (burns == 0) {
         return plural(dodges, "dodge", "dodges");
     }
-    return plural(burns, "burn", "burns") + " \xC2\xB7 " + plural(dodges, "dodge", "dodges");
+    // Both kinds: only the number. "999 burns · 999 dodges when on" would make the panel wider.
+    return plural(burns + dodges, "stroke", "strokes");
 }
 
 std::string strokes_text(const Strokes& strokes) {

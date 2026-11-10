@@ -19,7 +19,8 @@ using prism::Chromaticity;
 using prism::WhiteBalance;
 using prism::white_of;
 
-constexpr StageId all_stages[] = {StageId::decode,   StageId::exposure,   StageId::white_balance,
+constexpr StageId all_stages[] = {StageId::decode,   StageId::exposure,   StageId::dodge_burn,
+                                  StageId::white_balance,
                                   StageId::matrix,   StageId::saturation, StageId::contrast,
                                   StageId::curve,    StageId::encode};
 constexpr ClipFate all_fates[] = {ClipFate::none, ClipFate::recoverable, ClipFate::lost};
@@ -45,7 +46,7 @@ StageClip clip_with(StageId stage, ClipFate fate) {
 ClipReport report_with(ClipFate fate) {
     ClipReport report;
     report.sample_count = 1000;
-    // Every stage the report holds, the hidden ones too: all_stages has only the visible ones.
+    // Every stage the report holds.
     for (const StageInfo& info : pipeline_stages()) {
         report.stages[static_cast<std::size_t>(info.id)] = clip_with(info.id, fate);
     }
@@ -597,16 +598,17 @@ TEST(LightPathDodgeBurn, TheValueSaysNoneDodgesBurnsOrBoth) {
     EXPECT_EQ(strokes_text(0, 3), "3 dodges");
     EXPECT_EQ(strokes_text(1, 0), "1 burn");
     EXPECT_EQ(strokes_text(3, 0), "3 burns");
-    EXPECT_EQ(strokes_text(2, 1), "2 burns \xC2\xB7 1 dodge");  // burns first
-    EXPECT_EQ(strokes_text(1, 2), "1 burn \xC2\xB7 2 dodges");
-    EXPECT_EQ(strokes_text(999, 999), "999 burns \xC2\xB7 999 dodges");
+    // Both kinds: the count alone, so the row stays as narrow as the others.
+    EXPECT_EQ(strokes_text(2, 1), "3 strokes");
+    EXPECT_EQ(strokes_text(1, 1), "2 strokes");
+    EXPECT_EQ(strokes_text(999, 999), "1998 strokes");
 }
 
 TEST(LightPathDodgeBurn, TheRowCountsTheStrokesByTheirSign) {
     EXPECT_EQ(row_for(StageId::dodge_burn, EditSettings{}).value, "None");
     EXPECT_EQ(row_for(StageId::dodge_burn, with_strokes(0, 3)).value, "3 dodges");
     EXPECT_EQ(row_for(StageId::dodge_burn, with_strokes(1, 0)).value, "1 burn");
-    EXPECT_EQ(row_for(StageId::dodge_burn, with_strokes(2, 1)).value, "2 burns \xC2\xB7 1 dodge");
+    EXPECT_EQ(row_for(StageId::dodge_burn, with_strokes(2, 1)).value, "3 strokes");
     EXPECT_EQ(strokes_text(Strokes{}), "None");
 }
 
@@ -614,7 +616,7 @@ TEST(LightPathDodgeBurn, SwitchedOffItKeepsTheCountAndSaysWhenOn) {
     EditSettings s = with_strokes(2, 1);
     s.dodge_burn_on = false;
     const LightPathRow off = row_for(StageId::dodge_burn, s);
-    EXPECT_EQ(off.value, "2 burns \xC2\xB7 1 dodge when on");
+    EXPECT_EQ(off.value, "3 strokes when on");
     EXPECT_TRUE(off.value_muted);
     EXPECT_FALSE(off.enabled);
     EXPECT_TRUE(off.can_toggle);
@@ -626,6 +628,9 @@ TEST(LightPathDodgeBurn, SwitchedOffItKeepsTheCountAndSaysWhenOn) {
     EditSettings most = with_strokes(999, 999);
     most.dodge_burn_on = false;
     EXPECT_EQ(row_for(StageId::dodge_burn, most).value, widest_strokes_value);
+    EditSettings dodges = with_strokes(0, 999);
+    dodges.dodge_burn_on = false;
+    EXPECT_EQ(row_for(StageId::dodge_burn, dodges).value, "999 dodges when on");
 }
 
 TEST(LightPathDodgeBurn, TheControlsLineCarriesTheStrengthAndWhetherThereIsAnythingToClear) {

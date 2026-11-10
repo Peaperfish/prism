@@ -93,6 +93,9 @@ protected:
         cb.reset_curve_parameter = [this] { ++parameter_resets_; };
         cb.toggle_strip = [this] { ++strip_toggles_; };
         cb.toggle_pick = [this] { ++pick_toggles_; };
+        cb.toggle_brush = [this] { ++brush_toggles_; };
+        cb.brush_strength = [this](float v) { strength_calls_.push_back(v); };
+        cb.clear_strokes = [this] { ++clears_; };
         cb.set_compare = [this](std::optional<gui::StageId> s) { compares_.push_back(s); };
         cb.swap_compare = [this] { ++swaps_; };
         const auto note = [this](std::string_view id) {
@@ -133,7 +136,8 @@ protected:
         LightPathData data;
         data.fits = fits_;
         data.view = gui::light_path_view({settings_, kind_, file_kind_, viewed_, compare_,
-                                          clips_ ? &*clips_ : nullptr, as_shot_});
+                                          clips_ ? &*clips_ : nullptr, as_shot_,
+                                          brush_strength_});
         data.theme = gui::Theme::dark;
         data.strip_on = strip_on_;
         data.strip_available = strip_available_;
@@ -141,6 +145,9 @@ protected:
         data.pick_on = pick_on_;
         data.pick_available = pick_available_;
         data.pick_hint = "The pick hint.";
+        data.brush_on = brush_on_;
+        data.brush_available = brush_available_;
+        data.brush_hint = "The brush hint.";
         const std::vector<LightPathRowRect> rects = draw_light_path(data, callbacks());
         bottom_ = ImGui::GetCursorScreenPos().y;
         ImGui::End();
@@ -253,6 +260,16 @@ protected:
         }
         return {all[1], all[2]};
     }
+    // The items of Dodge & burn's controls line as the last frame drew them, by their explanation.
+    [[nodiscard]] Placed placed_with(std::string_view id) const {
+        for (const Placed& p : placed_) {
+            if (p.id == id) {
+                return p;
+            }
+        }
+        ADD_FAILURE() << "nothing drew " << id;
+        return Placed{};
+    }
     // The Pick neutral buttons as the last frame drew them.
     [[nodiscard]] std::vector<Placed> pick_buttons() const {
         std::vector<Placed> all;
@@ -323,6 +340,12 @@ protected:
     bool pick_on_ = false;
     bool pick_available_ = true;
     int pick_toggles_ = 0;
+    bool brush_on_ = false;
+    float brush_strength_ = 0.5f;
+    bool brush_available_ = true;
+    int brush_toggles_ = 0;
+    std::vector<float> strength_calls_;
+    int clears_ = 0;
 
     struct SliderCall {
         gui::SimpleControl control;
@@ -368,7 +391,7 @@ protected:
 
 TEST_F(LightPathHeadless, RowsAreAsTallAsTheLayoutSaysAndFollowOneAnother) {
     const std::vector<LightPathRowRect> rects = frame();
-    ASSERT_EQ(rects.size(), gui::pipeline_stages().size() - 1);  // Dodge & burn has no row yet
+    ASSERT_EQ(rects.size(), gui::pipeline_stages().size());  // every stage has a row
     for (std::size_t i = 1; i < rects.size(); ++i) {
         EXPECT_EQ(rects[i].min.y, rects[i - 1].max.y);
         EXPECT_GT(rects[i].max.y, rects[i].min.y);
@@ -876,12 +899,9 @@ TEST_F(LightPathHeadless, SwapSidesIsOfferedOnlyWhileComparing) {
     EXPECT_EQ(swaps_, 1);
 }
 
-TEST_F(LightPathHeadless, NoStrokesChangesNothingInTheLightPathOrTheComparePopup) {
-    // Dodge & burn is a stage, but has no row and no entry in the compare popup yet: the panel is
-    // what it was, with or without strokes.
+TEST_F(LightPathHeadless, DodgeAndBurnHasARowAfterExposureAndAnEntryInTheComparePopup) {
+    // With strokes or without, on or off: the row is there, and so is its entry in the popup.
     viewed_ = gui::StageId::contrast;
-    std::size_t popup_entries[2] = {0, 0};
-    std::size_t rows[2] = {0, 0};
     for (int with = 0; with < 2; ++with) {
         settings_ = {};
         settings_.exposure_stops = 0.5f;
@@ -893,23 +913,20 @@ TEST_F(LightPathHeadless, NoStrokesChangesNothingInTheLightPathOrTheComparePopup
             settings_.strokes = gui::Strokes(std::move(field));
         }
         std::vector<LightPathRowRect> rects = frame();
-        rows[with] = rects.size();
+        EXPECT_EQ(rects.size(), 9u);  // Decode, seven edits, Output encode
+        ASSERT_GE(rects.size(), 3u);
+        EXPECT_EQ(rects[1].stage, gui::StageId::exposure);
+        EXPECT_EQ(rects[2].stage, gui::StageId::dodge_burn);
         const ImVec2 action(rects.front().max.x - 12.0f, rects.front().min.y - 12.0f);
         click_at(action);
         frame();
         // The header's Compare action, then every entry of the popup (Off and a stage each)
         // describe themselves once.
-        const auto compare_entries = [&] {
-            std::size_t n = 0;
-            for (const auto& p : placed_) {
-                n += p.id == gui::explain::compare ? 1 : 0;
-            }
-            return n;
-        };
-        popup_entries[with] = compare_entries();
+        std::size_t popup_entries = 0;
         for (const auto& p : placed_) {
-            EXPECT_NE(p.id, gui::explain_id(gui::StageId::dodge_burn));
+            popup_entries += p.id == gui::explain::compare ? 1 : 0;
         }
+        EXPECT_EQ(popup_entries, 11u);  // the action, Off and those nine stages
         // Close it for the next round.
         mouse_to(ImVec2(590, 1400));
         frame();
@@ -919,10 +936,126 @@ TEST_F(LightPathHeadless, NoStrokesChangesNothingInTheLightPathOrTheComparePopup
         frame();
         frame();
     }
-    EXPECT_EQ(rows[0], 8u);  // as on main: Decode, six edits, Output encode
-    EXPECT_EQ(rows[1], 8u);
-    EXPECT_EQ(popup_entries[0], 10u);  // the action, Off and those eight stages: as on main
-    EXPECT_EQ(popup_entries[1], 10u);
+}
+
+// --- Dodge & burn's row -------------------------------------------------------------------------
+
+namespace {
+gui::Strokes many_strokes(std::size_t count) {
+    auto field = std::make_shared<prism::StrokeField>();
+    field->aspect = 1.5f;
+    for (std::size_t i = 0; i < count; ++i) {
+        field->strokes.push_back(std::make_shared<const prism::FieldStroke>(
+            prism::FieldStroke{{{0.5f, 0.5f}}, 0.05f, 0.5f, i % 2 ? 0.5f : -0.5f}));
+    }
+    return gui::Strokes(std::move(field));
+}
+}  // namespace
+
+TEST_F(LightPathHeadless, DodgeAndBurnRowIsTheSameHeightWhateverItHoldsOrShows) {
+    const float expected = [&] {
+        const std::vector<LightPathRowRect> rects = frame();
+        const LightPathRowRect& row = row_of(rects, gui::StageId::dodge_burn);
+        return row.max.y - row.min.y;
+    }();
+    const gui::LightPathRow plain = gui::light_path_row(
+        {settings_, kind_, file_kind_, viewed_, compare_, nullptr, as_shot_}, gui::StageId::dodge_burn);
+    EXPECT_EQ(expected, gui::light_path_row_layout(plain, full_metrics()).height);
+    // A controls line is one slider high, between the first line and the clip line.
+    EXPECT_GT(expected, full_metrics().pad_top + full_metrics().line + full_metrics().slider);
+    for (const std::size_t count : {std::size_t{0}, std::size_t{1}, std::size_t{500}}) {
+        for (const bool on : {true, false}) {
+            for (const gui::StageId viewed : {gui::StageId::dodge_burn, gui::StageId::exposure,
+                                              gui::StageId::curve, gui::final_stage}) {
+                settings_.strokes = many_strokes(count);
+                settings_.dodge_burn_on = on;
+                viewed_ = viewed;
+                for (const bool pressed : {false, true}) {
+                    brush_on_ = pressed;
+                    const std::vector<LightPathRowRect> rects = frame();
+                    const LightPathRowRect& row = row_of(rects, gui::StageId::dodge_burn);
+                    EXPECT_EQ(row.max.y - row.min.y, expected)
+                        << count << (on ? " on " : " off ") << static_cast<int>(viewed);
+                    // And the rows below it stay where they were.
+                    EXPECT_EQ(rects.size(), gui::pipeline_stages().size());
+                }
+            }
+        }
+    }
+}
+
+TEST_F(LightPathHeadless, TheBrushStrengthAndClearAreInsideTheDodgeAndBurnRowOnOneLine) {
+    settings_.strokes = many_strokes(3);
+    frame();
+    const std::vector<LightPathRowRect> rects = frame();
+    const LightPathRowRect& row = row_of(rects, gui::StageId::dodge_burn);
+    const Placed brush = placed_with(gui::explain::dodge_burn_brush);
+    const Placed strength = placed_with(gui::explain::dodge_burn_strength);
+    const Placed clear = placed_with(gui::explain::dodge_burn_clear);
+    const gui::LightPathMetrics m = metrics();
+    for (const Placed& p : {brush, strength, clear}) {
+        EXPECT_GE(p.min.y, row.min.y + m.pad_top + m.line) << p.id;
+        EXPECT_LE(p.max.y, row.max.y) << p.id;
+        EXPECT_GT(p.min.x, row.min.x) << p.id;
+        EXPECT_LT(p.max.x, row.max.x) << p.id;
+        EXPECT_FLOAT_EQ(p.max.y - p.min.y, slider_height()) << p.id;
+        EXPECT_EQ(p.min.y, brush.min.y) << p.id;  // one line
+    }
+    // Brush at the left, Strength between, Clear at the right.
+    EXPECT_LT(brush.max.x, strength.min.x);
+    EXPECT_LT(strength.max.x, clear.min.x);
+    EXPECT_GT(strength.max.x - strength.min.x, 70.0f);
+    // The switch has its own words.
+    EXPECT_TRUE(ids_.count(std::string(gui::explain::dodge_burn_switch)));
+}
+
+TEST_F(LightPathHeadless, PressingBrushTogglesTheBrushAndDoesNotViewTheStage) {
+    frame();
+    frame();
+    click_at(placed_with(gui::explain::dodge_burn_brush).centre());
+    EXPECT_EQ(brush_toggles_, 1);
+    EXPECT_TRUE(viewed_calls_.empty());
+    // Greyed out where it is not available: a press does nothing (nor does it view the stage).
+    brush_available_ = false;
+    frame();
+    frame();
+    click_at(placed_with(gui::explain::dodge_burn_brush).centre());
+    EXPECT_EQ(brush_toggles_, 1);
+    // But a Brush that is on can always be turned off.
+    brush_on_ = true;
+    frame();
+    frame();
+    click_at(placed_with(gui::explain::dodge_burn_brush).centre());
+    EXPECT_EQ(brush_toggles_, 2);
+}
+
+TEST_F(LightPathHeadless, ClearWorksOnlyWithStrokesAndSaysNothingElse) {
+    frame();
+    frame();
+    click_at(placed_with(gui::explain::dodge_burn_clear).centre());
+    EXPECT_EQ(clears_, 0);  // nothing to clear: greyed out
+    EXPECT_TRUE(viewed_calls_.empty());
+    settings_.strokes = many_strokes(2);
+    frame();
+    frame();
+    click_at(placed_with(gui::explain::dodge_burn_clear).centre());
+    EXPECT_EQ(clears_, 1);
+    EXPECT_TRUE(viewed_calls_.empty());
+}
+
+TEST_F(LightPathHeadless, TheStrengthSliderMovesInTenthsOfAStopAndResetsToHalf) {
+    frame();
+    frame();
+    const Placed strength = placed_with(gui::explain::dodge_burn_strength);
+    drag(ImVec2(strength.min.x + 4.0f, strength.centre().y),
+         ImVec2(strength.max.x - 1.0f, strength.centre().y));
+    ASSERT_FALSE(strength_calls_.empty());
+    for (const float v : strength_calls_) {
+        EXPECT_FLOAT_EQ(v, std::round(v * 10.0f) / 10.0f) << v;
+        EXPECT_GE(v, 0.1f);
+        EXPECT_LE(v, 2.0f);
+    }
+    EXPECT_FLOAT_EQ(strength_calls_.back(), 2.0f);
 }
 
 // --- Explanations ------------------------------------------------------------------------------
@@ -1017,8 +1150,9 @@ TEST_F(LightPathHeadless, WhiteBalanceHasTwoSlidersInsideItsRowOneUnderTheOther)
     const gui::LightPathMetrics m = metrics();
     EXPECT_GT(kelvin.min.y, row.min.y + m.pad_top + m.line + m.gap);
     EXPECT_LT(tint.max.y, row.max.y - m.gap);
-    // The row is the next after Exposure and the one before Colour matrix.
-    EXPECT_EQ(row.min.y, row_of(rects, gui::StageId::exposure).max.y);
+    // The row is the next after Dodge & burn (itself after Exposure) and the one before Colour matrix.
+    EXPECT_EQ(row.min.y, row_of(rects, gui::StageId::dodge_burn).max.y);
+    EXPECT_EQ(row_of(rects, gui::StageId::dodge_burn).min.y, row_of(rects, gui::StageId::exposure).max.y);
     EXPECT_EQ(row.max.y, row_of(rects, gui::StageId::matrix).min.y);
 }
 
@@ -1401,8 +1535,27 @@ protected:
                 run_case();
             }
         }
-        // Colour matrix: the camera's, none, and a recipe's.
+        // Dodge & burn: the most strokes of one kind and of both, on and off.
+        for (const bool on : {true, false}) {
+            for (const std::size_t burns : {std::size_t{0}, std::size_t{999}}) {
+                settings_ = {};
+                settings_.dodge_burn_on = on;
+                auto field = std::make_shared<prism::StrokeField>();
+                field->aspect = 1.5f;
+                for (std::size_t i = 0; i < 999 + burns; ++i) {
+                    field->strokes.push_back(std::make_shared<const prism::FieldStroke>(
+                        prism::FieldStroke{{{0.5f, 0.5f}}, 0.05f, 0.5f, i < burns ? -0.5f : 0.5f}));
+                }
+                settings_.strokes = gui::Strokes(std::move(field));
+                run_case();
+            }
+        }
         settings_ = {};
+        // Strength at its widest reading, "2.0 stops".
+        brush_strength_ = 2.0f;
+        run_case();
+        brush_strength_ = 0.5f;
+        // Colour matrix: the camera's, none, and a recipe's.
         run_case();
         kind_ = gui::InputKind::image;
         file_kind_ = "JPEG";
@@ -1485,6 +1638,11 @@ TEST_F(MinimumWidth, EveryWorstCaseTextIsDrawnInFullAtTheMinimumWidth) {
         EXPECT_TRUE(seen("Kelvin value", "15000 K")) << scale;
         EXPECT_TRUE(seen("Tint value", "\xE2\x88\x92" "100")) << scale;
         EXPECT_TRUE(seen("Value", "Camera default")) << scale;
+        // Dodge & burn: the longest value, and the controls line's value and track.
+        EXPECT_TRUE(seen("Value", std::string(gui::widest_strokes_value))) << scale;
+        EXPECT_TRUE(seen("Value", "999 dodges when on")) << scale;
+        EXPECT_TRUE(seen("Strength value", "2.0 stops")) << scale;
+        EXPECT_TRUE(seen("Strength track", "track")) << scale;
         EXPECT_TRUE(seen("Value", "From recipe")) << scale;
         for (const char* tab : {"None", "Gamma", "Reinhard", "Filmic"}) {
             EXPECT_TRUE(seen("Tone curve tab", tab)) << scale << " " << tab;
@@ -1496,6 +1654,14 @@ TEST_F(MinimumWidth, EveryWorstCaseTextIsDrawnInFullAtTheMinimumWidth) {
         EXPECT_TRUE(seen("Header", "Light path Compare: after Output encode")) << scale;
         EXPECT_TRUE(seen("Kelvin track", "track")) << scale;
     }
+}
+
+TEST_F(MinimumWidth, DodgeAndBurnDoesNotMakeThePanelWiderThanItWas) {
+    apply_style(gui::Theme::dark, 1.0f);
+    ImGui::NewFrame();
+    // 428 pixels at the interface size 1, as before the Dodge & burn row (layout_test.cpp).
+    EXPECT_LE(light_path_min_width(), 428.0f);
+    ImGui::EndFrame();
 }
 
 TEST_F(MinimumWidth, ThePanelReportsTextsThatDoNotFitWhenItIsNarrower) {

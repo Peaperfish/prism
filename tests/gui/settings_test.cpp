@@ -367,9 +367,9 @@ TEST(PipelineStages, ListsEveryStageInOrderWithBookendsUntoggleable) {
     }
     EXPECT_FALSE(stages[8].can_toggle);
 
-    // Only Dodge & burn is kept out of the UI for now.
+    // Every stage has its row now: Dodge & burn is no longer kept out of the UI.
     for (const StageInfo& s : stages) {
-        EXPECT_EQ(s.hidden, s.id == StageId::dodge_burn) << s.slug;
+        EXPECT_FALSE(s.hidden) << s.slug;
     }
 
     for (const StageInfo& s : stages) {

@@ -5,6 +5,7 @@
 #include <cfloat>
 #include <cmath>
 #include <cstddef>
+#include <memory>
 
 #include "imgui_internal.h"
 #include "prism/gui/layout.hpp"
@@ -47,6 +48,8 @@ bool shows_beyond_flag(const gui::LightPathRow& row) {
 // The padding at each side of the Test strip and the Pick neutral buttons' labels.
 float strip_button_padding() { return px(8.0f); }
 float pick_button_padding() { return px(6.0f); }
+// The Brush and Clear buttons of Dodge & burn's controls line.
+float brush_button_padding() { return px(8.0f); }
 // Between a Tone curve tab's edge and its label.
 float tab_padding() { return px(6.0f); }
 // The least a White balance slider's track is wide.
@@ -284,6 +287,99 @@ float draw_pick_button(const LightPathData& data, float right, float line_y, flo
         }
     }
     return left;
+}
+
+// Dodge & burn's controls line: Brush, the Strength slider with its value, and Clear. The Brush is
+// drawn in its pressed look while Brush mode is on, and acts on the press like Pick neutral. The
+// buttons are as tall as the line. Strength is the brush's setting, so it works whether the stage
+// is on or off; Clear is greyed out with no strokes.
+void draw_brush_controls(const LightPathData& data, const gui::LightPathRow& row, float x, float y,
+                         float width, const LightPathCallbacks& cb) {
+    const gui::LightPathRow::BrushControls& controls = *row.brush_controls;
+    const float height = slider_height();
+    const std::string brush_label(gui::light_path_text::brush);
+    const std::string clear_label(gui::light_path_text::clear_strokes);
+    ImGui::PushFont(nullptr, token_type().small);
+    const float brush_width = text_width(brush_label) + 2 * brush_button_padding();
+    const float clear_width = text_width(clear_label) + 2 * brush_button_padding();
+    const float value_width = text_width(gui::light_path_text::widest_strength);
+    ImGui::PopFont();
+    const float gap = first_line_gap();
+    const float track = std::max(1.0f, width - brush_width - clear_width - value_width - 3 * gap);
+
+    const auto button = [&](const std::string& label, float left, float button_width, bool pressed,
+                            bool can_act, const char* id, std::string_view explain_id,
+                            const std::string& hint, const std::function<void()>& act) {
+        ImGui::PushFont(nullptr, token_type().small);
+        ImGui::SetCursorScreenPos(ImVec2(left, y));
+        ImGui::BeginDisabled(!can_act);
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, px(5.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(brush_button_padding(), 0.0f));
+        if (pressed) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+        }
+        ImGui::PushID(id);
+        if (ImGui::ButtonEx(label.c_str(), ImVec2(button_width, height), press_only) && act) {
+            act();
+        }
+        ImGui::PopID();
+        if (pressed) {
+            ImGui::PopStyleColor();
+        }
+        ImGui::PopStyleVar(2);
+        ImGui::EndDisabled();
+        ImGui::PopFont();
+        const FullStrength full;
+        if (can_act) {
+            cb.describe(explain_id);
+        } else {
+            cb.explain(explain_id, false);
+            if (!hint.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal |
+                                                      ImGuiHoveredFlags_AllowWhenDisabled)) {
+                ImGui::SetTooltip("%s", hint.c_str());
+            }
+        }
+    };
+    button(brush_label, x, brush_width, data.brush_on, data.brush_on || data.brush_available,
+           "brush", gui::explain::dodge_burn_brush, data.brush_hint, cb.toggle_brush);
+
+    ImGui::PushID("strength");
+    ImGui::SetCursorScreenPos(ImVec2(x + brush_width + gap, y));
+    ImGui::SetNextItemWidth(track);
+    float strength = controls.strength;
+    const bool changed =
+        styled_slider("##slider", &strength, gui::brush_strength_min, gui::brush_strength_max,
+                      gui::brush_strength_min, ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput);
+    // A step of 0.1: the value the row will show next, also for the text beside the slider.
+    const float snapped = gui::snap_brush_strength(strength);
+    if (changed && snapped != controls.strength && cb.brush_strength) {
+        cb.brush_strength(snapped);
+    }
+    cb.explain(gui::explain::dodge_burn_strength, changed);
+    {
+        const FullStrength full;
+        if (ImGui::BeginPopupContextItem("reset")) {
+            if (ImGui::MenuItem(controls.strength_reset.c_str()) && cb.brush_strength) {
+                cb.brush_strength(gui::brush_strength_default);
+            }
+            ImGui::EndPopup();
+        }
+    }
+    ImGui::PopID();
+    const float value_left = x + brush_width + gap + track + gap;
+    const std::string value = changed ? gui::brush_strength_text(snapped) : controls.strength_text;
+    ImGui::PushFont(nullptr, token_type().small);
+    text_in_band(ImGui::GetWindowDrawList(), value_left + value_width - text_width(value), y, height,
+                 ImGui::GetColorU32(ImGuiCol_Text), value);
+    note_fit(data, "Strength value", value, value, value_width);
+    if (data.fits != nullptr) {
+        data.fits->push_back({"Strength track", "track", track >= wb_min_track() ? "track" : "",
+                              wb_min_track(), track});
+    }
+    ImGui::PopFont();
+
+    button(clear_label, x + width - clear_width, clear_width, false, controls.can_clear, "clear",
+           gui::explain::dodge_burn_clear, std::string(), cb.clear_strokes);
 }
 
 // Contrast's slider: half grades, 0 to 10, snapped. Typing takes a grade or a multiplier and gives
@@ -609,7 +705,9 @@ void draw_row(const LightPathData& data, const gui::LightPathRow& row,
         }
         {
             const FullStrength full;
-            cb.describe(gui::explain_id(row.stage));
+            // Dodge & burn's switch has its own words: the row's are about the strokes.
+            cb.describe(row.stage == gui::StageId::dodge_burn ? gui::explain::dodge_burn_switch
+                                                              : gui::explain_id(row.stage));
         }
         value_right = right - size.x - first_line_gap();
     }
@@ -663,6 +761,9 @@ void draw_row(const LightPathData& data, const gui::LightPathRow& row,
                                   row_min.y + *layout.second_slider_y, content, cb);
     } else if (layout.slider_y && row.slider) {
         draw_stage_slider(row, x, row_min.y + *layout.slider_y, content, cb);
+    }
+    if (layout.controls_y && row.brush_controls) {
+        draw_brush_controls(data, row, x, row_min.y + *layout.controls_y, content, cb);
     }
     if (layout.tabs_y) {
         draw_curve_tabs(data, row, x, row_min.y + *layout.tabs_y, content, cb);
@@ -762,6 +863,18 @@ float light_path_min_width() {
     for (const prism::WhiteBalance light : {prism::WhiteBalance{15000, -100}, prism::WhiteBalance{2000, 100}}) {
         add([&](gui::EditSettings& s, bool on) { s.white_balance = light; s.white_balance_on = on; });
     }
+    // Dodge & burn at its widest: the most of both kinds (the text gives out long before 999
+    // strokes of each could be made), on and off.
+    {
+        auto field = std::make_shared<prism::StrokeField>();
+        field->aspect = 1.5f;
+        for (int i = 0; i < 1998; ++i) {
+            field->strokes.push_back(std::make_shared<const prism::FieldStroke>(
+                prism::FieldStroke{{{0.5f, 0.5f}}, 0.05f, 0.5f, i < 999 ? -0.5f : 0.5f}));
+        }
+        const gui::Strokes most(std::move(field));
+        add([&](gui::EditSettings& s, bool on) { s.strokes = most; s.dodge_burn_on = on; });
+    }
     add([](gui::EditSettings& s, bool on) { s.matrix = gui::MatrixFile{}; s.matrix_on = on; });
     add([](gui::EditSettings& s, bool) { s.raw_camera_matrix = gui::MatrixFile{}; });
     add([](gui::EditSettings&, bool) {});
@@ -817,6 +930,12 @@ float light_path_min_width() {
             }
         }
     }
+
+    // Dodge & burn's controls line: Brush, a track, the value and Clear.
+    row_need = std::max(row_need, small_text(gui::light_path_text::brush) + wb_min_track() +
+                                      small_text(gui::light_path_text::widest_strength) +
+                                      small_text(gui::light_path_text::clear_strokes) +
+                                      4 * brush_button_padding() + 3 * first_line_gap());
 
     // White balance's sliders: caption, a track, value.
     row_need = std::max(row_need, white_balance_caption_width() + wb_min_track() +

@@ -49,8 +49,9 @@ struct StageInfo {
     std::string_view name;
     std::string_view description;
     bool can_toggle = false;
-    // Kept out of the Light path, the compare popup and the width loop (Dodge & burn, until its
-    // row and tools exist). The stage still runs, and its slug still names it in the pipeline.
+    // Kept out of the Light path, the compare popup and the width loop. No stage is hidden now
+    // (Dodge & burn was until its row existed); the flag stays for a stage that runs before its row
+    // does. A hidden stage still runs, and its slug still names it in the pipeline.
     bool hidden = false;
 };
 

@@ -157,6 +157,13 @@ private:
     // toggle it; a click on the photo picks; the ring shows the patch the click would average.
     void toggle_pick();
     void leave_pick();
+    // Brush mode (Dodge & burn). The row's Brush button toggles it (session 4 binds B to
+    // toggle_brush too); it is left by I, T, W, Esc, the view moving before Dodge & burn, and by
+    // another photo. No painting yet.
+    void toggle_brush();
+    void leave_brush();
+    // Dodge & burn's Clear: every stroke off the photo, one undo step.
+    void clear_strokes();
     void pick_at(gui::ViewPoint cursor);
     void update_pick_cursor();
     void draw_pick_overlay(ImDrawList* draw);
@@ -334,6 +341,7 @@ private:
     gui::SampleMode sample_;
     gui::SampleClick sample_click_;
     gui::PickMode pick_;
+    gui::BrushMode brush_;  // Dodge & burn's brush: on or off, and the strength it paints with
     gui::SampleClick pick_click_;
     std::optional<gui::SamplePin> pick_hover_;  // the pixel under the cursor this frame
     std::string pick_message_;                  // the chip: what the last pick did, or why not

@@ -146,8 +146,9 @@ struct LightPathInputs {
     float brush_strength = brush_strength_default;
 };
 
-// What Dodge & burn's row says it holds: "None"; "1 dodge", "3 dodges"; "1 burn", "3 burns"; both,
-// burns first, "2 burns · 1 dodge". A stroke that dodges has a positive weight, one that burns a
+// What Dodge & burn's row says it holds: "None"; "1 dodge", "3 dodges"; "1 burn", "3 burns"; both
+// kinds only the count, "3 strokes" ("2 burns · 1 dodge" at its longest made the panel wider than
+// the other rows need). A stroke that dodges has a positive weight, one that burns a
 // negative weight. With the stage off and strokes on the photo the caller appends " when on".
 // `burns` and `dodges` are counts.
 [[nodiscard]] std::string strokes_text(std::size_t burns, std::size_t dodges);
@@ -155,9 +156,10 @@ struct LightPathInputs {
 // "1 dodge", "3 burns", ...: the count of each kind in `strokes`, as strokes_text.
 [[nodiscard]] std::string strokes_text(const Strokes& strokes);
 
-// "999 burns · 999 dodges when on": the longest the value can read, which the panel's minimum
-// width allows for (light_path_min_width).
-inline constexpr std::string_view widest_strokes_value = "999 burns \xC2\xB7 999 dodges when on";
+// The longest the value can read in practice, which the panel's minimum width allows for
+// (light_path_min_width): a thousand strokes of each kind. More digits are shortened, as a long
+// matrix name is.
+inline constexpr std::string_view widest_strokes_value = "1998 strokes when on";
 
 // "RAW, camera colour", "RAW, your camera matrix", "JPEG, read as sRGB", "PNG, read as sRGB" or
 // "HEIC, converted from its own colours".

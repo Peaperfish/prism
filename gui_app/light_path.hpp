@@ -51,6 +51,9 @@ struct LightPathData {
     bool pick_on = false;         // Pick mode is on: the White balance row's button is pressed in
     bool pick_available = true;   // false: the button is greyed out, and says why
     std::string pick_hint;
+    bool brush_on = false;         // Brush mode is on: Dodge & burn's Brush button is pressed in
+    bool brush_available = true;   // false: the button is greyed out, and says why
+    std::string brush_hint;
 };
 
 struct LightPathCallbacks {
@@ -73,6 +76,10 @@ struct LightPathCallbacks {
     std::function<void()> reset_curve_parameter;
     std::function<void()> toggle_strip;
     std::function<void()> toggle_pick;  // the White balance row's Pick neutral button
+    std::function<void()> toggle_brush;  // Dodge & burn's Brush button
+    // Dodge & burn's Strength slider: the new strength in stops, already a step of 0.1.
+    std::function<void(float)> brush_strength;
+    std::function<void()> clear_strokes;  // Dodge & burn's Clear button: one undo step
     std::function<void(std::optional<gui::StageId>)> set_compare;  // none: Off
     std::function<void()> swap_compare;
     // Called right after a control is submitted, as the app's explain() and describe() want: the
@@ -95,7 +102,8 @@ struct LightPathRowRect {
 // theme are in it): the panel's padding and scrollbar, the rows' margins, and the widest of the worst-case
 // texts of each row: Exposure's -10.00 and +10.00 stops with "(beyond the slider)", Contrast's
 // "Softer than grade 0 · ×0.60" and an off-grid grade, White balance's As shot and Chosen with its subtitle
-// and the Pick neutral button, a clip note beside the Test strip button, each Tone curve tab with
+// and the Pick neutral button, Dodge & burn's "1998 strokes when on" and its controls line
+// (Brush, a Strength track of the least width, "2.0 stops" and Clear), a clip note beside the Test strip button, each Tone curve tab with
 // room around its label, Colour matrix's "Camera default", the stage switches off ("when on"), and
 // the header with Compare on. A Colour matrix file's name is not one of them: it is shortened by
 // design, and its whole path is the tooltip.

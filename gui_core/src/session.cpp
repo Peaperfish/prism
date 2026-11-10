@@ -189,6 +189,15 @@ MaybeError Session::apply_recipe(const Recipe& recipe) {
     return set_settings(s);
 }
 
+MaybeError Session::clear_strokes() {
+    if (settings().strokes.empty()) {
+        return std::nullopt;
+    }
+    EditSettings s = settings();
+    s.strokes = Strokes{};
+    return set_settings(s);
+}
+
 MaybeError Session::undo() {
     history_.undo();
     return update_preview_base();

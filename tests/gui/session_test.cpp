@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <stop_token>
 #include <string>
 #include <vector>
@@ -385,6 +386,39 @@ TEST(Session, UndoAndRedoGoThroughTheHistory) {
     EXPECT_EQ(session.settings(), EditSettings{});
     ASSERT_EQ(session.redo(), std::nullopt);
     EXPECT_NE(session.settings(), EditSettings{});
+}
+
+TEST(Session, ClearingTheStrokesIsOneUndoStepAndUndoBringsThemBack) {
+    Session session;
+    auto field = std::make_shared<prism::StrokeField>();
+    field->aspect = 1.5f;
+    for (const float weight : {-0.5f, 0.5f, 1.0f}) {
+        field->strokes.push_back(std::make_shared<const prism::FieldStroke>(
+            prism::FieldStroke{{{0.5f, 0.5f}}, 0.1f, 0.5f, weight}));
+    }
+    EditSettings drawn;
+    drawn.strokes = prism::gui::Strokes(field);
+    ASSERT_EQ(session.set_settings(drawn), std::nullopt);
+    const std::size_t steps = session.history().undo_steps();
+    ASSERT_EQ(session.clear_strokes(), std::nullopt);
+    EXPECT_TRUE(session.settings().strokes.empty());
+    EXPECT_EQ(session.history().undo_steps(), steps + 1);  // one step, not three
+    ASSERT_EQ(session.undo(), std::nullopt);
+    EXPECT_EQ(session.settings().strokes.field(), field);
+    EXPECT_EQ(session.history().undo_steps(), steps);
+    ASSERT_EQ(session.redo(), std::nullopt);
+    EXPECT_TRUE(session.settings().strokes.empty());
+}
+
+TEST(Session, ClearingWithoutStrokesIsNoStep) {
+    Session session;
+    EditSettings s;
+    s.exposure_stops = 1.0f;
+    ASSERT_EQ(session.set_settings(s), std::nullopt);
+    const std::size_t steps = session.history().undo_steps();
+    ASSERT_EQ(session.clear_strokes(), std::nullopt);
+    EXPECT_EQ(session.history().undo_steps(), steps);
+    EXPECT_EQ(session.settings(), s);
 }
 
 TEST(Session, ChangingTheRawCameraMatrixDecodesAgain) {
