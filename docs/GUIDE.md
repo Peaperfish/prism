@@ -150,6 +150,10 @@ Until you choose a light the row reads **As shot**: the light the camera balance
 
 Move either slider and the row shows your choice instead, for example `5200 K · tint +10`. The other number starts from the as-shot light. Kelvin moves in steps of 10 K and Tint in whole numbers. The Kelvin slider is even in mireds (a million divided by the Kelvin) rather than in Kelvin, so the same distance along it is about the same change in colour everywhere: its middle is about 3530 K, not 8500 K. The coloured part of each slider runs from the as-shot light to your choice. Right-click either slider for **Reset to As shot**, which removes the choice entirely. Switched off, the row keeps your choice and shows the photo as shot.
 
+**Picking a neutral.** If something in the photo should be grey or white (a grey card, a white wall, a concrete pavement), let Prism find the light from it. Press `W`, choose **View → Pick Neutral**, or press the small **Pick neutral** button on the White balance row (it looks pressed while the mode is on), then click that spot. Prism averages the 5 by 5 pixels around the click (fewer at the picture's edge) and sets Kelvin and Tint so that colour comes out grey: the row then reads, for example, `5180 K · tint +4`, the stage is switched on, and a note over the photo says `Neutral here: 5180 K, tint +4`. A small square follows the cursor to show the patch that would be averaged. Each click is one undo step, and you can click again without leaving the mode: it always looks at the photo as decoded, before any white balance, so picking the same spot twice gives the same answer. Kelvin and Tint are rounded the way the sliders round, and a light beyond the sliders is set to the nearest end and the note adds "(limited to the slider's range)".
+
+Prism refuses, and changes nothing, when the spot cannot tell it the light: **"Too dark to judge; click a lighter grey"** when any colour of the patch averages below 0.5% of white, and **"Clipped; click a grey that isn't blown out"** when any pixel in the patch is at white in the file or above it, since a clipped pixel has lost its colour. Dragging still moves the picture (and `Space` still holds the hand); a double-click still zooms; a click on a control does not pick. The picker needs White balance in view, so it is greyed out while you are viewing Decode or Exposure (a tooltip says why), and turning it on leaves Sample mode and the test strip. `Esc`, `W` again, `I` or `T` leave it, and so does opening another photo.
+
 **Contrast as a paper grade.** Contrast is shown the way darkroom printers set it, as a paper grade from 0 (softest) to 5 (hardest), with 2 as normal. Each whole grade is the contrast of a real paper through one of its filters: the ISO range *R* of Ilford Multigrade RC Deluxe (current), from Ilford's MULTIGRADE RC papers technical information (ISO 6846, filters 0 to 5). A paper with a longer range of exposure is softer, so a grade's multiplier is 90 ÷ *R*, which makes grade 2 exactly ×1.00:
 
 | Grade | ISO range *R* | Multiplier |
@@ -299,7 +303,7 @@ The **Undo** and **Redo** buttons in the panel's header, and **Edit → Undo** a
 
 A line under the number says what will be written, for example "Exports at 2048 × 1365". Prism never enlarges: if the size you ask for is not smaller than the photo, the line says "Not smaller than the photo: exports at full size, 6000 × 4000" and the photo is saved as it is. For a RAW file the sizes shown are those that will be written: the full sensor size, or, if the half-size RAW option is on, the half-size decode, whatever size you ask for. A typed number outside the range is moved to the nearest valid one when you leave the field (0 becomes 1; a percentage of 150 becomes 99). The photo is reduced by averaging the light in each area, before the edit stages run.
 
-`Enter` is **Save As…** and `Esc` or **Cancel** closes the sheet and changes nothing. Prism remembers your choice, also the next time you start it, so the sheet opens on it. While the sheet is open, the other keys (`I`, `T`, `J`, zoom, undo) do nothing.
+`Enter` is **Save As…** and `Esc` or **Cancel** closes the sheet and changes nothing. Prism remembers your choice, also the next time you start it, so the sheet opens on it. While the sheet is open, the other keys (`I`, `T`, `W`, `J`, zoom, undo) do nothing.
 
 - The file name is suggested as the photo's name plus `_prism` next to the original (`IMG_0001.jpg` becomes `IMG_0001_prism.jpg`). An export that is reduced says so with the longer side added: `IMG_0001_prism_2048.jpg`; one that is not reduced has no number. A PNG source suggests PNG; anything else, including RAW, suggests JPEG.
 - If you type a name without `.png`, `.jpg` or `.jpeg`, the extension is added.
@@ -363,6 +367,7 @@ On macOS the main key is `Cmd`; on Windows and Linux it is `Ctrl`. This is every
 | Mark clipping on the photo | `J` | `J` |
 | Test strip on or off | `T` | `T` |
 | Sample mode on or off (read a pixel) | `I` | `I` |
+| Pick mode on or off (click a neutral to set the white balance) | `W` | `W` |
 | Zoom in | `=` or `+` | `=` or `+` |
 | Zoom out | `-` | `-` |
 | Zoom to fit | `F` | `F` |
@@ -374,10 +379,10 @@ On macOS the main key is `Cmd`; on Windows and Linux it is `Ctrl`. This is every
 Notes:
 
 - The keypad's `+`, `-` and `0` also work with `Cmd`/`Ctrl` for the interface size, and its `+` and `-` alone for the zoom.
-- Undo, Redo, `J`, `T`, `I` and the zoom keys do nothing while you are dragging a slider.
-- `J`, `T`, `I`, the zoom keys and `Space` give way to a text field that has the keyboard, so typing a value never triggers them.
+- Undo, Redo, `J`, `T`, `I`, `W` and the zoom keys do nothing while you are dragging a slider.
+- `J`, `T`, `I`, `W`, the zoom keys and `Space` give way to a text field that has the keyboard, so typing a value never triggers them.
 - `Esc` is also Cancel in the "unsaved edits" window, in the recipe save sheet (inside a text field, the first `Esc` only leaves the field), in the Export sheet (also inside its number field), and in the "Saving…" window while a quit or open is waiting for the export.
-- In the menus: **File** has Open…, Export…, Load Recipe…, Save Recipe… and Quit (on Windows and Linux the menu shows `Ctrl+Q`; on macOS, Quit is in the **Prism** menu too). **Edit** has Undo, Redo and (on Windows and Linux) Preferences…. **View** has Bigger Interface, Smaller Interface, Interface Size: Auto, Test Strip, Sample Colour, Zoom In, Zoom Out, Zoom to Fit and 100% of Preview. **Help → About Prism** is on Windows and Linux; on macOS, About and Preferences are in the **Prism** menu (**Prism → About Prism**, **Prism → Preferences…**).
+- In the menus: **File** has Open…, Export…, Load Recipe…, Save Recipe… and Quit (on Windows and Linux the menu shows `Ctrl+Q`; on macOS, Quit is in the **Prism** menu too). **Edit** has Undo, Redo and (on Windows and Linux) Preferences…. **View** has Bigger Interface, Smaller Interface, Interface Size: Auto, Test Strip, Sample Colour, Pick Neutral, Zoom In, Zoom Out, Zoom to Fit and 100% of Preview. **Help → About Prism** is on Windows and Linux; on macOS, About and Preferences are in the **Prism** menu (**Prism → About Prism**, **Prism → Preferences…**).
 
 Mouse and trackpad: click a stage row to view it; right-click a slider, or a Tone curve tab, to reset it; Ctrl-click (Cmd-click) a slider to type a value; drag the divider in a comparison; click a band in the test strip; drag the panel's left edge to resize the panel; pinch, scroll or use the wheel over the photo to zoom and move it, drag it when zoomed in, and double-click it to go between fit and 100% (see [Zoom and pan](#zoom-and-pan)); in Sample mode, point at the photo to read a pixel and click to pin it (see [Read a pixel](#read-a-pixel)).
 
