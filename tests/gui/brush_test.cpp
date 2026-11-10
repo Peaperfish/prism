@@ -5,6 +5,9 @@
 #include <ostream>
 #include <vector>
 
+#include "prism/gui/field_cache.hpp"
+#include "prism/gui/recipe_settings.hpp"
+
 namespace prism::gui {
 
 // So that a failure reads "add_point", not the enum's bytes.
@@ -215,6 +218,145 @@ TEST(BrushGesture, FinishCommitsAStrokeUnderWayAndOtherwiseDoesNothing) {
     EXPECT_EQ(kinds(g.finish()), (std::vector<Kind>{Kind::commit_stroke}));
     EXPECT_FALSE(g.stroking());
     EXPECT_TRUE(g.release({0.0f, 0.0f}).empty());
+}
+
+// --- StrokePainter ------------------------------------------------------------------------------
+
+BrushAction begin(BrushTone tone = BrushTone::dodge) {
+    return {BrushActionKind::begin_stroke, tone, {}};
+}
+BrushAction point(float u, float v) {
+    return {BrushActionKind::add_point, BrushTone::dodge, {u, v}};
+}
+BrushAction commit() {
+    return {BrushActionKind::commit_stroke, BrushTone::dodge, {}};
+}
+BrushAction cancel() {
+    return {BrushActionKind::cancel_stroke, BrushTone::dodge, {}};
+}
+
+// Paints one stroke through `points` and commits it.
+void paint(StrokePainter& painter, Session& session, std::vector<FieldPoint> points,
+           BrushTone tone = BrushTone::dodge, const BrushStyle& style = {}) {
+    ASSERT_EQ(painter.apply(begin(tone), style, canvas, session), std::nullopt);
+    for (const FieldPoint& p : points) {
+        ASSERT_EQ(painter.apply(point(p.u, p.v), style, canvas, session), std::nullopt);
+    }
+    ASSERT_EQ(painter.apply(commit(), style, canvas, session), std::nullopt);
+}
+
+TEST(StrokePainter, AStrokeIsOneUndoStepWithTheBrushItWasStartedWith) {
+    Session session;
+    StrokePainter painter;
+    BrushStyle style;
+    style.radius = 0.02f;
+    style.softness = 0.25f;
+    style.strength = 1.5f;
+    paint(painter, session, {{0.1f, 0.1f}, {0.2f, 0.1f}, {0.3f, 0.2f}}, BrushTone::burn, style);
+    EXPECT_FALSE(painter.painting());
+    EXPECT_EQ(session.history().undo_steps(), 1u);
+    const Strokes& strokes = session.settings().strokes;
+    ASSERT_FALSE(strokes.empty());
+    EXPECT_EQ(strokes.field()->aspect, aspect_of(canvas.width, canvas.height));
+    ASSERT_EQ(strokes.field()->strokes.size(), 1u);
+    const FieldStroke& s = *strokes.field()->strokes[0];
+    EXPECT_EQ(s.points, (std::vector<FieldPoint>{{0.1f, 0.1f}, {0.2f, 0.1f}, {0.3f, 0.2f}}));
+    EXPECT_EQ(s.radius, 0.02f);
+    EXPECT_EQ(s.softness, 0.25f);
+    EXPECT_EQ(s.weight, -1.5f);  // burn darkens
+    ASSERT_TRUE(session.history().can_undo());
+    ASSERT_EQ(session.undo(), std::nullopt);
+    EXPECT_TRUE(session.settings().strokes.empty());
+}
+
+TEST(StrokePainter, ADodgeStrokeLightens) {
+    EXPECT_EQ(brush_weight(BrushTone::dodge, 0.5f), 0.5f);
+    EXPECT_EQ(brush_weight(BrushTone::burn, 0.5f), -0.5f);
+}
+
+TEST(StrokePainter, ACancelLeavesTheUndoAndRedoStepsAndTheSettingsExactlyAsBefore) {
+    Session session;
+    StrokePainter painter;
+    paint(painter, session, {{0.1f, 0.1f}, {0.2f, 0.2f}});
+    paint(painter, session, {{0.5f, 0.5f}});
+    ASSERT_EQ(session.undo(), std::nullopt);  // so that there is a redo step to keep
+    const EditSettings before = session.settings();
+    const std::size_t undo_before = session.history().undo_steps();
+    const std::size_t redo_before = session.history().redo_steps();
+    ASSERT_EQ(undo_before, 1u);
+    ASSERT_EQ(redo_before, 1u);
+
+    ASSERT_EQ(painter.apply(begin(), {}, canvas, session), std::nullopt);
+    ASSERT_EQ(painter.apply(point(0.7f, 0.7f), {}, canvas, session), std::nullopt);
+    ASSERT_EQ(painter.apply(point(0.8f, 0.7f), {}, canvas, session), std::nullopt);
+    EXPECT_NE(session.settings(), before);  // the stroke shows while it is drawn
+    ASSERT_EQ(painter.apply(cancel(), {}, canvas, session), std::nullopt);
+
+    EXPECT_FALSE(painter.painting());
+    EXPECT_FALSE(session.history().in_gesture());
+    EXPECT_EQ(session.history().undo_steps(), undo_before);
+    EXPECT_EQ(session.history().redo_steps(), redo_before);
+    EXPECT_EQ(session.settings(), before);
+    EXPECT_EQ(recipe_from(session.settings()), recipe_from(before));
+    // The very strokes there were, not a copy: the preview's field is kept, not rasterised again.
+    EXPECT_EQ(session.settings().strokes.field(), before.strokes.field());
+    // And redo still brings back the stroke undone before.
+    ASSERT_EQ(session.redo(), std::nullopt);
+    EXPECT_EQ(session.settings().strokes.field()->strokes.size(), 2u);
+}
+
+TEST(StrokePainter, ACancelOfTheFirstStrokeLeavesNoStrokesAndNoStep) {
+    Session session;
+    StrokePainter painter;
+    ASSERT_EQ(painter.apply(begin(), {}, canvas, session), std::nullopt);
+    ASSERT_EQ(painter.apply(point(0.5f, 0.5f), {}, canvas, session), std::nullopt);
+    ASSERT_EQ(painter.apply(cancel(), {}, canvas, session), std::nullopt);
+    EXPECT_TRUE(session.settings().strokes.empty());
+    EXPECT_EQ(session.settings(), EditSettings{});
+    EXPECT_EQ(session.history().undo_steps(), 0u);
+    EXPECT_FALSE(session.history().can_undo());
+}
+
+TEST(StrokePainter, EachPointGrowsTheLastStrokeSoThePreviewOnlyRasterisesWhatIsNew) {
+    Session session;
+    StrokePainter painter;
+    paint(painter, session, {{0.1f, 0.1f}});
+    const std::shared_ptr<const FieldStroke> first = session.settings().strokes.field()->strokes[0];
+    FieldCache cache;
+    const PixelGrid grid = stage_grid(canvas.width / 10, canvas.height / 10);
+    EXPECT_EQ(cache.update(session.settings().strokes, grid, 1), FieldPath::fresh);
+
+    ASSERT_EQ(painter.apply(begin(), {}, canvas, session), std::nullopt);
+    ASSERT_EQ(painter.apply(point(0.4f, 0.4f), {}, canvas, session), std::nullopt);
+    EXPECT_EQ(cache.update(session.settings().strokes, grid, 1), FieldPath::append);
+    ASSERT_EQ(painter.apply(point(0.5f, 0.4f), {}, canvas, session), std::nullopt);
+    EXPECT_EQ(cache.update(session.settings().strokes, grid, 1), FieldPath::grow);
+    ASSERT_EQ(painter.apply(point(0.6f, 0.4f), {}, canvas, session), std::nullopt);
+    EXPECT_EQ(cache.update(session.settings().strokes, grid, 1), FieldPath::grow);
+    // The stroke before it is still the same object.
+    EXPECT_EQ(session.settings().strokes.field()->strokes[0], first);
+    // A cancel goes back to the field from before the stroke, which the cache still holds.
+    ASSERT_EQ(painter.apply(cancel(), {}, canvas, session), std::nullopt);
+    EXPECT_EQ(cache.update(session.settings().strokes, grid, 1), FieldPath::undo);
+}
+
+TEST(StrokePainter, ActionsOutOfTurnDoNothing) {
+    Session session;
+    StrokePainter painter;
+    ASSERT_EQ(painter.apply(point(0.5f, 0.5f), {}, canvas, session), std::nullopt);
+    ASSERT_EQ(painter.apply(commit(), {}, canvas, session), std::nullopt);
+    ASSERT_EQ(painter.apply(cancel(), {}, canvas, session), std::nullopt);
+    EXPECT_EQ(session.settings(), EditSettings{});
+    EXPECT_FALSE(session.history().in_gesture());
+    // A second begin during a stroke doesn't start another.
+    ASSERT_EQ(painter.apply(begin(), {}, canvas, session), std::nullopt);
+    ASSERT_EQ(painter.apply(point(0.5f, 0.5f), {}, canvas, session), std::nullopt);
+    ASSERT_EQ(painter.apply(begin(BrushTone::burn), {}, canvas, session), std::nullopt);
+    ASSERT_EQ(painter.apply(point(0.6f, 0.5f), {}, canvas, session), std::nullopt);
+    ASSERT_EQ(painter.apply(commit(), {}, canvas, session), std::nullopt);
+    ASSERT_EQ(session.settings().strokes.field()->strokes.size(), 1u);
+    EXPECT_GT(session.settings().strokes.field()->strokes[0]->weight, 0.0f);
+    EXPECT_EQ(session.history().undo_steps(), 1u);
 }
 
 }  // namespace

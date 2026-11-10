@@ -59,12 +59,25 @@ bool ScrollLatch::on_canvas(bool hovering_canvas, std::uint64_t now_ms) noexcept
     return on_canvas_;
 }
 
-bool plain_drag_pans(bool fit, bool strip_on, bool over_control) noexcept {
-    return !fit && !strip_on && !over_control;
+bool plain_drag_pans(bool fit, bool strip_on, bool over_control, bool brushing) noexcept {
+    return !fit && !strip_on && !over_control && !brushing;
 }
 
-bool double_click_zooms(bool strip_on, bool over_control, bool hand_held) noexcept {
-    return !strip_on && !over_control && !hand_held;
+bool double_click_zooms(bool strip_on, bool over_control, bool hand_held, bool brushing) noexcept {
+    return !strip_on && !over_control && !hand_held && !brushing;
+}
+
+bool brush_takes_press(bool brushing, bool available, bool over_control, bool on_chip) noexcept {
+    return brushing && available && !over_control && !on_chip;
+}
+
+bool view_point_in_any(ViewPoint p, const std::vector<ViewRect>& rects) noexcept {
+    for (const ViewRect& r : rects) {
+        if (p.x >= r.min.x && p.x <= r.max.x && p.y >= r.min.y && p.y <= r.max.y) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool canvas_claims_space(bool canvas_hovered, bool text_field_active,

@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "prism/gui/settings.hpp"
 #include "prism/gui/view_transform.hpp"
@@ -60,11 +61,24 @@ private:
 };
 
 // Whether a plain drag on the canvas moves the picture: only when there is somewhere to move it to,
-// and never over a control (the compare divider) or on the test strip, whose click sets the exposure.
-[[nodiscard]] bool plain_drag_pans(bool fit, bool strip_on, bool over_control) noexcept;
+// and never over a control (the compare divider), on the test strip, whose click sets the exposure,
+// or in Brush mode, where a plain drag paints (Space and a drag still moves it there).
+[[nodiscard]] bool plain_drag_pans(bool fit, bool strip_on, bool over_control,
+                                   bool brushing = false) noexcept;
 
-// Whether a double-click on the canvas toggles the zoom: not on the strip or a control.
-[[nodiscard]] bool double_click_zooms(bool strip_on, bool over_control, bool hand_held) noexcept;
+// Whether a double-click on the canvas toggles the zoom: not on the strip or a control, not with the
+// hand, and not in Brush mode, where each click is a dot.
+[[nodiscard]] bool double_click_zooms(bool strip_on, bool over_control, bool hand_held,
+                                      bool brushing = false) noexcept;
+
+// Whether a press on the canvas is the Brush's (a stroke, or with Space held the hand's: see
+// BrushGesture): only in Brush mode with the Brush available, and not on a control (the compare
+// divider) or on a chip on the canvas.
+[[nodiscard]] bool brush_takes_press(bool brushing, bool available, bool over_control,
+                                     bool on_chip) noexcept;
+
+// Whether `p` lies in one of `rects` (edges included).
+[[nodiscard]] bool view_point_in_any(ViewPoint p, const std::vector<ViewRect>& rects) noexcept;
 
 // Whether the canvas may take the Space key, which otherwise presses the widget with the keyboard
 // focus: only while the cursor is on it and nothing else is using the keyboard or the mouse.
@@ -213,13 +227,28 @@ inline constexpr float brush_strength_default = 0.5f;
 // Whether the Brush can be turned on with `viewed` on view: Dodge & burn or later.
 [[nodiscard]] bool brush_available(StageId viewed) noexcept;
 
+// Why the Brush can't be turned on, for the greyed-out button and menu item.
+inline constexpr const char* brush_unavailable_hint =
+    "Not visible here: view Dodge & burn or a later stage to use the Brush.";
+
 // `strength` moved to the nearest step inside the range (the default for a number that isn't one).
 [[nodiscard]] float snap_brush_strength(float strength) noexcept;
 
 // "0.5 stop", "1.0 stop", "1.5 stops": singular up to one stop. Of the snapped strength.
 [[nodiscard]] std::string brush_strength_text(float strength);
 
-// Whether Brush mode is on, and the strength it paints with. Leaving it is Esc
+// What a stroke does to the light: dodge holds light back (lighter), burn adds it (darker).
+enum class BrushTone {
+    dodge,
+    burn,
+};
+
+// The other one: Alt at a press, and X.
+[[nodiscard]] constexpr BrushTone other_tone(BrushTone tone) noexcept {
+    return tone == BrushTone::dodge ? BrushTone::burn : BrushTone::dodge;
+}
+
+// Whether Brush mode is on, the tone its strokes have without Alt, and the strength it paints with. Leaving it is Esc
 // (EscapeAction::leave_brush), the Brush button or key again, I, T or W, the view moving to a stage
 // before Dodge & burn, or another photo.
 class BrushMode {
@@ -232,9 +261,13 @@ public:
     [[nodiscard]] float strength() const noexcept { return strength_; }
     void set_strength(float strength) noexcept { strength_ = snap_brush_strength(strength); }
 
+    [[nodiscard]] BrushTone tone() const noexcept { return tone_; }  // dodge to start with
+    void set_tone(BrushTone tone) noexcept { tone_ = tone; }
+
 private:
     bool on_ = false;
     float strength_ = brush_strength_default;
+    BrushTone tone_ = BrushTone::dodge;
 };
 
 // Which of the canvas's tools are on.

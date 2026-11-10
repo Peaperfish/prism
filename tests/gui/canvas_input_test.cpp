@@ -118,6 +118,35 @@ TEST(DoubleClick, ZoomsExceptOnTheStripAControlOrWithTheHand) {
     EXPECT_FALSE(double_click_zooms(false, false, true));
 }
 
+TEST(PlainDrag, PaintsInsteadOfPanningInBrushMode) {
+    EXPECT_FALSE(plain_drag_pans(false, false, false, true));
+    EXPECT_TRUE(plain_drag_pans(false, false, false, false));
+}
+
+TEST(DoubleClick, DoesNotZoomInBrushMode) {
+    EXPECT_FALSE(double_click_zooms(false, false, false, true));
+    EXPECT_TRUE(double_click_zooms(false, false, false, false));
+}
+
+TEST(BrushPress, IsTheBrushsOnlyInBrushModeAndOffTheDividerAndTheChips) {
+    EXPECT_TRUE(brush_takes_press(true, true, false, false));
+    EXPECT_FALSE(brush_takes_press(false, true, false, false));  // not in Brush mode
+    EXPECT_FALSE(brush_takes_press(true, false, false, false));  // the Brush isn't available
+    EXPECT_FALSE(brush_takes_press(true, true, true, false));    // on the compare divider
+    EXPECT_FALSE(brush_takes_press(true, true, false, true));    // on a chip
+}
+
+TEST(BrushPress, AChipIsAnyOfTheCanvasChipsEdgesIncluded) {
+    const std::vector<ViewRect> chips{{{10.0f, 10.0f}, {50.0f, 30.0f}},
+                                      {{100.0f, 0.0f}, {120.0f, 20.0f}}};
+    EXPECT_TRUE(view_point_in_any({10.0f, 10.0f}, chips));
+    EXPECT_TRUE(view_point_in_any({50.0f, 30.0f}, chips));
+    EXPECT_TRUE(view_point_in_any({110.0f, 5.0f}, chips));
+    EXPECT_FALSE(view_point_in_any({60.0f, 20.0f}, chips));
+    EXPECT_FALSE(view_point_in_any({50.1f, 20.0f}, chips));
+    EXPECT_FALSE(view_point_in_any({20.0f, 20.0f}, {}));
+}
+
 TEST(SpaceKey, IsClaimedOnlyOnAnIdleCanvas) {
     EXPECT_TRUE(canvas_claims_space(true, false, false));
     EXPECT_FALSE(canvas_claims_space(false, false, false));  // the cursor is elsewhere

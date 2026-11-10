@@ -1,5 +1,8 @@
 #include "prism/gui/brush.hpp"
 
+#include <memory>
+#include <utility>
+
 namespace prism::gui {
 
 namespace {
@@ -9,10 +12,6 @@ BrushAction act(BrushActionKind kind, BrushTone tone = BrushTone::dodge, FieldPo
 }
 
 }  // namespace
-
-BrushTone other_tone(BrushTone tone) noexcept {
-    return tone == BrushTone::dodge ? BrushTone::burn : BrushTone::dodge;
-}
 
 FieldPoint brush_point(ViewPoint image, BrushCanvas canvas) noexcept {
     if (canvas.width <= 0 || canvas.height <= 0) {
@@ -97,6 +96,65 @@ std::vector<BrushAction> BrushGesture::finish() {
         return {act(BrushActionKind::commit_stroke, tone_)};
     }
     return {};
+}
+
+float brush_weight(BrushTone tone, float strength) noexcept {
+    return tone == BrushTone::dodge ? strength : -strength;
+}
+
+MaybeError StrokePainter::set_strokes(Session& session, Strokes strokes) {
+    EditSettings s = session.settings();
+    s.strokes = std::move(strokes);
+    return session.set_settings(s);
+}
+
+MaybeError StrokePainter::apply(const BrushAction& action, const BrushStyle& style,
+                                BrushCanvas canvas, Session& session) {
+    switch (action.kind) {
+        case BrushActionKind::begin_stroke:
+            if (before_) {
+                return std::nullopt;
+            }
+            session.begin_gesture();
+            before_ = session.settings().strokes;
+            stroke_ = {};
+            stroke_.radius = style.radius;
+            stroke_.softness = style.softness;
+            stroke_.weight = brush_weight(action.tone, style.strength);
+            return std::nullopt;
+        case BrushActionKind::add_point: {
+            if (!before_) {
+                return std::nullopt;
+            }
+            stroke_.points.push_back(action.point);
+            auto field = before_->field() ? std::make_shared<StrokeField>(*before_->field())
+                                          : std::make_shared<StrokeField>();
+            if (field->strokes.empty()) {
+                field->aspect = aspect_of(canvas.width, canvas.height);
+            }
+            field->strokes.push_back(std::make_shared<const FieldStroke>(stroke_));
+            return set_strokes(session, Strokes(std::move(field)));
+        }
+        case BrushActionKind::commit_stroke:
+            if (before_) {
+                session.end_gesture();
+                before_.reset();
+            }
+            return std::nullopt;
+        case BrushActionKind::cancel_stroke: {
+            if (!before_) {
+                return std::nullopt;
+            }
+            Strokes before = std::move(*before_);
+            before_.reset();
+            MaybeError error = set_strokes(session, std::move(before));
+            session.end_gesture();
+            return error;
+        }
+        case BrushActionKind::leave_brush:
+        case BrushActionKind::passthrough: return std::nullopt;
+    }
+    return std::nullopt;
 }
 
 }  // namespace prism::gui

@@ -1,7 +1,11 @@
 #pragma once
 
+#include <optional>
 #include <vector>
 
+#include "prism/gui/canvas_input.hpp"
+#include "prism/gui/session.hpp"
+#include "prism/gui/settings.hpp"
 #include "prism/gui/view_transform.hpp"
 #include "prism/stroke_field.hpp"
 
@@ -10,15 +14,6 @@ namespace prism::gui {
 // The Brush's strokes, from the mouse to the stroke field (stroke_field.hpp), as pure state with no
 // window involved. The app feeds the canvas's presses, moves and releases in; what comes out says
 // what to do to the strokes.
-
-// What a stroke does to the light: dodge holds light back (lighter), burn adds it (darker).
-enum class BrushTone {
-    dodge,
-    burn,
-};
-
-// The other one: Alt at a press, and X.
-[[nodiscard]] BrushTone other_tone(BrushTone tone) noexcept;
 
 // The keys held at a press.
 struct BrushModifiers {
@@ -101,6 +96,47 @@ private:
     float spacing_ = 0.0f;
     BrushCanvas canvas_;
     FieldPoint last_;
+};
+
+// --- Painting the strokes ----------------------------------------------------------------------
+
+// The brush's size and edge where it starts: a radius of 5% of the picture's long side, with the
+// outer half of it fading (FieldStroke::radius and ::softness).
+inline constexpr float brush_radius_default = 0.05f;
+inline constexpr float brush_softness_default = 0.5f;
+
+// What a stroke is painted with: the brush as it is when the stroke starts.
+struct BrushStyle {
+    float radius = brush_radius_default;
+    float softness = brush_softness_default;
+    float strength = brush_strength_default;  // stops, without a sign: the tone gives it one
+};
+
+// The stroke's weight in stops (FieldStroke::weight): + to dodge, - to burn.
+[[nodiscard]] float brush_weight(BrushTone tone, float strength) noexcept;
+
+// Applies a BrushGesture's actions to the Session's strokes, one undo step a stroke:
+//   begin_stroke   a gesture begins (Session::begin_gesture), with the brush of `style`;
+//   add_point      the first makes the stroke, after every stroke already there, and each one
+//                  after that is added to its end: a new stroke object each time, with the old
+//                  points first, so the preview's FieldCache only rasterises what is new;
+//   commit_stroke  the gesture ends: one undo step;
+//   cancel_stroke  the strokes go back to the very ones there were before (the same objects), and
+//                  the gesture ends where it began: no undo step, and redo is left as it was.
+// leave_brush and passthrough are not the painter's. An action out of turn (a point without a
+// begin) does nothing. On the first stroke of a photo the field's aspect is set from `canvas`.
+class StrokePainter {
+public:
+    [[nodiscard]] MaybeError apply(const BrushAction& action, const BrushStyle& style,
+                                   BrushCanvas canvas, Session& session);
+    // Between a begin_stroke and its commit or cancel.
+    [[nodiscard]] bool painting() const noexcept { return before_.has_value(); }
+
+private:
+    MaybeError set_strokes(Session& session, Strokes strokes);
+
+    std::optional<Strokes> before_;  // the strokes before this one
+    FieldStroke stroke_;             // this one so far
 };
 
 }  // namespace prism::gui
