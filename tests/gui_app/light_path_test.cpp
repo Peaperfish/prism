@@ -1686,8 +1686,18 @@ TEST_F(MinimumWidthHeadless, TheDodgeAndBurnWorstCaseIsInTheWorstCases) {
     ASSERT_EQ(text, std::string(gui::widest_strokes_value));
     ASSERT_TRUE(text.size() > 7 && text.substr(text.size() - 7) == "when on");
 
-    // At the minimum width the text is drawn in full; a worst case missing from the minimum's list
-    // would leave the panel too narrow for it, here or in the narrower panel below.
+    // The text is one the minimum width is measured from.
+    bool listed = false;
+    for (const gui::EditSettings& worst : light_path_worst_case_settings()) {
+        const gui::LightPathView worst_view = gui::light_path_view(
+            {worst, gui::InputKind::image, "JPEG", gui::final_stage, std::nullopt, nullptr, std::nullopt});
+        for (const gui::LightPathRow& row : worst_view.rows) {
+            listed = listed || (row.stage == gui::StageId::dodge_burn && row.value == text);
+        }
+    }
+    EXPECT_TRUE(listed) << "'" << text << "' is not among the worst cases";
+
+    // At the minimum width the text is drawn in full.
     ImGui::NewFrame();
     width_ = light_path_min_width();
     ImGui::EndFrame();
