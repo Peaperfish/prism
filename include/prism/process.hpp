@@ -5,6 +5,7 @@
 #include <stop_token>
 #include <string_view>
 
+#include "prism/dodge_burn.hpp"
 #include "prism/image.hpp"
 #include "prism/pipeline.hpp"
 
@@ -16,6 +17,8 @@ namespace prism {
 // A plain value type, so it can be copied to another thread and compared.
 struct ProcessSettings {
     std::optional<float> exposure_stops;
+    // Dodge and burn. No strokes (the default) skips the stage.
+    LocalExposure dodge_burn;
     // The matrix prism::white_balance_matrix builds for the photo's as-shot light and the light
     // chosen. "As shot" is no matrix at all: leave it empty.
     std::optional<Matrix3> white_balance;
@@ -25,9 +28,9 @@ struct ProcessSettings {
     std::optional<ToneCurve> curve;
 };
 
-// How long one stage took. `name` is one of "exposure", "white_balance", "matrix", "saturation",
-// "contrast" and "curve" (the names prism --time prints); it points at a string literal, so it
-// never dangles.
+// How long one stage took. `name` is one of "exposure", "dodge_burn", "white_balance", "matrix",
+// "saturation", "contrast" and "curve" (the names prism --time prints); it points at a string
+// literal, so it never dangles.
 struct StageTime {
     std::string_view name;
     double ms = 0;
@@ -45,8 +48,9 @@ enum class ProcessResult {
     cancelled,  // `stop` was requested: the image is valid but only partly processed
 };
 
-// Runs the pipeline on `img` in place, in the README's order: exposure -> white balance ->
-// colour matrix -> saturation -> contrast -> tone curve. `threads` means the same as for each
+// Runs the pipeline on `img` in place, in the README's order: exposure -> (dodge and burn) ->
+// white balance -> colour matrix -> saturation -> contrast -> tone curve. `threads` means the same
+// as for each
 // stage (0 = one per hardware thread), and the result is the same as calling those stages by hand.
 //
 // `stop` is checked before each stage that would run (a stage itself is never interrupted). If a

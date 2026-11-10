@@ -3,6 +3,7 @@ add_library(prism_core STATIC
   camera_profile.cpp
   color.cpp
   dng_profile.cpp
+  dodge_burn.cpp
   exif.cpp
   heic.cpp
   histogram.cpp
@@ -22,9 +23,10 @@ add_library(prism_core STATIC
 # The stroke field promises bit-identical values whichever grid, row range or thread computes a
 # pixel, and that the incremental API matches a fresh rasterisation exactly. That holds only if no
 # a * b + c is fused into one multiply-add, so contraction is off for this file on Clang too (GCC
-# already has it off everywhere via prism_warnings; MSVC does not contract by default).
+# already has it off everywhere via prism_warnings; MSVC does not contract by default). The dodge &
+# burn stage applies that field through fast_exp2, a polynomial, so it is compiled the same way.
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-  set_source_files_properties(stroke_field.cpp PROPERTIES COMPILE_OPTIONS -ffp-contract=off)
+  set_source_files_properties(stroke_field.cpp dodge_burn.cpp PROPERTIES COMPILE_OPTIONS -ffp-contract=off)
 endif()
 
 # PUBLIC: anything linking prism_core also gets include/ on its include path, so it can
