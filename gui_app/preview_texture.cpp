@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include "prism/gui/brush.hpp"
+
 namespace prism::gui_app {
 
 bool PreviewTexture::upload(const gui::PreviewFrame& frame) {
@@ -76,17 +78,8 @@ bool PreviewTexture::upload_overlay(const std::vector<std::uint8_t>& clip_mask, 
         reset_overlay();
         return false;
     }
-    if (overlay_ == nullptr || width != overlay_width_ || height != overlay_height_) {
-        reset_overlay();
-        overlay_ = SDL_CreateTexture(renderer_, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STATIC,
-                                     width, height);
-        if (overlay_ == nullptr) {
-            return false;
-        }
-        SDL_SetTextureBlendMode(overlay_, SDL_BLENDMODE_BLEND);
-        SDL_SetTextureScaleMode(overlay_, SDL_SCALEMODE_LINEAR);
-        overlay_width_ = width;
-        overlay_height_ = height;
+    if (!make_overlay_texture(overlay_, overlay_width_, overlay_height_, width, height)) {
+        return false;
     }
     overlay_pixels_.resize(pixels);
     const std::size_t across = static_cast<std::size_t>(width);
@@ -113,8 +106,61 @@ void PreviewTexture::reset_overlay() {
     }
 }
 
+bool PreviewTexture::make_overlay_texture(SDL_Texture*& texture, int& texture_width,
+                                          int& texture_height, int width, int height) {
+    if (texture != nullptr && width == texture_width && height == texture_height) {
+        return true;
+    }
+    if (texture != nullptr) {
+        SDL_DestroyTexture(texture);
+        texture = nullptr;
+    }
+    texture = SDL_CreateTexture(renderer_, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STATIC,
+                                width, height);
+    if (texture == nullptr) {
+        return false;
+    }
+    SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+    SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_LINEAR);
+    texture_width = width;
+    texture_height = height;
+    return true;
+}
+
+bool PreviewTexture::upload_stroke_overlay(const std::vector<std::uint8_t>& stroke_mask, int width,
+                                           int height, std::uint32_t dodge_abgr,
+                                           std::uint32_t burn_abgr) {
+    const std::size_t pixels = static_cast<std::size_t>(std::max(width, 0)) *
+                               static_cast<std::size_t>(std::max(height, 0));
+    if (pixels == 0 || stroke_mask.size() != pixels) {
+        reset_stroke_overlay();
+        return false;
+    }
+    if (!make_overlay_texture(stroke_overlay_, stroke_overlay_width_, stroke_overlay_height_,
+                              width, height)) {
+        return false;
+    }
+    overlay_pixels_.resize(pixels);
+    for (std::size_t i = 0; i < pixels; ++i) {
+        overlay_pixels_[i] = gui::stroke_mask_abgr(stroke_mask[i], dodge_abgr, burn_abgr);
+    }
+    if (!SDL_UpdateTexture(stroke_overlay_, nullptr, overlay_pixels_.data(), width * 4)) {
+        reset_stroke_overlay();
+        return false;
+    }
+    return true;
+}
+
+void PreviewTexture::reset_stroke_overlay() {
+    if (stroke_overlay_ != nullptr) {
+        SDL_DestroyTexture(stroke_overlay_);
+        stroke_overlay_ = nullptr;
+    }
+}
+
 void PreviewTexture::reset() {
     reset_overlay();
+    reset_stroke_overlay();
     reset_compare();
     if (texture_ != nullptr) {
         SDL_DestroyTexture(texture_);

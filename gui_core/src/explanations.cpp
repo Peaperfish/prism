@@ -256,6 +256,10 @@ constexpr Explanation templates[] = {
      "While it is on, a drag on the photo paints a stroke with the strength set here; Space and a "
      "drag moves the picture. Only while you view Dodge & burn or a later stage. Esc leaves; so do "
      "B, I, T and W."},
+    {"dodge_burn.tone", "Dodge holds light back; burn gives more (X).",
+     "Alt (Option) at the press paints that one stroke the other way. ] and [ make the brush "
+     "bigger and smaller, Shift+[ and Shift+] its edge softer and harder. Hold M to see the "
+     "strokes."},
     {"dodge_burn.strength", "How many stops one stroke moves the light.",
      "From 0.1 to 2 stops, in steps of 0.1. A stroke of 1 stop moves the light as much as doubling or "
      "halving the time. It belongs to the brush: undo leaves it, and it isn't saved."},
@@ -278,7 +282,7 @@ constexpr Explanation templates[] = {
 
 // Ids that have no enum of their own: the controls the window shows beyond the stages, the curve
 // kinds, the scopes and the presets.
-constexpr std::array<std::string_view, 41> other_ids{
+constexpr std::array<std::string_view, 42> other_ids{
     explain::look,         explain::look_reset,   explain::look_view_recipe,
     explain::recipe_load,  explain::recipe_save,
     explain::recipe_loaded, explain::recipe_name, explain::recipe_description,
@@ -291,8 +295,8 @@ constexpr std::array<std::string_view, 41> other_ids{
     explain::view_zoom,    explain::view_fit,     explain::view_actual,
     explain::sample,       explain::sample_values, explain::sample_light, explain::sample_range,
     explain::pick,
-    explain::dodge_burn_switch, explain::dodge_burn_brush, explain::dodge_burn_strength,
-    explain::dodge_burn_clear,
+    explain::dodge_burn_switch, explain::dodge_burn_brush, explain::dodge_burn_tone,
+    explain::dodge_burn_strength, explain::dodge_burn_clear,
     explain::pref_theme,   explain::pref_size,    explain::pref_panel,  explain::pref_explain,
 };
 

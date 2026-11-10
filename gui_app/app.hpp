@@ -224,6 +224,16 @@ private:
     void draw_scopes_panel();
     void toggle_clip_overlay();
     void update_clip_overlay_texture();
+    void update_stroke_overlay_texture();
+    // The overlays over the viewed picture, where it is drawn from `min` to `max` with texture
+    // coordinates `uv0` to `uv1`: the clipping overlay (J) and the stroke mask (hold M), the same
+    // way for both.
+    void draw_picture_overlays(ImDrawList* draw, ImVec2 min, ImVec2 max, ImVec2 uv0,
+                               ImVec2 uv1) const;
+    // Brush mode's chip on the canvas: Dodge (lighter) | Burn (darker), and what a stroke does.
+    void draw_brush_chip();
+    // The ring under the cursor in Brush mode: the brush's size and the part at full strength.
+    void draw_brush_ring(ImDrawList* draw);
     void draw_presets();
     // The Light path section: its data and callbacks, for draw_light_path to draw.
     void draw_light_path_panel();
@@ -281,6 +291,14 @@ private:
     int clip_mask_height_ = 0;
     bool overlay_dirty_ = false;
     std::optional<gui::Theme> overlay_theme_;
+    // The stroke mask, while M is held in Brush mode: whether it is on this frame, the mask of the
+    // frame on screen (empty: none), and what its texture was made from, as for the clip mask.
+    bool stroke_mask_on_ = false;
+    std::vector<std::uint8_t> stroke_mask_;
+    int stroke_mask_width_ = 0;
+    int stroke_mask_height_ = 0;
+    bool stroke_overlay_dirty_ = false;
+    std::optional<gui::Theme> stroke_overlay_theme_;
     gui::BackgroundExport exporter_;
     // What the photo was last saved with, by export or as a recipe, to tell unsaved edits from
     // none.

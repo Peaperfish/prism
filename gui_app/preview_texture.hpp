@@ -35,6 +35,14 @@ public:
     void reset_overlay();
     [[nodiscard]] SDL_Texture* overlay() const noexcept { return overlay_; }
 
+    // The stroke mask's overlay: a third texture of the same kind, drawn the same way, from
+    // PreviewFrame::stroke_mask (gui::stroke_mask_abgr with the two colours). False if the mask
+    // does not match width x height (then there is none).
+    bool upload_stroke_overlay(const std::vector<std::uint8_t>& stroke_mask, int width, int height,
+                               std::uint32_t dodge_abgr, std::uint32_t burn_abgr);
+    void reset_stroke_overlay();
+    [[nodiscard]] SDL_Texture* stroke_overlay() const noexcept { return stroke_overlay_; }
+
     // The compare picture (the left half of a split): a second texture of the same kind, from a
     // frame's `compare`. Same behaviour as upload(): false (with SDL_GetError() set) if SDL
     // couldn't, and the compare picture is gone then.
@@ -54,9 +62,17 @@ public:
     [[nodiscard]] int height() const noexcept { return height_; }
 
 private:
+    // Makes `texture` a width x height ABGR texture blended over the picture, as the clipping
+    // overlay is, if it isn't one of that size already. False if SDL couldn't.
+    bool make_overlay_texture(SDL_Texture*& texture, int& texture_width, int& texture_height,
+                              int width, int height);
+
     SDL_Renderer* renderer_;
     SDL_Texture* texture_ = nullptr;
     SDL_Texture* overlay_ = nullptr;
+    SDL_Texture* stroke_overlay_ = nullptr;
+    int stroke_overlay_width_ = 0;
+    int stroke_overlay_height_ = 0;
     SDL_Texture* compare_ = nullptr;
     gui::StageId compare_stage_ = gui::StageId::decode;
     int compare_width_ = 0;

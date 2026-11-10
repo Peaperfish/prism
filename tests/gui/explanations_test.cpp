@@ -87,6 +87,15 @@ TEST(Explanations, TheBrushExplainsItselfWithItsKeyAndHowToLeave) {
     EXPECT_NE(e->detail.find("Space"), std::string_view::npos);
 }
 
+TEST(Explanations, TheToneChipNamesEveryKeyOfTheBrush) {
+    const Explanation* e = explanation_for(explain::dodge_burn_tone);
+    ASSERT_NE(e, nullptr);
+    EXPECT_NE(e->summary.find("(X)"), std::string_view::npos);
+    for (const char* key : {"Alt", "]", "[", "Shift+[", "Shift+]", "M"}) {
+        EXPECT_NE(e->detail.find(key), std::string_view::npos) << key;
+    }
+}
+
 TEST(Explanations, UnknownIdsHaveNoEntryAndNoLiveLine) {
     EXPECT_EQ(explanation_for("nope"), nullptr);
     EXPECT_EQ(explanation_for(""), nullptr);
@@ -859,6 +868,7 @@ TEST(Explanations, TheLookTooltipSaysALookKeepsYourDodgingAndBurning) {
 TEST(Explanations, DodgeAndBurnExplainsTheRowItsSwitchBrushStrengthAndClear) {
     for (const std::string_view id :
          {explain_id(StageId::dodge_burn), explain::dodge_burn_switch, explain::dodge_burn_brush,
+          explain::dodge_burn_tone,
           explain::dodge_burn_strength, explain::dodge_burn_clear}) {
         const Explanation* e = explanation_for(id);
         ASSERT_NE(e, nullptr) << id;

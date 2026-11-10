@@ -352,6 +352,8 @@ void App::open_now(const fs::path& path) {
     last_frame_had_clips_ = false;
     clip_mask_.clear();
     texture_.reset_overlay();
+    stroke_mask_.clear();
+    texture_.reset_stroke_overlay();
     scope_view_.set(std::nullopt);
     viewed_stage_ = gui::final_stage;
     compare_stage_.reset();
@@ -899,6 +901,7 @@ void App::update_preview() {
     // bands each have their own light.
     options.clip_report = !strip_;
     options.clip_mask = prefs_.clip_overlay;
+    options.stroke_mask = stroke_mask_on_;
     options.compare_stage = strip_ ? std::nullopt : gui::effective_compare(viewed_stage_, compare_stage_);
     options.test_strip = strip_;
     options.as_shot_white = session_.as_shot_white();
@@ -936,6 +939,10 @@ void App::update_preview() {
     clip_mask_width_ = frame->width;
     clip_mask_height_ = frame->height;
     overlay_dirty_ = true;
+    stroke_mask_ = std::move(frame->stroke_mask);
+    stroke_mask_width_ = frame->width;
+    stroke_mask_height_ = frame->height;
+    stroke_overlay_dirty_ = true;
     scope_view_.set(std::move(frame->scopes));
     // A strip frame's histogram and scopes are the middle band's; the others wait in strip_bands_
     // for the cursor.
@@ -965,6 +972,40 @@ void App::update_clip_overlay_texture() {
                             colours.clip_overlay_gamut);
     overlay_dirty_ = false;
     overlay_theme_ = current;
+}
+
+// The same for the stroke mask, while it is on.
+void App::update_stroke_overlay_texture() {
+    if (!stroke_mask_on_ || stroke_mask_.empty()) {
+        texture_.reset_stroke_overlay();
+        stroke_overlay_theme_.reset();
+        return;
+    }
+    const gui::Theme current = theme();
+    if (!stroke_overlay_dirty_ && stroke_overlay_theme_ == current &&
+        texture_.stroke_overlay() != nullptr) {
+        return;
+    }
+    const Palette& colours = palette(current);
+    texture_.upload_stroke_overlay(stroke_mask_, stroke_mask_width_, stroke_mask_height_,
+                                   colours.stroke_overlay_dodge, colours.stroke_overlay_burn);
+    stroke_overlay_dirty_ = false;
+    stroke_overlay_theme_ = current;
+}
+
+void App::draw_picture_overlays(ImDrawList* draw, ImVec2 min, ImVec2 max, ImVec2 uv0,
+                                ImVec2 uv1) const {
+    const auto id = [](SDL_Texture* t) {
+        return ImTextureRef(static_cast<ImTextureID>(reinterpret_cast<std::uintptr_t>(t)));
+    };
+    if (texture_.overlay() != nullptr && prefs_.clip_overlay &&
+        clip_mask_width_ == texture_.width() && clip_mask_height_ == texture_.height()) {
+        draw->AddImage(id(texture_.overlay()), min, max, uv0, uv1);
+    }
+    if (texture_.stroke_overlay() != nullptr && stroke_mask_on_ &&
+        stroke_mask_width_ == texture_.width() && stroke_mask_height_ == texture_.height()) {
+        draw->AddImage(id(texture_.stroke_overlay()), min, max, uv0, uv1);
+    }
 }
 
 void App::toggle_clip_overlay() {
@@ -1206,6 +1247,7 @@ void App::frame() {
     draw_canvas();
     draw_banner();
     draw_stage_badge();
+    draw_brush_chip();
     draw_zoom_chip();
     ImGui::EndChild();
     ImGui::EndGroup();
@@ -1253,6 +1295,10 @@ void App::step_interface_size(int direction) {
 }
 
 void App::handle_shortcuts() {
+    // Hold M: the stroke mask, for as long as the key is down (not a shortcut, which fires once).
+    stroke_mask_on_ = gui::stroke_mask_shown(brush_.on() && !export_sheet_,
+                                             ImGui::IsKeyDown(ImGuiKey_M),
+                                             ImGui::GetIO().WantTextInput);
     // The Export sheet is modal, and ImGui lets global shortcuts through a modal: so while it is up
     // nothing but quitting is handled here (Esc and Enter are the sheet's own, read in
     // draw_export_sheet). No I, T, J, zoom, undo, open or interface size behind it.
@@ -1377,6 +1423,24 @@ void App::handle_shortcuts() {
     }
     if (ImGui::Shortcut(ImGuiKey_B, ImGuiInputFlags_RouteGlobal)) {
         toggle_brush();  // B: Dodge & burn's brush, routed like the others
+    }
+    // The brush's own keys, only in Brush mode (brush_key does nothing otherwise).
+    if (brush_.on()) {
+        if (global(ImGuiKey_X)) {
+            (void)gui::brush_key(brush_, gui::BrushKey::x, false);
+        }
+        if (global(ImGuiKey_LeftBracket)) {
+            (void)gui::brush_key(brush_, gui::BrushKey::left_bracket, false);
+        }
+        if (global(ImGuiKey_RightBracket)) {
+            (void)gui::brush_key(brush_, gui::BrushKey::right_bracket, false);
+        }
+        if (global(ImGuiMod_Shift | ImGuiKey_LeftBracket)) {
+            (void)gui::brush_key(brush_, gui::BrushKey::left_bracket, true);
+        }
+        if (global(ImGuiMod_Shift | ImGuiKey_RightBracket)) {
+            (void)gui::brush_key(brush_, gui::BrushKey::right_bracket, true);
+        }
     }
     // Zoom: plain keys, routed like J and T. Cmd/Ctrl with + - 0 is the interface size, above.
     if (global(ImGuiKey_F)) {
@@ -1560,6 +1624,7 @@ void App::draw_canvas() {
         const ImVec2 at(placed.at.x, placed.at.y);
         const ImVec2 shown(placed.shown.x, placed.shown.y);
         update_clip_overlay_texture();
+        update_stroke_overlay_texture();
         if (splitting()) {
             draw_split(draw, at, shown);
         } else {
@@ -1567,12 +1632,8 @@ void App::draw_canvas() {
             draw->AddImage(ImTextureRef(static_cast<ImTextureID>(
                                reinterpret_cast<std::uintptr_t>(texture_.texture()))),
                            at, ImVec2(at.x + shown.x, at.y + shown.y));
-            if (texture_.overlay() != nullptr && prefs_.clip_overlay &&
-                clip_mask_width_ == texture_.width() && clip_mask_height_ == texture_.height()) {
-                draw->AddImage(ImTextureRef(static_cast<ImTextureID>(
-                                   reinterpret_cast<std::uintptr_t>(texture_.overlay()))),
-                               at, ImVec2(at.x + shown.x, at.y + shown.y));
-            }
+            draw_picture_overlays(draw, at, ImVec2(at.x + shown.x, at.y + shown.y),
+                                  ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f));
             end_picture_sampling(draw);
             if (strip_ && !strip_bands_.empty()) {
                 draw_strip_bands(draw, at, shown);
@@ -1583,6 +1644,7 @@ void App::draw_canvas() {
         draw_sample_markers(draw);
         update_pick_cursor();
         draw_pick_overlay(draw);
+        draw_brush_ring(draw);
     } else if (!session_.has_file() && !pending_open_) {
         // Empty state: a dashed drop area with the one thing to do. It lights up while a file is
         // dragged over the window.
@@ -1850,6 +1912,8 @@ std::optional<gui::BrushCanvas> App::brush_canvas() const {
 
 gui::BrushStyle App::brush_style() const {
     gui::BrushStyle style;
+    style.radius = brush_.radius();
+    style.softness = brush_.softness();
     style.strength = brush_.strength();
     return style;
 }
@@ -2446,13 +2510,10 @@ void App::draw_split(ImDrawList* draw, ImVec2 at, ImVec2 shown) {
                    ImVec2(u_divider, 1.0f));
     draw->AddImage(id(texture_.texture()), ImVec2(split.divider_x, image_top),
                    ImVec2(image_right, image_bottom), ImVec2(u_divider, 0.0f), ImVec2(1.0f, 1.0f));
-    // The clipping overlay belongs to the viewed stage: only over its half.
-    if (texture_.overlay() != nullptr && prefs_.clip_overlay &&
-        clip_mask_width_ == texture_.width() && clip_mask_height_ == texture_.height()) {
-        draw->AddImage(id(texture_.overlay()), ImVec2(split.divider_x, image_top),
-                       ImVec2(image_right, image_bottom), ImVec2(u_divider, 0.0f),
-                       ImVec2(1.0f, 1.0f));
-    }
+    // The overlays belong to the viewed stage: only over its half.
+    draw_picture_overlays(draw, ImVec2(split.divider_x, image_top),
+                          ImVec2(image_right, image_bottom), ImVec2(u_divider, 0.0f),
+                          ImVec2(1.0f, 1.0f));
     end_picture_sampling(draw);
 
     // The divider: a line with a dark edge so it shows on any picture, and a grip in its middle.
@@ -2597,6 +2658,125 @@ void App::draw_stage_badge() {
                              {ImGui::GetItemRectMax().x, ImGui::GetItemRectMax().y}});
     ImGui::PopStyleVar();
     ImGui::PopStyleColor(3);
+}
+
+// Top middle of the canvas, dark like the zoom's chip: the two tones, the one strokes take lit
+// (X switches them too), and under them what a stroke does now. Clear of the other chips; on a
+// canvas too narrow for the words, the tones alone, and with no room for those, nothing.
+void App::draw_brush_chip() {
+    if (!brush_.on() || !view_available()) {
+        return;
+    }
+    const gui::TokenMetrics& metrics = token_metrics();
+    const gui::TokenColours& tokens = token_colours();
+    const auto rgba4 = [](const gui::Rgba& c) { return ImVec4(c.r, c.g, c.b, c.a); };
+    const std::optional<gui::BrushTone> stroke =
+        brush_gesture_.stroking() ? std::optional<gui::BrushTone>(brush_gesture_.tone())
+                                  : std::nullopt;
+    const gui::BrushTone shown = gui::brush_shown_tone(brush_.tone(), ImGui::GetIO().KeyAlt, stroke);
+    const std::string status = gui::brush_status_text(shown, brush_.strength());
+    const std::string dodge(gui::brush_dodge_label);
+    const std::string burn(gui::brush_burn_label);
+
+    ImGui::PushFont(nullptr, token_type().small);
+    const float pad = metrics.zoom_chip_pad;
+    const float button_pad = metrics.zoom_chip_button_pad_x;
+    const float button_pad_y = ImGui::GetStyle().FramePadding.y * 0.5f;
+    const float line = ImGui::GetTextLineHeight();
+    const float tones_width = ImGui::CalcTextSize(dodge.c_str()).x +
+                              ImGui::CalcTextSize(burn.c_str()).x + 4 * button_pad;
+    const float status_width = ImGui::CalcTextSize(status.c_str()).x + 2 * button_pad;
+    const float tones_height = line + 2 * button_pad_y;
+    const gui::ViewRect canvas = gui::view_canvas_rect(view_geometry_);
+    const float margin = metrics.zoom_chip_margin.y;
+    bool with_status = true;
+    float width = std::max(tones_width, status_width) + 2 * pad;
+    float height = tones_height + line + 2 * pad;
+    if (width > canvas.width() - 2 * margin) {
+        with_status = false;
+        width = tones_width + 2 * pad;
+        height = tones_height + 2 * pad;
+    }
+    if (width > canvas.width() - 2 * margin || height > canvas.height() - 2 * margin) {
+        ImGui::PopFont();
+        return;
+    }
+    const ImVec2 at(std::round(canvas.min.x + (canvas.width() - width) / 2),
+                    std::round(canvas.min.y + margin));
+    ImGui::SetCursorScreenPos(at);
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, rgba4(tokens.zoom_chip_bg));
+    ImGui::PushStyleColor(ImGuiCol_Text, rgba4(tokens.zoom_chip_text));
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, rgba4(tokens.zoom_chip_hovered));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, rgba4(tokens.zoom_chip_current));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(pad, pad));
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, metrics.zoom_chip_rounding);
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
+    ImGui::BeginChild("brush_chip", ImVec2(width, height), ImGuiChildFlags_AlwaysUseWindowPadding,
+                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(button_pad, button_pad_y));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding,
+                        std::max(0.0f, metrics.zoom_chip_rounding - pad));
+    // One segment: lit while it is the base tone. A click on it makes it the base tone.
+    const auto segment = [&](const std::string& text, gui::BrushTone tone) {
+        const bool current = brush_.tone() == tone;
+        ImGui::PushStyleColor(ImGuiCol_Button, current ? rgba4(tokens.zoom_chip_current)
+                                                       : ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_Text, current ? rgba4(tokens.zoom_chip_current_text)
+                                                     : rgba4(tokens.zoom_chip_idle_text));
+        if (ImGui::Button(text.c_str())) {
+            brush_.set_tone(tone);
+        }
+        ImGui::PopStyleColor(2);
+        describe(gui::explain::dodge_burn_tone);
+    };
+    ImGui::SetCursorPosX(pad + (width - 2 * pad - tones_width) / 2);
+    segment(dodge, gui::BrushTone::dodge);
+    ImGui::SameLine(0.0f, 0.0f);
+    segment(burn, gui::BrushTone::burn);
+    if (with_status) {
+        ImGui::SetCursorPosX(pad + (width - 2 * pad - ImGui::CalcTextSize(status.c_str()).x) / 2);
+        ImGui::TextUnformatted(status.c_str());
+    }
+    ImGui::PopStyleVar(2);
+    ImGui::EndChild();
+    canvas_taken_.push_back({{ImGui::GetItemRectMin().x, ImGui::GetItemRectMin().y},
+                             {ImGui::GetItemRectMax().x, ImGui::GetItemRectMax().y}});
+    canvas_chips_.push_back(canvas_taken_.back());
+    ImGui::PopStyleVar(3);
+    ImGui::PopStyleColor(5);
+    ImGui::PopFont();
+}
+
+void App::draw_brush_ring(ImDrawList* draw) {
+    const ImGuiIO& io = ImGui::GetIO();
+    const gui::ViewPoint cursor{io.MousePos.x, io.MousePos.y};
+    if (!brush_.on() || !gui::brush_available(viewed_stage_) || !ImGui::IsWindowHovered() ||
+        ImGui::IsAnyItemHovered() || hand_key_held_ || brush_gesture_.panning() ||
+        gui::view_point_in_any(cursor, canvas_chips_) || !brush_canvas()) {
+        return;
+    }
+    const gui::BrushRing ring =
+        gui::brush_ring(view_, view_geometry_, brush_.radius(), brush_.softness());
+    ImGui::SetMouseCursor(ImGuiMouseCursor_None);  // the ring is the cursor
+    const float scale = ui_scale();
+    const ImVec2 centre(cursor.x, cursor.y);
+    // A light line on a dark one, so the rings show on any picture.
+    const ImU32 dark = IM_COL32(0, 0, 0, 150);
+    const ImU32 light = IM_COL32(255, 255, 255, 230);
+    const ImU32 light_soft = IM_COL32(255, 255, 255, 140);
+    draw->AddCircle(centre, ring.outer, dark, 0, 3.0f * scale);
+    draw->AddCircle(centre, ring.outer, light, 0, 1.25f * scale);
+    if (ring.inner >= 1.0f && ring.outer - ring.inner >= 2.0f * scale) {
+        draw->AddCircle(centre, ring.inner, dark, 0, 2.0f * scale);
+        draw->AddCircle(centre, ring.inner, light_soft, 0, 1.0f * scale);
+    }
+    // The centre, so a small brush still shows where it is.
+    const float tick = 3.0f * scale;
+    draw->AddLine(ImVec2(centre.x - tick, centre.y), ImVec2(centre.x + tick, centre.y), light,
+                  1.0f * scale);
+    draw->AddLine(ImVec2(centre.x, centre.y - tick), ImVec2(centre.x, centre.y + tick), light,
+                  1.0f * scale);
 }
 
 void App::draw_zoom_chip() {

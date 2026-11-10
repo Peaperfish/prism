@@ -119,6 +119,8 @@ const Palette& palette(gui::Theme theme) {
         IM_COL32(255, 70, 30, 215),    // clipping overlay: above white
         IM_COL32(30, 140, 255, 215),   // clipping overlay: below black
         IM_COL32(235, 60, 245, 235),   // clipping overlay: outside sRGB (stripes)
+        IM_COL32(255, 225, 120, 200),  // stroke mask: dodged
+        IM_COL32(120, 60, 210, 210),   // stroke mask: burned
         to_vec4(gui::token_set(gui::Theme::dark).colours.chrome),
     };
     static const Palette light{
@@ -149,6 +151,8 @@ const Palette& palette(gui::Theme theme) {
         IM_COL32(255, 60, 20, 225),    // clipping overlay: above white
         IM_COL32(10, 110, 245, 225),   // clipping overlay: below black
         IM_COL32(190, 20, 200, 240),   // clipping overlay: outside sRGB (stripes)
+        IM_COL32(255, 215, 90, 210),   // stroke mask: dodged
+        IM_COL32(105, 45, 200, 220),   // stroke mask: burned
         to_vec4(gui::token_set(gui::Theme::light).colours.chrome),
     };
     return theme == gui::Theme::light ? light : dark;

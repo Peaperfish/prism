@@ -127,6 +127,7 @@ inline constexpr std::string_view sample_range = "sample.range";
 inline constexpr std::string_view pick = "pick";
 inline constexpr std::string_view dodge_burn_switch = "dodge_burn.switch";
 inline constexpr std::string_view dodge_burn_brush = "dodge_burn.brush";
+inline constexpr std::string_view dodge_burn_tone = "dodge_burn.tone";  // the canvas's tone chip
 inline constexpr std::string_view dodge_burn_strength = "dodge_burn.strength";
 inline constexpr std::string_view dodge_burn_clear = "dodge_burn.clear";
 inline constexpr std::string_view pref_theme = "pref.theme";

@@ -50,6 +50,11 @@ struct Palette {
     ImU32 clip_overlay_under;
     // Colours outside sRGB, drawn as diagonal stripes so the colour underneath stays visible.
     ImU32 clip_overlay_gamut;
+    // The stroke mask (hold M in Brush mode): where dodging lightens and burning darkens, each its
+    // own colour at full alpha for 2 stops or more (stroke_mask_abgr), and clear where no stroke
+    // reaches. Told apart from the clipping overlay's red and blue, since both can be on at once.
+    ImU32 stroke_overlay_dodge;
+    ImU32 stroke_overlay_burn;
     // What the window is cleared to behind everything ImGui draws: the theme's window colour, so
     // the edge of a resize never flashes a different grey.
     ImVec4 window_clear;
