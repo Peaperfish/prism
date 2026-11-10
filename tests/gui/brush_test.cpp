@@ -582,6 +582,8 @@ TEST(BrushMenu, IsCheckedWhileOnAndTurnsOnOnlyWhereTheBrushWorks) {
     EXPECT_EQ(brush_menu_item(false, true, StageId::exposure), (BrushMenuItem{false, false, true}));
     // No photo: greyed out, with nothing to explain.
     EXPECT_EQ(brush_menu_item(false, false, final_stage), (BrushMenuItem{false, false, false}));
+    EXPECT_EQ(brush_menu_item(false, false, StageId::exposure),
+              (BrushMenuItem{false, false, false}));
 }
 
 TEST(BrushMenu, ChoosingItTogglesBrushModeAsBDoes) {
