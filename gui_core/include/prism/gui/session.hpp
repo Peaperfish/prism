@@ -45,6 +45,10 @@ struct SessionOptions {
     int threads = 0;               // as for the pipeline: 0 = one per hardware thread
 };
 
+// The light the camera balanced for when it took the photo (PhotoInfo::as_shot_white_xy), as a
+// chromaticity. None for anything but a RAW file, and for a RAW file without a usable one.
+[[nodiscard]] std::optional<Chromaticity> as_shot_white_of(const PhotoInfo& info) noexcept;
+
 // Everything an export needs, copied out of a Session: export_image() can then run on another
 // thread while the user keeps editing, without sharing anything with the Session.
 struct ExportJob {
@@ -91,6 +95,11 @@ public:
     // successful open_file() and for a PNG. It belongs to the open photo, so it is replaced when
     // another file is opened and left alone by an open that fails, like the rest of the session.
     [[nodiscard]] const PhotoInfo& photo_info() const noexcept { return photo_info_; }
+    // The open photo's as-shot light (as_shot_white_of its PhotoInfo): what to_process_settings
+    // measures a chosen white balance against.
+    [[nodiscard]] std::optional<Chromaticity> as_shot_white() const noexcept {
+        return as_shot_white_of(photo_info_);
+    }
 
     // The image previews are rendered from: never changed once made, so it can be shared with the
     // preview thread. A new one replaces it when another file is opened or the RAW camera matrix
@@ -169,7 +178,8 @@ private:
 // Renders `job` at full resolution and saves it as PNG or JPEG (by the extension of `output`;
 // the library's fixed JPEG quality), on the calling thread. The source file is decoded again:
 // RAW at full size unless job.settings.raw_half_size, with its camera matrix, then reduced if
-// job.long_side asks for it. `stop` is checked between decoding, reducing, each stage and saving; once it is triggered the export returns
+// job.long_side asks for it. A chosen white balance is measured against the as-shot light that
+// decode reads from the file, the same one the session read when it opened it. `stop` is checked between decoding, reducing, each stage and saving; once it is triggered the export returns
 // ErrorKind::cancelled and writes nothing. on_stage reports each pipeline stage, for progress.
 // Refuses to overwrite the source file itself.
 [[nodiscard]] MaybeError export_image(const ExportJob& job, const std::filesystem::path& output,

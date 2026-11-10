@@ -441,6 +441,8 @@ struct Field {
 constexpr Field fields[] = {
     {"exposure_stops", true, "[exposure] stops"},
     {"exposure_on", true, "[exposure] on"},
+    {"white_balance", true, "[white_balance] kelvin and tint; As shot (none) writes no section"},
+    {"white_balance_on", true, "[white_balance] on, only with a chosen white balance"},
     {"matrix", true, "[matrix] red, green, blue and from; none is identity rows without from"},
     {"matrix_on", true, "[matrix] on"},
     {"saturation", true, "[saturation] amount"},
@@ -460,24 +462,26 @@ constexpr Field fields[] = {
 // counts).
 EditSettings changed(std::size_t i) {
     EditSettings s;
-    auto& [exposure_stops, exposure_on, matrix, matrix_on, saturation, saturation_on, contrast,
-           contrast_on, curve, gamma, reinhard_white, curve_on, raw_half_size, raw_camera_matrix] =
-        s;
+    auto& [exposure_stops, exposure_on, white_balance, white_balance_on, matrix, matrix_on,
+           saturation, saturation_on, contrast, contrast_on, curve, gamma, reinhard_white, curve_on,
+           raw_half_size, raw_camera_matrix] = s;
     switch (i) {
         case 0: exposure_stops = 1.0f; break;
         case 1: exposure_on = false; break;
-        case 2: matrix = MatrixFile{"grade.txt", grade}; break;
-        case 3: matrix_on = false; break;
-        case 4: saturation = 2.0f; break;
-        case 5: saturation_on = false; break;
-        case 6: contrast = 2.0f; break;
-        case 7: contrast_on = false; break;
-        case 8: curve = CurveKind::filmic; break;
-        case 9: curve = CurveKind::gamma, gamma = 3.0f; break;
-        case 10: curve = CurveKind::reinhard, reinhard_white = 8.0f; break;
-        case 11: curve_on = false; break;
-        case 12: raw_half_size = true; break;
-        case 13: raw_camera_matrix = MatrixFile{"camera.txt", grade}; break;
+        case 2: white_balance = prism::WhiteBalance{5200, 10}; break;
+        case 3: white_balance = prism::WhiteBalance{5200, 10}, white_balance_on = false; break;
+        case 4: matrix = MatrixFile{"grade.txt", grade}; break;
+        case 5: matrix_on = false; break;
+        case 6: saturation = 2.0f; break;
+        case 7: saturation_on = false; break;
+        case 8: contrast = 2.0f; break;
+        case 9: contrast_on = false; break;
+        case 10: curve = CurveKind::filmic; break;
+        case 11: curve = CurveKind::gamma, gamma = 3.0f; break;
+        case 12: curve = CurveKind::reinhard, reinhard_white = 8.0f; break;
+        case 13: curve_on = false; break;
+        case 14: raw_half_size = true; break;
+        case 15: raw_camera_matrix = MatrixFile{"camera.txt", grade}; break;
         default: break;
     }
     return s;
@@ -486,7 +490,7 @@ EditSettings changed(std::size_t i) {
 }  // namespace
 
 TEST(RecipeSettings, EveryFieldIsEitherInARecipeOrLeftOutForAReason) {
-    ASSERT_EQ(std::size(fields), 14u);
+    ASSERT_EQ(std::size(fields), 16u);
     const EditSettings defaults;
     for (std::size_t i = 0; i < std::size(fields); ++i) {
         const Field& f = fields[i];
@@ -499,6 +503,8 @@ TEST(RecipeSettings, EveryFieldIsEitherInARecipeOrLeftOutForAReason) {
             baseline.curve = CurveKind::gamma;
         } else if (f.name == "reinhard_white") {
             baseline.curve = CurveKind::reinhard;
+        } else if (f.name == "white_balance_on") {
+            baseline.white_balance = prism::WhiteBalance{5200, 10};  // the switch needs a section
         }
         const bool saved = prism::write_recipe(prism::gui::recipe_from(s)) !=
                            prism::write_recipe(prism::gui::recipe_from(baseline));

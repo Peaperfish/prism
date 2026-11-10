@@ -15,6 +15,7 @@
 #include "prism/image.hpp"
 #include "prism/pipeline.hpp"
 #include "prism/process.hpp"
+#include "prism/white_balance.hpp"
 
 namespace fs = std::filesystem;
 using prism::gui::CurveKind;
@@ -341,15 +342,19 @@ TEST(PipelineStages, ListsEveryStageInOrderWithBookendsUntoggleable) {
     using prism::gui::StageInfo;
 
     const std::span<const StageInfo> stages = prism::gui::pipeline_stages();
-    ASSERT_EQ(stages.size(), 7u);
+    ASSERT_EQ(stages.size(), 8u);
+    ASSERT_EQ(stages.size(), prism::gui::stage_count);
     EXPECT_EQ(stages[0].id, StageId::decode);
     EXPECT_EQ(stages[1].id, StageId::exposure);
-    EXPECT_EQ(stages[2].id, StageId::matrix);
-    EXPECT_EQ(stages[3].id, StageId::saturation);
-    EXPECT_EQ(stages[4].id, StageId::contrast);
-    EXPECT_EQ(stages[5].id, StageId::curve);
-    EXPECT_EQ(stages[6].id, StageId::encode);
+    EXPECT_EQ(stages[2].id, StageId::white_balance);
+    EXPECT_EQ(stages[3].id, StageId::matrix);
+    EXPECT_EQ(stages[4].id, StageId::saturation);
+    EXPECT_EQ(stages[5].id, StageId::contrast);
+    EXPECT_EQ(stages[6].id, StageId::curve);
+    EXPECT_EQ(stages[7].id, StageId::encode);
     EXPECT_EQ(stages.back().id, prism::gui::final_stage);
+    EXPECT_EQ(stages[2].slug, "white_balance");  // the name process() reports the stage by
+    EXPECT_EQ(stages[2].name, "White balance");
 
     EXPECT_FALSE(stages[0].can_toggle);
     EXPECT_TRUE(stages[1].can_toggle);
@@ -357,7 +362,8 @@ TEST(PipelineStages, ListsEveryStageInOrderWithBookendsUntoggleable) {
     EXPECT_TRUE(stages[3].can_toggle);
     EXPECT_TRUE(stages[4].can_toggle);
     EXPECT_TRUE(stages[5].can_toggle);
-    EXPECT_FALSE(stages[6].can_toggle);
+    EXPECT_TRUE(stages[6].can_toggle);
+    EXPECT_FALSE(stages[7].can_toggle);
 
     for (const StageInfo& s : stages) {
         EXPECT_FALSE(s.slug.empty());
@@ -385,6 +391,14 @@ TEST(PipelineStages, StageEnableFlagsMapToEditSettings) {
     EXPECT_FALSE(s.exposure_on);
     EXPECT_FALSE(prism::gui::stage_enabled(s, StageId::exposure));
 
+    prism::gui::set_stage_enabled(s, StageId::white_balance, false);
+    EXPECT_FALSE(s.white_balance_on);
+    EXPECT_FALSE(prism::gui::stage_enabled(s, StageId::white_balance));
+    EXPECT_TRUE(s.matrix_on);
+    prism::gui::set_stage_enabled(s, StageId::white_balance, true);
+    EXPECT_TRUE(s.white_balance_on);
+    prism::gui::set_stage_enabled(s, StageId::white_balance, false);
+
     prism::gui::set_stage_enabled(s, StageId::matrix, false);
     EXPECT_FALSE(s.matrix_on);
     EXPECT_FALSE(prism::gui::stage_enabled(s, StageId::matrix));
@@ -400,6 +414,81 @@ TEST(PipelineStages, StageEnableFlagsMapToEditSettings) {
     prism::gui::set_stage_enabled(s, StageId::curve, false);
     EXPECT_FALSE(s.curve_on);
     EXPECT_FALSE(prism::gui::stage_enabled(s, StageId::curve));
+}
+
+TEST(WhiteBalanceSettings, AsShotIsTheDefaultAndGivesNoStage) {
+    const EditSettings s;
+    EXPECT_FALSE(s.white_balance);
+    EXPECT_TRUE(s.white_balance_on);
+    const prism::Chromaticity as_shot = prism::white_of(prism::WhiteBalance{5300, 27});
+    EXPECT_FALSE(prism::gui::to_process_settings(s).white_balance);
+    EXPECT_FALSE(prism::gui::to_process_settings(s, prism::gui::final_stage, as_shot).white_balance);
+}
+
+TEST(WhiteBalanceSettings, AChosenLightBecomesTheMatrixAgainstThePhotosAsShotLight) {
+    EditSettings s;
+    s.white_balance = prism::WhiteBalance{4000, 20};
+    const prism::Chromaticity as_shot = prism::white_of(prism::WhiteBalance{5300, 27});
+    const prism::ProcessSettings p =
+        prism::gui::to_process_settings(s, prism::gui::final_stage, as_shot);
+    ASSERT_TRUE(p.white_balance);
+    EXPECT_EQ(*p.white_balance, prism::white_balance_matrix(*s.white_balance, as_shot));
+    EXPECT_NE(*p.white_balance, prism::identity_matrix);
+
+    // Without an as-shot light the photo is taken as 6500 K, tint 0, as the CLI takes it.
+    const prism::ProcessSettings plain = prism::gui::to_process_settings(s);
+    ASSERT_TRUE(plain.white_balance);
+    EXPECT_EQ(*plain.white_balance,
+              prism::white_balance_matrix(*s.white_balance,
+                                          prism::white_of(prism::default_as_shot)));
+    EXPECT_NE(*plain.white_balance, *p.white_balance);
+    s.white_balance = prism::default_as_shot;
+    EXPECT_EQ(prism::gui::to_process_settings(s).white_balance, prism::identity_matrix);
+}
+
+TEST(WhiteBalanceSettings, SwitchedOffGivesNoStageAndKeepsTheChoice) {
+    EditSettings s;
+    s.white_balance = prism::WhiteBalance{4000, 20};
+    prism::gui::set_stage_enabled(s, prism::gui::StageId::white_balance, false);
+    EXPECT_FALSE(prism::gui::to_process_settings(s).white_balance);
+    EXPECT_EQ(s.white_balance, (prism::WhiteBalance{4000, 20}));
+    prism::gui::set_stage_enabled(s, prism::gui::StageId::white_balance, true);
+    EXPECT_TRUE(prism::gui::to_process_settings(s).white_balance);
+}
+
+TEST(WhiteBalanceSettings, TheStageIsIncludedExactlyFromItsOwnStageOn) {
+    using prism::gui::StageId;
+    EditSettings s;
+    s.white_balance = prism::WhiteBalance{4000, 20};
+    s.matrix = prism::gui::MatrixFile{"m.txt", {1, 0, 0, 0, 1, 0, 0, 0, 1}};
+    EXPECT_FALSE(prism::gui::to_process_settings(s, StageId::decode).white_balance);
+    EXPECT_FALSE(prism::gui::to_process_settings(s, StageId::exposure).white_balance);
+    const prism::ProcessSettings at = prism::gui::to_process_settings(s, StageId::white_balance);
+    EXPECT_TRUE(at.white_balance);
+    EXPECT_FALSE(at.matrix);
+    for (const StageId later : {StageId::matrix, StageId::saturation, StageId::contrast,
+                                StageId::curve, StageId::encode}) {
+        EXPECT_TRUE(prism::gui::to_process_settings(s, later).white_balance);
+    }
+}
+
+TEST(WhiteBalanceSettings, AChoiceOutsideTheRangesIsInvalidAlsoWhenOff) {
+    EditSettings s;
+    s.white_balance = prism::WhiteBalance{1500, 120};
+    s.white_balance_on = false;
+    const std::vector<std::string> problems = prism::gui::validate(s);
+    EXPECT_EQ(problems.size(), 2u);
+    EXPECT_TRUE(mentions(problems, "Kelvin must be from 2000 to 15000 (it is 1500)"));
+    EXPECT_TRUE(mentions(problems, "Tint must be from -100 to 100 (it is 120)"));
+    EXPECT_THROW((void)prism::gui::to_process_settings(s), std::invalid_argument);
+
+    s.white_balance = prism::WhiteBalance{std::numeric_limits<double>::quiet_NaN(), 0};
+    EXPECT_TRUE(mentions(prism::gui::validate(s), "Kelvin"));
+    for (const prism::WhiteBalance edge : {prism::WhiteBalance{2000, -100},
+                                           prism::WhiteBalance{15000, 100}}) {
+        s.white_balance = edge;
+        EXPECT_TRUE(prism::gui::validate(s).empty());
+    }
 }
 
 TEST(PipelineStages, ToProcessSettingsStopsAfterChosenStage) {

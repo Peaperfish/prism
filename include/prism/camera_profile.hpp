@@ -44,6 +44,7 @@ inline constexpr Mat3 identity3 = {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}};
 struct Chromaticity {
     double x = 0;
     double y = 0;
+    bool operator==(const Chromaticity&) const = default;
 };
 
 // Standard white points, as the colour space specifications give them.

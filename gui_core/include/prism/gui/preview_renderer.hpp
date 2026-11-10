@@ -38,6 +38,10 @@ struct PreviewOptions {
     // and later: a strip of the Decode stage is ignored. The clip report is not computed, and
     // compare_stage is ignored, while it is on (the UI keeps the two exclusive anyway).
     std::optional<TestStrip> test_strip;
+    // Not something extra to compute, but what the photo is: its as-shot light, which a chosen
+    // white balance is measured against (see to_process_settings). It rides here so that it
+    // reaches the worker with the request. None for a photo without one.
+    std::optional<Chromaticity> as_shot_white;
 
     PreviewOptions() = default;
     // Implicit, so that "scopes on/off" can still be written as a plain bool.
@@ -91,11 +95,10 @@ struct PreviewFrame {
 // every edit stage) and returns the linear float image at that point, before the 8-bit sRGB
 // encode. Nothing if `stop` was requested before it finished. Throws std::invalid_argument for
 // invalid settings (see to_process_settings).
-[[nodiscard]] std::optional<Image> render_stage_image(const Image& base,
-                                                      const EditSettings& settings,
-                                                      StageId stop_after, int threads = 0,
-                                                      std::stop_token stop = {},
-                                                      const StageCallback& on_stage = {});
+[[nodiscard]] std::optional<Image> render_stage_image(
+    const Image& base, const EditSettings& settings, StageId stop_after, int threads = 0,
+    std::stop_token stop = {}, const StageCallback& on_stage = {},
+    const std::optional<Chromaticity>& as_shot_white = std::nullopt);
 
 // Renders `base` with `settings` up to `stop_after` on the calling thread: runs only the stages
 // up to `stop_after` and then encodes that stage's image to 8-bit sRGB with encode_srgb8. With

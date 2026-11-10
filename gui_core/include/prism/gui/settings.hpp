@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <filesystem>
 #include <optional>
 #include <span>
@@ -10,15 +11,20 @@
 #include "prism/pipeline.hpp"
 #include "prism/process.hpp"
 #include "prism/ranges.hpp"
+#include "prism/white_balance.hpp"
 
 namespace prism::gui {
 
 // Every stage of the pipeline, in the order light moves through it. `decode` and `encode` are the
 // bookends (turning a file into linear float, and turning the stage's output into 8-bit sRGB);
-// the five stages in between are the edits, each backed by an `*_on` flag on EditSettings.
+// the six stages in between are the edits, each backed by an `*_on` flag on EditSettings.
+//
+// The numbers are only an order: nothing saves one to a file (recipes and preferences use names),
+// so a stage can be added in the middle.
 enum class StageId {
     decode,
     exposure,
+    white_balance,
     matrix,
     saturation,
     contrast,
@@ -27,6 +33,9 @@ enum class StageId {
 };
 
 inline constexpr StageId final_stage = StageId::encode;
+
+// How many stages there are: the size of anything indexed by StageId.
+inline constexpr std::size_t stage_count = static_cast<std::size_t>(final_stage) + 1;
 
 // One row of the UI's pipeline list: its stable id, its display name, a one-sentence explanation
 // in plain words of what the stage does to the light, and whether it has an on/off switch.
@@ -69,6 +78,11 @@ struct EditSettings {
     // its value, so turning it back on restores it; an off stage is skipped.
     float exposure_stops = 0.0f;  // any finite number, as the CLI's --exposure
     bool exposure_on = true;
+
+    // The light the photo was lit by (--kelvin, --tint). None is "As shot": the light the camera
+    // balanced for, which changes nothing. kelvin_range and tint_range.
+    std::optional<WhiteBalance> white_balance;
+    bool white_balance_on = true;
 
     std::optional<MatrixFile> matrix;  // the colour matrix (--matrix); none = skipped
     bool matrix_on = true;
@@ -117,8 +131,14 @@ void set_stage_enabled(EditSettings& s, StageId id, bool enabled) noexcept;
 // prism::parse_curve(curve_spec(s)), so it is exactly the curve the CLI builds from the same
 // spec. Throws std::invalid_argument with validate()'s messages if the settings are invalid.
 // The RAW options are not part of it: they apply when decoding.
-[[nodiscard]] ProcessSettings to_process_settings(const EditSettings& s,
-                                                  StageId stop_after = final_stage);
+//
+// A chosen white balance becomes the matrix prism::white_balance_matrix builds against
+// `as_shot_white`, the photo's as-shot light (Session::as_shot_white); without one the photo is
+// taken to have been lit by prism::default_as_shot, as the CLI does. "As shot" (no white balance)
+// and a white balance that is off give no white balance stage at all.
+[[nodiscard]] ProcessSettings to_process_settings(
+    const EditSettings& s, StageId stop_after = final_stage,
+    const std::optional<Chromaticity>& as_shot_white = std::nullopt);
 
 // --- The stage sliders ---------------------------------------------------------------------------
 //

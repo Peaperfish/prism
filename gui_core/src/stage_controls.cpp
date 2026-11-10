@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <charconv>
 #include <cmath>
+#include <string>
 
 #include "prism/gui/paper_grade.hpp"
 #include "prism/utf8_path.hpp"
@@ -65,9 +66,33 @@ std::string format_saturation(float value) {
     return value == 0.0f ? "black and white" : format_multiplier(value);
 }
 
+std::string format_kelvin(double kelvin) {
+    if (!std::isfinite(kelvin)) {
+        return "? K";
+    }
+    return std::to_string(std::llround(kelvin / 10.0) * 10) + " K";
+}
+
+std::string format_tint(double tint) {
+    if (!std::isfinite(tint)) {
+        return "?";
+    }
+    const long long whole = std::llround(tint);
+    if (whole == 0) {
+        return "0";
+    }
+    return (whole < 0 ? "\u2212" : "+") + std::to_string(whole < 0 ? -whole : whole);
+}
+
 std::string stage_value_text(const EditSettings& s, StageId stage) {
     switch (stage) {
         case StageId::exposure: return format_exposure(s.exposure_stops);
+        case StageId::white_balance:
+            if (!s.white_balance) {
+                return "As shot";
+            }
+            return format_kelvin(s.white_balance->kelvin) + " \u00B7 tint " +
+                   format_tint(s.white_balance->tint);
         case StageId::saturation: return format_saturation(s.saturation);
         case StageId::contrast: return format_paper_grade(s.contrast);
         case StageId::matrix:

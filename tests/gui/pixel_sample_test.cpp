@@ -21,13 +21,15 @@
 #include "prism/gui/test_strip.hpp"
 #include "prism/image.hpp"
 #include "prism/parallel.hpp"
+#include "prism/process.hpp"
+#include "prism/white_balance.hpp"
 
 namespace prism::gui {
 namespace {
 
-constexpr std::array<StageId, 7> all_stages = {
-    StageId::decode,   StageId::exposure, StageId::matrix, StageId::saturation,
-    StageId::contrast, StageId::curve,    StageId::encode};
+constexpr std::array<StageId, stage_count> all_stages = {
+    StageId::decode,     StageId::exposure, StageId::white_balance, StageId::matrix,
+    StageId::saturation, StageId::contrast, StageId::curve,         StageId::encode};
 
 // The same bits, or both NaN: the finite values must match to the last bit, while a NaN's sign and
 // payload mean nothing and differ between instruction sets.
@@ -63,10 +65,11 @@ Image varied_image(int width, int height) {
     return img;
 }
 
-// Every curve kind, a matrix that makes negatives, and contrast other than 1.
+// Every curve kind, a white balance, a matrix that makes negatives, and contrast other than 1.
 std::vector<std::pair<const char*, EditSettings>> varied_settings() {
     EditSettings base;
     base.exposure_stops = 0.7f;
+    base.white_balance = WhiteBalance{4300, 12};
     base.matrix = MatrixFile{{}, {1.2f, -0.1f, -0.1f, -0.2f, 1.3f, -0.1f, -0.3f, -0.2f, 1.5f}};
     base.saturation = 1.3f;
     base.contrast = 1.25f;
@@ -288,6 +291,7 @@ TEST(PixelSample, DecodeIsTheBaseAndAStageThatDidNotRunPassesItOn) {
             }
             EXPECT_TRUE(trace.at(StageId::decode).ran);
             EXPECT_TRUE(trace.at(StageId::exposure).ran);
+            EXPECT_FALSE(trace.at(StageId::white_balance).ran);
             EXPECT_FALSE(trace.at(StageId::matrix).ran);
             EXPECT_FALSE(trace.at(StageId::saturation).ran);
             EXPECT_TRUE(trace.at(StageId::contrast).ran);
@@ -295,6 +299,72 @@ TEST(PixelSample, DecodeIsTheBaseAndAStageThatDidNotRunPassesItOn) {
             EXPECT_TRUE(trace.at(StageId::encode).ran);
         }
     }
+}
+
+TEST(PixelSample, WhiteBalanceHasItsOwnEntryBetweenExposureAndTheMatrix) {
+    ASSERT_EQ(PixelTrace{}.stages.size(), pipeline_stages().size());
+    ASSERT_EQ(static_cast<int>(StageId::white_balance), static_cast<int>(StageId::exposure) + 1);
+    ASSERT_EQ(static_cast<int>(StageId::matrix), static_cast<int>(StageId::white_balance) + 1);
+
+    Image base;
+    base.width = 1;
+    base.height = 1;
+    base.pixels = {0.2f, 0.3f, 0.1f};
+    EditSettings s;
+    s.exposure_stops = 1.0f;
+    s.white_balance = WhiteBalance{4000, 20};
+    s.matrix = MatrixFile{{}, {0, 1, 0, 0, 0, 1, 1, 0, 0}};  // red <- green <- blue <- red
+    const Chromaticity as_shot = white_of(WhiteBalance{5300, 5});
+    const Matrix3 m = white_balance_matrix(*s.white_balance, as_shot);
+
+    const PixelTrace trace = *sample_trace(base, s, 0, 0, as_shot);
+    const std::array<float, 3> exposed = trace.at(StageId::exposure).rgb;
+    EXPECT_EQ(exposed, (std::array<float, 3>{0.4f, 0.6f, 0.2f}));
+    // What the engine's own white balance step gives for the exposed pixel, to the last bit.
+    Image one;
+    one.width = 1;
+    one.height = 1;
+    one.pixels.assign(exposed.begin(), exposed.end());
+    ProcessSettings only;
+    only.white_balance = m;
+    (void)process(one, only, 1);
+    const std::array<float, 3> balanced = trace.at(StageId::white_balance).rgb;
+    EXPECT_TRUE(trace.at(StageId::white_balance).ran);
+    for (std::size_t c = 0; c < 3; ++c) {
+        EXPECT_TRUE(same_value(balanced[c], one.pixels[c])) << c;
+    }
+    EXPECT_NE(balanced, exposed);
+    // The matrix after it receives the balanced pixel.
+    const std::array<float, 3> mixed = trace.at(StageId::matrix).rgb;
+    EXPECT_EQ(mixed, (std::array<float, 3>{balanced[1], balanced[2], balanced[0]}));
+
+    // Without the photo's as-shot light, the same choice is measured against 6500 K.
+    EXPECT_NE(sample_trace(base, s, 0, 0)->at(StageId::white_balance).rgb, balanced);
+
+    // As shot, or switched off: the stage does not run and passes the exposed pixel on.
+    EditSettings off = s;
+    off.white_balance_on = false;
+    EditSettings as_shot_settings = s;
+    as_shot_settings.white_balance.reset();
+    for (const EditSettings& none : {off, as_shot_settings}) {
+        const PixelTrace t = *sample_trace(base, none, 0, 0, as_shot);
+        EXPECT_FALSE(t.at(StageId::white_balance).ran);
+        EXPECT_EQ(t.at(StageId::white_balance).rgb, exposed);
+    }
+}
+
+TEST(PixelSample, TheCacheReadsAgainWhenTheAsShotLightChanges) {
+    const auto base = std::make_shared<const Image>(varied_image(4, 4));
+    EditSettings s;
+    s.white_balance = WhiteBalance{4000, 20};
+    const Chromaticity warm = white_of(WhiteBalance{3200, 0});
+    SampleCache cache;
+    const PixelTrace first = *cache.read(base, s, {}, final_stage, {}, 1, 1, warm);
+    (void)cache.read(base, s, {}, final_stage, {}, 1, 1, warm);
+    EXPECT_EQ(cache.computes(), 1u);
+    const PixelTrace second = *cache.read(base, s, {}, final_stage, {}, 1, 1, std::nullopt);
+    EXPECT_EQ(cache.computes(), 2u);
+    EXPECT_NE(first.at(StageId::white_balance).rgb, second.at(StageId::white_balance).rgb);
 }
 
 // --- Off the picture, and values that aren't numbers ---------------------------------------------

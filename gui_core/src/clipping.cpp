@@ -22,7 +22,7 @@ ClipFate fate_of(std::uint64_t any, bool clamps) noexcept {
 
 }  // namespace
 
-// A name that is no row of the pipeline list, such as "white_balance", is not a StageId: nullopt.
+// process() names its stages as the pipeline list's slugs. Any other name is no StageId: nullopt.
 std::optional<StageId> stage_from_name(std::string_view name) noexcept {
     for (const StageInfo& info : pipeline_stages()) {
         if (info.slug == name) {
@@ -39,10 +39,10 @@ ProcessSettings process_settings_after(ProcessSettings full, StageId stop_after)
     if (reached(StageId::exposure)) {
         full.exposure_stops.reset();
     }
-    // White balance runs between exposure and the matrix, and the GUI has no row for it (yet): it
-    // is dropped with the stages before the matrix.
-    if (reached(StageId::matrix)) {
+    if (reached(StageId::white_balance)) {
         full.white_balance.reset();
+    }
+    if (reached(StageId::matrix)) {
         full.matrix.reset();
     }
     if (reached(StageId::saturation)) {
@@ -64,6 +64,7 @@ bool stage_clamps(StageId stage, ClipDirection direction) noexcept {
         case StageId::curve: return direction == ClipDirection::shadows;
         case StageId::encode: return true;
         case StageId::exposure:
+        case StageId::white_balance:
         case StageId::matrix:
         case StageId::contrast: return false;
     }
@@ -199,8 +200,10 @@ ClipReport ClipRecorder::report() const {
     return report_;
 }
 
-ClipReport compute_clip_report(const Image& base, const EditSettings& settings, int threads) {
-    const ProcessSettings process_settings = to_process_settings(settings, final_stage);
+ClipReport compute_clip_report(const Image& base, const EditSettings& settings, int threads,
+                               const std::optional<Chromaticity>& as_shot_white) {
+    const ProcessSettings process_settings =
+        to_process_settings(settings, final_stage, as_shot_white);
     Image img = base;
     ClipRecorder recorder(img.width, img.height);
     recorder.decoded(img);

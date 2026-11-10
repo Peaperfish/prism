@@ -84,6 +84,10 @@ constexpr Explanation templates[] = {
      "Multiplies every value by 2 to the power of the stops. Because it works on linear light, +1 "
      "stop is exactly twice as bright.",
      LiveKind::exposure},
+    {"stage.white_balance", "The light the photo was lit by, in Kelvin and tint.",
+     "Kelvin is the colour of the light: a higher number means the light was bluer, so the photo "
+     "is warmed. Tint is green–magenta: higher means a greener light, so more magenta. As shot is "
+     "the light the camera balanced for."},
     {"stage.matrix", "Mixes red, green and blue, before saturation and tone.",
      "A 3×3 table: each output channel is a weighted sum of the input red, green and blue, in "
      "linear light. Used to calibrate camera colour or apply a grade. Load one with a recipe.",
@@ -387,6 +391,7 @@ std::string_view explain_id(StageId stage) noexcept {
     switch (stage) {
         case StageId::decode: return "stage.decode";
         case StageId::exposure: return "stage.exposure";
+        case StageId::white_balance: return "stage.white_balance";
         case StageId::matrix: return "stage.matrix";
         case StageId::saturation: return "stage.saturation";
         case StageId::contrast: return "stage.contrast";

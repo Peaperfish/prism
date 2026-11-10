@@ -51,9 +51,11 @@ struct PixelTrace {
 // neighbours, this is the one function to change: run a small crop on the worker instead.
 //
 // Nothing for a pixel off the picture or an empty image. Throws std::invalid_argument for invalid
-// settings (see to_process_settings) or a pixel buffer that does not match the image's size.
-[[nodiscard]] std::optional<PixelTrace> sample_trace(const Image& base,
-                                                     const EditSettings& settings, int x, int y);
+// settings (see to_process_settings, also for `as_shot_white`) or a pixel buffer that does not
+// match the image's size.
+[[nodiscard]] std::optional<PixelTrace> sample_trace(
+    const Image& base, const EditSettings& settings, int x, int y,
+    const std::optional<Chromaticity>& as_shot_white = std::nullopt);
 
 // The settings a pixel (x, y) of a width x height picture was rendered with: `s`, or the band's
 // (strip_band_settings) while a test strip is on. As in render_preview, no strip shows at Decode.
@@ -136,13 +138,14 @@ struct SampleRows {
 class SampleCache {
 public:
     // The trace of pixel (x, y), with the settings sample_settings gives. Computes it only if the
-    // pixel, the base, the settings, the viewed stage, the compare stage or the strip differ from
-    // the last call. Nothing for a pixel off the picture, and for settings that can't be rendered
+    // pixel, the base, the settings, the viewed stage, the compare stage, the strip or the photo's
+    // as-shot light differ from the last call. Nothing for a pixel off the picture, and for settings that can't be rendered
     // (the preview says why; a readout must not take the window down).
     [[nodiscard]] const PixelTrace* read(std::shared_ptr<const Image> base,
                                          const EditSettings& settings,
                                          const std::optional<TestStrip>& strip, StageId viewed,
-                                         std::optional<StageId> compare, int x, int y);
+                                         std::optional<StageId> compare, int x, int y,
+                                         const std::optional<Chromaticity>& as_shot_white = {});
 
     // The last read's result, without looking at anything.
     [[nodiscard]] const PixelTrace* current() const noexcept { return trace_ ? &*trace_ : nullptr; }
@@ -162,6 +165,7 @@ private:
         std::optional<StageId> compare;
         int x = 0;
         int y = 0;
+        std::optional<Chromaticity> as_shot_white;
 
         bool operator==(const Key&) const = default;
     };

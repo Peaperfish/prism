@@ -14,9 +14,9 @@ using namespace prism::gui;
 
 namespace {
 
-constexpr StageId all_stages[] = {StageId::decode,     StageId::exposure, StageId::matrix,
-                                  StageId::saturation, StageId::contrast, StageId::curve,
-                                  StageId::encode};
+constexpr StageId all_stages[] = {StageId::decode,   StageId::exposure,   StageId::white_balance,
+                                  StageId::matrix,   StageId::saturation, StageId::contrast,
+                                  StageId::curve,    StageId::encode};
 constexpr ClipFate all_fates[] = {ClipFate::none, ClipFate::recoverable, ClipFate::lost};
 
 // A row's sizes that no two sums can mistake for each other.

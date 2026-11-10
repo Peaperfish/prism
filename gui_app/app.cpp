@@ -877,6 +877,7 @@ void App::update_preview() {
     options.clip_mask = prefs_.clip_overlay;
     options.compare_stage = strip_ ? std::nullopt : gui::effective_compare(viewed_stage_, compare_stage_);
     options.test_strip = strip_;
+    options.as_shot_white = session_.as_shot_white();
     preview_.update(session_.preview_base(), session_.settings(), viewed_stage_, options);
     std::optional<gui::PreviewFrame> frame = preview_.poll();
     if (!frame) {
@@ -1732,7 +1733,8 @@ void App::update_sample_traces() {
     const std::optional<gui::StageId> compare =
         strip_ ? std::nullopt : gui::effective_compare(viewed_stage_, compare_stage_);
     const auto read = [&](gui::SampleCache& cache, gui::SamplePin pixel) {
-        (void)cache.read(base, session_.settings(), strip_, viewed_stage_, compare, pixel.x, pixel.y);
+        (void)cache.read(base, session_.settings(), strip_, viewed_stage_, compare, pixel.x, pixel.y,
+                         session_.as_shot_white());
     };
     if (sample_.pin()) {
         read(sample_pin_trace_, *sample_.pin());

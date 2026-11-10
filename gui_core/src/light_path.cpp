@@ -115,6 +115,10 @@ LightPathRow light_path_row(const LightPathInputs& in, StageId stage) {
         case StageId::encode:
             row.subtitle = "sRGB for the screen";
             break;
+        case StageId::white_balance:
+            row.value = stage_value_text(s, stage);
+            row.value_muted = !row.enabled;
+            break;
         case StageId::matrix:
             row.value = matrix_value(s, in.kind);
             row.value_muted = true;
@@ -217,6 +221,7 @@ LightPathRowLayout light_path_row_layout(const LightPathRow& row,
                 layout.parameter_slider_y = take(m.slider);
             }
             break;
+        case StageId::white_balance:
         case StageId::matrix:
             break;
     }

@@ -16,8 +16,10 @@ namespace prism::gui {
 
 std::optional<Image> render_stage_image(const Image& base, const EditSettings& settings,
                                         StageId stop_after, int threads, std::stop_token stop,
-                                        const StageCallback& on_stage) {
-    const ProcessSettings process_settings = to_process_settings(settings, stop_after);
+                                        const StageCallback& on_stage,
+                                        const std::optional<Chromaticity>& as_shot_white) {
+    const ProcessSettings process_settings =
+        to_process_settings(settings, stop_after, as_shot_white);
     if (stop.stop_requested()) {
         return std::nullopt;
     }
@@ -57,6 +59,7 @@ std::optional<PreviewFrame> render_strip(const Image& base, const EditSettings& 
     PreviewOptions band_options;  // what a band renders: the picture, and its scopes and mask
     band_options.scopes = options.scopes;
     band_options.clip_mask = options.clip_mask;
+    band_options.as_shot_white = options.as_shot_white;
 
     PreviewFrame frame;
     frame.stage = stop_after;
@@ -195,7 +198,8 @@ std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings
     }
     options.test_strip.reset();
     const auto start = Clock::now();
-    const ProcessSettings process_settings = to_process_settings(settings, stop_after);
+    const ProcessSettings process_settings =
+        to_process_settings(settings, stop_after, options.as_shot_white);
 
     PreviewFrame frame;
     frame.stage = stop_after;
@@ -269,8 +273,8 @@ std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings
         if (!compare_late) {
             return true;
         }
-        const ProcessSettings more =
-            process_settings_after(to_process_settings(settings, *compare), stop_after);
+        const ProcessSettings more = process_settings_after(
+            to_process_settings(settings, *compare, options.as_shot_white), stop_after);
         if (process(current, more, threads, stop) == ProcessResult::cancelled ||
             stop.stop_requested()) {
             return false;
@@ -296,8 +300,8 @@ std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings
                     recorder->stage_done_samples(*id, grid);
                 }
             };
-            const ProcessSettings rest =
-                process_settings_after(to_process_settings(settings), stop_after);
+            const ProcessSettings rest = process_settings_after(
+                to_process_settings(settings, final_stage, options.as_shot_white), stop_after);
             // The grid is at most 250,000 pixels: one thread, below the parallel threshold anyway.
             if (process(grid, rest, 1, stop, record_stage) == ProcessResult::cancelled ||
                 stop.stop_requested()) {

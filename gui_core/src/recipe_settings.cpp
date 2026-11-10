@@ -29,11 +29,15 @@ CurveShape shape_of(CurveKind kind) {
 }  // namespace
 
 void apply_recipe(EditSettings& s, const Recipe& recipe) {
-    // A recipe's [white_balance] is ignored for now: the window has no white balance control yet,
-    // and what it would set depends on each photo's as-shot light.
     if (const auto& e = recipe.exposure) {
         s.exposure_stops = e->stops;
         s.exposure_on = e->on;
+    }
+    // A recipe without [white_balance] leaves the photo's own choice alone, as for every stage: it
+    // never puts a photo back to As shot.
+    if (const auto& wb = recipe.white_balance) {
+        s.white_balance = WhiteBalance{wb->kelvin, wb->tint};
+        s.white_balance_on = wb->on;
     }
     if (const auto& m = recipe.matrix) {
         if (m->values == identity_matrix && !m->from) {
@@ -66,15 +70,24 @@ Recipe recipe_from(const EditSettings& s) {
     // Every field of EditSettings, by name and in order. A field added to EditSettings makes this
     // line fail to compile until it is named here and either saved below or left out on purpose;
     // recipe_settings_test.cpp then says which, and why.
-    const auto& [exposure_stops, exposure_on, matrix, matrix_on, saturation, saturation_on,
-                 contrast, contrast_on, curve, gamma, reinhard_white, curve_on, raw_half_size,
-                 raw_camera_matrix] = s;
+    const auto& [exposure_stops, exposure_on, white_balance, white_balance_on, matrix, matrix_on,
+                 saturation, saturation_on, contrast, contrast_on, curve, gamma, reinhard_white,
+                 curve_on, raw_half_size, raw_camera_matrix] = s;
+    // The white balance switch is only saved with a chosen white balance (below): As shot has no
+    // section, so there is nowhere for its switch, and off or on it changes nothing.
     // Not in a recipe: they say how the file is decoded, not how it looks.
     (void)raw_half_size;
     (void)raw_camera_matrix;
 
     Recipe r;
     r.exposure = RecipeExposure{exposure_stops, exposure_on};
+    // Only a chosen white balance is written: As shot is each photo's own light, not a number, and
+    // a recipe without the section stays format version 1.
+    if (white_balance) {
+        r.white_balance = RecipeWhiteBalance{static_cast<float>(white_balance->kelvin),
+                                             static_cast<float>(white_balance->tint),
+                                             white_balance_on};
+    }
     RecipeMatrix m;
     if (matrix) {
         m.values = matrix->values;

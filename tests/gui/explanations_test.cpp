@@ -19,9 +19,9 @@
 namespace prism::gui {
 namespace {
 
-constexpr StageId all_stages[] = {StageId::decode,     StageId::exposure, StageId::matrix,
-                                  StageId::saturation, StageId::contrast, StageId::curve,
-                                  StageId::encode};
+constexpr StageId all_stages[] = {StageId::decode,   StageId::exposure,   StageId::white_balance,
+                                  StageId::matrix,   StageId::saturation, StageId::contrast,
+                                  StageId::curve,    StageId::encode};
 constexpr ScopeChoice all_scopes[] = {ScopeChoice::histogram, ScopeChoice::parade,
                                       ScopeChoice::waveform, ScopeChoice::vectorscope};
 

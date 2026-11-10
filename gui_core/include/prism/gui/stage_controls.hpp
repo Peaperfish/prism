@@ -32,13 +32,21 @@ namespace prism::gui {
 // Saturation as a multiplier ("×1.20"), except 0, which is "black and white".
 [[nodiscard]] std::string format_saturation(float value);
 
+// A colour temperature as a row shows it, rounded to 10 K: "5330 K".
+[[nodiscard]] std::string format_kelvin(double kelvin);
+
+// A tint as a row shows it, rounded to a whole number, always with its sign except at zero, and
+// with the real minus sign (U+2212): "+27", "−10", "0".
+[[nodiscard]] std::string format_tint(double tint);
+
 // What a matrix from a recipe that names no file is called, in the Colour matrix row and in text.
 inline constexpr std::string_view recipe_matrix_label = "From recipe";
 
 // The value to show in `stage`'s row: format_exposure / format_saturation / format_multiplier for
 // the three sliders, the matrix file's name ("none" without a matrix, "From recipe" (recipe_matrix_label) for one a
 // recipe gave without naming a file: only a label, the path stays empty), and "none", "gamma 2.2",
-// "Reinhard, white 4" or "filmic" for the curve. Empty for Decode and Output encode, which have nothing to edit.
+// "Reinhard, white 4" or "filmic" for the curve. White balance is "As shot" or the chosen light,
+// "5200 K · tint +10". Empty for Decode and Output encode, which have nothing to edit.
 // Shows the stored value even when the stage is off (the row greys it out).
 [[nodiscard]] std::string stage_value_text(const EditSettings& s, StageId stage);
 

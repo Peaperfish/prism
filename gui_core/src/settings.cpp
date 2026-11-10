@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <charconv>
 #include <cmath>
+#include <iterator>
 #include <stdexcept>
 #include <system_error>
 
@@ -59,6 +60,9 @@ constexpr StageInfo stages[] = {
     {StageId::exposure, "exposure", "Exposure",
      "Exposure: makes every part of the image brighter or darker by the same number of stops.",
      true},
+    {StageId::white_balance, "white_balance", "White balance",
+     "White balance: re-lights the photo as if the light you name, in Kelvin and tint, had lit it.",
+     true},
     {StageId::matrix, "matrix", "Colour matrix",
      "Colour matrix: mixes red, green and blue in linear light to calibrate camera colour or apply "
      "a grade.",
@@ -77,6 +81,20 @@ constexpr StageInfo stages[] = {
      "Output encode: converts linear light to 8-bit sRGB for the screen and exported files.",
      false},
 };
+
+// One entry per StageId, each at its own number: ClipReport and PixelTrace index by it.
+constexpr bool stages_in_order() {
+    if (std::size(stages) != stage_count) {
+        return false;
+    }
+    for (std::size_t i = 0; i < std::size(stages); ++i) {
+        if (static_cast<std::size_t>(stages[i].id) != i) {
+            return false;
+        }
+    }
+    return true;
+}
+static_assert(stages_in_order());
 
 }  // namespace
 
@@ -97,6 +115,7 @@ bool stage_enabled(const EditSettings& s, StageId id) noexcept {
     switch (id) {
         case StageId::decode: return true;
         case StageId::exposure: return s.exposure_on;
+        case StageId::white_balance: return s.white_balance_on;
         case StageId::matrix: return s.matrix_on;
         case StageId::saturation: return s.saturation_on;
         case StageId::contrast: return s.contrast_on;
@@ -110,6 +129,7 @@ void set_stage_enabled(EditSettings& s, StageId id, bool enabled) noexcept {
     switch (id) {
         case StageId::decode: break;
         case StageId::exposure: s.exposure_on = enabled; break;
+        case StageId::white_balance: s.white_balance_on = enabled; break;
         case StageId::matrix: s.matrix_on = enabled; break;
         case StageId::saturation: s.saturation_on = enabled; break;
         case StageId::contrast: s.contrast_on = enabled; break;
@@ -131,6 +151,11 @@ std::vector<std::string> validate(const EditSettings& s) {
     if (!std::isfinite(s.exposure_stops)) {
         problems.push_back("Exposure must be a finite number of stops");
     }
+    if (s.white_balance) {
+        // The range checks are on floats (a NaN fails them), and the ranges fit a float exactly.
+        check_range(problems, "Kelvin", static_cast<float>(s.white_balance->kelvin), kelvin_range);
+        check_range(problems, "Tint", static_cast<float>(s.white_balance->tint), tint_range);
+    }
     check_range(problems, "Saturation", s.saturation, saturation_range);
     check_range(problems, "Contrast", s.contrast, contrast_range);
     check_positive(problems, "Gamma", s.gamma);
@@ -148,7 +173,8 @@ std::optional<std::string> curve_spec(const EditSettings& s) {
     return std::nullopt;  // unreachable; keeps compilers from warning about a missing return
 }
 
-ProcessSettings to_process_settings(const EditSettings& s, StageId stop_after) {
+ProcessSettings to_process_settings(const EditSettings& s, StageId stop_after,
+                                    const std::optional<Chromaticity>& as_shot_white) {
     const std::vector<std::string> problems = validate(s);
     if (!problems.empty()) {
         std::string message = "invalid settings:";
@@ -165,6 +191,10 @@ ProcessSettings to_process_settings(const EditSettings& s, StageId stop_after) {
     ProcessSettings p;
     if (reached(StageId::exposure) && s.exposure_on) {
         p.exposure_stops = s.exposure_stops;
+    }
+    if (reached(StageId::white_balance) && s.white_balance_on && s.white_balance) {
+        p.white_balance = white_balance_matrix(
+            *s.white_balance, as_shot_white.value_or(white_of(default_as_shot)));
     }
     if (reached(StageId::matrix) && s.matrix_on && s.matrix) {
         p.matrix = s.matrix->values;

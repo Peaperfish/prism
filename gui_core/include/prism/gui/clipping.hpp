@@ -32,8 +32,8 @@ namespace prism::gui {
 //   Tone curve    clamps below 0 (all three curves floor their input at 0)
 //   Output encode clamps both ends (8-bit sRGB can only hold 0..1)
 //
-// Exposure, Colour matrix and Contrast never clamp (a matrix can create values below 0, contrast
-// keeps them below 0).
+// Exposure, White balance, Colour matrix and Contrast never clamp (the two matrices can create
+// values below 0, contrast keeps them below 0).
 //
 // Decode's ceiling: LibRaw maps the sensor's white level to exactly 1.0 (and clips there), and an
 // 8-bit file's 255 is exactly 1.0, so a pixel with a channel at 1.0 after Decode was already
@@ -151,7 +151,7 @@ struct StageClip {
 
 struct ClipReport {
     static constexpr std::uint64_t max_samples = 250'000;
-    static constexpr std::size_t stage_count = 7;  // pipeline_stages().size()
+    static constexpr std::size_t stage_count = gui::stage_count;
 
     std::array<StageClip, stage_count> stages{};  // in pipeline order, indexed by StageId
     std::uint64_t sample_count = 0;  // pixels counted per stage (a strided grid, see below)
@@ -178,7 +178,8 @@ struct ClipReport {
 [[nodiscard]] std::optional<StageId> stage_from_name(std::string_view name) noexcept;
 
 // `full` without the stages up to and including `stop_after`: what is left to run on an image
-// that already went through them.
+// that already went through them. Each stage goes exactly when `stop_after` is it or a later one:
+// the white balance matrix from White balance on, the colour matrix from Colour matrix on.
 [[nodiscard]] ProcessSettings process_settings_after(ProcessSettings full, StageId stop_after);
 
 // Fills a ClipReport while the pipeline runs. Only a strided grid of at most
@@ -229,9 +230,11 @@ private:
 
 // Runs the whole pipeline on a copy of `base` with `settings` and reports the clipping at every
 // stage. For tests and headless use; the preview renderer fills the same report during a render.
-// Throws std::invalid_argument for invalid settings (see to_process_settings).
-[[nodiscard]] ClipReport compute_clip_report(const Image& base, const EditSettings& settings,
-                                             int threads = 0);
+// Throws std::invalid_argument for invalid settings (see to_process_settings, also for
+// `as_shot_white`).
+[[nodiscard]] ClipReport compute_clip_report(
+    const Image& base, const EditSettings& settings, int threads = 0,
+    const std::optional<Chromaticity>& as_shot_white = std::nullopt);
 
 // Marks each pixel of `img` whose float values are out of range: bit 1 = some channel above 1.0,
 // bit 2 = no light (Y <= 0 with a negative channel), bit 4 = outside the gamut. NaN is none. One

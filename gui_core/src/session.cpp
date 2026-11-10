@@ -221,6 +221,13 @@ MaybeError Session::update_preview_base() {
     return std::nullopt;
 }
 
+std::optional<Chromaticity> as_shot_white_of(const PhotoInfo& info) noexcept {
+    if (!info.as_shot_white_xy) {
+        return std::nullopt;
+    }
+    return Chromaticity{(*info.as_shot_white_xy)[0], (*info.as_shot_white_xy)[1]};
+}
+
 ExportJob Session::export_job() const {
     return {path_, kind_, settings(), options_.threads, export_long_side()};
 }
@@ -257,6 +264,7 @@ MaybeError export_image(const ExportJob& job, const fs::path& output, std::stop_
         return std::move(*e);
     }
     Image& img = std::get<Photo>(decoded).image;
+    const std::optional<Chromaticity> as_shot = as_shot_white_of(std::get<Photo>(decoded).info);
 
     // Reduce before editing: every stage then works on the small image. Assigning frees the full
     // decode (which on a 60 MP photo is ~730 MB) before the pipeline allocates its own buffers.
@@ -271,7 +279,8 @@ MaybeError export_image(const ExportJob& job, const fs::path& output, std::stop_
         }
     }
 
-    if (process(img, to_process_settings(job.settings), job.threads, stop, on_stage) ==
+    if (process(img, to_process_settings(job.settings, final_stage, as_shot), job.threads, stop,
+                on_stage) ==
             ProcessResult::cancelled ||
         stop.stop_requested()) {
         return cancelled();

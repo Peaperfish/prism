@@ -19,6 +19,7 @@
 #include "prism/gui/settings.hpp"
 #include "prism/image.hpp"
 #include "prism/process.hpp"
+#include "prism/white_balance.hpp"
 
 using namespace std::chrono_literals;
 using prism::gui::EditSettings;
@@ -532,9 +533,9 @@ TEST(PreviewRenderer, TappingAnOffStageShowsItPassingImageThroughUnchanged) {
 namespace {
 
 constexpr prism::gui::StageId all_stages[] = {
-    prism::gui::StageId::decode,     prism::gui::StageId::exposure, prism::gui::StageId::matrix,
-    prism::gui::StageId::saturation, prism::gui::StageId::contrast, prism::gui::StageId::curve,
-    prism::gui::StageId::encode};
+    prism::gui::StageId::decode,   prism::gui::StageId::exposure,   prism::gui::StageId::white_balance,
+    prism::gui::StageId::matrix,   prism::gui::StageId::saturation, prism::gui::StageId::contrast,
+    prism::gui::StageId::curve,    prism::gui::StageId::encode};
 
 std::vector<std::uint8_t> stage_bytes(const prism::Image& base, const EditSettings& s,
                                       prism::gui::StageId stage) {
@@ -572,6 +573,41 @@ TEST(PreviewCompare, TheComparePictureIsExactForEveryPairOfStages) {
             EXPECT_EQ(frame->compare->width, 40);
             EXPECT_EQ(frame->compare->height, 30);
             EXPECT_EQ(frame->compare->rgb8, stage_bytes(*base, s, compare))
+                << int(viewed) << " vs " << int(compare);
+        }
+    }
+}
+
+TEST(PreviewCompare, WithAWhiteBalanceTheComparePictureIsExactForEveryPairOfStages) {
+    const auto base = make_base(40, 30);
+    EditSettings s = every_stage();
+    s.white_balance = prism::WhiteBalance{4300, 12};
+    const prism::Chromaticity as_shot = prism::white_of(prism::WhiteBalance{5600, -8});
+    const auto bytes = [&](prism::gui::StageId stage) {
+        const std::optional<prism::Image> img =
+            prism::gui::render_stage_image(*base, s, stage, 1, {}, {}, as_shot);
+        EXPECT_TRUE(img);
+        return img ? prism::encode_srgb8(*img, 1) : std::vector<std::uint8_t>{};
+    };
+    // The stage changes the picture, and against the photo's light, not the default one.
+    EXPECT_NE(bytes(prism::gui::StageId::white_balance), bytes(prism::gui::StageId::exposure));
+    EXPECT_NE(bytes(prism::gui::StageId::white_balance),
+              stage_bytes(*base, s, prism::gui::StageId::white_balance));
+    for (const auto viewed : all_stages) {
+        for (const auto compare : all_stages) {
+            prism::gui::PreviewOptions options;
+            options.compare_stage = compare;
+            options.as_shot_white = as_shot;
+            const auto frame = prism::gui::render_preview(*base, s, 1, {}, {}, viewed, options);
+            ASSERT_TRUE(frame);
+            EXPECT_EQ(frame->rgb8, bytes(viewed)) << int(viewed);
+            if (compare == viewed) {
+                EXPECT_FALSE(frame->compare);
+                continue;
+            }
+            ASSERT_TRUE(frame->compare) << int(viewed) << " vs " << int(compare);
+            // Going on from the viewed stage to a later compare stage runs each stage once.
+            EXPECT_EQ(frame->compare->rgb8, bytes(compare))
                 << int(viewed) << " vs " << int(compare);
         }
     }

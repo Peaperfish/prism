@@ -18,6 +18,7 @@
 #include "prism/gui/settings.hpp"
 #include "prism/image.hpp"
 #include "prism/process.hpp"
+#include "prism/white_balance.hpp"
 
 using prism::Image;
 using prism::gui::ClipFate;
@@ -948,12 +949,20 @@ TEST(PixelRange, MatchesTheReportsCounts) {
 }
 
 TEST(Clipping, AStageNameThatIsNotARowOfThePipelineListIsNotAStage) {
-    EXPECT_FALSE(prism::gui::stage_from_name("white_balance"));
+    EXPECT_FALSE(prism::gui::stage_from_name("sharpen"));
     EXPECT_FALSE(prism::gui::stage_from_name(""));
+    EXPECT_FALSE(prism::gui::stage_from_name("White balance"));  // the slug, not the name
     EXPECT_EQ(prism::gui::stage_from_name("matrix"), StageId::matrix);
+    // Every stage is found by its slug.
+    for (const prism::gui::StageInfo& info : prism::gui::pipeline_stages()) {
+        EXPECT_EQ(prism::gui::stage_from_name(info.slug), info.id) << info.slug;
+    }
+}
 
-    // The engine's white balance stage reports its name to the clip recorder's callback: it is
-    // ignored there, the report is the same as without the stage's name, and nothing crashes.
+TEST(Clipping, TheEnginesWhiteBalanceStageIsTheWhiteBalanceRow) {
+    EXPECT_EQ(prism::gui::stage_from_name("white_balance"), StageId::white_balance);
+
+    // The engine reports its white balance stage by that name, and the recorder gives it its row.
     prism::ProcessSettings settings;
     settings.white_balance = prism::Matrix3{1.1f, 0, 0, 0, 1, 0, 0, 0, 0.9f};
     Image img = half_and_half(8, 8);
@@ -969,14 +978,147 @@ TEST(Clipping, AStageNameThatIsNotARowOfThePipelineListIsNotAStage) {
     recorder.finish();
     EXPECT_EQ(seen, std::vector<std::string>{"white_balance"});
     for (const auto& row : recorder.report().stages) {
-        EXPECT_EQ(row.ran, row.stage == StageId::decode || row.stage == StageId::encode);
+        EXPECT_EQ(row.ran, row.stage == StageId::decode || row.stage == StageId::white_balance ||
+                               row.stage == StageId::encode);
     }
 }
 
-TEST(Clipping, SettingsAfterTheMatrixDropWhiteBalanceToo) {
+TEST(Clipping, EveryCountIndexedByStageHasOneEntryPerStage) {
+    const std::size_t stages = prism::gui::pipeline_stages().size();
+    EXPECT_EQ(prism::gui::stage_count, stages);
+    EXPECT_EQ(ClipReport::stage_count, stages);
+    EXPECT_EQ(ClipReport{}.stages.size(), stages);
+    EXPECT_EQ(static_cast<std::size_t>(prism::gui::final_stage) + 1, stages);
+    for (std::size_t i = 0; i < stages; ++i) {
+        EXPECT_EQ(static_cast<std::size_t>(prism::gui::pipeline_stages()[i].id), i);
+    }
+}
+
+namespace {
+
+// Each stage with its own value, so that which are left can be read off.
+prism::ProcessSettings every_stage_set() {
     prism::ProcessSettings full;
-    full.white_balance = prism::identity_matrix;
-    full.matrix = prism::identity_matrix;
-    EXPECT_TRUE(prism::gui::process_settings_after(full, StageId::exposure).white_balance);
-    EXPECT_FALSE(prism::gui::process_settings_after(full, StageId::matrix).white_balance);
+    full.exposure_stops = 1.0f;
+    full.white_balance = prism::Matrix3{1.1f, 0, 0, 0, 1, 0, 0, 0, 0.9f};
+    full.matrix = prism::Matrix3{0.9f, 0.1f, 0, 0, 1, 0, 0, 0.1f, 0.9f};
+    full.saturation = 1.2f;
+    full.contrast = 1.1f;
+    full.curve = prism::parse_curve("filmic");
+    return full;
+}
+
+}  // namespace
+
+TEST(Clipping, SettingsAfterAStageKeepExactlyTheLaterStages) {
+    const prism::ProcessSettings full = every_stage_set();
+    for (const prism::gui::StageInfo& info : prism::gui::pipeline_stages()) {
+        const auto later = [&](StageId stage) {
+            return static_cast<int>(stage) > static_cast<int>(info.id);
+        };
+        const prism::ProcessSettings rest = prism::gui::process_settings_after(full, info.id);
+        EXPECT_EQ(rest.exposure_stops.has_value(), later(StageId::exposure)) << info.name;
+        EXPECT_EQ(rest.white_balance.has_value(), later(StageId::white_balance)) << info.name;
+        EXPECT_EQ(rest.matrix.has_value(), later(StageId::matrix)) << info.name;
+        EXPECT_EQ(rest.saturation.has_value(), later(StageId::saturation)) << info.name;
+        EXPECT_EQ(rest.contrast.has_value(), later(StageId::contrast)) << info.name;
+        EXPECT_EQ(rest.curve.has_value(), later(StageId::curve)) << info.name;
+    }
+}
+
+TEST(Clipping, TheWhiteBalanceMatrixIsLeftOutExactlyFromItsOwnStageOn) {
+    const prism::ProcessSettings full = every_stage_set();
+    using prism::gui::process_settings_after;
+    // Before it: still to run, and unchanged.
+    EXPECT_EQ(process_settings_after(full, StageId::decode).white_balance, full.white_balance);
+    EXPECT_EQ(process_settings_after(full, StageId::exposure).white_balance, full.white_balance);
+    // At it: done, but the colour matrix after it is not.
+    const prism::ProcessSettings at = process_settings_after(full, StageId::white_balance);
+    EXPECT_FALSE(at.white_balance);
+    EXPECT_EQ(at.matrix, full.matrix);
+    // After it: done.
+    for (const StageId later : {StageId::matrix, StageId::saturation, StageId::contrast,
+                                StageId::curve, StageId::encode}) {
+        EXPECT_FALSE(process_settings_after(full, later).white_balance);
+    }
+}
+
+TEST(Clipping, WhiteBalanceNeverClamps) {
+    using prism::gui::ClipDirection;
+    EXPECT_FALSE(prism::gui::stage_clamps(StageId::white_balance, ClipDirection::highlights));
+    EXPECT_FALSE(prism::gui::stage_clamps(StageId::white_balance, ClipDirection::shadows));
+    // As for the colour matrix, which is the same kind of step.
+    for (const ClipDirection d : {ClipDirection::highlights, ClipDirection::shadows}) {
+        EXPECT_EQ(prism::gui::stage_clamps(StageId::white_balance, d),
+                  prism::gui::stage_clamps(StageId::matrix, d));
+    }
+}
+
+namespace {
+
+// A warm light chosen for a photo shot under a cooler one: blue goes up, past white here.
+EditSettings with_white_balance() {
+    EditSettings s;
+    s.exposure_stops = 0.5f;
+    s.white_balance = prism::WhiteBalance{3000, -20};
+    s.matrix = prism::gui::MatrixFile{{}, {1.2f, -0.1f, -0.1f, -0.2f, 1.3f, -0.1f, -0.3f, -0.2f, 1.5f}};
+    s.saturation = 1.2f;
+    s.contrast = 1.1f;
+    s.curve = prism::gui::CurveKind::filmic;
+    return s;
+}
+
+const prism::Chromaticity cool_as_shot = prism::white_of(prism::WhiteBalance{7000, 10});
+
+}  // namespace
+
+TEST(Clipping, AReportWithWhiteBalanceHasARowForItThatRan) {
+    const Image base = solid(16, 16, 0.5f, 0.5f, 0.6f);
+    const EditSettings s = with_white_balance();
+    const ClipReport report = compute_clip_report(base, s, 1, cool_as_shot);
+    ASSERT_EQ(report.stages.size(), prism::gui::pipeline_stages().size());
+    for (std::size_t i = 0; i < report.stages.size(); ++i) {
+        EXPECT_EQ(report.stages[i].stage, prism::gui::pipeline_stages()[i].id);
+        EXPECT_TRUE(report.stages[i].ran) << i;
+    }
+    // Blue is over white after White balance and not before; it never clamps, so: recoverable.
+    EXPECT_EQ(report.at(StageId::exposure).over_fate, ClipFate::none);
+    EXPECT_EQ(report.at(StageId::white_balance).over_fate, ClipFate::recoverable);
+    EXPECT_EQ(report.at(StageId::white_balance).over.blue, report.sample_count);
+    EXPECT_EQ(report.at(StageId::white_balance).over.red, 0u);
+    EXPECT_EQ(report.first_over, StageId::white_balance);
+
+    // As shot, or switched off: its row did not run, and the others did.
+    EditSettings as_shot = s;
+    as_shot.white_balance.reset();
+    EditSettings off = s;
+    off.white_balance_on = false;
+    for (const EditSettings& none : {as_shot, off}) {
+        const ClipReport r = compute_clip_report(base, none, 1, cool_as_shot);
+        EXPECT_FALSE(r.at(StageId::white_balance).ran);
+        EXPECT_TRUE(r.at(StageId::exposure).ran);
+        EXPECT_TRUE(r.at(StageId::matrix).ran);
+        EXPECT_EQ(r, compute_clip_report(base, none, 1));  // the as-shot light then means nothing
+    }
+    // The as-shot light is what a choice is measured against: chosen as the photo's own light,
+    // it is the identity, which the engine skips like any stage with nothing to do.
+    const ClipReport same_light =
+        compute_clip_report(base, s, 1, prism::white_of(*s.white_balance));
+    EXPECT_FALSE(same_light.at(StageId::white_balance).ran);
+    EXPECT_EQ(same_light.at(StageId::white_balance).over_fate, ClipFate::none);
+}
+
+TEST(ClippingPreview, TheReportWithWhiteBalanceIsTheSameFromEveryViewedStage) {
+    const Image base = half_and_half(32, 32);
+    const EditSettings s = with_white_balance();
+    const ClipReport expected = compute_clip_report(base, s, 1, cool_as_shot);
+    prism::gui::PreviewOptions options;
+    options.clip_report = true;
+    options.as_shot_white = cool_as_shot;
+    for (const prism::gui::StageInfo& info : prism::gui::pipeline_stages()) {
+        const auto frame = prism::gui::render_preview(base, s, 1, {}, {}, info.id, options);
+        ASSERT_TRUE(frame && frame->clips) << info.name;
+        // Viewing a stage runs the ones after it on the sampled grid: each exactly once.
+        EXPECT_EQ(*frame->clips, expected) << info.name;
+    }
 }

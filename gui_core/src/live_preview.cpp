@@ -43,7 +43,8 @@ void LivePreview::update(const std::shared_ptr<const Image>& base, const EditSet
                          (options_.clip_report || !options.clip_report) &&
                          (options_.clip_mask || !options.clip_mask) &&
                          (!options.compare_stage || options.compare_stage == options_.compare_stage) &&
-                         options.test_strip == options_.test_strip;  // exactly: on, off or step
+                         options.test_strip == options_.test_strip &&  // exactly: on, off or step
+                         options.as_shot_white == options_.as_shot_white;
     if (base == base_ && settings == settings_ && stop_after == stop_after_ && covered) {
         // Hidden: the next time they show, ask again.
         options_.scopes = options_.scopes && options.scopes;
