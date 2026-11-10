@@ -241,12 +241,13 @@ BrushAction cancel() {
 
 // Paints one stroke through `points` and commits it.
 void paint(StrokePainter& painter, Session& session, std::vector<FieldPoint> points,
-           BrushTone tone = BrushTone::dodge, const BrushStyle& style = {}) {
-    ASSERT_EQ(painter.apply(begin(tone), style, canvas, session), std::nullopt);
+           BrushTone tone = BrushTone::dodge, const BrushStyle& style = {},
+           BrushCanvas on = canvas) {
+    ASSERT_EQ(painter.apply(begin(tone), style, on, session), std::nullopt);
     for (const FieldPoint& p : points) {
-        ASSERT_EQ(painter.apply(point(p.u, p.v), style, canvas, session), std::nullopt);
+        ASSERT_EQ(painter.apply(point(p.u, p.v), style, on, session), std::nullopt);
     }
-    ASSERT_EQ(painter.apply(commit(), style, canvas, session), std::nullopt);
+    ASSERT_EQ(painter.apply(commit(), style, on, session), std::nullopt);
 }
 
 TEST(StrokePainter, AStrokeIsOneUndoStepWithTheBrushItWasStartedWith) {
@@ -736,6 +737,55 @@ TEST(StrokeMaskRender, IsTheSameFromTheFieldTheBrushGrewPointByPoint) {
     const std::vector<std::uint8_t> from_grown = render_mask(settings, 7, &grown);
     EXPECT_EQ(grown.last_path(), FieldPath::reuse);  // the render used the grown field as it was
     EXPECT_TRUE(from_grown == fresh);
+}
+
+TEST(StrokeMaskRender, ThreeStrokesUndoneAndRedoneComeBackExactly) {
+    // Each state's settings and mask as painted; then undo three times and redo three times, with
+    // the preview's own cache following along (its undo path, then fresh and append), and each
+    // state must come back exactly: the settings equal, the mask byte for byte.
+    Session session;
+    StrokePainter painter;
+    FieldCache cache;
+    const BrushCanvas picture{mask_w, mask_h};
+    const std::vector<std::vector<FieldPoint>> strokes{
+        {{0.1f, 0.2f}, {0.3f, 0.25f}, {0.5f, 0.4f}},
+        {{0.8f, 0.1f}, {0.7f, 0.9f}},
+        {{0.45f, 0.5f}},
+    };
+    std::vector<EditSettings> states{session.settings()};
+    std::vector<std::vector<std::uint8_t>> masks{render_mask(session.settings(), 1)};
+    for (std::size_t i = 0; i < strokes.size(); ++i) {
+        paint(painter, session, strokes[i], i % 2 == 0 ? BrushTone::dodge : BrushTone::burn, {},
+              picture);
+        states.push_back(session.settings());
+        masks.push_back(render_mask(session.settings(), 7, &cache));
+    }
+    ASSERT_EQ(session.history().undo_steps(), 3u);
+    for (std::size_t i = 1; i < masks.size(); ++i) {
+        ASSERT_FALSE(masks[i] == masks[i - 1]) << i;  // each stroke changed the mask
+    }
+    EXPECT_TRUE(
+        std::all_of(masks[0].begin(), masks[0].end(), [](std::uint8_t b) { return b == 128; }));
+
+    for (std::size_t back = 1; back <= 3; ++back) {
+        ASSERT_EQ(session.undo(), std::nullopt);
+        const std::size_t state = 3 - back;
+        EXPECT_EQ(session.settings(), states[state]) << "after undo " << back;
+        EXPECT_EQ(recipe_from(session.settings()), recipe_from(states[state]));
+        EXPECT_TRUE(render_mask(session.settings(), 7, &cache) == masks[state])
+            << "after undo " << back;
+    }
+    EXPECT_FALSE(session.history().can_undo());
+    for (std::size_t forward = 1; forward <= 3; ++forward) {
+        ASSERT_EQ(session.redo(), std::nullopt);
+        EXPECT_EQ(session.settings(), states[forward]) << "after redo " << forward;
+        EXPECT_EQ(recipe_from(session.settings()), recipe_from(states[forward]));
+        EXPECT_TRUE(render_mask(session.settings(), 7, &cache) == masks[forward])
+            << "after redo " << forward;
+    }
+    EXPECT_FALSE(session.history().can_redo());
+    // The very stroke objects that were painted, not copies.
+    EXPECT_EQ(session.settings().strokes.field(), states[3].strokes.field());
 }
 
 }  // namespace
