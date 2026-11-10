@@ -835,10 +835,7 @@ void draw_compare_popup(const LightPathData& data, const LightPathCallbacks& cb)
 
 }  // namespace
 
-float light_path_min_width() {
-    const std::string flag(gui::light_path_text::beyond_slider);
-    const gui::TokenMetrics& tm = token_metrics();
-
+std::vector<gui::EditSettings> light_path_worst_case_settings() {
     // Every text that can be on a row's first line, in the worst light each stage can put it in:
     // a stage's value at its extremes, a stage that is off ("when on"), a chosen white balance at
     // the ends of its sliders, and every kind of file.
@@ -878,6 +875,14 @@ float light_path_min_width() {
     add([](gui::EditSettings& s, bool on) { s.matrix = gui::MatrixFile{}; s.matrix_on = on; });
     add([](gui::EditSettings& s, bool) { s.raw_camera_matrix = gui::MatrixFile{}; });
     add([](gui::EditSettings&, bool) {});
+    return variants;
+}
+
+float light_path_min_width() {
+    const std::string flag(gui::light_path_text::beyond_slider);
+    const gui::TokenMetrics& tm = token_metrics();
+
+    const std::vector<gui::EditSettings> variants = light_path_worst_case_settings();
 
     float row_need = 0.0f;  // the room inside a row, between its margins
     const float switch_room = switch_size().x + first_line_gap();

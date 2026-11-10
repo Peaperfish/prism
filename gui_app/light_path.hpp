@@ -107,6 +107,10 @@ struct LightPathRowRect {
 // room around its label, Colour matrix's "Camera default", the stage switches off ("when on"), and
 // the header with Compare on. A Colour matrix file's name is not one of them: it is shortened by
 // design, and its whole path is the tooltip.
+// The settings whose rows hold the worst-case texts light_path_min_width measures: each stage's
+// value at its extremes, on and off, and the files and lights that change a row's words.
+[[nodiscard]] std::vector<gui::EditSettings> light_path_worst_case_settings();
+
 [[nodiscard]] float light_path_min_width();
 
 // The same in the mockup's pixels (mock(1) is one), the unit the design is drawn in: it does not change with
