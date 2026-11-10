@@ -407,3 +407,44 @@ TEST(LivePreview, AChangedSettingRendersAgainWhileTheStripIsOn) {
     ASSERT_TRUE(f);
     EXPECT_EQ(f->strip.size(), 5u);
 }
+
+TEST(LivePreview, ShowingTheStrokeMaskRendersOnceMoreAndHidingItDoesNot) {
+    std::atomic<int> calls{0};
+    std::atomic<bool> last_mask{false};
+    LivePreview preview(prism::gui::PreviewRenderer::OptionsRenderFunction(
+        [&](const prism::Image&, const EditSettings&, prism::gui::StageId,
+            const prism::gui::PreviewOptions& options, std::stop_token) {
+            ++calls;
+            last_mask = options.stroke_mask;
+            PreviewFrame f;
+            f.width = 1;
+            f.height = 1;
+            f.rgb8 = {0, 0, 0};
+            return std::optional<PreviewFrame>(f);
+        }));
+    const auto base = make_base();
+    const EditSettings s = with_exposure(1);
+    prism::gui::PreviewOptions off;
+    prism::gui::PreviewOptions on;
+    on.stroke_mask = true;
+    EXPECT_FALSE(off == on);
+
+    preview.update(base, s, prism::gui::final_stage, off);
+    ASSERT_TRUE(next_frame(preview));
+    EXPECT_EQ(calls.load(), 1);
+    EXPECT_FALSE(last_mask.load());
+
+    preview.update(base, s, prism::gui::final_stage, on);  // turned on
+    ASSERT_TRUE(next_frame(preview));
+    EXPECT_EQ(calls.load(), 2);
+    EXPECT_TRUE(last_mask.load());
+
+    preview.update(base, s, prism::gui::final_stage, on);   // still on: nothing new
+    preview.update(base, s, prism::gui::final_stage, off);  // hidden: the picture is still right
+    EXPECT_FALSE(preview.rendering());
+    EXPECT_EQ(calls.load(), 2);
+
+    preview.update(base, s, prism::gui::final_stage, on);  // shown again: asks again
+    ASSERT_TRUE(next_frame(preview));
+    EXPECT_EQ(calls.load(), 3);
+}

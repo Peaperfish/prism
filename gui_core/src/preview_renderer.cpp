@@ -432,17 +432,39 @@ std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings
         !settings.strokes.empty() && settings.dodge_burn_on &&
         (reaches(stop_after) || options.clip_report ||
          (options.compare_stage && reaches(*options.compare_stage)));
+    const bool mask = options.stroke_mask;
     FieldView field;
-    if (field_cache && (settings.strokes.empty() || stage_runs)) {
+    FieldCache just_this_render;  // for a mask without a cache
+    if (field_cache && (settings.strokes.empty() || stage_runs || mask)) {
         field_cache->update(settings.strokes, whole, threads);
         field = {field_cache->field(), whole};
+    } else if (!field_cache && mask && !settings.strokes.empty()) {
+        just_this_render.update(settings.strokes, whole, threads);
+        field = {just_this_render.field(), whole};
     }
+    std::optional<PreviewFrame> frame;
     if (options.test_strip && stop_after != StageId::decode && options.test_strip->count >= 1 &&
         base.width > 0 && base.height > 0) {
-        return render_strip(base, settings, threads, stop, on_stage, stop_after, options, field);
+        frame = render_strip(base, settings, threads, stop, on_stage, stop_after, options, field);
+    } else {
+        frame = render_plain(base, whole, settings, threads, stop, on_stage, stop_after,
+                             std::move(options), field);
     }
-    return render_plain(base, whole, settings, threads, stop, on_stage, stop_after,
-                        std::move(options), field);
+    if (frame && mask) {
+        // One byte per pixel of the picture, from the same field the stage used.
+        const auto width = static_cast<std::size_t>(base.width);
+        frame->stroke_mask.assign(width * static_cast<std::size_t>(base.height), 128);
+        if (!field.values.empty()) {
+            const int n = threads_for_pixels(frame->stroke_mask.size(), threads);
+            parallel_for_rows(base.height, n, [&](int begin, int end) {
+                for (std::size_t p = static_cast<std::size_t>(begin) * width;
+                     p < static_cast<std::size_t>(end) * width; ++p) {
+                    frame->stroke_mask[p] = stroke_mask_byte(field.values[p]);
+                }
+            });
+        }
+    }
+    return frame;
 }
 
 // The cache is the worker's: only the worker thread calls render_.

@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -353,4 +355,124 @@ TEST(FieldCache, FieldAtReadsThePixelsOfAPart) {
     std::vector<float> on_strided(static_cast<std::size_t>(strided.width()) * strided.height());
     EXPECT_FALSE(prism::gui::field_at(on_strided, strided, PixelGrid{W, H, 2, 1, 2}, got));
     EXPECT_TRUE(prism::gui::field_at(on_strided, strided, PixelGrid{W, H, 3, 5, 4}, got));
+}
+
+// --- The stroke mask -----------------------------------------------------------------------------
+
+TEST(MaskFrame, BytesForFieldValues) {
+    using prism::gui::stroke_mask_byte;
+    EXPECT_EQ(stroke_mask_byte(0.0f), 128);
+    EXPECT_EQ(stroke_mask_byte(-0.0f), 128);
+    EXPECT_EQ(stroke_mask_byte(1.0f), 192);   // 63.5 rounds away from 0
+    EXPECT_EQ(stroke_mask_byte(-1.0f), 64);
+    EXPECT_EQ(stroke_mask_byte(0.5f), 160);   // 31.75
+    EXPECT_EQ(stroke_mask_byte(0.01f), 129);  // 0.635: any visible stroke shows
+    EXPECT_EQ(stroke_mask_byte(2.0f), 255);
+    EXPECT_EQ(stroke_mask_byte(-2.0f), 1);
+    EXPECT_EQ(stroke_mask_byte(7.0f), 255);
+    EXPECT_EQ(stroke_mask_byte(-7.0f), 1);
+    EXPECT_EQ(stroke_mask_byte(std::numeric_limits<float>::infinity()), 255);
+    EXPECT_EQ(stroke_mask_byte(-std::numeric_limits<float>::infinity()), 1);
+    EXPECT_EQ(stroke_mask_byte(std::numeric_limits<float>::quiet_NaN()), 128);
+}
+
+namespace {
+
+// Hard-edged dabs on a w x h photo: +1 stop around (0.25, 0.5), -1 around (0.75, 0.5), +3 around
+// (0.5, 0.2), -3 around (0.5, 0.8).
+Strokes mask_strokes(int w, int h) {
+    auto f = std::make_shared<StrokeField>();
+    f->aspect = prism::aspect_of(w, h);
+    f->strokes = {stroke({{0.25f, 0.5f}}, 0.08f, 0.0f, 1.0f), stroke({{0.75f, 0.5f}}, 0.08f, 0.0f, -1.0f),
+                  stroke({{0.5f, 0.2f}}, 0.05f, 0.0f, 3.0f), stroke({{0.5f, 0.8f}}, 0.05f, 0.0f, -3.0f)};
+    return Strokes(std::move(f));
+}
+
+std::uint8_t mask_at(const PreviewFrame& f, float u, float v) {
+    const int x = static_cast<int>(u * static_cast<float>(f.width));
+    const int y = static_cast<int>(v * static_cast<float>(f.height));
+    return f.stroke_mask[static_cast<std::size_t>(y) * static_cast<std::size_t>(f.width) +
+                         static_cast<std::size_t>(x)];
+}
+
+}  // namespace
+
+TEST(MaskFrame, ValuesAtUntouchedDodgedBurnedAndBeyondTwoStops) {
+    constexpr int W = 1501;
+    constexpr int H = 701;
+    const Image base = make_image(W, H);
+    const Strokes strokes = mask_strokes(W, H);
+    PreviewOptions o;
+    o.stroke_mask = true;
+    for (const bool cached : {false, true}) {
+        FieldCache cache;
+        const PreviewFrame f =
+            render(base, settings_with(strokes), {StageId::encode, o}, cached ? &cache : nullptr);
+        ASSERT_EQ(f.stroke_mask.size(), static_cast<std::size_t>(W) * H);
+        EXPECT_EQ(mask_at(f, 0.02f, 0.02f), 128) << "untouched";
+        EXPECT_EQ(mask_at(f, 0.25f, 0.5f), 192) << "dodged 1 stop";
+        EXPECT_EQ(mask_at(f, 0.75f, 0.5f), 64) << "burned 1 stop";
+        EXPECT_EQ(mask_at(f, 0.5f, 0.2f), 255) << "dodged 3 stops";
+        EXPECT_EQ(mask_at(f, 0.5f, 0.8f), 1) << "burned 3 stops";
+        // Every pixel is the byte of the field there.
+        const std::vector<float> field = rasterised(strokes, PixelGrid::whole(W, H));
+        std::size_t wrong = 0;
+        for (std::size_t p = 0; p < field.size(); ++p) {
+            wrong += f.stroke_mask[p] != prism::gui::stroke_mask_byte(field[p]) ? 1 : 0;
+        }
+        EXPECT_EQ(wrong, 0u) << (cached ? "with a cache" : "without");
+    }
+}
+
+// Not asked for: no mask. Asked for: the picture, its histogram, scopes, clip data and strip are
+// exactly what they are without it, with a cache or without, plain or as a test strip, and the
+// mask is the same in all of them (the strokes are where they are whatever the exposure).
+TEST(MaskFrame, AbsentUnlessAskedForAndChangesNothingElse) {
+    constexpr int W = 733;
+    constexpr int H = 1409;
+    const Image base = make_image(W, H);
+    const EditSettings s = settings_with(mask_strokes(W, H));
+    std::optional<std::vector<std::uint8_t>> first_mask;
+    for (const std::size_t kind : {0u, 1u, 2u}) {  // plain, clip report, strip (render_case)
+        RenderCase c = render_case(kind);
+        for (const bool cached : {false, true}) {
+            FieldCache cache;
+            const PreviewFrame without = render(base, s, c, cached ? &cache : nullptr);
+            EXPECT_TRUE(without.stroke_mask.empty());
+            c.options.stroke_mask = true;
+            const PreviewFrame with = render(base, s, c, cached ? &cache : nullptr);
+            c.options.stroke_mask = false;
+            const std::string what =
+                "case " + std::to_string(kind) + (cached ? ", with a cache" : ", without");
+            expect_same_frame(with, without, what);
+            ASSERT_EQ(with.stroke_mask.size(), static_cast<std::size_t>(W) * H) << what;
+            if (!first_mask) {
+                first_mask = with.stroke_mask;
+            }
+            EXPECT_TRUE(with.stroke_mask == *first_mask) << what;
+        }
+    }
+}
+
+// Without strokes the mask is all 128; with Dodge & burn off, or viewing a stage before it, it still
+// shows where the strokes are.
+TEST(MaskFrame, NoStrokesIsAllUntouchedAndAnOffStageStillShowsThem) {
+    constexpr int W = 300;
+    constexpr int H = 200;
+    const Image base = make_image(W, H);
+    PreviewOptions o;
+    o.stroke_mask = true;
+    const PreviewFrame none = render(base, settings_with(Strokes()), {StageId::encode, o}, nullptr);
+    ASSERT_EQ(none.stroke_mask.size(), static_cast<std::size_t>(W) * H);
+    EXPECT_TRUE(std::all_of(none.stroke_mask.begin(), none.stroke_mask.end(),
+                            [](std::uint8_t b) { return b == 128; }));
+
+    EditSettings off = settings_with(mask_strokes(W, H));
+    off.dodge_burn_on = false;
+    FieldCache cache;
+    for (const StageId stage : {StageId::encode, StageId::decode}) {
+        const PreviewFrame f = render(base, off, {stage, o}, &cache);
+        EXPECT_EQ(mask_at(f, 0.25f, 0.5f), 192);
+        EXPECT_EQ(mask_at(f, 0.75f, 0.5f), 64);
+    }
 }

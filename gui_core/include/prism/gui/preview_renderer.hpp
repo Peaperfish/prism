@@ -43,6 +43,9 @@ struct PreviewOptions {
     // white balance is measured against (see to_process_settings). It rides here so that it
     // reaches the worker with the request. None for a photo without one.
     std::optional<Chromaticity> as_shot_white;
+    // The stroke mask (PreviewFrame::stroke_mask): where the Dodge & burn strokes are, and how
+    // strongly they dodge or burn, one byte per pixel of the picture.
+    bool stroke_mask = false;
 
     PreviewOptions() = default;
     // Implicit, so that "scopes on/off" can still be written as a plain bool.
@@ -80,6 +83,12 @@ struct PreviewFrame {
     // One byte per pixel (clip_mask_high / _low / _gamut bits) of this stage; only if requested.
     // A pixel that an earlier stage clamped (colours outside the gamut, shadows) stays marked.
     std::vector<std::uint8_t> clip_mask;
+    // One byte per pixel (width * height, row-major) of the strokes' field on the picture,
+    // stroke_mask_byte(field): 128 where no stroke reaches, above it dodged, below it burned, 255
+    // and 1 at 2 stops or more. All 128 without strokes. Only if options.stroke_mask. It shows the
+    // strokes whatever stage is viewed and whether Dodge & burn is on, and with a test strip it
+    // covers the whole picture (the strokes are the same in every band).
+    std::vector<std::uint8_t> stroke_mask;
     // With a test strip: one entry per band, in order. `histogram` and `scopes` above then
     // describe the middle band (the current exposure), and `clips` is never set. The clip mask is
     // per band: each band's pixels are marked by that band's own exposure.
@@ -116,7 +125,8 @@ struct PreviewFrame {
 // With `field_cache`, the strokes' field is taken from it (brought up to date first: see
 // FieldCache) instead of being rasterised by the Dodge & burn stage, by every band of a test
 // strip and by the clip report's sample grid; the frame is bit-identical either way. Only the
-// thread that owns the cache may pass it. Without one, a render rasterises as it always did.
+// thread that owns the cache may pass it. Without one, a render rasterises as it always did (and
+// a stroke mask is made from a field rasterised just for it).
 [[nodiscard]] std::optional<PreviewFrame> render_preview(const Image& base,
                                                          const EditSettings& settings, int threads,
                                                          std::stop_token stop,

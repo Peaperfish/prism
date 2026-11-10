@@ -42,6 +42,7 @@ void LivePreview::update(const std::shared_ptr<const Image>& base, const EditSet
     const bool covered = (options_.scopes || !options.scopes) &&
                          (options_.clip_report || !options.clip_report) &&
                          (options_.clip_mask || !options.clip_mask) &&
+                         (options_.stroke_mask || !options.stroke_mask) &&
                          (!options.compare_stage || options.compare_stage == options_.compare_stage) &&
                          options.test_strip == options_.test_strip &&  // exactly: on, off or step
                          options.as_shot_white == options_.as_shot_white;
@@ -50,6 +51,7 @@ void LivePreview::update(const std::shared_ptr<const Image>& base, const EditSet
         options_.scopes = options_.scopes && options.scopes;
         options_.clip_report = options_.clip_report && options.clip_report;
         options_.clip_mask = options_.clip_mask && options.clip_mask;
+        options_.stroke_mask = options_.stroke_mask && options.stroke_mask;
         if (!options.compare_stage) {
             options_.compare_stage.reset();
         }
