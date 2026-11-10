@@ -385,9 +385,9 @@ TEST(StrokeField, RasteriseOnlyInsideBounds) {
 
     const GridRect disc = prism::segment_bounds(s, 0, f.aspect, g);
     const GridRect seg = prism::segment_bounds(s, 1, f.aspect, g);
-    // The tight box of a disc of radius 0.05 * 400 = 20 px is 40 px; with the margin, at most 44.
-    EXPECT_LE(disc.i_end - disc.i_begin, 44);
-    EXPECT_LE(disc.j_end - disc.j_begin, 44);
+    // A disc of radius 0.05 * 400 = 20 px: the tight box is at most 41 px, plus one each side.
+    EXPECT_LE(disc.i_end - disc.i_begin, 43);
+    EXPECT_LE(disc.j_end - disc.j_begin, 43);
     EXPECT_GE(disc.i_end - disc.i_begin, 40);
 
     // The whole-field rasteriser evaluates exactly the segments' boxes.
@@ -416,6 +416,22 @@ TEST(StrokeField, RasteriseOnlyInsideBounds) {
     }
     EXPECT_LE(min_x - seg.i_begin, 2);
     EXPECT_LE(seg.i_end - 1 - max_x, 2);
+
+    // Exactly one pixel of margin: a hard dab centred on pixel (100, 150) with a radius of
+    // 20.48 px covers columns 80..120 and rows 130..170 (the pixels within 20 px of the centre
+    // along its row and column), so its box is columns [79, 122) and rows [129, 172).
+    StrokeField dab;
+    dab.aspect = f.aspect;
+    dab.strokes.push_back(stroke({{100.5f / W, 150.5f / H}}, 20.48f / W, 0.0f, 1.0f));
+    const GridRect dab_box = prism::segment_bounds(*dab.strokes[0], 0, dab.aspect, g);
+    EXPECT_EQ(dab_box, (GridRect{79, 122, 129, 172}));
+    const std::vector<float> dv = rasterise(dab, g);
+    EXPECT_EQ(dv[150 * W + 80], 1.0f);
+    EXPECT_EQ(dv[150 * W + 120], 1.0f);
+    EXPECT_EQ(dv[130 * W + 100], 1.0f);
+    EXPECT_EQ(dv[170 * W + 100], 1.0f);
+    EXPECT_EQ(dv[150 * W + 79], 0.0f);
+    EXPECT_EQ(dv[150 * W + 121], 0.0f);
 
     // The incremental call writes only inside the box it returns.
     std::vector<float> cov(static_cast<std::size_t>(W) * H, -1.0f);

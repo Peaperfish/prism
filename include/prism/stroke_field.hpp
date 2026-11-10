@@ -138,8 +138,9 @@ struct RasterStats {
 // The number of segments of `stroke` (= its number of points; see above).
 [[nodiscard]] std::size_t segment_count(const FieldStroke& stroke) noexcept;
 
-// The grid pixels that segment `segment` of `stroke` can cover: its bounding box (the segment
-// widened by the radius) plus one image pixel on each side for rounding, clipped to the grid.
+// The grid pixels that segment `segment` of `stroke` can cover: the image pixels whose centres lie
+// in its bounding box (the segment widened by the radius), plus one image pixel on each side for
+// rounding, clipped to the grid.
 // Every pixel outside it has coverage 0 from that segment. Empty if the segment is off the image.
 [[nodiscard]] GridRect segment_bounds(const FieldStroke& stroke, std::size_t segment,
                                       float aspect, const PixelGrid& grid) noexcept;

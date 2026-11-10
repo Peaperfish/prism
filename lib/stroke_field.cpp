@@ -130,16 +130,21 @@ Segment segment_for(const FieldStroke& s, std::size_t k, const Mapping& m) noexc
     return seg;
 }
 
-// Image-pixel range [lo, hi] (inclusive) whose centres can lie within `r` of [c_min, c_max]
-// (long-side units, `k` units per pixel), widened by one pixel for rounding, then turned into grid
-// indices [begin, end) for a grid starting at `first` with `stride` and `count` entries.
+// One image pixel of slack on each side of the tight box, for the float rounding of pixel centres
+// and segment ends (a few ulps, far below a pixel).
+constexpr double box_margin_px = 1.0;
+
+// Image-pixel range [lo, hi] (inclusive) whose centres lie within `r` of [c_min, c_max]
+// (long-side units, `k` units per pixel), widened by box_margin_px, then turned into grid indices
+// [begin, end) for a grid starting at `first` with `stride` and `count` entries.
 void grid_range(double c_min, double c_max, double r, double k, int full, int first, int stride,
                 int count, int& begin, int& end) noexcept {
     begin = 0;
     end = 0;
-    // Centre of pixel x is (x + 0.5) * k, so pixel x has its centre at c when x = c / k - 0.5.
-    const double lo_f = std::floor((c_min - r) / k - 0.5) - 1.0;
-    const double hi_f = std::ceil((c_max + r) / k - 0.5) + 1.0;
+    // Pixel x's centre is at (x + 0.5) * k, so it is at or right of c when x >= c / k - 0.5: the
+    // tight range is [ceil(lo edge), floor(hi edge)].
+    const double lo_f = std::ceil((c_min - r) / k - 0.5) - box_margin_px;
+    const double hi_f = std::floor((c_max + r) / k - 0.5) + box_margin_px;
     if (!(lo_f <= hi_f) || hi_f < 0.0 || lo_f > static_cast<double>(full - 1)) {
         return;  // off the image (or NaN)
     }
