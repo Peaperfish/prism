@@ -48,6 +48,37 @@ TEST(RecipeStagesLine, ACompleteRecipeSetsAllFive) {
     EXPECT_EQ(stages_line(recipe_stages(complete_recipe())), "Sets all five stages.");
 }
 
+TEST(RecipeStagesLine, AWhiteBalanceIsNamedBesideTheFive) {
+    Recipe r = complete_recipe();
+    r.white_balance = prism::RecipeWhiteBalance{5200.0f, 10.0f, true};
+    const prism::gui::RecipeStages stages = recipe_stages(r);
+    ASSERT_EQ(stages.set.size(), 6u);
+    EXPECT_EQ(stages.set[0], StageId::exposure);
+    EXPECT_EQ(stages.set[1], StageId::white_balance);  // in pipeline order
+    EXPECT_EQ(stages.set[2], StageId::matrix);
+    EXPECT_EQ(stages_line(stages), "Sets all five stages and White balance.");
+    r.white_balance->on = false;
+    EXPECT_EQ(stages_line(recipe_stages(r)),
+              "Sets all five stages and White balance, and switches White balance off.");
+
+    // On its own, or with some of the others, it is one of the stages named.
+    Recipe only;
+    only.white_balance = prism::RecipeWhiteBalance{5200.0f, 10.0f, true};
+    EXPECT_EQ(stages_line(recipe_stages(only)),
+              "Sets only White balance; the other stages are unchanged.");
+    only.exposure = RecipeExposure{1.0f, true};
+    only.saturation = RecipeSaturation{1.2f, true};
+    EXPECT_EQ(stages_line(recipe_stages(only)),
+              "Sets only Exposure, White balance and Saturation; the other stages are unchanged.");
+    // Five stages that are not the five: the four others and White balance.
+    Recipe four = complete_recipe();
+    four.curve.reset();
+    four.white_balance = prism::RecipeWhiteBalance{5200.0f, 10.0f, true};
+    EXPECT_EQ(stages_line(recipe_stages(four)),
+              "Sets only Exposure, White balance, Colour matrix, Saturation and Contrast; the "
+              "other stages are unchanged.");
+}
+
 TEST(RecipeStagesLine, APartialRecipeNamesItsStagesInPipelineOrder) {
     EXPECT_EQ(stages_line(recipe_stages(partial_recipe())),
               "Sets only Colour matrix, Saturation and Contrast; the other stages are unchanged.");

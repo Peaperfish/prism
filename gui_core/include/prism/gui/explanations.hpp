@@ -29,6 +29,7 @@ enum class LiveKind {
     none,
     look,         // the current look: preset name, exposure, colour, contrast, curve
     exposure,     // the Exposure row: stops and factor
+    white_balance, // the White balance row: the light, and whether it is as shot or chosen
     matrix,       // the matrix file's name, or none
     saturation,   // the Saturation row
     contrast_row, // the Contrast row
@@ -149,11 +150,15 @@ struct LiveContext {
     int file_long_side = 0;                // the file's (see Session::file_width)
     bool file_size_exact = true;           // false: file_long_side is an estimate
     const PixelTrace* sample = nullptr;    // the pixel the sampler is reading, if any
+    std::optional<Chromaticity> as_shot_white;  // the photo's as-shot light, if the file has one
 };
 
 // The live line for `id` with these settings: numbers worked out with the engine's own maths
 // (exposure's 2^stops, contrast's curve, saturation's scale, the tone curves), e.g.
 //   stage.exposure at +0.70:   "+0.70 stops, 1.62× the light"
+//   stage.white_balance:       "As shot: 5330 K, tint +27, the light the camera balanced for"
+//                              "As shot: taken as 6500 K, as this file names no light"
+//                              "Chosen: 5200 K, tint +10. As shot is 5330 K, tint +27"
 //   stage.contrast at 1.22:    "Grade 2.8 · ×1.22, each stop near middle grey is 22% wider"
 //   curve.gamma at 2.2:        "gamma 2.2: 18% grey becomes 46%"
 //   view.zoom on a 61 MP RAW:  "Preview 2560 px, file 9566 px on the long side: each preview pixel

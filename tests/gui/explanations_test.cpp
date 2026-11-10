@@ -15,6 +15,7 @@
 #include "prism/gui/theme_tokens.hpp"
 #include "prism/image.hpp"
 #include "prism/pipeline.hpp"
+#include "prism/white_balance.hpp"
 
 namespace prism::gui {
 namespace {
@@ -191,6 +192,74 @@ TEST(LiveLines, ExposureIsStopsAndTheFactorOnTheLight) {
     EXPECT_EQ(live_line("stage.exposure", with_exposure_at(50)), "+1.00 stops, 2.00× the light");
     EXPECT_EQ(live_line("stage.exposure", with_exposure_at(-50)), "-1.00 stops, 0.50× the light");
     EXPECT_EQ(live_line("stage.exposure", EditSettings{}), "+0.00 stops, 1.00× the light");
+}
+
+TEST(Explanations, WhiteBalanceSaysWhatKelvinAndTintMeanAndNeverBrightness) {
+    const Explanation* e = explanation_for("stage.white_balance");
+    ASSERT_NE(e, nullptr);
+    EXPECT_EQ(explain_id(StageId::white_balance), "stage.white_balance");
+    const std::string text = std::string(e->summary) + " " + std::string(e->detail);
+    for (const char* word : {"Kelvin", "light", "bluer", "warmed", "Tint", "green", "magenta",
+                             "As shot"}) {
+        EXPECT_NE(text.find(word), std::string::npos) << word;
+    }
+    for (const char* bad : {"brightness", "Brightness", "brighter", "darker"}) {
+        EXPECT_EQ(text.find(bad), std::string::npos) << bad;
+    }
+    EXPECT_EQ(e->live, LiveKind::white_balance);
+    // It sits with the other stages, in pipeline order.
+    const std::span<const Explanation> all = explanations();
+    const auto index_of = [&](std::string_view id) {
+        for (std::size_t i = 0; i < all.size(); ++i) {
+            if (all[i].id == id) {
+                return i;
+            }
+        }
+        return all.size();
+    };
+    EXPECT_EQ(index_of("stage.white_balance"), index_of("stage.exposure") + 1);
+    EXPECT_EQ(index_of("stage.matrix"), index_of("stage.white_balance") + 1);
+}
+
+TEST(LiveLines, WhiteBalanceSaysTheLightAndWhetherItIsAsShot) {
+    LiveContext raw;
+    raw.as_shot_white = white_of(WhiteBalance{5328, 26.7});
+    const LiveContext plain;
+
+    EditSettings s;
+    EXPECT_EQ(live_line("stage.white_balance", s, raw),
+              "As shot: 5330 K, tint +27, the light the camera balanced for");
+    EXPECT_EQ(live_line("stage.white_balance", s, plain),
+              "As shot: taken as 6500 K, as this file names no light");
+    // As shot is no change on or off, so off adds nothing to say.
+    s.white_balance_on = false;
+    EXPECT_EQ(live_line("stage.white_balance", s, raw),
+              "As shot: 5330 K, tint +27, the light the camera balanced for");
+
+    s = EditSettings{};
+    s.white_balance = WhiteBalance{5200, -10};
+    EXPECT_EQ(live_line("stage.white_balance", s, raw),
+              "Chosen: 5200 K, tint \xE2\x88\x92" "10. As shot is 5330 K, tint +27");
+    EXPECT_EQ(live_line("stage.white_balance", s, plain),
+              "Chosen: 5200 K, tint \xE2\x88\x92" "10. As shot is taken as 6500 K");
+    s.white_balance_on = false;
+    EXPECT_EQ(live_line("stage.white_balance", s, raw),
+              "Off, so no change. When on: Chosen: 5200 K, tint \xE2\x88\x92"
+              "10. As shot is 5330 K, tint +27");
+}
+
+TEST(LiveLines, WhiteBalanceReadsAsTheRowDoes) {
+    // The same rounding as the row's value line, for every light.
+    for (const WhiteBalance wb : {WhiteBalance{5328, 26.7}, WhiteBalance{2004, -99.6},
+                                  WhiteBalance{14996, 0.4}}) {
+        LiveContext context;
+        context.as_shot_white = white_of(wb);
+        const std::string row = white_balance_value_text(EditSettings{}, context.as_shot_white);
+        const std::string numbers = row.substr(std::string("As shot \xC2\xB7 ").size());
+        EXPECT_NE(live_line("stage.white_balance", EditSettings{}, context).find(numbers),
+                  std::string::npos)
+            << row;
+    }
 }
 
 TEST(LiveLines, ExposureFactorMatchesTheEngineOnAPixel) {

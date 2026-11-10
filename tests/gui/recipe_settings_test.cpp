@@ -15,6 +15,8 @@
 #include <unistd.h>  // getpid
 #endif
 
+#include "prism/white_balance.hpp"
+#include "prism/gui/stage_controls.hpp"
 #include "prism/gui/explanations.hpp"
 #include "prism/gui/paper_grade.hpp"
 #include "prism/gui/presets.hpp"
@@ -270,6 +272,123 @@ TEST(RecipeSettings, CaptureWritesEveryStage) {
          {"[exposure]", "[matrix]", "[saturation]", "[contrast]", "[curve]"}) {
         EXPECT_NE(text.find(section), std::string::npos) << section << "\n" << text;
     }
+}
+
+// --- White balance -------------------------------------------------------------------------------
+
+TEST(RecipeWhiteBalance, ApplyingARecipeSetsTheLightAndItsSwitch) {
+    Recipe r;
+    r.white_balance = prism::RecipeWhiteBalance{5200.0f, 10.0f, true};
+    EditSettings s;
+    s.exposure_stops = 0.5f;
+    prism::gui::apply_recipe(s, r);
+    EXPECT_EQ(s.white_balance, (prism::WhiteBalance{5200, 10}));
+    EXPECT_TRUE(s.white_balance_on);
+    EXPECT_EQ(s.exposure_stops, 0.5f);  // a stage the recipe leaves out stays
+
+    r.white_balance = prism::RecipeWhiteBalance{3200.0f, -25.0f, false};
+    prism::gui::apply_recipe(s, r);
+    EXPECT_EQ(s.white_balance, (prism::WhiteBalance{3200, -25}));
+    EXPECT_FALSE(s.white_balance_on);
+    EXPECT_FALSE(prism::gui::to_process_settings(s).white_balance);
+}
+
+TEST(RecipeWhiteBalance, ARecipeWithoutTheSectionLeavesThePhotosChoiceAlone) {
+    EditSettings s;
+    s.white_balance = prism::WhiteBalance{4000, 20};
+    s.white_balance_on = false;
+    Recipe r;
+    r.exposure = prism::RecipeExposure{1.0f, true};
+    prism::gui::apply_recipe(s, r);
+    EXPECT_EQ(s.white_balance, (prism::WhiteBalance{4000, 20}));
+    EXPECT_FALSE(s.white_balance_on);
+    // And an As shot photo stays As shot.
+    EditSettings as_shot;
+    prism::gui::apply_recipe(as_shot, r);
+    EXPECT_FALSE(as_shot.white_balance);
+}
+
+TEST(RecipeWhiteBalance, AsShotWritesNoSectionAndTheRecipeStaysVersionOne) {
+    for (const bool on : {true, false}) {
+        EditSettings s;
+        s.exposure_stops = 0.7f;
+        s.white_balance_on = on;  // the switch alone has nothing to be saved with
+        const Recipe r = prism::gui::recipe_from(s);
+        EXPECT_FALSE(r.white_balance);
+        const std::string text = prism::write_recipe(r);
+        EXPECT_EQ(text.find("[white_balance]"), std::string::npos) << text;
+        EXPECT_NE(text.find("prism_recipe = 1 "), std::string::npos) << text;
+        EXPECT_EQ(text.find("prism_recipe = 2"), std::string::npos) << text;
+        EXPECT_EQ(prism::parse_recipe(text).white_balance, std::nullopt);
+    }
+    // Byte for byte what it was before there was a white balance to save.
+    EditSettings chosen_then_reset;
+    chosen_then_reset.white_balance = prism::WhiteBalance{5200, 10};
+    prism::gui::reset_white_balance(chosen_then_reset);
+    EXPECT_EQ(prism::write_recipe(prism::gui::recipe_from(chosen_then_reset)),
+              prism::write_recipe(prism::gui::recipe_from(EditSettings{})));
+}
+
+TEST(RecipeWhiteBalance, AChosenLightIsWrittenAsVersionTwoWithItsSwitch) {
+    EditSettings s;
+    s.white_balance = prism::WhiteBalance{5200, -10};
+    const std::string text = prism::write_recipe(prism::gui::recipe_from(s));
+    EXPECT_NE(text.find("prism_recipe = 2 "), std::string::npos) << text;
+    const std::string section = [&] {
+        const std::size_t start = text.find("[white_balance]");
+        return start == std::string::npos ? std::string() : text.substr(start, text.find("\n[", start) - start);
+    }();
+    EXPECT_NE(section.find("kelvin = 5200"), std::string::npos) << text;
+    EXPECT_NE(section.find("tint = -10"), std::string::npos) << text;
+    EXPECT_EQ(section.find("on = false"), std::string::npos) << text;
+    // Between [exposure] and [matrix], as the stage is.
+    EXPECT_LT(text.find("[exposure]"), text.find("[white_balance]"));
+    EXPECT_LT(text.find("[white_balance]"), text.find("[matrix]"));
+
+    s.white_balance_on = false;
+    const Recipe off = prism::gui::recipe_from(s);
+    ASSERT_TRUE(off.white_balance);
+    EXPECT_FALSE(off.white_balance->on);
+    EXPECT_NE(prism::write_recipe(off).find("on = false"), std::string::npos);
+}
+
+TEST(RecipeWhiteBalance, SavingThenApplyingGivesTheSameSettingsForEveryChoiceTheSlidersMake) {
+    for (double kelvin = 2000; kelvin <= 15000; kelvin += 130) {
+        for (const double tint : {-100.0, -27.0, 0.0, 1.0, 100.0}) {
+            for (const bool on : {true, false}) {
+                EditSettings s;
+                s.exposure_stops = 0.5f;
+                s.curve = CurveKind::filmic;
+                s.white_balance = prism::WhiteBalance{kelvin, tint};
+                s.white_balance_on = on;
+                ASSERT_EQ(saved_and_applied(s), s) << kelvin << ", " << tint;
+                // Onto a photo with another choice: the recipe's replaces it.
+                EditSettings other;
+                other.white_balance = prism::WhiteBalance{9000, 55};
+                other.white_balance_on = !on;
+                ASSERT_EQ(saved_and_applied(s, other), s) << kelvin << ", " << tint;
+            }
+        }
+    }
+    // As shot onto a photo with a choice: the recipe has no section, so the choice stays.
+    EditSettings chosen;
+    chosen.white_balance = prism::WhiteBalance{9000, 55};
+    EXPECT_EQ(saved_and_applied(EditSettings{}, chosen), chosen);
+}
+
+TEST(RecipeWhiteBalance, TheGuiPathAndTheCorePathRenderBitForBitTheSame) {
+    EditSettings s;
+    s.exposure_stops = 0.3f;
+    s.white_balance = prism::WhiteBalance{4300, 12};
+    const prism::Chromaticity as_shot = prism::white_of(prism::WhiteBalance{5600, -8});
+    const Recipe recipe = prism::parse_recipe(prism::write_recipe(prism::gui::recipe_from(s)));
+    prism::Image through_gui = test_image();
+    prism::Image through_core = test_image();
+    (void)prism::process(through_gui,
+                         prism::gui::to_process_settings(s, prism::gui::final_stage, as_shot), 1);
+    (void)prism::process(through_core, prism::to_process_settings(recipe, as_shot), 1);
+    EXPECT_EQ(through_gui.pixels, through_core.pixels);
+    EXPECT_NE(through_gui.pixels, test_image().pixels);
 }
 
 TEST(RecipeSettings, SavingThenApplyingGivesTheSameSettingsForEveryReachableStateWithoutAMatrix) {

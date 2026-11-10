@@ -108,11 +108,12 @@ The **Light path** lists the stages the light goes through, from the file to the
 
 1. **Decode**: the file turned into linear light.
 2. **Exposure**
-3. **Colour matrix**
-4. **Saturation**
-5. **Contrast**
-6. **Tone curve**
-7. **Output encode**: light turned into the 8-bit sRGB file.
+3. **White balance**
+4. **Colour matrix**
+5. **Saturation**
+6. **Contrast**
+7. **Tone curve**
+8. **Output encode**: light turned into the 8-bit sRGB file.
 
 (The section [How Prism thinks about light](#how-prism-thinks-about-light) explains why the order matters.) The stages are the controls: there are no separate sliders.
 
@@ -126,17 +127,28 @@ A thin rail runs down the left, with a dot for each stage. The **viewed stage**'
 |---|---|---|
 | Decode | none | what the file is: "RAW, camera colour", "RAW, your camera matrix", "JPEG, read as sRGB", "PNG, read as sRGB" or "HEIC, converted from its own colours" |
 | Exposure | `+1.00 stops` | a slider from −2 to +2 stops, and the **Test strip** button |
+| White balance | `As shot · 5330 K, tint +27`, or the light you chose: `5200 K · tint +10` | "The light the photo was lit by", and two sliders: **Kelvin** and **Tint** (see [White balance](#white-balance)) |
 | Colour matrix | the matrix: "Camera default" (RAW) or "None", the file's name, or "From recipe" | nothing else: the app gets a matrix only from a [recipe](#recipes) |
 | Saturation | `×1.00` (`black and white` at exactly 0) | a slider from `×0.00` to `×2.00` |
 | Contrast | `Grade 2 · ×1.00` | a slider in half grades, from grade 0 to grade 5 (see [Contrast as a paper grade](#contrast-as-a-paper-grade)) |
 | Tone curve | none | four tabs: **None**, **Gamma**, **Reinhard**, **Filmic** |
 | Output encode | none | "sRGB for the screen" |
 
-The three sliders are centred on no change. Hover over a row for a one-sentence explanation; the Explain area says more. Point at the Colour matrix's value for the full path of its file.
+The sliders of Exposure, Saturation and Contrast are centred on no change. Hover over a row for a one-sentence explanation; the Explain area says more. Point at the Colour matrix's value for the full path of its file.
 
-**Switches.** Exposure, Colour matrix, Saturation, Contrast and Tone curve each have a switch. Off, the photo shows what it looks like without that stage. The stage keeps its value, so switching it on again brings it back, and while it is off the row says what it will be: "+0.70 stops when on". The stage's slider and tabs are greyed out meanwhile. Each switch is one undo step. Decode and Output encode have none.
+**Switches.** Exposure, White balance, Colour matrix, Saturation, Contrast and Tone curve each have a switch. Off, the photo shows what it looks like without that stage. The stage keeps its value, so switching it on again brings it back, and while it is off the row says what it will be: "+0.70 stops when on". The stage's slider and tabs are greyed out meanwhile. Each switch is one undo step. Decode and Output encode have none.
 
 **The value line and dragging.** Drag a slider and the photo follows. A whole drag is one undo step. If a value is beyond what the slider can show (from a recipe, say), the row says **(beyond the slider)**, and the slider sits at its end until you move it.
+
+<a id="white-balance"></a>
+**White balance.** White balance tells Prism what light the photo was lit by, so that something white in the scene comes out white. You name the light with two numbers:
+
+- **Kelvin** is the colour of the light, from 2000 K (candlelight, very orange) to 15000 K (deep shade, very blue). Daylight is around 5500 K. The number describes the light, not the picture: a higher Kelvin says the light was bluer, so Prism warms the photo to make up for it, and a lower Kelvin cools it.
+- **Tint** runs from −100 to +100, across the other direction, from green to magenta. It also describes the light: towards the right end you say the light was greener, so the photo turns more magenta, and towards the left end the photo turns greener. 0 is a light with no green or magenta cast.
+
+Until you choose a light the row reads **As shot**: the light the camera balanced for when it took the photo, which leaves the photo exactly as it was decoded. For a RAW file the row shows that light, for example `As shot · 5330 K, tint +27`, and both sliders sit there. A JPEG, PNG or HEIC does not say what light it was balanced for (and a few RAW files don't either), so it is **taken as 6500 K**, tint 0: the row reads `As shot · taken as 6500 K`, and the numbers you choose are measured from there.
+
+Move either slider and the row shows your choice instead, for example `5200 K · tint +10`. The other number starts from the as-shot light. Kelvin moves in steps of 10 K and Tint in whole numbers. The Kelvin slider is even in mireds (a million divided by the Kelvin) rather than in Kelvin, so the same distance along it is about the same change in colour everywhere: its middle is about 3530 K, not 8500 K. The coloured part of each slider runs from the as-shot light to your choice. Right-click either slider for **Reset to As shot**, which removes the choice entirely. Switched off, the row keeps your choice and shows the photo as shot.
 
 **Contrast as a paper grade.** Contrast is shown the way darkroom printers set it, as a paper grade from 0 (softest) to 5 (hardest), with 2 as normal. Each whole grade is the contrast of a real paper through one of its filters: the ISO range *R* of Ilford Multigrade RC Deluxe (current), from Ilford's MULTIGRADE RC papers technical information (ISO 6846, filters 0 to 5). A paper with a longer range of exposure is softer, so a grade's multiplier is 90 ÷ *R*, which makes grade 2 exactly ×1.00:
 
@@ -153,13 +165,15 @@ Between two whole grades the multiplier moves by the same ratio at each step, so
 
 Only the display is new. What Prism stores, and what the engine uses, is still the multiplier, the slope at middle grey: a [recipe](#recipes) holds it as `[contrast]` `amount`, and `--contrast` on the command line takes it. A recipe written with `amount = 1.29` shows as grade 3 in the window.
 
-**Typing a value.** Ctrl-click (Cmd-click on a Mac) a slider of Exposure, Saturation or Contrast to type a value in the unit the row's value line uses: stops for Exposure, the factor for Saturation, a paper grade for Contrast. Examples:
+**Typing a value.** Ctrl-click (Cmd-click on a Mac) a slider of Exposure, White balance, Saturation or Contrast to type a value in the unit the row's value line uses: stops for Exposure, Kelvin or tint for White balance, the factor for Saturation, a paper grade for Contrast. Examples:
 
 | Row | You can type | Meaning |
 |---|---|---|
 | Exposure | `1.5`, `+1.5` or `1.5 stops` | +1.50 stops |
 | Exposure | `-0.5`, `−0.5` (with a true minus sign) or `-0.5 stops` | -0.50 stops |
 | Exposure | `1 stop` | +1.00 stops |
+| White balance, Kelvin | `5200`, `5200 K`, `5200K` or `5 200` | 5200 K (to the nearest 10 K) |
+| White balance, Tint | `10`, `+10`, `-10` or `−10` | tint +10, or −10 |
 | Saturation | `1.2`, `1.2×` or `1.2x` | ×1.20 |
 | Saturation | `0` | black and white |
 | Contrast | `3`, `3.5`, `3,5`, `3½` or `grade 3` | grade 3, 3½ (a number outside 0 to 5 stops at the end) |
@@ -167,7 +181,7 @@ Only the display is new. What Prism stores, and what the engine uses, is still t
 
 A comma works as the decimal mark (`1,5`). The word is `stops` or `stop`, in any case, and the minus can be a hyphen or a true minus sign (−). Enter confirms, Esc cancels, and a value past the slider's end stops at the end. Text that isn't a number in the row's unit leaves the value as it was. The field opens with the current value, for example `+0.70 stops`, `1.20` or, for Contrast, `3½`. The Tone curve's own slider does not take typed values.
 
-**Resetting.** Right-click a slider for **Reset to** its default (`+0.00 stops`, `×1.00`, `Grade 2 · ×1.00`). Right-click a Tone curve tab for **Reset to None**. The curve's own slider has a **Reset to** menu as well.
+**Resetting.** Right-click a slider for **Reset to** its default (`+0.00 stops`, `As shot`, `×1.00`, `Grade 2 · ×1.00`). Right-click a Tone curve tab for **Reset to None**. The curve's own slider has a **Reset to** menu as well.
 
 **The Tone curve.** The tabs choose the curve; choosing one is one undo step. **Gamma** and **Reinhard** have a slider of their own under the tabs, with its value on the line above: Gamma's exponent (0.5 to 4, default 2.2) and Reinhard's white point (1 to 16, default 4). **None** and **Filmic** have no setting.
 
@@ -295,19 +309,20 @@ A line under the number says what will be written, for example "Exports at 2048 
 
 ### Recipes
 
-A **recipe** is a small text file, ending in `.prism`, that writes down an edit: the exposure, the colour matrix, the saturation, the contrast and the tone curve, each with its on/off switch. It holds numbers, not pixels, so you can use it on any photo, read it in a text editor and send it to someone. [RECIPES.md](RECIPES.md) describes the format line by line.
+A **recipe** is a small text file, ending in `.prism`, that writes down an edit: the exposure, the colour matrix, the saturation, the contrast and the tone curve, each with its on/off switch, and the white balance if you chose one. It holds numbers, not pixels, so you can use it on any photo, read it in a text editor and send it to someone. [RECIPES.md](RECIPES.md) describes the format line by line.
 
 **Saving.** **File → Save Recipe…** (`Cmd+Shift+S` or `Ctrl+Shift+S`), or **Save recipe…** in the Look menu, first asks for two things:
 
 - **Name**, filled in for you: the recipe you loaded (with "(modified)" once you have changed something), or the look you picked, or empty with the hint "Name this look". The suggested file name is made from it.
 - **Description** (optional): one line on what the recipe is for, filled in from the recipe you loaded or the look you picked. If you keep both for a built-in look, the file you save is that look's file plus a `[matrix]` section.
 
-The sheet says what is saved: all five stages. The photo and the RAW decoding options (half size, camera matrix) are not in a recipe. `Esc` cancels; while you are typing in a field, the first `Esc` only leaves the field. **Save…** then opens the system's save dialog. It starts in the folder you last saved or loaded a recipe in (Prism remembers it in your [preferences](#preferences)), or next to the photo the first time. If you type a name without `.prism`, it is added. A banner says "Saved recipe *name*.prism." when it is written.
+The sheet says what is saved: all five stages, and the white balance you chose if you chose one. A photo left **As shot** saves no white balance, because as shot is that photo's own light and not a number to carry to another photo; such a recipe is the same file older versions of Prism wrote, and they can still read it. The photo and the RAW decoding options (half size, camera matrix) are not in a recipe. `Esc` cancels; while you are typing in a field, the first `Esc` only leaves the field. **Save…** then opens the system's save dialog. It starts in the folder you last saved or loaded a recipe in (Prism remembers it in your [preferences](#preferences)), or next to the photo the first time. If you type a name without `.prism`, it is added. A banner says "Saved recipe *name*.prism." when it is written.
 
 **Loading.** **File → Load Recipe…** (`Cmd+Shift+O` or `Ctrl+Shift+O`), or **Load recipe…** in the Look menu, applies a recipe to the open photo:
 
 - It sets each stage the recipe has, with its switch, and leaves the others as they are. It is one undo step, and the photo is not decoded again.
 - The Look menu's button reads **Recipe:** *name*, with a line under it saying what the recipe set (point at the line for the recipe's description): "Sets all five stages." or, for a recipe with only some of them, "Sets only Colour matrix, Saturation and Contrast; the other stages are unchanged." A recipe that switches a stage off says so too.
+- A recipe with a white balance sets that light on this photo too ("Sets all five stages and White balance."), whatever light this photo was shot under. A recipe without one leaves the photo's white balance as it is.
 - Change anything and the button reads *name* **(modified)**; undo back past the load and it goes away, and Redo brings it back. Opening another photo clears it.
 - The Look menu stays honest: it names a built-in look only when the numbers match one the loaded recipe isn't; a look you pick afterwards shows its own name.
 - A colour matrix from a recipe shows in the Colour matrix row under the file name the recipe gives, or as "From recipe" when it gives none.
@@ -382,11 +397,12 @@ Prism works in linear light, with floating-point numbers, through every stage. O
 
 The stages always run in this order, whatever order you change them in:
 
-**Decode → Exposure → Colour matrix → Saturation → Contrast → Tone curve → Output encode**
+**Decode → Exposure → White balance → Colour matrix → Saturation → Contrast → Tone curve → Output encode**
 
 The order matters because the stages are not interchangeable:
 
 - **Exposure comes first** after Decode, while the numbers are still light. A stop of exposure then means exactly twice the light, and the stages after it can shape what that extra light looks like.
+- **White balance** comes next, also in linear light, where a change of light is a simple mix of red, green and blue. It comes before the Colour matrix, so a grade is applied to a photo whose whites are already white.
 - **The Colour matrix** mixes red, green and blue in linear light, before saturation and tone. It is for calibrating camera colour or applying a grade.
 - **Saturation** moves each colour away from, or towards, the grey of the same luminance. A colour that would go below zero stops at the most saturated version sRGB can show, so hues do not shift.
 - **Contrast** is an S-curve around middle grey, in stops. It is strongest within about 2 stops of grey, so the extremes are not crushed.
@@ -399,7 +415,7 @@ Switching a stage off in the Light path shows you what it contributed.
 
 A file can only hold values from black to white. In linear light, black is 0 and white is 1. Clipping is when a value falls outside that and is cut off at 0 or 1: **highlights** that were brighter than white, **shadows** that have no light left, and colours **too saturated for sRGB**, where a channel would need negative light (a strongly saturated yellow or orange, pushed further by a colour matrix, can end up with a negative blue; the encode cuts it to 0 and the colour's hue shifts).
 
-A value outside the range is not lost by itself. Prism keeps it as a number, so a later stage may bring it back: darkening with a tone curve can pull a highlight back under white. Detail is lost only where a stage cuts values off at white or black. Until then the values are kept. In the Light path that is the difference between a hollow dot (recoverable) and a filled dot (lost). Saturation and Tone curve cut off values below 0, and Output encode cuts off both ends; Exposure, Colour matrix and Contrast never do. The Decode stage counts pixels that were already at white in the file (a RAW file's saturated sensor values, or 255 in an 8-bit file) as lost before any edit.
+A value outside the range is not lost by itself. Prism keeps it as a number, so a later stage may bring it back: darkening with a tone curve can pull a highlight back under white. Detail is lost only where a stage cuts values off at white or black. Until then the values are kept. In the Light path that is the difference between a hollow dot (recoverable) and a filled dot (lost). Saturation and Tone curve cut off values below 0, and Output encode cuts off both ends; Exposure, White balance, Colour matrix and Contrast never do. The Decode stage counts pixels that were already at white in the file (a RAW file's saturated sensor values, or 255 in an 8-bit file) as lost before any edit.
 
 ## Preferences
 

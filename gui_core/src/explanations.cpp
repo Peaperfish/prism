@@ -60,8 +60,9 @@ constexpr Explanation templates[] = {
      "Look menu names a built-in look only when the numbers match one.",
      LiveKind::recipe},
     {"recipe.save", "Write these settings to a recipe you can read and reuse.",
-     "Saves all five stages, with their switches, as a small .prism text file. The photo and the "
-     "RAW decoding options are not in it. Load it on any photo, or read it in a text editor."},
+     "Saves all five stages with their switches, and a white balance you chose, as a small .prism "
+     "text file. The photo and the RAW decoding options are not in it. Load it on any photo, or "
+     "read it in a text editor."},
     {"recipe.name", "The recipe's name, shown when it is loaded.",
      "Written as name in the file, and used for the file name. Prism suggests the recipe you "
      "loaded or the look you picked."},
@@ -87,7 +88,8 @@ constexpr Explanation templates[] = {
     {"stage.white_balance", "The light the photo was lit by, in Kelvin and tint.",
      "Kelvin is the colour of the light: a higher number means the light was bluer, so the photo "
      "is warmed. Tint is green–magenta: higher means a greener light, so more magenta. As shot is "
-     "the light the camera balanced for."},
+     "the light the camera balanced for.",
+     LiveKind::white_balance},
     {"stage.matrix", "Mixes red, green and blue, before saturation and tone.",
      "A 3×3 table: each output channel is a weighted sum of the input red, green and blue, in "
      "linear light. Used to calibrate camera colour or apply a grade. Load one with a recipe.",
@@ -294,6 +296,11 @@ std::string if_off(const EditSettings& s, StageId stage, const std::string& when
         return when_on;
     }
     return "Off, so no change. When on: " + when_on;
+}
+
+// "5330 K, tint +27": a light, rounded as the White balance row rounds it.
+std::string white_balance_light_text(const WhiteBalance& wb) {
+    return format_kelvin(wb.kelvin) + ", tint " + format_tint(wb.tint);
 }
 
 std::string stops_and_factor(float stops) {
@@ -509,6 +516,22 @@ std::string live_line(std::string_view id, const EditSettings& s, const LiveCont
         }
         case LiveKind::exposure:
             return if_off(s, StageId::exposure, stops_and_factor(s.exposure_stops));
+        case LiveKind::white_balance: {
+            // The light as the row reads it, and for a choice what it is measured against.
+            const std::string as_shot =
+                context.as_shot_white
+                    ? white_balance_light_text(as_shot_white_balance(context.as_shot_white))
+                    : "taken as " + format_kelvin(default_as_shot.kelvin);
+            if (!s.white_balance) {
+                // As shot changes nothing, on or off.
+                return "As shot: " + as_shot +
+                       (context.as_shot_white ? ", the light the camera balanced for"
+                                              : ", as this file names no light");
+            }
+            return if_off(s, StageId::white_balance,
+                          "Chosen: " + white_balance_light_text(*s.white_balance) +
+                              ". As shot is " + as_shot);
+        }
         case LiveKind::matrix:
             return if_off(s, StageId::matrix, stage_value_text(s, StageId::matrix));
         case LiveKind::saturation:

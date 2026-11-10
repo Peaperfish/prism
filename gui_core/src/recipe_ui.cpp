@@ -1,5 +1,6 @@
 #include "prism/gui/recipe_ui.hpp"
 
+#include <algorithm>
 #include <utility>
 
 #include "prism/gui/file_types.hpp"
@@ -56,6 +57,8 @@ RecipeStages recipe_stages(const Recipe& recipe) {
         }
     };
     add(StageId::exposure, recipe.exposure.has_value(), recipe.exposure && recipe.exposure->on);
+    add(StageId::white_balance, recipe.white_balance.has_value(),
+        recipe.white_balance && recipe.white_balance->on);
     add(StageId::matrix, recipe.matrix.has_value(), recipe.matrix && recipe.matrix->on);
     add(StageId::saturation, recipe.saturation.has_value(),
         recipe.saturation && recipe.saturation->on);
@@ -71,8 +74,14 @@ std::string stages_line(const RecipeStages& stages) {
     const std::string off = stages.switched_off.empty()
                                 ? std::string()
                                 : "switches " + join_names(stages.switched_off) + " off";
-    if (stages.set.size() == 5) {
-        return off.empty() ? "Sets all five stages." : "Sets all five stages and " + off + ".";
+    // The five stages every saved recipe has, and White balance, which only a photo with a chosen
+    // light adds: it is named on its own, so "all five" stays what it always was.
+    const bool white_balance = std::find(stages.set.begin(), stages.set.end(),
+                                         StageId::white_balance) != stages.set.end();
+    if (stages.set.size() == (white_balance ? 6u : 5u)) {
+        const std::string all =
+            white_balance ? "Sets all five stages and White balance" : "Sets all five stages";
+        return off.empty() ? all + "." : all + (white_balance ? ", and " : " and ") + off + ".";
     }
     std::string text = "Sets only " + join_names(stages.set);
     if (!off.empty()) {

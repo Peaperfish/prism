@@ -524,8 +524,12 @@ void App::draw_recipe_sheet() {
     explain(gui::explain::recipe_description);  // no tooltip: it would cover the field below
     ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + width);
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    // A chosen white balance is saved too; As shot is each photo's own light and is not.
     ImGui::TextUnformatted(
-        "Saves all five stages. The photo and RAW decoding options aren't included.");
+        session_.settings().white_balance
+            ? "Saves all five stages and the white balance you chose. The photo and RAW decoding "
+              "options aren't included."
+            : "Saves all five stages. The photo and RAW decoding options aren't included.");
     ImGui::PopStyleColor();
     ImGui::PopTextWrapPos();
     ImGui::Spacing();
@@ -2457,6 +2461,7 @@ App::ExplainText App::explain_text() const {
         context.file_size_exact = session_.file_size_exact();
     }
     context.sample = sample_on_show();
+    context.as_shot_white = session_.as_shot_white();
     return {std::string(e->summary), std::string(e->detail),
             gui::live_line(explain_shown_, session_.settings(), context)};
 }
