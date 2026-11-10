@@ -53,7 +53,7 @@ void BrushGesture::add_if_far(ViewPoint at, std::vector<BrushAction>& out) {
     }
 }
 
-std::vector<BrushAction> BrushGesture::move(ViewPoint at) {
+std::vector<BrushAction> BrushGesture::move(ViewPoint at, BrushModifiers /*keys*/) {
     std::vector<BrushAction> out;
     if (state_ == State::panning) {
         out.push_back(act(BrushActionKind::passthrough));
@@ -63,7 +63,7 @@ std::vector<BrushAction> BrushGesture::move(ViewPoint at) {
     return out;
 }
 
-std::vector<BrushAction> BrushGesture::release(ViewPoint at) {
+std::vector<BrushAction> BrushGesture::release(ViewPoint at, BrushModifiers /*keys*/) {
     std::vector<BrushAction> out;
     switch (state_) {
         case State::idle: break;

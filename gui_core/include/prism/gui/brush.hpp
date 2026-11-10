@@ -70,8 +70,9 @@ class BrushGesture {
 public:
     [[nodiscard]] std::vector<BrushAction> press(ViewPoint at, BrushModifiers keys, BrushTone base,
                                                  float spacing, BrushCanvas canvas);
-    [[nodiscard]] std::vector<BrushAction> move(ViewPoint at);
-    [[nodiscard]] std::vector<BrushAction> release(ViewPoint at);
+    // `keys` are those held now: they change nothing once the press has been made.
+    [[nodiscard]] std::vector<BrushAction> move(ViewPoint at, BrushModifiers keys = {});
+    [[nodiscard]] std::vector<BrushAction> release(ViewPoint at, BrushModifiers keys = {});
     // Esc.
     [[nodiscard]] std::vector<BrushAction> escape();
     // The press is over without a release (Brush mode left, the window lost the mouse): a stroke

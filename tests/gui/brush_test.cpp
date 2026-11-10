@@ -114,15 +114,19 @@ TEST(BrushGesture, AltAtThePressFlipsThatStrokeOnly) {
     EXPECT_EQ(a[0].tone, BrushTone::dodge);
 }
 
-TEST(BrushGesture, AltDuringAStrokeChangesNothing) {
-    // The tone is taken at the press: the moves and the release carry no keys at all, and the
-    // stroke's tone stays what the press made it.
+TEST(BrushGesture, AltPressedOrLetGoDuringAStrokeChangesNothing) {
     BrushGesture g;
+    (void)press(g, {0.0f, 0.0f}, {}, BrushTone::dodge);
+    const std::vector<BrushAction> pressed = g.move({50.0f, 0.0f}, {.alt = true});
+    ASSERT_EQ(kinds(pressed), (std::vector<Kind>{Kind::add_point}));
+    EXPECT_EQ(pressed[0].tone, BrushTone::dodge);
+    EXPECT_EQ(g.release({100.0f, 0.0f}, {.alt = true}).back().tone, BrushTone::dodge);
+
     (void)press(g, {0.0f, 0.0f}, {.alt = true}, BrushTone::dodge);
-    (void)g.move({50.0f, 0.0f});
-    EXPECT_EQ(g.tone(), BrushTone::burn);
-    const std::vector<BrushAction> end = g.release({50.0f, 0.0f});
-    EXPECT_EQ(end.back().tone, BrushTone::burn);
+    const std::vector<BrushAction> let_go = g.move({50.0f, 0.0f}, {});
+    ASSERT_EQ(kinds(let_go), (std::vector<Kind>{Kind::add_point}));
+    EXPECT_EQ(let_go[0].tone, BrushTone::burn);
+    EXPECT_EQ(g.release({100.0f, 0.0f}, {}).back().tone, BrushTone::burn);
 }
 
 TEST(BrushGesture, SpaceAtThePressPansToTheRelease) {
@@ -140,14 +144,17 @@ TEST(BrushGesture, SpaceAtThePressPansToTheRelease) {
 }
 
 TEST(BrushGesture, SpaceDuringAStrokeLeavesItAStroke) {
-    // Space only counts at a press: a press with it while the stroke is held changes nothing, and
-    // the stroke goes on.
+    // Space only counts at a press: held during the stroke, or with a second press while the
+    // stroke is held, it changes nothing, and the stroke goes on.
     BrushGesture g;
     (void)press(g, {0.0f, 0.0f});
-    EXPECT_TRUE(press(g, {0.0f, 0.0f}, {.space = true}).empty());
+    EXPECT_EQ(kinds(g.move({20.0f, 0.0f}, {.space = true})), (std::vector<Kind>{Kind::add_point}));
+    EXPECT_TRUE(press(g, {20.0f, 0.0f}, {.space = true}).empty());
     EXPECT_TRUE(g.stroking());
-    EXPECT_EQ(kinds(g.move({20.0f, 0.0f})), (std::vector<Kind>{Kind::add_point}));
-    EXPECT_EQ(kinds(g.release({20.0f, 0.0f})), (std::vector<Kind>{Kind::commit_stroke}));
+    EXPECT_FALSE(g.panning());
+    EXPECT_EQ(kinds(g.move({40.0f, 0.0f}, {.space = true})), (std::vector<Kind>{Kind::add_point}));
+    EXPECT_EQ(kinds(g.release({40.0f, 0.0f}, {.space = true})),
+              (std::vector<Kind>{Kind::commit_stroke}));
 }
 
 TEST(BrushGesture, EscDuringAStrokeCancelsItAndTheRestOfThePressDoesNothing) {
