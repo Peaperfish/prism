@@ -86,9 +86,9 @@ constexpr Explanation templates[] = {
      "stop is exactly twice as bright.",
      LiveKind::exposure},
     {"stage.white_balance", "The light the photo was lit by, in Kelvin and tint.",
-     "Kelvin is the colour of the light: a higher number means the light was bluer, so the photo "
-     "is warmed. Tint is green–magenta: higher means a greener light, so more magenta. As shot is "
-     "the light the camera balanced for.",
+     "Kelvin is the colour of the light: higher means bluer, so the photo is warmed. Tint is "
+     "green–magenta: higher means a greener light, so more magenta. The heading reads As shot or "
+     "Chosen.",
      LiveKind::white_balance},
     {"stage.matrix", "Mixes red, green and blue, before saturation and tone.",
      "A 3×3 table: each output channel is a weighted sum of the input red, green and blue, in "
@@ -249,7 +249,9 @@ constexpr Explanation templates[] = {
     {"pref.size", "Scales text and controls.",
      "Auto follows the display. Also Cmd + and Cmd − to step, Cmd 0 for Auto (Ctrl on Windows and "
      "Linux)."},
-    {"pref.panel", "Width of the side panel.", "Drag the panel's left edge to change it too."},
+    {"pref.panel", "Width of the side panel.",
+     "Drag the panel's left edge to change it too. It never gets narrower than the panel's texts "
+     "need."},
     {"pref.explain", "Show a plain-language note for the control you point at.",
      "Off removes the Explain area at the foot of the panel. Tooltips still show the one-line "
      "summary."},
