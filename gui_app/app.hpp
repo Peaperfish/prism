@@ -15,6 +15,7 @@
 #include "preview_texture.hpp"
 #include "scope_view.hpp"
 #include "prism/gui/background_export.hpp"
+#include "prism/gui/brush.hpp"
 #include "prism/gui/canvas_input.hpp"
 #include "prism/gui/clip_note.hpp"
 #include "prism/gui/close_guard.hpp"
@@ -157,11 +158,18 @@ private:
     // toggle it; a click on the photo picks; the ring shows the patch the click would average.
     void toggle_pick();
     void leave_pick();
-    // Brush mode (Dodge & burn). The row's Brush button toggles it (session 4 binds B to
-    // toggle_brush too); it is left by I, T, W, Esc, the view moving before Dodge & burn, and by
-    // another photo. No painting yet.
+    // Brush mode (Dodge & burn). B, View > Brush and the row's Brush button toggle it; it is left
+    // by I, T, W, Esc, the view moving before Dodge & burn, and by another photo. Leaving it during
+    // a stroke keeps the stroke as far as it got.
     void toggle_brush();
     void leave_brush();
+    // The Brush's part of a press, drag or release on the canvas (called from update_hand_drag),
+    // and what to do with what the gesture says.
+    void update_brush_press(bool pressed, bool over_control);
+    void apply_brush(const std::vector<gui::BrushAction>& actions);
+    // The picture a stroke is drawn on: the preview base, if it is the picture on screen.
+    [[nodiscard]] std::optional<gui::BrushCanvas> brush_canvas() const;
+    [[nodiscard]] gui::BrushStyle brush_style() const;
     // Dodge & burn's Clear: every stroke off the photo, one undo step.
     void clear_strokes();
     void pick_at(gui::ViewPoint cursor);
@@ -342,6 +350,9 @@ private:
     gui::SampleClick sample_click_;
     gui::PickMode pick_;
     gui::BrushMode brush_;  // Dodge & burn's brush: on or off, and the strength it paints with
+    gui::BrushGesture brush_gesture_;  // the press in Brush mode, from press to release
+    gui::StrokePainter stroke_painter_;  // the stroke it is painting, one undo step
+    gui::BrushCanvas stroke_canvas_;     // the picture the stroke under way is drawn on
     gui::SampleClick pick_click_;
     std::optional<gui::SamplePin> pick_hover_;  // the pixel under the cursor this frame
     std::string pick_message_;                  // the chip: what the last pick did, or why not
@@ -352,6 +363,7 @@ private:
     bool hand_key_held_ = false;   // Space is down and the canvas has it
     bool canvas_press_ = false;    // the left button went down on the canvas itself, and is still down
     std::vector<gui::ViewRect> canvas_taken_;  // this frame's chips and notes on the canvas
+    std::vector<gui::ViewRect> canvas_chips_;  // of those, the chips: a press there isn't a stroke
 
     std::optional<std::filesystem::path> pending_open_;
     bool pending_open_shown_ = false;  // the "Opening…" frame has been drawn

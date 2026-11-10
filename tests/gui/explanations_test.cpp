@@ -79,6 +79,14 @@ TEST(Explanations, ThePickerExplainsItselfWithItsKeyAndHowToLeave) {
     }
 }
 
+TEST(Explanations, TheBrushExplainsItselfWithItsKeyAndHowToLeave) {
+    const Explanation* e = explanation_for(explain::dodge_burn_brush);
+    ASSERT_NE(e, nullptr);
+    EXPECT_NE(e->summary.find("(B)"), std::string_view::npos);
+    EXPECT_NE(e->detail.find("Esc"), std::string_view::npos);
+    EXPECT_NE(e->detail.find("Space"), std::string_view::npos);
+}
+
 TEST(Explanations, UnknownIdsHaveNoEntryAndNoLiveLine) {
     EXPECT_EQ(explanation_for("nope"), nullptr);
     EXPECT_EQ(explanation_for(""), nullptr);

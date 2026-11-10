@@ -360,6 +360,8 @@ void App::open_now(const fs::path& path) {
     view_ = {};  // each photo starts whole
     sample_.opened();
     brush_.opened();
+    brush_gesture_ = {};  // the new photo's history has no gesture in it
+    stroke_painter_ = {};
     sample_click_.cancel();
     leave_pick();
     sample_pin_trace_.clear();
@@ -1327,7 +1329,7 @@ void App::handle_shortcuts() {
                 *focused_window_last_frame_ = false;  // the window's own open flag
                 break;
             case gui::EscapeAction::leave_brush:
-                leave_brush();
+                apply_brush(brush_gesture_.escape());  // a stroke under way goes, else Brush mode
                 break;
             case gui::EscapeAction::leave_pick:
                 leave_pick();
@@ -1351,7 +1353,7 @@ void App::handle_shortcuts() {
     }
     // Not in the middle of a drag: History would end the drag's step, but the slider would keep
     // sending values that each became a step of their own.
-    if (control_active()) {
+    if (control_active() || brush_gesture_.stroking()) {
         return;
     }
     if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Z, ImGuiInputFlags_RouteGlobal)) {
@@ -1372,6 +1374,9 @@ void App::handle_shortcuts() {
     }
     if (ImGui::Shortcut(ImGuiKey_W, ImGuiInputFlags_RouteGlobal)) {
         toggle_pick();  // W: the white balance picker, routed like the others
+    }
+    if (ImGui::Shortcut(ImGuiKey_B, ImGuiInputFlags_RouteGlobal)) {
+        toggle_brush();  // B: Dodge & burn's brush, routed like the others
     }
     // Zoom: plain keys, routed like J and T. Cmd/Ctrl with + - 0 is the interface size, above.
     if (global(ImGuiKey_F)) {
@@ -1475,6 +1480,15 @@ void App::draw_menu() {
             ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled)) {
             ImGui::SetTooltip("%s", gui::view_hint(viewed_stage_, compare_stage_).c_str());
         }
+        const bool can_brush = gui::brush_available(viewed_stage_);
+        if (ImGui::MenuItem("Brush", "B", brush_.on(),
+                            brush_.on() || (session_.has_file() && can_brush))) {
+            toggle_brush();
+        }
+        if (session_.has_file() && !brush_.on() && !can_brush &&
+            ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled)) {
+            ImGui::SetTooltip("%s", gui::brush_unavailable_hint);
+        }
         ImGui::Separator();
         const bool can_zoom = view_available();
         const float zoom = can_zoom ? gui::view_zoom(view_, view_geometry_) : 1.0f;
@@ -1515,6 +1529,7 @@ void App::draw_menu() {
 
 void App::draw_canvas() {
     canvas_taken_.clear();
+    canvas_chips_.clear();
     sample_hover_.reset();
     update_hand_key();
     ImDrawList* draw = ImGui::GetWindowDrawList();
@@ -1716,14 +1731,15 @@ void App::update_hand_drag() {
                                      strip_.has_value(), over_control, hand_key_held_)) {
             pick_click_.press(cursor, io.MouseDragThreshold);  // as the sampler's, for the same reason
         }
+        update_brush_press(true, over_control);
         if (hand_key_held_) {
             hand_drag_.press(cursor, 0.0f);
-        } else if (gui::plain_drag_pans(view_.fit, strip_.has_value(), over_control)) {
-            // A plain drag is the hand for now; #22's brush will take plain drag later.
+        } else if (gui::plain_drag_pans(view_.fit, strip_.has_value(), over_control, brush_.on())) {
             hand_drag_.press(cursor, io.MouseDragThreshold);
         }
         if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) &&
-            gui::double_click_zooms(strip_.has_value(), over_control, hand_key_held_)) {
+            gui::double_click_zooms(strip_.has_value(), over_control, hand_key_held_,
+                                    brush_.on())) {
             view_ = gui::view_toggled(view_, view_geometry_, cursor);
             hand_drag_.release();
             sample_click_.cancel();
@@ -1732,6 +1748,7 @@ void App::update_hand_drag() {
     } else {
         sample_click_.move(cursor);
         pick_click_.move(cursor);
+        update_brush_press(false, over_control);
         if (const std::optional<gui::ViewPoint> moved = hand_drag_.move(cursor)) {
             view_ = gui::view_panned_by(view_, view_geometry_, moved->x, moved->y);
         }
@@ -1817,7 +1834,64 @@ void App::toggle_brush() {
 }
 
 void App::leave_brush() {
+    apply_brush(brush_gesture_.finish());  // a stroke under way keeps what it painted
     brush_.leave();
+}
+
+std::optional<gui::BrushCanvas> App::brush_canvas() const {
+    // As for a pick: the base's pixels are what is on screen only when the two are the same size.
+    const std::shared_ptr<const Image> base = session_.preview_base();
+    if (!base || base->width != texture_.width() || base->height != texture_.height() ||
+        base->width <= 0 || base->height <= 0) {
+        return std::nullopt;
+    }
+    return gui::BrushCanvas{base->width, base->height};
+}
+
+gui::BrushStyle App::brush_style() const {
+    gui::BrushStyle style;
+    style.strength = brush_.strength();
+    return style;
+}
+
+void App::update_brush_press(bool pressed, bool over_control) {
+    const ImGuiIO& io = ImGui::GetIO();
+    const gui::ViewPoint cursor{io.MousePos.x, io.MousePos.y};
+    const gui::ViewPoint at = gui::view_screen_to_image(view_, view_geometry_, cursor);
+    const gui::BrushModifiers keys{io.KeyAlt, hand_key_held_};
+    if (pressed) {
+        const std::optional<gui::BrushCanvas> canvas = brush_canvas();
+        if (canvas &&
+            gui::brush_takes_press(brush_.on(), gui::brush_available(viewed_stage_), over_control,
+                                   gui::view_point_in_any(cursor, canvas_chips_))) {
+            stroke_canvas_ = *canvas;
+            const gui::BrushStyle style = brush_style();
+            const float spacing =
+                min_point_spacing(style.radius, std::max(canvas->width, canvas->height));
+            apply_brush(brush_gesture_.press(at, keys, brush_.tone(), spacing, *canvas));
+        }
+        return;
+    }
+    if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+        apply_brush(brush_gesture_.release(at, keys));
+    } else if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        apply_brush(brush_gesture_.move(at, keys));
+    }
+}
+
+void App::apply_brush(const std::vector<gui::BrushAction>& actions) {
+    for (const gui::BrushAction& action : actions) {
+        switch (action.kind) {
+            case gui::BrushActionKind::leave_brush:
+                leave_brush();
+                break;
+            case gui::BrushActionKind::passthrough:
+                break;  // the hand's: update_hand_drag moves the picture
+            default:
+                report(stroke_painter_.apply(action, brush_style(), stroke_canvas_, session_));
+                break;
+        }
+    }
 }
 
 void App::clear_strokes() {
@@ -1913,6 +1987,7 @@ void App::draw_pick_overlay(ImDrawList* draw) {
                   pick_message_.c_str());
     draw->PopClipRect();
     canvas_taken_.push_back({{chip_min.x, chip_min.y}, {chip_max.x, chip_max.y}});
+    canvas_chips_.push_back(canvas_taken_.back());
     ImGui::PopFont();
 }
 
@@ -2433,6 +2508,7 @@ void App::draw_split(ImDrawList* draw, ImVec2 at, ImVec2 shown) {
     canvas_taken_.push_back(
         gui::view_intersect(overlay_rect(ImVec2(split.left_x0 + margin, top + margin), left_text),
                             {{split.left_x0, top}, {split.divider_x, bottom}}));
+    canvas_chips_.push_back(canvas_taken_.back());
     const float right_width = ImGui::CalcTextSize(right_text.c_str()).x + 2 * pad;
     draw->PushClipRect(ImVec2(split.divider_x, top), ImVec2(split.right_x1, bottom), true);
     overlay_text(draw, colours, ImVec2(split.right_x1 - margin - right_width, top + margin),
@@ -2441,6 +2517,7 @@ void App::draw_split(ImDrawList* draw, ImVec2 at, ImVec2 shown) {
     canvas_taken_.push_back(gui::view_intersect(
         overlay_rect(ImVec2(split.right_x1 - margin - right_width, top + margin), right_text),
         {{split.divider_x, top}, {split.right_x1, bottom}}));
+    canvas_chips_.push_back(canvas_taken_.back());
 }
 
 void App::draw_banner() {
@@ -3017,7 +3094,7 @@ void App::draw_light_path_panel() {
     data.pick_hint = gui::view_hint(viewed_stage_, compare_stage_);
     data.brush_on = brush_.on();
     data.brush_available = gui::brush_available(viewed_stage_);
-    data.brush_hint = "Not visible here: view Dodge & burn or a later stage to use the Brush.";
+    data.brush_hint = gui::brush_unavailable_hint;
 
     LightPathCallbacks cb;
     cb.view_stage = [this](gui::StageId stage) { viewed_stage_ = stage; };
