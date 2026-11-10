@@ -34,11 +34,13 @@ float aspect_of(int width, int height) noexcept {
 }
 
 int PixelGrid::width() const noexcept {
-    return (full_w > x0 && x0 >= 0 && stride > 0) ? (full_w - x0 + stride - 1) / stride : 0;
+    const int n = (full_w > x0 && x0 >= 0 && stride > 0) ? (full_w - x0 + stride - 1) / stride : 0;
+    return cols > 0 ? std::min(n, cols) : n;
 }
 
 int PixelGrid::height() const noexcept {
-    return (full_h > y0 && y0 >= 0 && stride > 0) ? (full_h - y0 + stride - 1) / stride : 0;
+    const int n = (full_h > y0 && y0 >= 0 && stride > 0) ? (full_h - y0 + stride - 1) / stride : 0;
+    return rows > 0 ? std::min(n, rows) : n;
 }
 
 std::size_t segment_count(const FieldStroke& stroke) noexcept {

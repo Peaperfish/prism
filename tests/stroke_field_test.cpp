@@ -185,6 +185,22 @@ TEST_F(StrokeFieldGrid, BandIsBitIdenticalToTheWholeImage) {
     }
 }
 
+TEST_F(StrokeFieldGrid, CroppedBandThatStopsShortOfTheEdgesIsBitIdenticalToTheWholeImage) {
+    // A test strip band: a rectangle of the picture that reaches neither the right nor bottom edge.
+    for (const PixelGrid g : {PixelGrid{W, H, 20, 0, 1, 31, 0}, PixelGrid{W, H, 0, 41, 1, 0, 17},
+                              PixelGrid{W, H, 50, 30, 1, 40, 25}, PixelGrid{W, H, 3, 4, 3, 10, 9},
+                              PixelGrid{W, H, 5, 5, 1, 1000, 1000}}) {
+        ASSERT_LE(g.width(), (W - g.x0 + g.stride - 1) / g.stride);
+        const std::vector<float> got = rasterise(f, g);
+        ASSERT_EQ(got.size(), static_cast<std::size_t>(g.width()) * g.height());
+        EXPECT_EQ(first_bit_difference(got, expected(g)), -1)
+            << g.x0 << "," << g.y0 << " " << g.width() << "x" << g.height();
+    }
+    EXPECT_EQ((PixelGrid{W, H, 20, 0, 1, 31, 0}).width(), 31);
+    EXPECT_EQ((PixelGrid{W, H, 20, 0, 1, 31, 0}).height(), H);
+    EXPECT_EQ((PixelGrid{W, H, 5, 5, 1, 1000, 1000}).width(), W - 5);  // a limit past the edge
+}
+
 TEST_F(StrokeFieldGrid, StridedGridIsBitIdenticalToTheWholeImage) {
     for (const int stride : {2, 3, 4, 7}) {
         for (const int first : {0, 1, stride / 2, stride - 1}) {

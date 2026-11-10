@@ -97,17 +97,21 @@ struct StrokeField {
 // A grid of sample positions on a full_w x full_h image: grid pixel (i, j) is image pixel
 // (x0 + i * stride, y0 + j * stride). The default (x0 = y0 = 0, stride = 1) is the whole image; a
 // band of rows is {W, H, 0, y, 1}; a preview downsampled by 4 could be {W, H, 1, 1, 4}. The grid
-// extends right and down as far as the image does.
+// extends right and down as far as the image does, unless cols / rows stop it sooner (a crop that
+// does not reach the right or bottom edge, such as a test strip band).
 struct PixelGrid {
     int full_w = 0;
     int full_h = 0;
     int x0 = 0;
     int y0 = 0;
     int stride = 1;
+    // At most this many grid pixels per row / this many rows; 0 = as far as the image goes.
+    int cols = 0;
+    int rows = 0;
 
-    // Grid pixels per row: the number of i >= 0 with x0 + i * stride < full_w.
+    // Grid pixels per row: the number of i >= 0 with x0 + i * stride < full_w (and i < cols, if set).
     [[nodiscard]] int width() const noexcept;
-    // Grid rows: the number of j >= 0 with y0 + j * stride < full_h.
+    // Grid rows: the number of j >= 0 with y0 + j * stride < full_h (and j < rows, if set).
     [[nodiscard]] int height() const noexcept;
     // The whole image.
     [[nodiscard]] static PixelGrid whole(int w, int h) noexcept { return {w, h, 0, 0, 1}; }
