@@ -1664,6 +1664,43 @@ TEST_F(MinimumWidthHeadless, DodgeAndBurnDoesNotMakeThePanelWiderThanItWas) {
     ImGui::EndFrame();
 }
 
+TEST_F(MinimumWidthHeadless, TheDodgeAndBurnWorstCaseIsInTheWorstCases) {
+    // 1998 strokes, burns and dodges. The text ends in "when on" because the stage is switched off.
+    auto field = std::make_shared<prism::StrokeField>();
+    field->aspect = 1.5f;
+    for (std::size_t i = 0; i < 1998; ++i) {
+        field->strokes.push_back(std::make_shared<const prism::FieldStroke>(
+            prism::FieldStroke{{{0.5f, 0.5f}}, 0.05f, 0.5f, i < 999 ? -0.5f : 0.5f}));
+    }
+    settings_ = {};
+    settings_.strokes = gui::Strokes(std::move(field));
+    settings_.dodge_burn_on = false;
+    const gui::LightPathView view =
+        gui::light_path_view({settings_, gui::InputKind::image, "JPEG", gui::final_stage, std::nullopt, nullptr, std::nullopt});
+    std::string text;
+    for (const gui::LightPathRow& row : view.rows) {
+        if (row.stage == gui::StageId::dodge_burn) {
+            text = row.value;
+        }
+    }
+    ASSERT_EQ(text, std::string(gui::widest_strokes_value));
+    ASSERT_TRUE(text.size() > 7 && text.substr(text.size() - 7) == "when on");
+
+    // At the minimum width the text is drawn in full; a worst case missing from the minimum's list
+    // would leave the panel too narrow for it, here or in the narrower panel below.
+    ImGui::NewFrame();
+    width_ = light_path_min_width();
+    ImGui::EndFrame();
+    run_case();
+    EXPECT_TRUE(seen("Value", text));
+    for (const TextFit& fit : fits_seen_) {
+        if (fit.what == "Value" && fit.text == text) {
+            EXPECT_TRUE(fit.whole()) << "'" << fit.text << "' drawn as '" << fit.shown << "', "
+                                     << fit.width << " wide in " << fit.room;
+        }
+    }
+}
+
 TEST_F(MinimumWidthHeadless, ThePanelReportsTextsThatDoNotFitWhenItIsNarrower) {
     // The test above is only worth something if it can fail: 40 mock pixels narrower than the
     // minimum, the worst cases of the rows that set it are reported as cut.
