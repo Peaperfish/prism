@@ -64,6 +64,19 @@ TEST(Explanations, IdsOfTheEnumsAreDistinct) {
     EXPECT_EQ(static_cast<int>(ids.size()), count);
 }
 
+TEST(Explanations, ThePickerExplainsItselfWithItsKeyAndHowToLeave) {
+    const Explanation* e = explanation_for(explain::pick);
+    ASSERT_NE(e, nullptr);
+    EXPECT_LE(e->summary.size(), explain_summary_max);
+    EXPECT_LE(e->detail.size(), explain_detail_max);
+    EXPECT_NE(e->summary.find("(W)"), std::string_view::npos);
+    EXPECT_NE(e->detail.find("Esc"), std::string_view::npos);
+    EXPECT_NE(e->detail.find("5 by 5"), std::string_view::npos);
+    for (const std::string_view text : {e->summary, e->detail}) {
+        EXPECT_EQ(std::string(text).find("rightness"), std::string::npos);
+    }
+}
+
 TEST(Explanations, UnknownIdsHaveNoEntryAndNoLiveLine) {
     EXPECT_EQ(explanation_for("nope"), nullptr);
     EXPECT_EQ(explanation_for(""), nullptr);

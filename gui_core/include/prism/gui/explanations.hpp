@@ -124,6 +124,7 @@ inline constexpr std::string_view sample = "sample";
 inline constexpr std::string_view sample_values = "sample.values";
 inline constexpr std::string_view sample_light = "sample.light";
 inline constexpr std::string_view sample_range = "sample.range";
+inline constexpr std::string_view pick = "pick";
 inline constexpr std::string_view pref_theme = "pref.theme";
 inline constexpr std::string_view pref_size = "pref.size";
 inline constexpr std::string_view pref_panel = "pref.panel";

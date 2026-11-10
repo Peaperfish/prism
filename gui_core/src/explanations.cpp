@@ -238,6 +238,11 @@ constexpr Explanation templates[] = {
      "names the later stage that brings a value back or clips it. A preview pixel is an average, "
      "so a small clip can hide."},
 
+    // --- Pick neutral --------------------------------------------------------------------------
+    {"pick", "Click something grey to set the white balance (W).",
+     "Click a patch that should be neutral. Prism averages 5 by 5 pixels there and sets Kelvin and "
+     "tint so it comes out grey. A spot that is too dark or clipped is refused. Esc leaves."},
+
     // --- Preferences -------------------------------------------------------------------------
     {"pref.theme", "Light, dark, or follow the system.",
      "The photo canvas stays neutral grey in both so your eyes judge the photo, not the frame."},
@@ -252,7 +257,7 @@ constexpr Explanation templates[] = {
 
 // Ids that have no enum of their own: the controls the window shows beyond the stages, the curve
 // kinds, the scopes and the presets.
-constexpr std::array<std::string_view, 36> other_ids{
+constexpr std::array<std::string_view, 37> other_ids{
     explain::look,         explain::look_reset,   explain::look_view_recipe,
     explain::recipe_load,  explain::recipe_save,
     explain::recipe_loaded, explain::recipe_name, explain::recipe_description,
@@ -264,6 +269,7 @@ constexpr std::array<std::string_view, 36> other_ids{
     explain::strip_line,
     explain::view_zoom,    explain::view_fit,     explain::view_actual,
     explain::sample,       explain::sample_values, explain::sample_light, explain::sample_range,
+    explain::pick,
     explain::pref_theme,   explain::pref_size,    explain::pref_panel,  explain::pref_explain,
 };
 
