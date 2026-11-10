@@ -14,9 +14,18 @@ add_library(prism_core STATIC
   recipe.cpp
   resize.cpp
   raw.cpp
+  stroke_field.cpp
   tiff_reader.cpp
   version.cpp
   white_balance.cpp)
+
+# The stroke field promises bit-identical values whichever grid, row range or thread computes a
+# pixel, and that the incremental API matches a fresh rasterisation exactly. That holds only if no
+# a * b + c is fused into one multiply-add, so contraction is off for this file on Clang too (GCC
+# already has it off everywhere via prism_warnings; MSVC does not contract by default).
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+  set_source_files_properties(stroke_field.cpp PROPERTIES COMPILE_OPTIONS -ffp-contract=off)
+endif()
 
 # PUBLIC: anything linking prism_core also gets include/ on its include path, so it can
 # write #include "prism/version.hpp". The "prism/" prefix avoids name clashes with other libraries.
