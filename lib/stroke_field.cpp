@@ -474,6 +474,46 @@ void apply_stroke_coverage(std::span<const float> before, float weight,
     }
 }
 
+void apply_stroke_coverage(std::span<const float> before, float weight,
+                           std::span<const float> coverage, const GridRect& coverage_box,
+                           const PixelGrid& grid, const GridRect& rect, std::span<float> field) {
+    check_grid(grid, "apply_stroke_coverage");
+    const std::size_t width = static_cast<std::size_t>(grid.width());
+    const std::size_t n = width * static_cast<std::size_t>(grid.height());
+    if (before.size() != n || field.size() != n || coverage.size() != coverage_box.area()) {
+        throw std::invalid_argument("apply_stroke_coverage: buffer has the wrong size");
+    }
+    if (rect.empty()) {
+        return;
+    }
+    if (coverage_box.i_begin < 0 || coverage_box.j_begin < 0 ||
+        coverage_box.i_end > grid.width() || coverage_box.j_end > grid.height() ||
+        rect.i_begin < coverage_box.i_begin || rect.j_begin < coverage_box.j_begin ||
+        rect.i_end > coverage_box.i_end || rect.j_end > coverage_box.j_end) {
+        throw std::invalid_argument("apply_stroke_coverage: rectangle outside the coverage box");
+    }
+    const std::size_t box_width = static_cast<std::size_t>(coverage_box.i_end - coverage_box.i_begin);
+    for (int j = rect.j_begin; j < rect.j_end; ++j) {
+        const std::size_t base = static_cast<std::size_t>(j) * width;
+        const float* cov =
+            coverage.data() + static_cast<std::size_t>(j - coverage_box.j_begin) * box_width;
+        for (int i = rect.i_begin; i < rect.i_end; ++i) {
+            const std::size_t p = base + static_cast<std::size_t>(i);
+            field[p] = accumulate(before[p], weight,
+                                  cov[static_cast<std::size_t>(i - coverage_box.i_begin)]);
+        }
+    }
+}
+
+PixelGrid sub_grid(const PixelGrid& grid, const GridRect& box) noexcept {
+    PixelGrid g = grid;
+    g.x0 = grid.x0 + box.i_begin * grid.stride;
+    g.y0 = grid.y0 + box.j_begin * grid.stride;
+    g.cols = box.i_end - box.i_begin;
+    g.rows = box.j_end - box.j_begin;
+    return g;
+}
+
 float min_point_spacing(float radius, int long_side_px) noexcept {
     const float one_px = long_side_px > 0 ? 1.0f / static_cast<float>(long_side_px) : 0.0f;
     return std::max(0.15f * radius, one_px);

@@ -211,6 +211,21 @@ void apply_stroke_coverage(std::span<const float> before, float weight,
                            std::span<const float> coverage, const PixelGrid& grid,
                            const GridRect& rect, std::span<float> field);
 
+// The same, for a coverage buffer that holds only the box `coverage_box` of `grid`
+// (coverage_box's width x height floats, row after row), so that a stroke's coverage need not
+// take a whole grid of memory. `before` and `field` hold the whole grid; `rect` is in grid
+// pixels and must lie inside coverage_box. The coverage itself can be made with
+// add_segment_coverage on the sub-grid of that box (sub_grid), whose pixels have exactly the
+// values they have on the whole grid. Throws std::invalid_argument on a size or rectangle that
+// does not fit.
+void apply_stroke_coverage(std::span<const float> before, float weight,
+                           std::span<const float> coverage, const GridRect& coverage_box,
+                           const PixelGrid& grid, const GridRect& rect, std::span<float> field);
+
+// The grid of the pixels of `box` of `grid`: grid pixel (box.i_begin + i, box.j_begin + j) is its
+// pixel (i, j). `box` must be non-empty and inside the grid.
+[[nodiscard]] PixelGrid sub_grid(const PixelGrid& grid, const GridRect& box) noexcept;
+
 // Point spacing while drawing: a new point is worth adding only once the pointer is at least
 // max(0.15 * radius, one image pixel) from the last point added, measured in long-side units.
 // Closer points would cost time and add nothing visible (each capsule overlaps the last almost

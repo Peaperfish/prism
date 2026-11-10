@@ -529,6 +529,55 @@ TEST(StrokeField, IncrementalEqualsFresh) {
     }
 }
 
+// The same growing stroke with its coverage kept only over a box of the grid (the preview's
+// cache keeps the last stroke's coverage that way): bit-identical to the whole-grid coverage.
+TEST(StrokeField, IncrementalInABoxEqualsFresh) {
+    for (const PixelGrid g : {PixelGrid::whole(240, 160), PixelGrid{240, 160, 1, 0, 3}}) {
+        StrokeField field = sample_field(prism::aspect_of(g.full_w, g.full_h));
+        const std::vector<float> before = rasterise(field, g);
+        const std::vector<FieldPoint> path = {{0.3f, 0.5f}, {0.5f, 0.3f}, {0.6f, 0.5f},
+                                              {0.45f, 0.6f}, {0.4f, 0.35f}};
+        FieldStroke growing{{}, 0.05f, 0.5f, 0.789f};
+        // A box that holds every segment of the path, and not the whole grid.
+        GridRect box;
+        for (std::size_t k = 0; k < path.size(); ++k) {
+            growing.points.push_back(path[k]);
+            const GridRect r = prism::segment_bounds(growing, k, field.aspect, g);
+            box = box.empty() ? r
+                              : GridRect{std::min(box.i_begin, r.i_begin), std::max(box.i_end, r.i_end),
+                                         std::min(box.j_begin, r.j_begin), std::max(box.j_end, r.j_end)};
+        }
+        ASSERT_LT(box.area(), static_cast<std::size_t>(g.width()) * static_cast<std::size_t>(g.height()));
+        growing.points.clear();
+        const PixelGrid sub = prism::sub_grid(g, box);
+        ASSERT_EQ(sub.width(), box.i_end - box.i_begin);
+        ASSERT_EQ(sub.height(), box.j_end - box.j_begin);
+
+        std::vector<float> coverage(box.area(), 0.0f);
+        std::vector<float> incremental = before;
+        field.strokes.push_back(nullptr);
+        for (std::size_t k = 0; k < path.size(); ++k) {
+            growing.points.push_back(path[k]);
+            GridRect r = prism::add_segment_coverage(growing, k, field.aspect, sub, coverage);
+            r = {r.i_begin + box.i_begin, r.i_end + box.i_begin, r.j_begin + box.j_begin,
+                 r.j_end + box.j_begin};
+            EXPECT_EQ(r, prism::segment_bounds(growing, k, field.aspect, g));
+            prism::apply_stroke_coverage(before, growing.weight, coverage, box, g, r, incremental);
+
+            field.strokes.back() = std::make_shared<const FieldStroke>(growing);
+            EXPECT_EQ(first_bit_difference(incremental, rasterise(field, g)), -1)
+                << "stride " << g.stride << ", after point " << k;
+        }
+        // A rectangle outside the box, or a buffer of the wrong size, is refused.
+        EXPECT_THROW(prism::apply_stroke_coverage(before, 1.0f, coverage, box, g,
+                                                  GridRect{0, box.i_end, 0, 1}, incremental),
+                     std::invalid_argument);
+        coverage.pop_back();
+        EXPECT_THROW(prism::apply_stroke_coverage(before, 1.0f, coverage, box, g, box, incremental),
+                     std::invalid_argument);
+    }
+}
+
 TEST(StrokeField, EqualityByPointerThenContent) {
     const auto s = stroke({{0.1f, 0.2f}}, 0.05f, 0.5f, 1.0f);
     StrokeField a;
