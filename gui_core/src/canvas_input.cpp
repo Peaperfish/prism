@@ -200,6 +200,22 @@ bool pick_press_can_pick(bool picking, bool available, bool strip_on, bool over_
     return picking && available && !strip_on && !over_control && !hand_held;
 }
 
+float clamp_brush_radius(float radius) noexcept {
+    if (std::isnan(radius)) {
+        return brush_radius_default;
+    }
+    return std::clamp(radius, brush_radius_min, brush_radius_max);
+}
+
+float snap_brush_softness(float softness) noexcept {
+    if (std::isnan(softness)) {
+        return brush_softness_default;
+    }
+    const float tenths = std::round(std::clamp(softness, brush_softness_min, brush_softness_max) /
+                                    brush_softness_step);
+    return std::clamp(tenths * brush_softness_step, brush_softness_min, brush_softness_max);
+}
+
 bool brush_available(StageId viewed) noexcept {
     return static_cast<int>(viewed) >= static_cast<int>(StageId::dodge_burn);
 }

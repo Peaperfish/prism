@@ -1,5 +1,7 @@
 #include "prism/gui/brush.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <memory>
 #include <utility>
 
@@ -155,6 +157,75 @@ MaybeError StrokePainter::apply(const BrushAction& action, const BrushStyle& sty
         case BrushActionKind::passthrough: return std::nullopt;
     }
     return std::nullopt;
+}
+
+bool brush_key(BrushMode& brush, BrushKey key, bool shift) noexcept {
+    if (!brush.on()) {
+        return false;
+    }
+    const float radius = brush.radius();
+    const float softness = brush.softness();
+    switch (key) {
+        case BrushKey::x: brush.swap_tone(); return true;
+        case BrushKey::left_bracket:
+            if (shift) {
+                brush.set_softness(softness + brush_softness_step);
+            } else {
+                brush.set_radius(radius / brush_size_step);
+            }
+            break;
+        case BrushKey::right_bracket:
+            if (shift) {
+                brush.set_softness(softness - brush_softness_step);
+            } else {
+                brush.set_radius(radius * brush_size_step);
+            }
+            break;
+    }
+    return brush.radius() != radius || brush.softness() != softness;
+}
+
+BrushTone brush_shown_tone(BrushTone base, bool alt_held,
+                           std::optional<BrushTone> stroke) noexcept {
+    if (stroke) {
+        return *stroke;
+    }
+    return alt_held ? other_tone(base) : base;
+}
+
+std::string brush_status_text(BrushTone tone, float strength) {
+    const std::string amount = brush_strength_text(strength);
+    return tone == BrushTone::dodge
+               ? "Dodge " + amount + " — lighter, like holding back light"
+               : "Burn " + amount + " — darker, like more time under the enlarger";
+}
+
+BrushRing brush_ring(const ViewState& s, const ViewGeometry& g, float radius,
+                     float softness) noexcept {
+    const int long_side = std::max(g.image_width, g.image_height);
+    if (long_side <= 0 || g.density <= 0.0f || !std::isfinite(radius) || radius <= 0.0f) {
+        return {};
+    }
+    // Zoom is device pixels per image pixel; screen units are device pixels over the density.
+    const float outer = radius * static_cast<float>(long_side) * view_zoom(s, g) / g.density;
+    const float soft = std::isfinite(softness) ? std::clamp(softness, 0.0f, 1.0f) : 0.0f;
+    return {outer, outer * (1.0f - soft)};
+}
+
+bool stroke_mask_shown(bool brushing, bool m_held, bool typing) noexcept {
+    return brushing && m_held && !typing;
+}
+
+std::uint32_t stroke_mask_abgr(std::uint8_t byte, std::uint32_t dodge_abgr,
+                               std::uint32_t burn_abgr) noexcept {
+    if (byte == 128) {
+        return 0u;
+    }
+    const std::uint32_t colour = byte > 128 ? dodge_abgr : burn_abgr;
+    const int distance = byte > 128 ? byte - 128 : 128 - byte;  // 1 to 127
+    const std::uint32_t alpha = (colour >> 24) & 0xFFu;
+    const std::uint32_t scaled = (alpha * static_cast<std::uint32_t>(distance) + 63u) / 127u;
+    return (colour & 0x00FFFFFFu) | (scaled << 24);
 }
 
 }  // namespace prism::gui

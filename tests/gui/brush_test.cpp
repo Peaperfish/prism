@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <ostream>
 #include <vector>
 
@@ -357,6 +358,167 @@ TEST(StrokePainter, ActionsOutOfTurnDoNothing) {
     ASSERT_EQ(session.settings().strokes.field()->strokes.size(), 1u);
     EXPECT_GT(session.settings().strokes.field()->strokes[0]->weight, 0.0f);
     EXPECT_EQ(session.history().undo_steps(), 1u);
+}
+
+// --- The brush's controls ----------------------------------------------------------------------
+
+BrushMode brush_on() {
+    BrushMode b;
+    b.toggle();
+    return b;
+}
+
+TEST(BrushKeys, XSwapsDodgeAndBurn) {
+    BrushMode b = brush_on();
+    EXPECT_EQ(b.tone(), BrushTone::dodge);
+    EXPECT_TRUE(brush_key(b, BrushKey::x, false));
+    EXPECT_EQ(b.tone(), BrushTone::burn);
+    EXPECT_TRUE(brush_key(b, BrushKey::x, false));
+    EXPECT_EQ(b.tone(), BrushTone::dodge);
+}
+
+TEST(BrushKeys, BracketsMakeTheBrushBiggerOrSmallerByTwelveTenths) {
+    BrushMode b = brush_on();
+    ASSERT_EQ(b.radius(), brush_radius_default);
+    EXPECT_TRUE(brush_key(b, BrushKey::right_bracket, false));
+    EXPECT_FLOAT_EQ(b.radius(), brush_radius_default * 1.2f);
+    EXPECT_TRUE(brush_key(b, BrushKey::left_bracket, false));
+    EXPECT_TRUE(brush_key(b, BrushKey::left_bracket, false));
+    EXPECT_FLOAT_EQ(b.radius(), brush_radius_default / 1.2f);
+    EXPECT_EQ(b.softness(), brush_softness_default);  // the size keys leave the edge
+}
+
+TEST(BrushKeys, TheSizeStopsAtTheEndsOfItsRange) {
+    BrushMode b = brush_on();
+    for (int i = 0; i < 100; ++i) {
+        (void)brush_key(b, BrushKey::right_bracket, false);
+    }
+    EXPECT_EQ(b.radius(), brush_radius_max);
+    EXPECT_FALSE(brush_key(b, BrushKey::right_bracket, false));
+    for (int i = 0; i < 100; ++i) {
+        (void)brush_key(b, BrushKey::left_bracket, false);
+    }
+    EXPECT_EQ(b.radius(), brush_radius_min);
+    EXPECT_FALSE(brush_key(b, BrushKey::left_bracket, false));
+}
+
+TEST(BrushKeys, ShiftBracketsMakeTheEdgeATenthSofterOrHarderInExactTenths) {
+    BrushMode b = brush_on();
+    ASSERT_EQ(b.softness(), 0.5f);
+    EXPECT_TRUE(brush_key(b, BrushKey::left_bracket, true));
+    EXPECT_FLOAT_EQ(b.softness(), 0.6f);
+    EXPECT_TRUE(brush_key(b, BrushKey::right_bracket, true));
+    EXPECT_TRUE(brush_key(b, BrushKey::right_bracket, true));
+    EXPECT_FLOAT_EQ(b.softness(), 0.4f);
+    EXPECT_EQ(b.radius(), brush_radius_default);  // the edge keys leave the size
+    for (int i = 0; i < 20; ++i) {
+        (void)brush_key(b, BrushKey::left_bracket, true);
+    }
+    EXPECT_EQ(b.softness(), brush_softness_max);
+    EXPECT_FALSE(brush_key(b, BrushKey::left_bracket, true));
+    for (int i = 0; i < 20; ++i) {
+        (void)brush_key(b, BrushKey::right_bracket, true);
+    }
+    EXPECT_EQ(b.softness(), brush_softness_min);
+    EXPECT_FALSE(brush_key(b, BrushKey::right_bracket, true));
+    // Back up in tenths from 0 without drifting: 0.3 is 0.3, as snap_brush_softness gives it.
+    for (int i = 0; i < 3; ++i) {
+        (void)brush_key(b, BrushKey::left_bracket, true);
+    }
+    EXPECT_EQ(b.softness(), snap_brush_softness(0.3f));
+}
+
+TEST(BrushKeys, DoNothingWhileBrushModeIsOff) {
+    BrushMode b;
+    EXPECT_FALSE(brush_key(b, BrushKey::x, false));
+    EXPECT_FALSE(brush_key(b, BrushKey::right_bracket, false));
+    EXPECT_FALSE(brush_key(b, BrushKey::left_bracket, true));
+    EXPECT_EQ(b.tone(), BrushTone::dodge);
+    EXPECT_EQ(b.radius(), brush_radius_default);
+    EXPECT_EQ(b.softness(), brush_softness_default);
+}
+
+TEST(BrushKeys, TheSizeAndEdgeKeepTheirRangesWhateverTheyAreGiven) {
+    EXPECT_EQ(clamp_brush_radius(10.0f), brush_radius_max);
+    EXPECT_EQ(clamp_brush_radius(0.0f), brush_radius_min);
+    EXPECT_EQ(clamp_brush_radius(std::nanf("")), brush_radius_default);
+    EXPECT_EQ(snap_brush_softness(-1.0f), 0.0f);
+    EXPECT_EQ(snap_brush_softness(2.0f), 1.0f);
+    EXPECT_EQ(snap_brush_softness(0.44f), snap_brush_softness(0.4f));
+    EXPECT_EQ(snap_brush_softness(std::nanf("")), brush_softness_default);
+}
+
+TEST(BrushStatus, SaysTheToneTheStrengthAndWhatItIsUnderTheEnlarger) {
+    EXPECT_EQ(brush_status_text(BrushTone::burn, 0.5f),
+              "Burn 0.5 stop — darker, like more time under the enlarger");
+    EXPECT_EQ(brush_status_text(BrushTone::dodge, 0.5f),
+              "Dodge 0.5 stop — lighter, like holding back light");
+    EXPECT_EQ(brush_status_text(BrushTone::dodge, 1.0f),
+              "Dodge 1.0 stop — lighter, like holding back light");
+    EXPECT_EQ(brush_status_text(BrushTone::burn, 1.5f),
+              "Burn 1.5 stops — darker, like more time under the enlarger");
+}
+
+TEST(BrushStatus, ShowsTheStrokesToneElseTheOneTheNextPressWouldPaint) {
+    EXPECT_EQ(brush_shown_tone(BrushTone::dodge, false, std::nullopt), BrushTone::dodge);
+    EXPECT_EQ(brush_shown_tone(BrushTone::dodge, true, std::nullopt), BrushTone::burn);
+    EXPECT_EQ(brush_shown_tone(BrushTone::burn, true, std::nullopt), BrushTone::dodge);
+    // Alt let go or pressed during a stroke: the stroke's tone.
+    EXPECT_EQ(brush_shown_tone(BrushTone::dodge, false, BrushTone::burn), BrushTone::burn);
+    EXPECT_EQ(brush_shown_tone(BrushTone::dodge, true, BrushTone::dodge), BrushTone::dodge);
+}
+
+TEST(BrushRingRadii, AreTheBrushOnTheScreenAtTheCurrentZoom) {
+    // A Retina canvas (2 device pixels per screen unit) and a 2560 x 1707 preview.
+    const ViewGeometry g{10.0f, 20.0f, 800.0f, 600.0f, 2.0f, 2560, 1707};
+    for (const ViewState& s : {ViewState{}, view_zoomed_to(ViewState{}, g, 1.0f),
+                               view_zoomed_to(ViewState{}, g, 3.0f)}) {
+        const float radius = 0.05f;  // 128 preview pixels
+        const ViewPoint a = view_image_to_screen(s, g, {1000.0f, 800.0f});
+        const ViewPoint b = view_image_to_screen(s, g, {1000.0f + 128.0f, 800.0f});
+        const BrushRing ring = brush_ring(s, g, radius, 0.25f);
+        EXPECT_NEAR(ring.outer, b.x - a.x, 1e-3f);
+        EXPECT_NEAR(ring.inner, (b.x - a.x) * 0.75f, 1e-3f);
+    }
+    const ViewState one = view_zoomed_to(ViewState{}, g, 1.0f);
+    EXPECT_FLOAT_EQ(brush_ring(one, g, 0.05f, 0.25f).outer, 64.0f);  // 128 px over 2 per unit
+}
+
+TEST(BrushRingRadii, TheInnerRingFollowsTheSoftness) {
+    const ViewGeometry g{0.0f, 0.0f, 1000.0f, 1000.0f, 1.0f, 1000, 500};
+    const ViewState s = view_zoomed_to(ViewState{}, g, 1.0f);
+    EXPECT_FLOAT_EQ(brush_ring(s, g, 0.1f, 0.0f).inner, 100.0f);  // hard: one ring
+    EXPECT_FLOAT_EQ(brush_ring(s, g, 0.1f, 1.0f).inner, 0.0f);    // all soft
+    EXPECT_FLOAT_EQ(brush_ring(s, g, 0.1f, 0.5f).inner, 50.0f);
+    EXPECT_FLOAT_EQ(brush_ring(s, g, 0.1f, 0.5f).outer, 100.0f);
+    EXPECT_EQ(brush_ring(s, ViewGeometry{}, 0.1f, 0.5f).outer, 0.0f);  // no picture
+}
+
+TEST(StrokeMask, ShowsWhileMIsHeldInBrushModeAndNotWhileTyping) {
+    EXPECT_TRUE(stroke_mask_shown(true, true, false));
+    EXPECT_FALSE(stroke_mask_shown(true, false, false));  // M let go
+    EXPECT_FALSE(stroke_mask_shown(false, true, false));
+    EXPECT_FALSE(stroke_mask_shown(true, true, true));
+}
+
+TEST(StrokeMask, IsClearWithoutStrokesAndTowardsEachColourWithTheStops) {
+    const std::uint32_t dodge = 0xC0'10'20'30u;
+    const std::uint32_t burn = 0xC0'A0'B0'C0u;
+    EXPECT_EQ(stroke_mask_abgr(128, dodge, burn), 0u);
+    EXPECT_EQ(stroke_mask_abgr(255, dodge, burn), dodge);  // 2 stops dodged or more
+    EXPECT_EQ(stroke_mask_abgr(1, dodge, burn), burn);     // 2 stops burned or more
+    EXPECT_EQ(stroke_mask_abgr(stroke_mask_byte(1.0f), dodge, burn) & 0x00FFFFFFu,
+              dodge & 0x00FFFFFFu);
+    EXPECT_EQ(stroke_mask_abgr(stroke_mask_byte(-1.0f), dodge, burn) & 0x00FFFFFFu,
+              burn & 0x00FFFFFFu);
+    // The alpha grows with the stops.
+    const auto alpha = [&](float stops) {
+        return stroke_mask_abgr(stroke_mask_byte(stops), dodge, burn) >> 24;
+    };
+    EXPECT_LT(alpha(0.1f), alpha(0.5f));
+    EXPECT_LT(alpha(0.5f), alpha(1.0f));
+    EXPECT_LT(alpha(-0.5f), alpha(-1.5f));
+    EXPECT_EQ(alpha(1.0f), 97u);  // 0xC0 (192) × 64 / 127 at one stop (byte 192), rounded
 }
 
 }  // namespace

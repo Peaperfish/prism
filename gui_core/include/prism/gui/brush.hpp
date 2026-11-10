@@ -1,6 +1,9 @@
 #pragma once
 
+#include <cstdint>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <vector>
 
 #include "prism/gui/canvas_input.hpp"
@@ -100,11 +103,6 @@ private:
 
 // --- Painting the strokes ----------------------------------------------------------------------
 
-// The brush's size and edge where it starts: a radius of 5% of the picture's long side, with the
-// outer half of it fading (FieldStroke::radius and ::softness).
-inline constexpr float brush_radius_default = 0.05f;
-inline constexpr float brush_softness_default = 0.5f;
-
 // What a stroke is painted with: the brush as it is when the stroke starts.
 struct BrushStyle {
     float radius = brush_radius_default;
@@ -138,5 +136,53 @@ private:
     std::optional<Strokes> before_;  // the strokes before this one
     FieldStroke stroke_;             // this one so far
 };
+
+// --- The brush's controls ----------------------------------------------------------------------
+
+// The keys that change the brush while Brush mode is on.
+enum class BrushKey {
+    x,              // Dodge <-> Burn
+    left_bracket,   // [ smaller; with Shift, softer
+    right_bracket,  // ] bigger; with Shift, harder
+};
+
+// What `key` (with Shift or not) does to `brush`: X swaps the tone; ] makes the size
+// brush_size_step times bigger and [ that much smaller; Shift+[ makes the edge a tenth softer and
+// Shift+] a tenth harder, each within its range. Nothing while Brush mode is off. True if the brush
+// changed (not at the end of a range).
+bool brush_key(BrushMode& brush, BrushKey key, bool shift) noexcept;
+
+// The two halves of the canvas's tone chip, which X also switches between.
+inline constexpr std::string_view brush_dodge_label = "Dodge (lighter)";
+inline constexpr std::string_view brush_burn_label = "Burn (darker)";
+
+// The tone the canvas shows: the stroke's while one is under way, else the base tone, or the other
+// one while Alt is held (the tone the next press would paint in).
+[[nodiscard]] BrushTone brush_shown_tone(BrushTone base, bool alt_held,
+                                         std::optional<BrushTone> stroke) noexcept;
+
+// The status chip while brushing: the tone, the strength without a sign (brush_strength_text) and
+// what it does under the enlarger. "Dodge 0.5 stop — lighter, like holding back light".
+[[nodiscard]] std::string brush_status_text(BrushTone tone, float strength);
+
+// The cursor's rings, in screen units, at the view's zoom: the brush's radius (outer) and the part
+// of it at full strength (inner, radius * (1 - softness), as stroke_field.hpp draws it). The radius
+// is a fraction of the long side of the picture in `g`.
+struct BrushRing {
+    float outer = 0.0f;
+    float inner = 0.0f;
+};
+[[nodiscard]] BrushRing brush_ring(const ViewState& s, const ViewGeometry& g, float radius,
+                                   float softness) noexcept;
+
+// Whether the stroke mask shows: while M is held in Brush mode, and not while typing.
+[[nodiscard]] bool stroke_mask_shown(bool brushing, bool m_held, bool typing) noexcept;
+
+// One pixel of the stroke mask's overlay, from a byte of PreviewFrame::stroke_mask: transparent
+// where no stroke reaches (128), and towards 255 the dodge colour, towards 1 the burn colour, its
+// alpha growing with how far the byte is from 128 (full at 2 stops). Colours are ABGR (as SDL's
+// ABGR8888 lays bytes out: R in the low byte, A in the high one).
+[[nodiscard]] std::uint32_t stroke_mask_abgr(std::uint8_t byte, std::uint32_t dodge_abgr,
+                                             std::uint32_t burn_abgr) noexcept;
 
 }  // namespace prism::gui

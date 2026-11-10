@@ -224,6 +224,26 @@ inline constexpr float brush_strength_max = 2.0f;
 inline constexpr float brush_strength_step = 0.1f;
 inline constexpr float brush_strength_default = 0.5f;
 
+// The Brush's size, as a radius in fractions of the picture's long side (FieldStroke::radius), and
+// its edge (FieldStroke::softness: 0 hard, 1 the whole radius fading). The stroke field itself takes
+// any radius above 0 and clamps the softness to 0 to 1; the size's range is the Brush's own: from
+// half a percent of the long side (13 px on a 2560 px preview) to a quarter of it. ] and [ make it
+// 1.2 times bigger or smaller, Shift+[ and Shift+] a tenth softer or harder. Tool settings, like the
+// strength.
+inline constexpr float brush_radius_min = 0.005f;
+inline constexpr float brush_radius_max = 0.25f;
+inline constexpr float brush_radius_default = 0.05f;
+inline constexpr float brush_size_step = 1.2f;
+inline constexpr float brush_softness_min = 0.0f;
+inline constexpr float brush_softness_max = 1.0f;
+inline constexpr float brush_softness_default = 0.5f;
+inline constexpr float brush_softness_step = 0.1f;
+
+// `radius` inside the range (the default for a number that isn't one).
+[[nodiscard]] float clamp_brush_radius(float radius) noexcept;
+// `softness` moved to the nearest tenth inside the range (the default for a number that isn't one).
+[[nodiscard]] float snap_brush_softness(float softness) noexcept;
+
 // Whether the Brush can be turned on with `viewed` on view: Dodge & burn or later.
 [[nodiscard]] bool brush_available(StageId viewed) noexcept;
 
@@ -248,7 +268,8 @@ enum class BrushTone {
     return tone == BrushTone::dodge ? BrushTone::burn : BrushTone::dodge;
 }
 
-// Whether Brush mode is on, the tone its strokes have without Alt, and the strength it paints with. Leaving it is Esc
+// Whether Brush mode is on, the tone its strokes have without Alt, and the strength, size and edge
+// it paints with. Leaving it is Esc
 // (EscapeAction::leave_brush), the Brush button or key again, I, T or W, the view moving to a stage
 // before Dodge & burn, or another photo.
 class BrushMode {
@@ -263,11 +284,19 @@ public:
 
     [[nodiscard]] BrushTone tone() const noexcept { return tone_; }  // dodge to start with
     void set_tone(BrushTone tone) noexcept { tone_ = tone; }
+    void swap_tone() noexcept { tone_ = other_tone(tone_); }  // X
+
+    [[nodiscard]] float radius() const noexcept { return radius_; }
+    void set_radius(float radius) noexcept { radius_ = clamp_brush_radius(radius); }
+    [[nodiscard]] float softness() const noexcept { return softness_; }
+    void set_softness(float softness) noexcept { softness_ = snap_brush_softness(softness); }
 
 private:
     bool on_ = false;
     float strength_ = brush_strength_default;
     BrushTone tone_ = BrushTone::dodge;
+    float radius_ = brush_radius_default;
+    float softness_ = brush_softness_default;
 };
 
 // Which of the canvas's tools are on.
