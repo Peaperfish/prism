@@ -11,6 +11,8 @@
 using prism::gui::ellipsize_middle;
 using prism::gui::panel_points_from_pixels;
 using prism::gui::panel_width_pixels;
+using prism::gui::widen_panel_width;
+using prism::gui::window_minimum_width;
 
 namespace {
 
@@ -188,4 +190,40 @@ TEST(SplitLayout, OnePixelWideAndEmptyPicturesStayInside) {
     EXPECT_EQ(none.divider_x, 7.0f);
     EXPECT_EQ(none.right_x1, 7.0f);
     EXPECT_EQ(none.u_divider, 0.0f);
+}
+
+// --- The panel's text minimum --------------------------------------------------------------------
+
+TEST(Layout, ASavedWidthBelowTheTextMinimumIsWidenedToIt) {
+    // 428 pixels at the interface size 1: a width of 320 points saved by an older version is
+    // too narrow, and shows (and is saved) as 428.
+    EXPECT_EQ(widen_panel_width(320, 1.0f, 428.0f), 428);
+    EXPECT_FLOAT_EQ(panel_width_pixels(320, 1.0f, 1280, 428.0f), 428);
+    // At 2x the same minimum is more pixels but the same points; at 1.5x a fraction rounds up.
+    EXPECT_EQ(widen_panel_width(320, 2.0f, 856.0f), 428);
+    EXPECT_EQ(widen_panel_width(320, 1.5f, 643.0f), 429);
+    // A width that is wide enough is left alone, and the old limits still hold.
+    EXPECT_EQ(widen_panel_width(500, 1.0f, 428.0f), 500);
+    EXPECT_EQ(widen_panel_width(100, 1.0f, 0.0f), prism::gui::panel_width_min);
+    EXPECT_EQ(widen_panel_width(5000, 1.0f, 428.0f), prism::gui::panel_width_max);
+    EXPECT_FLOAT_EQ(panel_width_pixels(500, 1.0f, 1280, 428.0f), 500);
+    EXPECT_FLOAT_EQ(panel_width_pixels(100, 1.0f, 1280), 240) << "no text minimum: as before";
+}
+
+TEST(Layout, TheTextMinimumHoldsInWindowsAtLeastAsWideAsTheWindowMinimum) {
+    // The window is never narrower than window_minimum_width, and there the panel keeps its minimum
+    // (the 40% and 60% rules do not cut into it).
+    for (const float scale : {1.0f, 1.5f, 2.0f}) {
+        const float text_minimum = 428.0f * scale;
+        const float splitter = 10.0f * scale;
+        const float window = window_minimum_width(text_minimum, splitter, scale, 640.0f * scale);
+        EXPECT_GE(window, 640.0f * scale);
+        EXPECT_GE(window, text_minimum + splitter + prism::gui::canvas_width_min * scale - 1e-3f);
+        for (float available = window; available <= 4000 * scale; available += 41) {
+            EXPECT_GE(panel_width_pixels(100, scale, available, text_minimum), text_minimum - 1e-3f)
+                << available << " " << scale;
+        }
+    }
+    // A text minimum that is small leaves the base width.
+    EXPECT_FLOAT_EQ(window_minimum_width(240.0f, 10.0f, 1.0f, 640.0f), 640.0f);
 }

@@ -13,7 +13,27 @@ namespace prism::gui {
 // controls stay usable, and at most 40% of the window so the photo keeps most of it. When the
 // window is too narrow for both (240 points are more than 40%), the minimum gives way, but only up
 // to 60% of the window: the canvas never shrinks to a sliver.
-[[nodiscard]] float panel_width_pixels(float preferred_points, float scale, float available);
+//
+// `text_minimum` (pixels) is the narrowest panel in which every text of the Light path is drawn in
+// full, as the app measures it (gui_app/light_path.hpp, light_path_min_width). The panel is never
+// narrower than that, so a width saved by an older version, or from a smaller interface size, is
+// widened to it. The window's minimum width (window_minimum_width) leaves room for it, so the
+// 60% rule never has to cut into it.
+[[nodiscard]] float panel_width_pixels(float preferred_points, float scale, float available,
+                                       float text_minimum = 0.0f);
+
+// A saved or dragged panel width in points, widened to at least `text_minimum` pixels at `scale`
+// (rounded up to a whole point), and kept within panel_width_min..panel_width_max.
+[[nodiscard]] int widen_panel_width(int points, float scale, float text_minimum);
+
+// The canvas keeps at least this many points beside the panel's minimum.
+inline constexpr int canvas_width_min = 240;
+
+// The window's minimum width, in the same pixels as `text_minimum`: room for that panel, the
+// `splitter` and canvas_width_min points of canvas at `scale`, wide enough that the panel's text
+// minimum is no more than the 60% of the window the panel may take, and never less than `base`.
+[[nodiscard]] float window_minimum_width(float text_minimum, float splitter, float scale,
+                                         float base);
 
 // The preferred panel width, in points, that a splitter dragged to `pixels` asks for.
 [[nodiscard]] int panel_points_from_pixels(float pixels, float scale);

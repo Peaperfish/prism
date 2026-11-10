@@ -8,13 +8,29 @@
 
 namespace prism::gui {
 
-float panel_width_pixels(float preferred_points, float scale, float available) {
+float panel_width_pixels(float preferred_points, float scale, float available,
+                         float text_minimum) {
     if (available <= 0 || scale <= 0) {
         return 0;
     }
-    const float minimum = static_cast<float>(panel_width_min) * scale;
+    const float minimum = std::max(static_cast<float>(panel_width_min) * scale, text_minimum);
     const float maximum = std::max(0.4f * available, std::min(minimum, 0.6f * available));
     return std::clamp(preferred_points * scale, std::min(minimum, maximum), maximum);
+}
+
+int widen_panel_width(int points, float scale, float text_minimum) {
+    if (scale <= 0 || !(text_minimum > 0)) {
+        return clamp_panel_width(points);
+    }
+    const int needed = static_cast<int>(std::ceil(text_minimum / scale));
+    return clamp_panel_width(std::max(points, needed));
+}
+
+float window_minimum_width(float text_minimum, float splitter, float scale, float base) {
+    // The panel may take 60% of the window when its minimum is more than 40%: the window is wide
+    // enough that its text minimum is no more than that.
+    return std::max({base, text_minimum + splitter + static_cast<float>(canvas_width_min) * scale,
+                     text_minimum / 0.6f});
 }
 
 int panel_points_from_pixels(float pixels, float scale) {
