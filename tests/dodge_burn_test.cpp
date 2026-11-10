@@ -349,16 +349,25 @@ TEST(DodgeBurn, NotClampedAboveWhite) {
 }
 
 TEST(DodgeBurn, ThrowsWhenTheGridDoesNotFit) {
+    // Taller than one tile of rows: a grid a row short must be refused before the first tile is
+    // applied, not when the last one is found not to fit.
     constexpr int W = 50;
-    constexpr int H = 40;
+    constexpr int H = 3 * prism::dodge_burn_tile_rows + 10;
     const StrokeField f = some_strokes(W, H);
     for (const PixelGrid g : {PixelGrid::whole(W + 1, H), PixelGrid::whole(W, H - 1),
                               PixelGrid::whole(W - 1, H), PixelGrid{W, H, 1, 0, 1},
                               PixelGrid{2 * W, 2 * H, 0, 0, 3}, PixelGrid{}}) {
         Image img = make_image(W, H);
-        EXPECT_THROW(prism::dodge_burn(img, {f, g}, 1), std::invalid_argument)
+        try {
+            prism::dodge_burn(img, {f, g}, 1);
+            ADD_FAILURE() << "no exception";
+        } catch (const std::invalid_argument& e) {
+            // The stage's own message, which says what does not fit.
+            EXPECT_EQ(std::string(e.what()).rfind("dodge_burn: the stroke grid is ", 0), 0u)
+                << e.what();
+        }
+        EXPECT_EQ(first_difference(img, make_image(W, H)), -1)  // untouched
             << g.full_w << " x " << g.full_h << " from " << g.x0 << ", " << g.y0;
-        EXPECT_EQ(first_difference(img, make_image(W, H)), -1);  // untouched
 
         ProcessSettings s;
         s.dodge_burn = {f, g};
