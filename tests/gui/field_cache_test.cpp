@@ -142,8 +142,15 @@ std::vector<Step> script(int w, int h) {
     add("undo after a fresh field", field({a_lighter}), FieldPath::undo);
     const StrokePtr c = stroke({{0.1f, 0.9f}, {0.9f, 0.1f}}, 0.02f, 0.0f, 1.7f);
     add("C, a hard line", field({a_lighter, c}), FieldPath::append);
-    const StrokePtr e = stroke({{0.3f, 0.4f}}, 0.1f, 0.5f, -2.5f);
-    add("E, a dab", field({a_lighter, c, e}), FieldPath::append);
+    // E grows across where A and C overlap: there the order the three are summed in shows.
+    const FieldStroke e{{{0.3f, 0.4f}, {0.42f, 0.55f}, {0.5f, 0.45f}, {0.6f, 0.4f}},
+                        0.1f,
+                        0.5f,
+                        -2.5f};
+    for (std::size_t n = 1; n <= e.points.size(); ++n) {
+        add("E with " + std::to_string(n) + " points", field({a_lighter, c, first_points(e, n)}),
+            n == 1 ? FieldPath::append : FieldPath::grow);
+    }
     add("undo E", field({a_lighter, c}), FieldPath::undo);
     add("undo C: nothing kept from before it", field({a_lighter}), FieldPath::fresh);
     add("the last stroke's weight changed", field({with_weight(*a_lighter, -1.3f)}),
