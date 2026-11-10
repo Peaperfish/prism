@@ -44,8 +44,9 @@ StageClip clip_with(StageId stage, ClipFate fate) {
 ClipReport report_with(ClipFate fate) {
     ClipReport report;
     report.sample_count = 1000;
-    for (std::size_t i = 0; i < report.stages.size(); ++i) {
-        report.stages[i] = clip_with(all_stages[i], fate);
+    // Every stage the report holds, the hidden ones too: all_stages has only the visible ones.
+    for (const StageInfo& info : pipeline_stages()) {
+        report.stages[static_cast<std::size_t>(info.id)] = clip_with(info.id, fate);
     }
     return report;
 }

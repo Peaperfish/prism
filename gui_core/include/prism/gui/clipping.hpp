@@ -204,6 +204,11 @@ public:
     // with stage_done_samples(). The counts are the same as running them on the whole image.
     [[nodiscard]] Image sample_grid(const Image& img) const;
     void stage_done_samples(StageId stage, const Image& grid);
+    // Where the pixels of sample_grid() sit on the photo, for the Dodge & burn stage that runs on
+    // it: the recorder's image is `image` on the photo (stage_grid(W, H) for a whole picture, a
+    // band's rectangle for a test strip band), and the sample grid takes every stride-th pixel of
+    // it from `first`. Empty (0 x 0) if the recorder has no dimensions.
+    [[nodiscard]] PixelGrid grid(const PixelGrid& image) const;
     // Output encode, after the last stage: it clamps what the last stage left out of range.
     void finish();
 

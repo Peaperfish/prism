@@ -1079,7 +1079,8 @@ TEST(Clipping, AReportWithWhiteBalanceHasARowForItThatRan) {
     ASSERT_EQ(report.stages.size(), prism::gui::pipeline_stages().size());
     for (std::size_t i = 0; i < report.stages.size(); ++i) {
         EXPECT_EQ(report.stages[i].stage, prism::gui::pipeline_stages()[i].id);
-        EXPECT_TRUE(report.stages[i].ran) << i;
+        // Dodge & burn has nothing to do without strokes, so it does not run.
+        EXPECT_EQ(report.stages[i].ran, report.stages[i].stage != StageId::dodge_burn) << i;
     }
     // Blue is over white after White balance and not before; it never clamps, so: recoverable.
     EXPECT_EQ(report.at(StageId::exposure).over_fate, ClipFate::none);

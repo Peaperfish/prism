@@ -279,8 +279,12 @@ MaybeError export_image(const ExportJob& job, const fs::path& output, std::stop_
         }
     }
 
-    if (process(img, to_process_settings(job.settings, final_stage, as_shot), job.threads, stop,
-                on_stage) ==
+    // The strokes sit on the image as reduced, not on the original: they cover the same part of the
+    // photo at any export size.
+    if (process(img,
+                to_process_settings(job.settings, final_stage, as_shot,
+                                    stage_grid(img.width, img.height)),
+                job.threads, stop, on_stage) ==
             ProcessResult::cancelled ||
         stop.stop_requested()) {
         return cancelled();

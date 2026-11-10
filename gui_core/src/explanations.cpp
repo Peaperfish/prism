@@ -406,6 +406,7 @@ std::string_view explain_id(StageId stage) noexcept {
     switch (stage) {
         case StageId::decode: return "stage.decode";
         case StageId::exposure: return "stage.exposure";
+        case StageId::dodge_burn: return "stage.dodge_burn";
         case StageId::white_balance: return "stage.white_balance";
         case StageId::matrix: return "stage.matrix";
         case StageId::saturation: return "stage.saturation";

@@ -60,6 +60,10 @@ constexpr StageInfo stages[] = {
     {StageId::exposure, "exposure", "Exposure",
      "Exposure: makes every part of the image brighter or darker by the same number of stops.",
      true},
+    {StageId::dodge_burn, "dodge_burn", "Dodge & burn",
+     "Dodge & burn: brightens or darkens the parts of the image you paint over, by the number of "
+     "stops you choose.",
+     true, true},
     {StageId::white_balance, "white_balance", "White balance",
      "White balance: re-lights the photo as if the light you name, in Kelvin and tint, had lit it.",
      true},
@@ -115,6 +119,7 @@ bool stage_enabled(const EditSettings& s, StageId id) noexcept {
     switch (id) {
         case StageId::decode: return true;
         case StageId::exposure: return s.exposure_on;
+        case StageId::dodge_burn: return s.dodge_burn_on;
         case StageId::white_balance: return s.white_balance_on;
         case StageId::matrix: return s.matrix_on;
         case StageId::saturation: return s.saturation_on;
@@ -129,6 +134,7 @@ void set_stage_enabled(EditSettings& s, StageId id, bool enabled) noexcept {
     switch (id) {
         case StageId::decode: break;
         case StageId::exposure: s.exposure_on = enabled; break;
+        case StageId::dodge_burn: s.dodge_burn_on = enabled; break;
         case StageId::white_balance: s.white_balance_on = enabled; break;
         case StageId::matrix: s.matrix_on = enabled; break;
         case StageId::saturation: s.saturation_on = enabled; break;
@@ -136,6 +142,18 @@ void set_stage_enabled(EditSettings& s, StageId id, bool enabled) noexcept {
         case StageId::curve: s.curve_on = enabled; break;
         case StageId::encode: break;
     }
+}
+
+PixelGrid stage_grid(int full_w, int full_h, int x0, int y0, int stride, int cols,
+                     int rows) noexcept {
+    return PixelGrid{full_w, full_h, x0, y0, stride, cols, rows};
+}
+
+bool operator==(const Strokes& a, const Strokes& b) noexcept {
+    if (a.empty() || b.empty()) {
+        return a.empty() == b.empty();
+    }
+    return a.field_ == b.field_ || *a.field_ == *b.field_;
 }
 
 MatrixFile MatrixFile::load(const std::filesystem::path& path) {
@@ -174,7 +192,8 @@ std::optional<std::string> curve_spec(const EditSettings& s) {
 }
 
 ProcessSettings to_process_settings(const EditSettings& s, StageId stop_after,
-                                    const std::optional<Chromaticity>& as_shot_white) {
+                                    const std::optional<Chromaticity>& as_shot_white,
+                                    const std::optional<PixelGrid>& grid) {
     const std::vector<std::string> problems = validate(s);
     if (!problems.empty()) {
         std::string message = "invalid settings:";
@@ -191,6 +210,14 @@ ProcessSettings to_process_settings(const EditSettings& s, StageId stop_after,
     ProcessSettings p;
     if (reached(StageId::exposure) && s.exposure_on) {
         p.exposure_stops = s.exposure_stops;
+    }
+    if (reached(StageId::dodge_burn) && s.dodge_burn_on && !s.strokes.empty()) {
+        if (!grid) {
+            throw std::invalid_argument(
+                "dodge & burn: the settings have strokes but no grid was given for the image");
+        }
+        p.dodge_burn.field = *s.strokes.field();
+        p.dodge_burn.grid = *grid;
     }
     if (reached(StageId::white_balance) && s.white_balance_on && s.white_balance) {
         p.white_balance = white_balance_matrix(

@@ -712,6 +712,9 @@ void draw_compare_popup(const LightPathData& data, const LightPathCallbacks& cb)
     }
     cb.describe(gui::explain::compare);
     for (const gui::StageInfo& stage : gui::pipeline_stages()) {
+        if (stage.hidden) {
+            continue;
+        }
         const std::string caption = gui::stage_caption(stage.id);
         if (ImGui::Selectable(caption.c_str(), shown == stage.id)) {
             cb.set_compare(stage.id == data.view.viewed ? std::nullopt
@@ -859,6 +862,9 @@ float light_path_min_width() {
     ImGui::PushFont(fonts().regular, token_type().section);
     action = std::max(action, text_width(gui::compare_action_text(gui::final_stage, std::nullopt)));
     for (const gui::StageInfo& stage : gui::pipeline_stages()) {
+        if (stage.hidden) {
+            continue;
+        }
         const gui::StageId viewed = stage.id == gui::final_stage ? gui::StageId::decode : gui::final_stage;
         action = std::max(action, text_width(gui::compare_action_text(viewed, stage.id)));
     }

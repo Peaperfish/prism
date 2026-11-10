@@ -19,7 +19,8 @@ std::optional<Image> render_stage_image(const Image& base, const EditSettings& s
                                         const StageCallback& on_stage,
                                         const std::optional<Chromaticity>& as_shot_white) {
     const ProcessSettings process_settings =
-        to_process_settings(settings, stop_after, as_shot_white);
+        to_process_settings(settings, stop_after, as_shot_white,
+                            stage_grid(base.width, base.height));
     if (stop.stop_requested()) {
         return std::nullopt;
     }
@@ -32,6 +33,13 @@ std::optional<Image> render_stage_image(const Image& base, const EditSettings& s
 }
 
 namespace {
+
+// render_preview for an image that sits on the photo at `grid` (the whole picture, or a band of
+// it): the strokes of Dodge & burn are placed by it. render_preview is this on the whole picture.
+std::optional<PreviewFrame> render_plain(const Image& base, const PixelGrid& grid,
+                                         const EditSettings& settings, int threads,
+                                         std::stop_token stop, const StageCallback& on_stage,
+                                         StageId stop_after, PreviewOptions options);
 
 // The test strip: every band is the same render_preview of its crop of `base` at its own exposure,
 // so a band is bit-identical to rendering that crop alone, and the pipeline itself is untouched.
@@ -109,9 +117,12 @@ std::optional<PreviewFrame> render_strip(const Image& base, const EditSettings& 
         const int band_threads = alone > 1 ? std::min(alone, share) : 1;
         const EditSettings band_settings =
             strip_band_settings(settings, strip.step, strip.count, static_cast<int>(i));
-        std::optional<PreviewFrame> part = render_preview(crop, band_settings, band_threads,
-                                                          band_stop.get_token(), report, stop_after,
-                                                          band_options);
+        // The band's place on the picture: the strokes keep their positions in every band.
+        const PixelGrid band_grid =
+            stage_grid(base.width, base.height, r.x, r.y, 1, r.width, r.height);
+        std::optional<PreviewFrame> part =
+            render_plain(crop, band_grid, band_settings, band_threads, band_stop.get_token(),
+                         report, stop_after, band_options);
         if (!part) {
             band_stop.request_stop();
             return;
@@ -187,19 +198,17 @@ std::optional<PreviewFrame> render_strip(const Image& base, const EditSettings& 
 
 }  // namespace
 
-std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings& settings,
-                                           int threads, std::stop_token stop,
-                                           const StageCallback& on_stage, StageId stop_after,
-                                           PreviewOptions options) {
+namespace {
+
+std::optional<PreviewFrame> render_plain(const Image& base, const PixelGrid& grid,
+                                         const EditSettings& settings, int threads,
+                                         std::stop_token stop, const StageCallback& on_stage,
+                                         StageId stop_after, PreviewOptions options) {
     using Clock = std::chrono::steady_clock;
-    if (options.test_strip && stop_after != StageId::decode && options.test_strip->count >= 1 &&
-        base.width > 0 && base.height > 0) {
-        return render_strip(base, settings, threads, stop, on_stage, stop_after, options);
-    }
     options.test_strip.reset();
     const auto start = Clock::now();
     const ProcessSettings process_settings =
-        to_process_settings(settings, stop_after, options.as_shot_white);
+        to_process_settings(settings, stop_after, options.as_shot_white, grid);
 
     PreviewFrame frame;
     frame.stage = stop_after;
@@ -274,7 +283,7 @@ std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings
             return true;
         }
         const ProcessSettings more = process_settings_after(
-            to_process_settings(settings, *compare, options.as_shot_white), stop_after);
+            to_process_settings(settings, *compare, options.as_shot_white, grid), stop_after);
         if (process(current, more, threads, stop) == ProcessResult::cancelled ||
             stop.stop_requested()) {
             return false;
@@ -294,16 +303,18 @@ std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings
             return true;
         }
         if (stop_after != final_stage) {
-            Image grid = recorder->sample_grid(current);
+            Image sampled = recorder->sample_grid(current);
             const auto record_stage = [&](const StageTime& t) {
                 if (const std::optional<StageId> id = stage_from_name(t.name)) {
-                    recorder->stage_done_samples(*id, grid);
+                    recorder->stage_done_samples(*id, sampled);
                 }
             };
             const ProcessSettings rest = process_settings_after(
-                to_process_settings(settings, final_stage, options.as_shot_white), stop_after);
+                to_process_settings(settings, final_stage, options.as_shot_white,
+                                    recorder->grid(grid)),
+                stop_after);
             // The grid is at most 250,000 pixels: one thread, below the parallel threshold anyway.
-            if (process(grid, rest, 1, stop, record_stage) == ProcessResult::cancelled ||
+            if (process(sampled, rest, 1, stop, record_stage) == ProcessResult::cancelled ||
                 stop.stop_requested()) {
                 return false;
             }
@@ -364,6 +375,20 @@ std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings
         return std::nullopt;
     }
     return finish();
+}
+
+}  // namespace
+
+std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings& settings,
+                                           int threads, std::stop_token stop,
+                                           const StageCallback& on_stage, StageId stop_after,
+                                           PreviewOptions options) {
+    if (options.test_strip && stop_after != StageId::decode && options.test_strip->count >= 1 &&
+        base.width > 0 && base.height > 0) {
+        return render_strip(base, settings, threads, stop, on_stage, stop_after, options);
+    }
+    return render_plain(base, stage_grid(base.width, base.height), settings, threads, stop,
+                        on_stage, stop_after, std::move(options));
 }
 
 PreviewRenderer::PreviewRenderer(int threads)

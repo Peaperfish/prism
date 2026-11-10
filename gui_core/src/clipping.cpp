@@ -39,6 +39,9 @@ ProcessSettings process_settings_after(ProcessSettings full, StageId stop_after)
     if (reached(StageId::exposure)) {
         full.exposure_stops.reset();
     }
+    if (reached(StageId::dodge_burn)) {
+        full.dodge_burn = {};
+    }
     if (reached(StageId::white_balance)) {
         full.white_balance.reset();
     }
@@ -64,6 +67,7 @@ bool stage_clamps(StageId stage, ClipDirection direction) noexcept {
         case StageId::curve: return direction == ClipDirection::shadows;
         case StageId::encode: return true;
         case StageId::exposure:
+        case StageId::dodge_burn:
         case StageId::white_balance:
         case StageId::matrix:
         case StageId::contrast: return false;
@@ -139,6 +143,17 @@ Image ClipRecorder::sample_grid(const Image& img) const {
     return grid;
 }
 
+PixelGrid ClipRecorder::grid(const PixelGrid& image) const {
+    if (!have_dimensions_) {
+        return stage_grid(0, 0);
+    }
+    const int stride = report_.stride;
+    const int across = (width_ - first_ + stride - 1) / stride;
+    const int down = (height_ - first_ + stride - 1) / stride;
+    return stage_grid(image.full_w, image.full_h, image.x0 + first_ * image.stride,
+                      image.y0 + first_ * image.stride, stride * image.stride, across, down);
+}
+
 void ClipRecorder::stage_done_samples(StageId stage, const Image& grid) {
     if (stage == StageId::decode || stage == StageId::encode) {
         return;
@@ -203,7 +218,8 @@ ClipReport ClipRecorder::report() const {
 ClipReport compute_clip_report(const Image& base, const EditSettings& settings, int threads,
                                const std::optional<Chromaticity>& as_shot_white) {
     const ProcessSettings process_settings =
-        to_process_settings(settings, final_stage, as_shot_white);
+        to_process_settings(settings, final_stage, as_shot_white,
+                            stage_grid(base.width, base.height));
     Image img = base;
     ClipRecorder recorder(img.width, img.height);
     recorder.decoded(img);

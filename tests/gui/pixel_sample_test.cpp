@@ -303,7 +303,9 @@ TEST(PixelSample, DecodeIsTheBaseAndAStageThatDidNotRunPassesItOn) {
 
 TEST(PixelSample, WhiteBalanceHasItsOwnEntryBetweenExposureAndTheMatrix) {
     ASSERT_EQ(PixelTrace{}.stages.size(), pipeline_stages().size());
-    ASSERT_EQ(static_cast<int>(StageId::white_balance), static_cast<int>(StageId::exposure) + 1);
+    // Dodge & burn sits between Exposure and White balance and leaves a pixel alone without strokes.
+    ASSERT_EQ(static_cast<int>(StageId::dodge_burn), static_cast<int>(StageId::exposure) + 1);
+    ASSERT_EQ(static_cast<int>(StageId::white_balance), static_cast<int>(StageId::dodge_burn) + 1);
     ASSERT_EQ(static_cast<int>(StageId::matrix), static_cast<int>(StageId::white_balance) + 1);
 
     Image base;

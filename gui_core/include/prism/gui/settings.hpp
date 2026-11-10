@@ -2,28 +2,32 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "prism/pipeline.hpp"
 #include "prism/process.hpp"
 #include "prism/ranges.hpp"
+#include "prism/stroke_field.hpp"
 #include "prism/white_balance.hpp"
 
 namespace prism::gui {
 
 // Every stage of the pipeline, in the order light moves through it. `decode` and `encode` are the
 // bookends (turning a file into linear float, and turning the stage's output into 8-bit sRGB);
-// the six stages in between are the edits, each backed by an `*_on` flag on EditSettings.
+// the stages in between are the edits, each backed by an `*_on` flag on EditSettings.
 //
 // The numbers are only an order: nothing saves one to a file (recipes and preferences use names),
 // so a stage can be added in the middle.
 enum class StageId {
     decode,
     exposure,
+    dodge_burn,
     white_balance,
     matrix,
     saturation,
@@ -45,6 +49,9 @@ struct StageInfo {
     std::string_view name;
     std::string_view description;
     bool can_toggle = false;
+    // Kept out of the Light path, the compare popup and the width loop (Dodge & burn, until its
+    // row and tools exist). The stage still runs, and its slug still names it in the pipeline.
+    bool hidden = false;
 };
 
 // All pipeline stages in execution order, from Decode to Output encode.
@@ -52,6 +59,34 @@ struct StageInfo {
 
 // The entry for `id` in pipeline_stages().
 [[nodiscard]] const StageInfo& stage_info(StageId id) noexcept;
+
+// The grid on the photo that an image handed to the pipeline sits on, for the Dodge & burn stage:
+// the one place a grid is built. `full_w` x `full_h` is the picture the strokes were drawn on as
+// the render sees it (the whole preview base, or the reduced export image); the image is the
+// part of it starting at pixel (x0, y0), every `stride` pixels, `cols` x `rows` of them (0 = to the
+// right / bottom edge). Whole picture: stage_grid(w, h). A test strip band: its rectangle. The
+// clip report's sample grid: ClipRecorder::grid. One sampled pixel: x, y with cols = rows = 1.
+[[nodiscard]] PixelGrid stage_grid(int full_w, int full_h, int x0 = 0, int y0 = 0, int stride = 1,
+                                   int cols = 0, int rows = 0) noexcept;
+
+// The brush strokes on a photo, shared and never changed once made: copying it (an undo step, the
+// settings handed to the render thread) copies a pointer. Empty by default.
+class Strokes {
+public:
+    Strokes() = default;
+    explicit Strokes(std::shared_ptr<const StrokeField> field) : field_(std::move(field)) {}
+
+    // No strokes: a null handle, or a field with none.
+    [[nodiscard]] bool empty() const noexcept { return !field_ || field_->strokes.empty(); }
+    // The strokes, or nullptr for a null handle.
+    [[nodiscard]] const std::shared_ptr<const StrokeField>& field() const noexcept { return field_; }
+
+    // Equal if both are empty, or the same object, or their strokes are equal.
+    friend bool operator==(const Strokes& a, const Strokes& b) noexcept;
+
+private:
+    std::shared_ptr<const StrokeField> field_;
+};
 
 // A 3x3 matrix loaded from a file, with the file it came from (shown in the UI).
 struct MatrixFile {
@@ -78,6 +113,11 @@ struct EditSettings {
     // its value, so turning it back on restores it; an off stage is skipped.
     float exposure_stops = 0.0f;  // any finite number, as the CLI's --exposure
     bool exposure_on = true;
+
+    // Dodge & burn: brush strokes that lighten or darken parts of the image (stroke_field.hpp),
+    // applied right after Exposure. Not saved in a recipe; a look keeps them.
+    Strokes strokes;
+    bool dodge_burn_on = true;
 
     // The light the photo was lit by (--kelvin, --tint). None is "As shot": the light the camera
     // balanced for, which changes nothing. kelvin_range and tint_range.
@@ -130,6 +170,10 @@ void set_stage_enabled(EditSettings& s, StageId id, bool enabled) noexcept;
 // nothing to apply, or come after `stop_after` are left empty. The curve is built with
 // prism::parse_curve(curve_spec(s)), so it is exactly the curve the CLI builds from the same
 // spec. Throws std::invalid_argument with validate()'s messages if the settings are invalid.
+//
+// With strokes, Dodge & burn on and the stage reached, the result carries them with `grid`: where
+// the image this will run on sits on the photo (stage_grid). Strokes and no grid is an error
+// (std::invalid_argument): the stage would not know which pixels it has.
 // The RAW options are not part of it: they apply when decoding.
 //
 // A chosen white balance becomes the matrix prism::white_balance_matrix builds against
@@ -138,7 +182,8 @@ void set_stage_enabled(EditSettings& s, StageId id, bool enabled) noexcept;
 // and a white balance that is off give no white balance stage at all.
 [[nodiscard]] ProcessSettings to_process_settings(
     const EditSettings& s, StageId stop_after = final_stage,
-    const std::optional<Chromaticity>& as_shot_white = std::nullopt);
+    const std::optional<Chromaticity>& as_shot_white = std::nullopt,
+    const std::optional<PixelGrid>& grid = std::nullopt);
 
 // --- The stage sliders ---------------------------------------------------------------------------
 //

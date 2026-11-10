@@ -112,6 +112,7 @@ std::string stage_value_text(const EditSettings& s, StageId stage) {
             }
             return {};
         case StageId::decode:
+        case StageId::dodge_burn:
         case StageId::encode: return {};
     }
     return {};

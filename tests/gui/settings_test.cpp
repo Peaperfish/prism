@@ -11,6 +11,7 @@
 #include <variant>
 #include <vector>
 
+#include "prism/gui/clipping.hpp"
 #include "prism/gui/settings.hpp"
 #include "prism/image.hpp"
 #include "prism/pipeline.hpp"
@@ -342,28 +343,34 @@ TEST(PipelineStages, ListsEveryStageInOrderWithBookendsUntoggleable) {
     using prism::gui::StageInfo;
 
     const std::span<const StageInfo> stages = prism::gui::pipeline_stages();
-    ASSERT_EQ(stages.size(), 8u);
+    ASSERT_EQ(stages.size(), 9u);
     ASSERT_EQ(stages.size(), prism::gui::stage_count);
     EXPECT_EQ(stages[0].id, StageId::decode);
     EXPECT_EQ(stages[1].id, StageId::exposure);
-    EXPECT_EQ(stages[2].id, StageId::white_balance);
-    EXPECT_EQ(stages[3].id, StageId::matrix);
-    EXPECT_EQ(stages[4].id, StageId::saturation);
-    EXPECT_EQ(stages[5].id, StageId::contrast);
-    EXPECT_EQ(stages[6].id, StageId::curve);
-    EXPECT_EQ(stages[7].id, StageId::encode);
+    EXPECT_EQ(stages[2].id, StageId::dodge_burn);
+    EXPECT_EQ(stages[3].id, StageId::white_balance);
+    EXPECT_EQ(stages[4].id, StageId::matrix);
+    EXPECT_EQ(stages[5].id, StageId::saturation);
+    EXPECT_EQ(stages[6].id, StageId::contrast);
+    EXPECT_EQ(stages[7].id, StageId::curve);
+    EXPECT_EQ(stages[8].id, StageId::encode);
     EXPECT_EQ(stages.back().id, prism::gui::final_stage);
-    EXPECT_EQ(stages[2].slug, "white_balance");  // the name process() reports the stage by
-    EXPECT_EQ(stages[2].name, "White balance");
+    EXPECT_EQ(stages[3].slug, "white_balance");  // the name process() reports the stage by
+    EXPECT_EQ(stages[3].name, "White balance");
+    EXPECT_EQ(stages[2].slug, "dodge_burn");
+    EXPECT_EQ(stages[2].name, "Dodge & burn");
+    EXPECT_EQ(prism::gui::stage_from_name("dodge_burn"), StageId::dodge_burn);
 
     EXPECT_FALSE(stages[0].can_toggle);
-    EXPECT_TRUE(stages[1].can_toggle);
-    EXPECT_TRUE(stages[2].can_toggle);
-    EXPECT_TRUE(stages[3].can_toggle);
-    EXPECT_TRUE(stages[4].can_toggle);
-    EXPECT_TRUE(stages[5].can_toggle);
-    EXPECT_TRUE(stages[6].can_toggle);
-    EXPECT_FALSE(stages[7].can_toggle);
+    for (std::size_t i = 1; i < 8; ++i) {
+        EXPECT_TRUE(stages[i].can_toggle) << i;
+    }
+    EXPECT_FALSE(stages[8].can_toggle);
+
+    // Only Dodge & burn is kept out of the UI for now.
+    for (const StageInfo& s : stages) {
+        EXPECT_EQ(s.hidden, s.id == StageId::dodge_burn) << s.slug;
+    }
 
     for (const StageInfo& s : stages) {
         EXPECT_FALSE(s.slug.empty());

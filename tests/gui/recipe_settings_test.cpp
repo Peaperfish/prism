@@ -3,6 +3,7 @@
 #include <bit>
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <random>
 #include <regex>
 #include <string>
@@ -575,15 +576,17 @@ constexpr Field fields[] = {
     {"raw_half_size", false, "a RAW decoding option: how big to decode, not how the photo looks"},
     {"raw_camera_matrix", false,
      "a RAW decoding option tied to the camera; changing it decodes the file again"},
+    {"strokes", false, "Dodge & burn strokes: the recipe format has no section for them in 0.5.0"},
+    {"dodge_burn_on", false, "Dodge & burn's switch: without strokes in a recipe it has no use"},
 };
 
 // The settings with field `i` changed from its default (the curve chosen so that its parameter
 // counts).
 EditSettings changed(std::size_t i) {
     EditSettings s;
-    auto& [exposure_stops, exposure_on, white_balance, white_balance_on, matrix, matrix_on,
-           saturation, saturation_on, contrast, contrast_on, curve, gamma, reinhard_white, curve_on,
-           raw_half_size, raw_camera_matrix] = s;
+    auto& [exposure_stops, exposure_on, strokes, dodge_burn_on, white_balance, white_balance_on,
+           matrix, matrix_on, saturation, saturation_on, contrast, contrast_on, curve, gamma,
+           reinhard_white, curve_on, raw_half_size, raw_camera_matrix] = s;
     switch (i) {
         case 0: exposure_stops = 1.0f; break;
         case 1: exposure_on = false; break;
@@ -601,6 +604,15 @@ EditSettings changed(std::size_t i) {
         case 13: curve_on = false; break;
         case 14: raw_half_size = true; break;
         case 15: raw_camera_matrix = MatrixFile{"camera.txt", grade}; break;
+        case 16: {
+            auto field = std::make_shared<prism::StrokeField>();
+            field->aspect = 1.5f;
+            field->strokes.push_back(std::make_shared<const prism::FieldStroke>(
+                prism::FieldStroke{{{0.5f, 0.5f}}, 0.05f, 0.5f, 1.0f}));
+            strokes = prism::gui::Strokes(std::move(field));
+            break;
+        }
+        case 17: dodge_burn_on = false; break;
         default: break;
     }
     return s;
@@ -609,7 +621,7 @@ EditSettings changed(std::size_t i) {
 }  // namespace
 
 TEST(RecipeSettings, EveryFieldIsEitherInARecipeOrLeftOutForAReason) {
-    ASSERT_EQ(std::size(fields), 16u);
+    ASSERT_EQ(std::size(fields), 18u);
     const EditSettings defaults;
     for (std::size_t i = 0; i < std::size(fields); ++i) {
         const Field& f = fields[i];

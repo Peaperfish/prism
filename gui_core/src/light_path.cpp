@@ -116,6 +116,8 @@ LightPathRow light_path_row(const LightPathInputs& in, StageId stage) {
         case StageId::encode:
             row.subtitle = "sRGB for the screen";
             break;
+        case StageId::dodge_burn:
+            break;  // no row is shown yet (StageInfo::hidden)
         case StageId::white_balance: {
             row.subtitle = white_balance_subtitle(in.as_shot_white);
             row.value = white_balance_value_text(s);
@@ -212,6 +214,9 @@ LightPathView light_path_view(const LightPathInputs& in) {
     view.viewed = in.viewed;
     view.rows.reserve(pipeline_stages().size());
     for (const StageInfo& stage : pipeline_stages()) {
+        if (stage.hidden) {
+            continue;
+        }
         view.rows.push_back(light_path_row(in, stage.id));
     }
     return view;
@@ -254,6 +259,7 @@ LightPathRowLayout light_path_row_layout(const LightPathRow& row,
             layout.second_slider_y = take(m.slider);
             break;
         case StageId::matrix:
+        case StageId::dodge_burn:
             break;
     }
     layout.clip_y = y;

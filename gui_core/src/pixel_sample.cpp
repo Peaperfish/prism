@@ -346,8 +346,9 @@ std::string average_text(const SampleScale& scale) {
 
 std::optional<PixelTrace> sample_trace(const Image& base, const EditSettings& settings, int x,
                                        int y, const std::optional<Chromaticity>& as_shot_white) {
-    const ProcessSettings process_settings =
-        to_process_settings(settings, final_stage, as_shot_white);
+    // The one pixel's place on the preview, for Dodge & burn's strokes.
+    const ProcessSettings process_settings = to_process_settings(
+        settings, final_stage, as_shot_white, stage_grid(base.width, base.height, x, y, 1, 1, 1));
     if (base.width < 0 || base.height < 0 ||
         base.pixels.size() != static_cast<std::size_t>(base.width) *
                                   static_cast<std::size_t>(base.height) * Image::channels) {
