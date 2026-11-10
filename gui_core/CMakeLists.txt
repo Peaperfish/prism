@@ -29,6 +29,7 @@ configure_file(builtin_looks.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/builtin_looks.cp
 
 add_library(prism_gui_core STATIC
   src/background_export.cpp
+  src/brush.cpp
   src/canvas_input.cpp
   src/clip_note.cpp
   src/clipping.cpp
