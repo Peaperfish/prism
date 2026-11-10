@@ -421,11 +421,12 @@ TEST(BrushKeys, ShiftBracketsMakeTheEdgeATenthSofterOrHarderInExactTenths) {
     }
     EXPECT_EQ(b.softness(), brush_softness_min);
     EXPECT_FALSE(brush_key(b, BrushKey::right_bracket, true));
-    // Back up in tenths from 0 without drifting: 0.3 is 0.3, as snap_brush_softness gives it.
-    for (int i = 0; i < 3; ++i) {
+    // Back up through every tenth without drifting: each is the tenth itself (0.7 is 0.7f, not
+    // 0.1f added seven times).
+    for (int k = 1; k <= 10; ++k) {
         (void)brush_key(b, BrushKey::left_bracket, true);
+        EXPECT_EQ(b.softness(), static_cast<float>(k) / 10.0f) << k;
     }
-    EXPECT_EQ(b.softness(), snap_brush_softness(0.3f));
 }
 
 TEST(BrushKeys, DoNothingWhileBrushModeIsOff) {

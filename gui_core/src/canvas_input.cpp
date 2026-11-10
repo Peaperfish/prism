@@ -213,7 +213,8 @@ float snap_brush_softness(float softness) noexcept {
     }
     const float tenths = std::round(std::clamp(softness, brush_softness_min, brush_softness_max) /
                                     brush_softness_step);
-    return std::clamp(tenths * brush_softness_step, brush_softness_min, brush_softness_max);
+    // Over 10, not times 0.1: 7 * 0.1f is a little over 0.7f, and 7 / 10.0f is 0.7f itself.
+    return std::clamp(tenths / 10.0f, brush_softness_min, brush_softness_max);
 }
 
 bool brush_available(StageId viewed) noexcept {
