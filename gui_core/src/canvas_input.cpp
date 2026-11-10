@@ -2,6 +2,8 @@
 
 #include <cmath>
 
+#include "prism/gui/neutral_pick.hpp"
+
 namespace prism::gui {
 
 namespace {
@@ -175,6 +177,53 @@ void SampleMode::base_changed(int width, int height) noexcept {
         pin_.reset();
         last_read_.reset();
     }
+}
+
+bool pick_press_can_pick(bool picking, bool available, bool strip_on, bool over_control,
+                         bool hand_held) noexcept {
+    return picking && available && !strip_on && !over_control && !hand_held;
+}
+
+CanvasTools tools_after_key(CanvasTools tools, ToolKey key, bool pick_ok, bool strip_ok) noexcept {
+    switch (key) {
+        case ToolKey::pick:
+            if (tools.picking) {
+                tools.picking = false;
+            } else if (pick_ok) {
+                tools = {false, true, false};
+            }
+            break;
+        case ToolKey::sample:
+            tools.sampling = !tools.sampling;
+            tools.picking = tools.picking && !tools.sampling;
+            break;
+        case ToolKey::strip:
+            if (tools.strip) {
+                tools.strip = false;
+            } else if (strip_ok) {
+                tools.strip = true;
+                tools.picking = false;
+            }
+            break;
+    }
+    return tools;
+}
+
+PickMarker pick_marker(const ViewState& s, const ViewGeometry& g, SamplePin pixel, int width,
+                       int height) noexcept {
+    PickMarker marker;
+    const std::optional<PatchBounds> bounds = pick_patch_bounds(width, height, pixel.x, pixel.y);
+    if (!bounds) {
+        return marker;
+    }
+    marker.patch = {view_image_to_screen(s, g, {static_cast<float>(bounds->x0),
+                                                static_cast<float>(bounds->y0)}),
+                    view_image_to_screen(s, g, {static_cast<float>(bounds->x1 + 1),
+                                                static_cast<float>(bounds->y1 + 1)})};
+    const ViewPoint centre = view_image_to_screen(
+        s, g, {static_cast<float>(pixel.x) + 0.5f, static_cast<float>(pixel.y) + 0.5f});
+    marker.on_canvas = view_pixel_at(s, g, centre).has_value();
+    return marker;
 }
 
 PinchScale pinch_scale_of(PointerPlatform platform) noexcept {

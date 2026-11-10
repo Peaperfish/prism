@@ -172,6 +172,60 @@ private:
     int height_ = 0;
 };
 
+// --- Pick mode (the white balance picker, #21) -------------------------------------------------
+//
+// While Pick mode is on, a click on the photo (not a drag, which still moves the picture) sets the
+// White balance from the grey under it. It is Sample mode's sibling: only one of the two, and the
+// test strip, is on at a time.
+
+// Whether a press on the canvas can become a pick: only in Pick mode, with white balance visible in
+// what is shown (pick_available), not on a control, not with the hand held, and not on the test
+// strip, whose click sets the exposure.
+[[nodiscard]] bool pick_press_can_pick(bool picking, bool available, bool strip_on,
+                                       bool over_control, bool hand_held) noexcept;
+
+// Whether Pick mode is on. Leaving it is Esc (EscapeAction::leave_pick), W again, or I or T.
+class PickMode {
+public:
+    [[nodiscard]] bool on() const noexcept { return on_; }
+    void toggle() noexcept { on_ = !on_; }  // W, or View > Pick Neutral
+    void leave() noexcept { on_ = false; }
+
+private:
+    bool on_ = false;
+};
+
+// Which of the canvas's three tools are on.
+struct CanvasTools {
+    bool sampling = false;
+    bool picking = false;
+    bool strip = false;
+
+    bool operator==(const CanvasTools&) const = default;
+};
+
+enum class ToolKey {
+    pick,    // W
+    sample,  // I
+    strip,   // T
+};
+
+// What the tools are after a key: a key toggles its tool, and turning one on turns the others off.
+// A tool that is not available (`pick_ok`: white balance is not visible at the viewed stage;
+// `strip_ok`: see strip_available) can be turned off but not on, and then nothing else changes.
+[[nodiscard]] CanvasTools tools_after_key(CanvasTools tools, ToolKey key, bool pick_ok,
+                                          bool strip_ok) noexcept;
+
+// Where Pick mode's patch goes on the screen: the square of pixels it averages around `pixel` in a
+// width x height picture, cut off at the picture's edges.
+struct PickMarker {
+    bool on_canvas = false;  // the pixel's middle is on the canvas: otherwise there is nothing to draw
+    ViewRect patch;
+};
+
+[[nodiscard]] PickMarker pick_marker(const ViewState& s, const ViewGeometry& g, SamplePin pixel,
+                                     int width, int height) noexcept;
+
 // What a pinch's scale means. SDL's header says each event carries the change since the one before,
 // which is what its macOS backend sends; its Wayland backend passes on the protocol's scale "relative
 // to the initial finger position", and its X11 backend XInput's, taken to be the same (not checked).

@@ -306,6 +306,10 @@ bool stage_after_view(StageId stage, StageId viewed, std::optional<StageId> comp
     return static_cast<int>(stage) > static_cast<int>(furthest_shown(viewed, compare));
 }
 
+bool pick_available(StageId viewed, std::optional<StageId> compare) noexcept {
+    return !stage_after_view(StageId::white_balance, viewed, compare);
+}
+
 std::string view_hint(StageId viewed, std::optional<StageId> compare) {
     if (effective_compare(viewed, compare)) {
         return "Not visible here: the furthest stage shown is after " +
@@ -320,6 +324,9 @@ EscapeAction escape_action(const EscapeContext& c) noexcept {
     }
     if (c.window_focused) {
         return EscapeAction::close_window;
+    }
+    if (c.picking) {
+        return EscapeAction::leave_pick;
     }
     if (c.sampling) {
         return EscapeAction::clear_sample;

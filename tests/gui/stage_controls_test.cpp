@@ -395,6 +395,36 @@ TEST(Escape, FirstClearsTheComparisonThenReturnsToTheFinalPicture) {
     EXPECT_EQ(escape_action(c), EscapeAction::none);
 }
 
+TEST(Escape, PickModeGoesBeforeSampleModeTheStripTheComparisonAndTheStage) {
+    EscapeContext c;
+    c.picking = true;
+    c.sampling = true;  // cannot happen together, but the order still holds
+    c.test_strip = true;
+    c.comparing = true;
+    c.viewing_earlier = true;
+    EXPECT_EQ(escape_action(c), EscapeAction::leave_pick);
+    c.picking = false;
+    EXPECT_EQ(escape_action(c), EscapeAction::clear_sample);
+    c.sampling = false;
+    EXPECT_EQ(escape_action(c), EscapeAction::clear_test_strip);
+    c.test_strip = false;
+    EXPECT_EQ(escape_action(c), EscapeAction::clear_compare);
+    c.comparing = false;
+    EXPECT_EQ(escape_action(c), EscapeAction::show_final);
+}
+
+TEST(Escape, PickModeYieldsToPopupsTextEditsDragsAndFocusedWindows) {
+    for (int which = 0; which < 4; ++which) {
+        EscapeContext c;
+        c.picking = true;
+        c.text_editing = which == 0;
+        c.popup_open = which == 1;
+        c.item_active = which == 2;
+        c.window_focused = which == 3;
+        EXPECT_NE(escape_action(c), EscapeAction::leave_pick) << which;
+    }
+}
+
 TEST(Escape, ComparingAgainstTheFinalPictureStillClears) {
     EscapeContext c;
     c.comparing = true;

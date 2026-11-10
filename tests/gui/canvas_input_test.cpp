@@ -5,6 +5,8 @@
 #include <cmath>
 #include <limits>
 
+#include "prism/gui/stage_controls.hpp"
+
 namespace prism::gui {
 namespace {
 
@@ -462,6 +464,138 @@ TEST(SampleModeRules, TheLastReadStaysUntilAnotherPictureOrLeaving) {
     mode.read({1, 2}, 41, 30);
     mode.leave();
     EXPECT_FALSE(mode.last_read());
+}
+
+// --- Pick mode ---------------------------------------------------------------------------------
+
+TEST(PickPress, PicksOnlyInPickModeWhereWhiteBalanceShowsOffTheStripAndControlsWithoutTheHand) {
+    EXPECT_TRUE(pick_press_can_pick(true, true, false, false, false));
+    EXPECT_FALSE(pick_press_can_pick(false, true, false, false, false));  // not in Pick mode
+    EXPECT_FALSE(pick_press_can_pick(true, false, false, false, false));  // viewing Decode
+    EXPECT_FALSE(pick_press_can_pick(true, true, true, false, false));    // the strip's click
+    EXPECT_FALSE(pick_press_can_pick(true, true, false, true, false));    // a control
+    EXPECT_FALSE(pick_press_can_pick(true, true, false, false, true));    // Space: the hand
+}
+
+TEST(PickPress, ADragPansAndAClickPicksWithTheSameRulesAsTheSampler) {
+    // Zoomed in, a press is both a possible pick and a possible pan; which it was is known at the release.
+    ASSERT_TRUE(plain_drag_pans(false, false, false));
+    {
+        SampleClick click;
+        HandDrag hand;
+        click.press({10.0f, 10.0f}, 6.0f);
+        hand.press({10.0f, 10.0f}, 6.0f);
+        click.move({10.0f, 10.0f});
+        EXPECT_FALSE(hand.move({10.0f, 10.0f}));
+        EXPECT_TRUE(click.release({10.0f, 10.0f}));  // a click: pick, nothing moved
+    }
+    {
+        SampleClick click;
+        HandDrag hand;
+        click.press({10.0f, 10.0f}, 6.0f);
+        hand.press({10.0f, 10.0f}, 6.0f);
+        click.move({30.0f, 10.0f});
+        EXPECT_TRUE(hand.move({30.0f, 10.0f}));       // the picture moves with the hand
+        EXPECT_FALSE(click.release({30.0f, 10.0f}));  // and nothing is picked
+    }
+    // At fit a drag moves nothing, and a click still picks.
+    EXPECT_FALSE(plain_drag_pans(true, false, false));
+    EXPECT_TRUE(pick_press_can_pick(true, true, false, false, false));
+    // The second press of a double-click zooms and does not pick.
+    SampleClick click;
+    click.press({10.0f, 10.0f}, 6.0f);
+    click.cancel();
+    EXPECT_FALSE(click.release({10.0f, 10.0f}));
+}
+
+TEST(PickMode, ToggleAndLeave) {
+    PickMode mode;
+    EXPECT_FALSE(mode.on());
+    mode.toggle();
+    EXPECT_TRUE(mode.on());
+    mode.toggle();
+    EXPECT_FALSE(mode.on());
+    mode.toggle();
+    mode.leave();
+    EXPECT_FALSE(mode.on());
+}
+
+TEST(PickTools, WEntersPickModeAndLeavesTheOthers) {
+    const CanvasTools sampling{true, false, false};
+    EXPECT_EQ(tools_after_key(sampling, ToolKey::pick, true, true), (CanvasTools{false, true, false}));
+    const CanvasTools strip{false, false, true};
+    EXPECT_EQ(tools_after_key(strip, ToolKey::pick, true, true), (CanvasTools{false, true, false}));
+    const CanvasTools both{true, false, true};
+    EXPECT_EQ(tools_after_key(both, ToolKey::pick, true, true), (CanvasTools{false, true, false}));
+    EXPECT_EQ(tools_after_key({}, ToolKey::pick, true, true), (CanvasTools{false, true, false}));
+}
+
+TEST(PickTools, WLeavesPickMode) {
+    const CanvasTools picking{false, true, false};
+    EXPECT_EQ(tools_after_key(picking, ToolKey::pick, true, true), CanvasTools{});
+    // Also where it could not be entered now (the view moved to Decode): leaving is always allowed.
+    EXPECT_EQ(tools_after_key(picking, ToolKey::pick, false, true), CanvasTools{});
+}
+
+TEST(PickTools, IAndTLeavePickMode) {
+    const CanvasTools picking{false, true, false};
+    EXPECT_EQ(tools_after_key(picking, ToolKey::sample, true, true), (CanvasTools{true, false, false}));
+    EXPECT_EQ(tools_after_key(picking, ToolKey::strip, true, true), (CanvasTools{false, false, true}));
+    // Sample mode and the strip do not exclude each other, as before.
+    EXPECT_EQ(tools_after_key(CanvasTools{true, false, false}, ToolKey::strip, true, true),
+              (CanvasTools{true, false, true}));
+    EXPECT_EQ(tools_after_key(CanvasTools{false, false, true}, ToolKey::sample, true, true),
+              (CanvasTools{true, false, true}));
+    // I turns Sample mode off again, and T the strip.
+    EXPECT_EQ(tools_after_key(CanvasTools{true, false, false}, ToolKey::sample, true, true),
+              CanvasTools{});
+    EXPECT_EQ(tools_after_key(CanvasTools{false, false, true}, ToolKey::strip, true, true),
+              CanvasTools{});
+}
+
+TEST(PickTools, AnUnavailableToolChangesNothing) {
+    // Viewing Decode: W does nothing, even with the others on.
+    const CanvasTools sampling{true, false, true};
+    EXPECT_EQ(tools_after_key(sampling, ToolKey::pick, false, true), sampling);
+    EXPECT_EQ(tools_after_key({}, ToolKey::pick, false, true), CanvasTools{});
+    // A strip that can't start leaves Pick mode alone.
+    const CanvasTools picking{false, true, false};
+    EXPECT_EQ(tools_after_key(picking, ToolKey::strip, true, false), picking);
+}
+
+TEST(PickAvailable, NotWhileViewingDecodeAndWhereWhiteBalanceIsShown) {
+    EXPECT_FALSE(pick_available(StageId::decode));
+    EXPECT_TRUE(pick_available(StageId::white_balance));
+    EXPECT_FALSE(pick_available(StageId::exposure));  // White balance comes after Exposure
+    EXPECT_TRUE(pick_available(StageId::matrix));
+    EXPECT_TRUE(pick_available(final_stage));
+    // The same rule as the stage's own visibility.
+    for (const StageInfo& stage : pipeline_stages()) {
+        EXPECT_EQ(pick_available(stage.id), !stage_after_view(StageId::white_balance, stage.id))
+            << stage.name;
+    }
+    // Comparing Decode with a later stage shows the later one, so it is available.
+    EXPECT_TRUE(pick_available(StageId::decode, StageId::matrix));
+    EXPECT_FALSE(pick_available(StageId::decode, StageId::exposure));
+    EXPECT_FALSE(pick_available(StageId::decode, StageId::decode));
+}
+
+TEST(PickMarkerPlace, IsThePatchAroundThePixelCutAtTheEdges) {
+    const ViewGeometry g = sample_geometry();
+    ViewState s = view_zoomed_to(ViewState{}, g, 4.0f);
+    PickMarker m = pick_marker(s, g, {20, 15}, 40, 30);
+    EXPECT_TRUE(m.on_canvas);
+    EXPECT_FLOAT_EQ(m.patch.max.x - m.patch.min.x, 20.0f);  // 5 pixels of 4 screen units
+    EXPECT_FLOAT_EQ(m.patch.max.y - m.patch.min.y, 20.0f);
+    const SampleMarker pixel = sample_marker(s, g, {20, 15});
+    EXPECT_FLOAT_EQ(m.patch.min.x + 8.0f, pixel.square.min.x);  // two pixels in from the left
+    EXPECT_FLOAT_EQ(m.patch.min.y + 8.0f, pixel.square.min.y);
+    // In a corner it is 3 across, and the pixel is its corner.
+    s = view_zoomed_to(ViewState{}, g, 1.0f);
+    m = pick_marker(s, g, {0, 0}, 40, 30);
+    EXPECT_FLOAT_EQ(m.patch.max.x - m.patch.min.x, 3.0f * 2.5f);
+    EXPECT_FLOAT_EQ(m.patch.max.y - m.patch.min.y, 3.0f * 2.5f);
+    EXPECT_FALSE(pick_marker(s, g, {40, 0}, 40, 30).on_canvas);
 }
 
 }  // namespace

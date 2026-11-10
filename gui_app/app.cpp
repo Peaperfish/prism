@@ -1292,6 +1292,8 @@ void App::handle_shortcuts() {
             case gui::EscapeAction::close_window:
                 *focused_window_last_frame_ = false;  // the window's own open flag
                 break;
+            case gui::EscapeAction::leave_pick:
+                break;  // Pick mode comes to the window in a later change
             case gui::EscapeAction::clear_sample:
                 clear_sample();
                 break;

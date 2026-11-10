@@ -9,6 +9,7 @@
 
 #include "prism/camera_profile.hpp"
 #include "prism/gui/clipping.hpp"
+#include "prism/gui/history.hpp"
 #include "prism/gui/neutral_pick.hpp"
 #include "prism/gui/stage_controls.hpp"
 #include "prism/image.hpp"
@@ -359,4 +360,40 @@ TEST(NeutralPickApply, ChoosesTheLightAndTurnsTheStageOn) {
     ASSERT_TRUE(s.white_balance);
     EXPECT_EQ(*s.white_balance, (WhiteBalance{5180, 4}));
     EXPECT_TRUE(s.white_balance_on);
+}
+
+TEST(NeutralPickApply, EachPickIsOneUndoStepThatBringsBackWhatWasThere) {
+    History history;
+    EditSettings s = history.current();
+    s.white_balance = WhiteBalance{4000, 5};
+    s.white_balance_on = false;
+    history.set(s);
+    ASSERT_EQ(history.undo_steps(), 1u);
+
+    const Image warm = image_of(1, 1, {colour_lit_by({3200, 10}, prism::white_of(prism::default_as_shot), 0.3)});
+    const Image cool = image_of(1, 1, {colour_lit_by({8000, -10}, prism::white_of(prism::default_as_shot), 0.3)});
+    for (const Image* img : {&warm, &cool}) {
+        const NeutralPick pick = pick_neutral(*img, 0, 0, std::nullopt);
+        ASSERT_EQ(pick.outcome, PickOutcome::picked);
+        EditSettings next = history.current();
+        apply_pick(next, pick);
+        history.set(next);
+    }
+    EXPECT_EQ(history.undo_steps(), 3u);  // one each
+    EXPECT_NEAR(history.current().white_balance->kelvin, 8000.0, 10.0);
+    EXPECT_TRUE(history.undo());
+    EXPECT_NEAR(history.current().white_balance->kelvin, 3200.0, 10.0);
+    EXPECT_TRUE(history.undo());
+    EXPECT_EQ(*history.current().white_balance, (WhiteBalance{4000, 5}));
+    EXPECT_FALSE(history.current().white_balance_on);  // the stage was off before the pick turned it on
+}
+
+TEST(NeutralPickApply, ARejectedPickAddsNoUndoStep) {
+    History history;
+    const std::size_t before = history.undo_steps();
+    const NeutralPick pick = pick_neutral(image_of(1, 1, {{0.001f, 0.001f, 0.001f}}), 0, 0, std::nullopt);
+    EditSettings next = history.current();
+    apply_pick(next, pick);
+    history.set(next);  // what the window does only for a pick, but even then nothing changed
+    EXPECT_EQ(history.undo_steps(), before);
 }
