@@ -686,35 +686,26 @@ TEST(WhiteBalanceFormat, KelvinToTenAndTintWithItsSignAndARealMinus) {
     EXPECT_EQ(prism::gui::format_tint(-10.0).find('-'), std::string::npos);
 }
 
-TEST(WhiteBalanceValue, AsShotOnARawFileShowsTheCamerasLight) {
-    const EditSettings s;
-    EXPECT_EQ(prism::gui::white_balance_value_text(s, lit_by({5328, 26.7})),
-              "As shot \xC2\xB7 5330 K, tint +27");
-    EXPECT_EQ(prism::gui::white_balance_value_text(s, lit_by({4000, -12.3})),
-              "As shot \xC2\xB7 4000 K, tint \xE2\x88\x92" "12");
-    EXPECT_EQ(prism::gui::white_balance_value_text(s, lit_by({6500, 0})),
-              "As shot \xC2\xB7 6500 K, tint 0");
-}
-
-TEST(WhiteBalanceValue, AsShotWithoutACamerasLightIsTakenAs6500) {
-    EXPECT_EQ(prism::gui::white_balance_value_text(EditSettings{}, std::nullopt),
-              "As shot \xC2\xB7 taken as 6500 K");
-}
-
-TEST(WhiteBalanceValue, AChosenLightShowsItsKelvinAndTint) {
+TEST(WhiteBalanceValue, TheHeadingReadsAsShotUntilALightIsChosen) {
+    EXPECT_EQ(prism::gui::white_balance_value_text(EditSettings{}), "As shot");
     EditSettings s;
     s.white_balance = WhiteBalance{5200, 10};
-    // The same with and without the photo's own light: the choice is what is shown.
-    for (const auto& as_shot : {std::optional<prism::Chromaticity>{}, lit_by({5328, 26.7})}) {
-        EXPECT_EQ(prism::gui::white_balance_value_text(s, as_shot), "5200 K \xC2\xB7 tint +10");
-    }
-    EXPECT_EQ(prism::gui::stage_value_text(s, StageId::white_balance), "5200 K \xC2\xB7 tint +10");
+    EXPECT_EQ(prism::gui::white_balance_value_text(s), "Chosen");
     s.white_balance = WhiteBalance{5200, 0};
-    EXPECT_EQ(prism::gui::white_balance_value_text(s, std::nullopt), "5200 K \xC2\xB7 tint 0");
+    EXPECT_EQ(prism::gui::white_balance_value_text(s), "Chosen");
+    // The recipe lines and the like still carry the numbers.
+    EXPECT_EQ(prism::gui::stage_value_text(s, StageId::white_balance), "5200 K \xC2\xB7 tint 0");
     s.white_balance = WhiteBalance{3200, -10};
-    EXPECT_EQ(prism::gui::white_balance_value_text(s, std::nullopt),
+    EXPECT_EQ(prism::gui::stage_value_text(s, StageId::white_balance),
               "3200 K \xC2\xB7 tint \xE2\x88\x92" "10");
     EXPECT_EQ(prism::gui::stage_value_text(EditSettings{}, StageId::white_balance), "As shot");
+}
+
+TEST(WhiteBalanceValue, TheSubtitleNamesTheLightOrSaysItWasNotRecorded) {
+    EXPECT_EQ(prism::gui::white_balance_subtitle(lit_by({5328, 26.7})),
+              "The light the photo was lit by");
+    EXPECT_EQ(prism::gui::white_balance_subtitle(std::nullopt),
+              "Light not recorded, taken as 6500 K");
 }
 
 TEST(WhiteBalanceControls, AsShotTheSlidersSitAtTheAsShotLightClampedToTheirRanges) {

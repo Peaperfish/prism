@@ -117,8 +117,8 @@ LightPathRow light_path_row(const LightPathInputs& in, StageId stage) {
             row.subtitle = "sRGB for the screen";
             break;
         case StageId::white_balance: {
-            row.subtitle = "The light the photo was lit by";
-            row.value = white_balance_value_text(s, in.as_shot_white);
+            row.subtitle = white_balance_subtitle(in.as_shot_white);
+            row.value = white_balance_value_text(s);
             if (!row.enabled) {
                 // A chosen light comes back when the stage is turned on; As shot is the same
                 // picture on or off.
@@ -135,6 +135,8 @@ LightPathRow light_path_row(const LightPathInputs& in, StageId stage) {
             sliders.tint_as_shot = static_cast<float>(as_shot.tint);
             // The stored light, also while the stage is off: it comes back with that one.
             const WhiteBalance stored = slider_white_balance(s, in.as_shot_white);
+            sliders.kelvin_text = format_kelvin(shown.kelvin);
+            sliders.tint_text = format_tint(shown.tint);
             sliders.kelvin_typed = typed_field_text(stored, WhiteBalanceControl::kelvin);
             sliders.tint_typed = typed_field_text(stored, WhiteBalanceControl::tint);
             row.white_balance = std::move(sliders);
@@ -181,6 +183,8 @@ LightPathRow light_path_row(const LightPathInputs& in, StageId stage) {
                 row.beyond_slider = control == SimpleControl::brightness ? beyond.brightness
                                                                          : beyond.colour;
             }
+            // While the stage is off the slider sits at neutral, so nothing lies past its end.
+            row.beyond_slider = row.beyond_slider && row.enabled;
             row.slider_reset = "Reset to " + stage_value_text(EditSettings{}, stage);
             row.slider_typed = typed_field_text(s, control);
             // The stored value, also while the stage is off: it comes back with that one.
@@ -253,8 +257,7 @@ LightPathRowLayout light_path_row_layout(const LightPathRow& row,
             break;
     }
     layout.clip_y = y;
-    layout.clip_height = row.stage == StageId::exposure ? std::max(m.secondary, m.strip_button)
-                                                        : m.secondary;
+    layout.clip_height = m.secondary;
     layout.height = y + layout.clip_height + m.pad_bottom;
     return layout;
 }

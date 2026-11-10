@@ -350,6 +350,7 @@ TEST(TypedWhiteBalance, ATypedValueIsOneChangeThroughTheSameSetterAsADrag) {
     prism::gui::set_white_balance(s, WhiteBalanceControl::tint, *tint_typed("\xE2\x88\x92" "10"),
                                   as_shot);
     EXPECT_EQ(s.white_balance, (prism::WhiteBalance{5200, -10}));
-    EXPECT_EQ(prism::gui::white_balance_value_text(s, as_shot),
+    EXPECT_EQ(prism::gui::white_balance_value_text(s), "Chosen");
+    EXPECT_EQ(prism::gui::stage_value_text(s, prism::gui::StageId::white_balance),
               "5200 K \xC2\xB7 tint \xE2\x88\x92" "10");
 }

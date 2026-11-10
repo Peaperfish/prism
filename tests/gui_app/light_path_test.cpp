@@ -214,7 +214,6 @@ protected:
         m.secondary = std::ceil(ImGui::GetFontSize());
         ImGui::PopFont();
         m.tabs = segmented_height();
-        m.strip_button = std::round(mock(24.0f));
         return m;
     }
 

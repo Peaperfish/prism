@@ -61,7 +61,7 @@ struct LightPathRow {
     // Exposure's and Saturation's position is in settings.hpp's -100 to +100. Contrast's is in half
     // grades, a whole number from 0 to 10 (paper_grade.hpp), which is where the slider snaps to.
     float slider_position = 0.0f;
-    bool beyond_slider = false;  // the value lies past the slider's end
+    bool beyond_slider = false;  // the value lies past the slider's end (never while the stage is off)
     std::string slider_reset;    // "Reset to +0.00 stops"
     // What Ctrl/Cmd-click types into: the value as the line above shows it, in its own unit
     // ("+0.70 stops", "1.20", a grade "3½"), see typed_field_text.
@@ -75,6 +75,9 @@ struct LightPathRow {
         // Where As shot is on each slider: where its fill starts from.
         float kelvin_as_shot = 0.0f;
         float tint_as_shot = 0.0f;
+        // The numbers beside the sliders: "5810 K" and "+34" ("−8", "0"), where the sliders sit.
+        std::string kelvin_text;
+        std::string tint_text;
         // What Ctrl/Cmd-click types into: "5330 K" and "+27" (typed_field_text).
         std::string kelvin_typed;
         std::string tint_typed;
@@ -91,7 +94,9 @@ struct LightPathRow {
     std::string parameter_text;   // "4.00"
     std::string parameter_reset;  // "Reset to 4"
 
-    bool test_strip = false;  // the Test strip button shares the clip line
+    // The Test strip button shares the clip line. Like Pick neutral it takes no room of its own: it
+    // is as tall as the line and its gap, so it never changes the row's height.
+    bool test_strip = false;
     // White balance's Pick neutral button shares the subtitle line. It takes no room of its own, so
     // it never changes the row's height (light_path_row_layout does not look at it).
     bool pick_neutral = false;
@@ -144,7 +149,6 @@ struct LightPathMetrics {
     float secondary = 0;     // a line of small text
     float slider = 0;        // a slider
     float tabs = 0;          // the Tone curve's tabs, with their well
-    float strip_button = 0;  // the Test strip button
     float gap = 0;           // between two lines
 };
 

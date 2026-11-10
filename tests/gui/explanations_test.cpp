@@ -10,6 +10,7 @@
 #include <string_view>
 #include <vector>
 
+#include "prism/gui/light_path.hpp"
 #include "prism/gui/pixel_sample.hpp"
 #include "prism/gui/stage_controls.hpp"
 #include "prism/gui/theme_tokens.hpp"
@@ -262,13 +263,18 @@ TEST(LiveLines, WhiteBalanceSaysTheLightAndWhetherItIsAsShot) {
 }
 
 TEST(LiveLines, WhiteBalanceReadsAsTheRowDoes) {
-    // The same rounding as the row's value line, for every light.
+    // The same rounding as the numbers beside the row's sliders, for every light.
     for (const WhiteBalance wb : {WhiteBalance{5328, 26.7}, WhiteBalance{2004, -99.6},
                                   WhiteBalance{14996, 0.4}}) {
         LiveContext context;
         context.as_shot_white = white_of(wb);
-        const std::string row = white_balance_value_text(EditSettings{}, context.as_shot_white);
-        const std::string numbers = row.substr(std::string("As shot \xC2\xB7 ").size());
+        const LightPathRow::WhiteBalanceSliders sliders =
+            *light_path_row({EditSettings{}, InputKind::raw, "RAW", final_stage, std::nullopt,
+                             nullptr, context.as_shot_white},
+                            StageId::white_balance)
+                 .white_balance;
+        const std::string row = sliders.kelvin_text + ", tint " + sliders.tint_text;
+        const std::string numbers = row;
         EXPECT_NE(live_line("stage.white_balance", EditSettings{}, context).find(numbers),
                   std::string::npos)
             << row;

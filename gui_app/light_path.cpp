@@ -67,7 +67,6 @@ gui::LightPathMetrics row_metrics() {
     ImGui::PopFont();
     m.slider = slider_height();
     m.tabs = segmented_height();
-    m.strip_button = px(24.0f);
     m.gap = px(4.0f);
     return m;
 }

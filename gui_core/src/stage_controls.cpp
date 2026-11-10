@@ -207,16 +207,15 @@ void reset_white_balance(EditSettings& s) {
     s.white_balance_on = true;
 }
 
-std::string white_balance_value_text(const EditSettings& s,
-                                     const std::optional<Chromaticity>& as_shot_white) {
-    if (s.white_balance) {
-        return stage_value_text(s, StageId::white_balance);
+std::string white_balance_value_text(const EditSettings& s) {
+    return s.white_balance ? "Chosen" : "As shot";
+}
+
+std::string white_balance_subtitle(const std::optional<Chromaticity>& as_shot_white) {
+    if (as_shot_white) {
+        return "The light the photo was lit by";
     }
-    if (!as_shot_white) {
-        return "As shot \u00B7 taken as " + format_kelvin(default_as_shot.kelvin);
-    }
-    const WhiteBalance as_shot = as_shot_white_balance(as_shot_white);
-    return "As shot \u00B7 " + format_kelvin(as_shot.kelvin) + ", tint " + format_tint(as_shot.tint);
+    return "Light not recorded, taken as " + format_kelvin(default_as_shot.kelvin);
 }
 
 std::string_view curve_kind_name(CurveKind kind) noexcept {

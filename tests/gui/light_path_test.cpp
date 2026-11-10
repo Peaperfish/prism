@@ -30,7 +30,6 @@ constexpr LightPathMetrics metrics{.pad_top = 11.0f,
                                    .secondary = 15.0f,
                                    .slider = 20.0f,
                                    .tabs = 37.0f,
-                                   .strip_button = 30.0f,
                                    .gap = 5.0f};
 
 StageClip clip_with(StageId stage, ClipFate fate) {
@@ -188,11 +187,13 @@ TEST(LightPathLayout, PartsFollowOneAnotherInsideTheRow) {
     EXPECT_TRUE(decode.subtitle_y);
     EXPECT_FALSE(decode.slider_y || decode.tabs_y);
 
-    // The Test strip button shares Exposure's clip line, so that line is as tall as the button.
+    // The Test strip button shares Exposure's clip line and takes no room of its own: that line is
+    // as tall as every other.
     const LightPathRowLayout exposure =
         light_path_row_layout(row_for(StageId::exposure, s), metrics);
     EXPECT_TRUE(exposure.slider_y);
-    EXPECT_EQ(exposure.clip_height, metrics.strip_button);
+    EXPECT_EQ(exposure.clip_height, metrics.secondary);
+    EXPECT_EQ(exposure.height, light_path_row_layout(row_for(StageId::saturation, s), metrics).height);
     const LightPathRowLayout matrix = light_path_row_layout(row_for(StageId::matrix, s), metrics);
     EXPECT_EQ(matrix.clip_height, metrics.secondary);
     EXPECT_FALSE(matrix.slider_y || matrix.subtitle_y || matrix.tabs_y);
@@ -354,6 +355,14 @@ TEST(LightPathRows, ValuesPastTheSlidersEndAreFlagged) {
     EXPECT_FALSE(row_for(StageId::contrast, s).beyond_slider);
 }
 
+TEST(LightPathRows, NothingLiesPastTheSlidersEndWhileTheStageIsOff) {
+    EditSettings s;
+    s.exposure_stops = 10.0f;
+    EXPECT_TRUE(row_for(StageId::exposure, s).beyond_slider);
+    s.exposure_on = false;
+    EXPECT_FALSE(row_for(StageId::exposure, s).beyond_slider);  // the slider sits at neutral
+}
+
 TEST(LightPathRows, OnlyTheStagesWithAnEffectHaveSwitchesAndSliders) {
     const EditSettings s;
     for (const StageId stage : all_stages) {
@@ -449,7 +458,7 @@ TEST(LightPathWhiteBalance, AsShotOnARawFileReadsTheCamerasLightAndTheSlidersSit
     const LightPathRow row = white_balance_row(EditSettings{}, white_of({5328, 26.7}));
     EXPECT_EQ(row.name, "White balance");
     EXPECT_EQ(row.subtitle, "The light the photo was lit by");
-    EXPECT_EQ(row.value, "As shot \xC2\xB7 5330 K, tint +27");
+    EXPECT_EQ(row.value, "As shot");
     EXPECT_FALSE(row.value_muted);
     EXPECT_TRUE(row.can_toggle);
     EXPECT_TRUE(row.enabled);
@@ -462,18 +471,24 @@ TEST(LightPathWhiteBalance, AsShotOnARawFileReadsTheCamerasLightAndTheSlidersSit
     EXPECT_EQ(row.white_balance->tint_as_shot, 27.0f);
     EXPECT_EQ(row.white_balance->kelvin_typed, "5330 K");
     EXPECT_EQ(row.white_balance->tint_typed, "+27");
+    // The numbers beside the sliders: where they sit, which is the camera's light.
+    EXPECT_EQ(row.white_balance->kelvin_text, "5330 K");
+    EXPECT_EQ(row.white_balance->tint_text, "+27");
     EXPECT_FALSE(row.tooltip.empty());
 }
 
-TEST(LightPathWhiteBalance, AsShotWithoutACamerasLightIsTakenAs6500) {
+TEST(LightPathWhiteBalance, AsShotWithoutACamerasLightSaysSoInTheSubtitle) {
     for (const InputKind kind : {InputKind::image, InputKind::raw}) {
         const EditSettings s;
         const LightPathRow row = light_path_row(
             {s, kind, kind == InputKind::raw ? "RAW" : "JPEG", final_stage, std::nullopt, nullptr,
              std::nullopt},
             StageId::white_balance);
-        EXPECT_EQ(row.value, "As shot \xC2\xB7 taken as 6500 K");
+        EXPECT_EQ(row.value, "As shot");
+        EXPECT_EQ(row.subtitle, "Light not recorded, taken as 6500 K");
         ASSERT_TRUE(row.white_balance);
+        EXPECT_EQ(row.white_balance->kelvin_text, "6500 K");
+        EXPECT_EQ(row.white_balance->tint_text, "0");
         EXPECT_EQ(row.white_balance->kelvin_position,
                   static_cast<float>(kelvin_slider_position(6500)));
         EXPECT_EQ(row.white_balance->tint_position, 0.0f);
@@ -486,7 +501,8 @@ TEST(LightPathWhiteBalance, AChosenLightIsShownAndTheFillStillStartsAtAsShot) {
     EditSettings s;
     s.white_balance = WhiteBalance{5200, -10};
     const LightPathRow row = white_balance_row(s, white_of({5328, 26.7}));
-    EXPECT_EQ(row.value, "5200 K \xC2\xB7 tint \xE2\x88\x92" "10");
+    EXPECT_EQ(row.value, "Chosen");
+    EXPECT_EQ(row.subtitle, "The light the photo was lit by");
     EXPECT_FALSE(row.value_muted);
     ASSERT_TRUE(row.white_balance);
     EXPECT_EQ(row.white_balance->kelvin_position, static_cast<float>(kelvin_slider_position(5200)));
@@ -495,8 +511,11 @@ TEST(LightPathWhiteBalance, AChosenLightIsShownAndTheFillStillStartsAtAsShot) {
     EXPECT_EQ(row.white_balance->tint_as_shot, 27.0f);
     EXPECT_EQ(row.white_balance->kelvin_typed, "5200 K");
     EXPECT_EQ(row.white_balance->tint_typed, "\xE2\x88\x92" "10");
+    EXPECT_EQ(row.white_balance->kelvin_text, "5200 K");
+    EXPECT_EQ(row.white_balance->tint_text, "\xE2\x88\x92" "10");  // U+2212, not a hyphen
     s.white_balance = WhiteBalance{5200, 0};
-    EXPECT_EQ(white_balance_row(s).value, "5200 K \xC2\xB7 tint 0");
+    EXPECT_EQ(white_balance_row(s).value, "Chosen");
+    EXPECT_EQ(white_balance_row(s).white_balance->tint_text, "0");
 }
 
 TEST(LightPathWhiteBalance, SwitchedOffItKeepsTheChoiceAndTheSlidersGoBackToAsShot) {
@@ -505,26 +524,30 @@ TEST(LightPathWhiteBalance, SwitchedOffItKeepsTheChoiceAndTheSlidersGoBackToAsSh
     s.white_balance_on = false;
     const LightPathRow row = white_balance_row(s, white_of({5328, 26.7}));
     EXPECT_FALSE(row.enabled);
-    EXPECT_EQ(row.value, "5200 K \xC2\xB7 tint +10 when on");
+    EXPECT_EQ(row.value, "Chosen when on");
     EXPECT_TRUE(row.value_muted);
     ASSERT_TRUE(row.white_balance);
     EXPECT_EQ(row.white_balance->kelvin_position, row.white_balance->kelvin_as_shot);
     EXPECT_EQ(row.white_balance->tint_position, 27.0f);
+    // The numbers go with the sliders, which sit at the camera's light while the stage is off.
+    EXPECT_EQ(row.white_balance->kelvin_text, "5330 K");
+    EXPECT_EQ(row.white_balance->tint_text, "+27");
     EXPECT_EQ(row.white_balance->kelvin_typed, "5200 K");  // what it comes back with
     EXPECT_EQ(row.white_balance->tint_typed, "+10");
 
     // As shot is the same picture on or off: there is nothing to come back.
     s.white_balance.reset();
     const LightPathRow as_shot = white_balance_row(s, white_of({5328, 26.7}));
-    EXPECT_EQ(as_shot.value, "As shot \xC2\xB7 5330 K, tint +27");
+    EXPECT_EQ(as_shot.value, "As shot");
     EXPECT_TRUE(as_shot.value_muted);
 }
 
 TEST(LightPathWhiteBalance, AnAsShotLightPastTheSlidersIsReadInFullAndTheSlidersStopAtTheirEnds) {
     const LightPathRow row = white_balance_row(EditSettings{}, white_of({1800, 0}));
-    EXPECT_EQ(row.value.rfind("As shot \xC2\xB7 1800 K", 0), 0u) << row.value;
+    EXPECT_EQ(row.value, "As shot");
     ASSERT_TRUE(row.white_balance);
     EXPECT_EQ(row.white_balance->kelvin_position, 0.0f);
+    EXPECT_EQ(row.white_balance->kelvin_text, "2000 K");  // where the slider sits, at its end
     EXPECT_EQ(row.white_balance->kelvin_typed, "2000 K");
 }
 
@@ -540,7 +563,6 @@ TEST(LightPathRowPick, OnlyWhiteBalanceHasThePickNeutralButtonAndItTakesNoRoom) 
     metrics.secondary = 13;
     metrics.slider = 20;
     metrics.tabs = 26;
-    metrics.strip_button = 24;
     metrics.gap = 4;
     LightPathRow row = row_for(StageId::white_balance, s);
     const LightPathRowLayout with = light_path_row_layout(row, metrics);

@@ -89,13 +89,14 @@ void set_white_balance(EditSettings& s, WhiteBalanceControl control, double valu
 // Back to As shot exactly (no white balance), with the stage on.
 void reset_white_balance(EditSettings& s);
 
-// The White balance row's value:
-//   as shot, with the photo's as-shot light known (RAW):  "As shot · 5330 K, tint +27"
-//   as shot, without one (JPEG, PNG, HEIC, some RAW):     "As shot · taken as 6500 K"
-//   chosen:                                               "5200 K · tint +10"
-// Kelvin is rounded to 10 K and tint to a whole number (format_kelvin, format_tint).
-[[nodiscard]] std::string white_balance_value_text(
-    const EditSettings& s, const std::optional<Chromaticity>& as_shot_white);
+// The White balance row's value, on the heading line: "As shot" until a light is chosen, then
+// "Chosen". The numbers are beside the two sliders (format_kelvin, format_tint), not here.
+[[nodiscard]] std::string white_balance_value_text(const EditSettings& s);
+
+// The line under the heading: "The light the photo was lit by", and for a file that records no
+// light (JPEG, PNG, HEIC, some RAW) "Light not recorded, taken as 6500 K", the light the numbers
+// are measured from.
+[[nodiscard]] std::string white_balance_subtitle(const std::optional<Chromaticity>& as_shot_white);
 
 // --- Tone curve ----------------------------------------------------------------------------------
 
