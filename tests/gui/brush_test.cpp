@@ -2,11 +2,13 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <ostream>
 #include <vector>
 
 #include "prism/gui/field_cache.hpp"
+#include "prism/gui/preview_renderer.hpp"
 #include "prism/gui/recipe_settings.hpp"
 #include "prism/gui/stage_controls.hpp"
 
@@ -600,6 +602,140 @@ TEST(BrushMenu, ChoosingItTogglesBrushModeAsBDoes) {
     EXPECT_EQ(tools_after_key(off, ToolKey::brush, true, true,
                               brush_menu_item(false, true, StageId::exposure).enabled),
               off);
+}
+
+// --- The stroke mask, bit for bit -------------------------------------------------------------
+
+// 1501 x 701 is just over parallel_min_pixels (2^20), so the mask and the field are split over
+// several threads; odd sizes so that no chunk of rows lines up with anything.
+constexpr int mask_w = 1501;
+constexpr int mask_h = 701;
+
+std::shared_ptr<const Image> mask_base() {
+    auto img = std::make_shared<Image>();
+    img->width = mask_w;
+    img->height = mask_h;
+    img->pixels.assign(static_cast<std::size_t>(mask_w) * mask_h * 3, 0.18f);
+    return img;
+}
+
+// Strokes painted the way the app paints them: a press, moves past the spacing, a release, each
+// point through StrokePainter (one new stroke object per point). Dodges and burns, hard and soft
+// edges, overlapping and running off the picture's edge.
+Session& painted_session(Session& session, FieldCache* grow_cache = nullptr) {
+    const BrushCanvas picture{mask_w, mask_h};
+    StrokePainter painter;
+    struct Plan {
+        BrushTone tone;
+        float radius;
+        float softness;
+        float strength;
+        std::vector<ViewPoint> path;
+    };
+    const std::vector<Plan> plans{
+        {BrushTone::dodge, 0.05f, 0.5f, 0.5f, {{100, 100}, {400, 180}, {700, 150}, {1000, 400}}},
+        {BrushTone::burn,
+         0.08f,
+         0.0f,
+         1.5f,
+         {{1400, 50}, {1300, 600}, {1550, 690}}},             // off the edge
+        {BrushTone::dodge, 0.02f, 1.0f, 2.0f, {{750, 350}}},  // one dot
+        {BrushTone::burn, 0.03f, 0.3f, 0.7f, {{200, 650}, {600, 300}, {900, 380}, {1100, 100}}},
+    };
+    for (const Plan& plan : plans) {
+        BrushStyle style;
+        style.radius = plan.radius;
+        style.softness = plan.softness;
+        style.strength = plan.strength;
+        BrushGesture g;
+        const float spacing = min_point_spacing(plan.radius, mask_w);
+        std::vector<BrushAction> actions =
+            g.press(plan.path.front(), {}, plan.tone, spacing, picture);
+        for (std::size_t i = 1; i < plan.path.size(); ++i) {
+            // Several moves between each point of the plan, as the mouse sends them.
+            const ViewPoint a = plan.path[i - 1];
+            const ViewPoint b = plan.path[i];
+            for (int step = 1; step <= 12; ++step) {
+                const float t = static_cast<float>(step) / 12.0f;
+                for (const BrushAction& m :
+                     g.move({a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t})) {
+                    actions.push_back(m);
+                }
+            }
+        }
+        for (const BrushAction& r : g.release(plan.path.back())) {
+            actions.push_back(r);
+        }
+        for (const BrushAction& action : actions) {
+            EXPECT_EQ(painter.apply(action, style, picture, session), std::nullopt);
+            if (grow_cache != nullptr) {
+                (void)grow_cache->update(session.settings().strokes, stage_grid(mask_w, mask_h), 1);
+            }
+        }
+    }
+    return session;
+}
+
+std::vector<std::uint8_t> render_mask(const EditSettings& settings, int threads,
+                                      FieldCache* cache = nullptr) {
+    PreviewOptions options;
+    options.stroke_mask = true;
+    const std::optional<PreviewFrame> frame =
+        render_preview(*mask_base(), settings, threads, {}, {}, final_stage, options, cache);
+    EXPECT_TRUE(frame.has_value());
+    return frame ? frame->stroke_mask : std::vector<std::uint8_t>{};
+}
+
+TEST(StrokeMaskRender, IsTheSameOnOneThreadAndManyAndAsTheFieldItselfSays) {
+    Session session;
+    const EditSettings& settings = painted_session(session).settings();
+    ASSERT_EQ(settings.strokes.field()->strokes.size(), 4u);
+
+    // The reference, straight from the stroke field: rasterise_field on the whole picture, then
+    // one byte per pixel.
+    std::vector<float> field(static_cast<std::size_t>(mask_w) * mask_h);
+    rasterise_field(*settings.strokes.field(), PixelGrid::whole(mask_w, mask_h), 0, mask_h, field);
+    std::vector<std::uint8_t> reference(field.size());
+    for (std::size_t p = 0; p < field.size(); ++p) {
+        reference[p] = stroke_mask_byte(field[p]);
+    }
+    // Something to compare: dodged, burned and untouched pixels.
+    EXPECT_GT(
+        std::count_if(reference.begin(), reference.end(), [](std::uint8_t b) { return b > 128; }),
+        1000);
+    EXPECT_GT(
+        std::count_if(reference.begin(), reference.end(), [](std::uint8_t b) { return b < 128; }),
+        1000);
+    EXPECT_GT(std::count(reference.begin(), reference.end(), std::uint8_t{128}), 1000);
+
+    const std::vector<std::uint8_t> one = render_mask(settings, 1);
+    const std::vector<std::uint8_t> many = render_mask(settings, 7);
+    const std::vector<std::uint8_t> all = render_mask(settings, 0);
+    ASSERT_EQ(one.size(), reference.size());
+    ASSERT_EQ(many.size(), reference.size());
+    EXPECT_TRUE(one == reference);
+    EXPECT_TRUE(many == reference);
+    EXPECT_TRUE(all == reference);
+    // The first pixel that differs, if any, for the failure message.
+    for (std::size_t p = 0; p < reference.size(); ++p) {
+        if (many[p] != reference[p]) {
+            ADD_FAILURE() << "pixel " << p % mask_w << ", " << p / mask_w << ": " << int(many[p])
+                          << " on 7 threads, " << int(reference[p]) << " from the field";
+            break;
+        }
+    }
+}
+
+TEST(StrokeMaskRender, IsTheSameFromTheFieldTheBrushGrewPointByPoint) {
+    // The preview's cache follows the strokes as they are painted (FieldPath::grow and append);
+    // its mask must be the one a fresh render gives.
+    Session session;
+    FieldCache grown;
+    const EditSettings& settings = painted_session(session, &grown).settings();
+    const std::vector<std::uint8_t> fresh = render_mask(settings, 1);
+    const std::vector<std::uint8_t> from_grown = render_mask(settings, 7, &grown);
+    EXPECT_EQ(grown.last_path(), FieldPath::reuse);  // the render used the grown field as it was
+    EXPECT_TRUE(from_grown == fresh);
 }
 
 }  // namespace
