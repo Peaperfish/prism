@@ -389,6 +389,13 @@ std::optional<PixelTrace> sample_trace(const Image& base, const EditSettings& se
             trace.before_clamp = pixel_range(input.pixels.data());
         }
     };
+    // The stroke field at this pixel, from the very field and grid the stage uses on it.
+    if (!process_settings.dodge_burn.field.strokes.empty()) {
+        float field = 0.0f;
+        rasterise_field(process_settings.dodge_burn.field, process_settings.dodge_burn.grid, 0, 1,
+                        std::span<float>(&field, 1));
+        trace.dodge_burn_stops = field;
+    }
     (void)process(one, process_settings, 1, {}, after_stage, before_stage);
     keep(StageId::encode);
     const std::vector<std::uint8_t> bytes = encode_srgb8(one, 1);
@@ -452,10 +459,25 @@ double file_pixels_across(int preview_long_side, int file_long_side) noexcept {
     return static_cast<double>(file_long_side) / static_cast<double>(preview_long_side);
 }
 
+std::string sample_dodge_burn_text(const PixelTrace& trace) {
+    const float stops = trace.dodge_burn_stops;
+    if (stops == 0.0f || std::isnan(stops)) {
+        return {};
+    }
+    const std::string amount = fixed(std::fabs(stops), 1);
+    // Judged on the rounded number, so that "1.0" is a stop and "1.1" is stops, never "1.0 stops".
+    const bool one_or_less = std::round(std::fabs(stops) * 10.0f) <= 10.0f;
+    return "Dodge & burn: " + amount + (one_or_less ? " stop " : " stops ") +
+           (stops > 0.0f ? "lighter" : "darker") + " here";
+}
+
 SampleRows sample_rows(const PixelTrace& trace, StageId stage, SampleScale scale) {
     const SampleStats stats = sample_stats(trace, stage);
-    return {values_row(trace, stage), light_row(trace, stage, stats), stats.fate,
-            average_text(scale)};
+    return {values_row(trace, stage),
+            light_row(trace, stage, stats),
+            stats.fate,
+            average_text(scale),
+            before(stage, StageId::dodge_burn) ? std::string() : sample_dodge_burn_text(trace)};
 }
 
 std::string sample_cursor_line(const PixelTrace& trace, StageId stage) {
@@ -470,7 +492,8 @@ std::string sample_stage_title(StageId stage) {
 std::string describe_sample(const PixelTrace& trace, StageId viewed, std::optional<StageId> compare,
                             SampleScale scale) {
     const auto stage_text = [&](const SampleRows& rows) {
-        return rows.values + " · " + rows.light + " · " + rows.range;
+        return rows.values + " · " + rows.light + " · " + rows.range +
+               (rows.dodge_burn.empty() ? "" : " · " + rows.dodge_burn);
     };
     const SampleRows first = sample_rows(trace, viewed, scale);
     compare = effective_compare(viewed, compare);

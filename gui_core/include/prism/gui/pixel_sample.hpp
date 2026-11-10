@@ -39,6 +39,9 @@ struct PixelTrace {
     PixelRange before_clamp;
     // The curve's name for the words about the pixel, as the Tone curve's row shows it ("filmic").
     std::string curve;
+    // What Dodge & burn's strokes do to this pixel, in stops: positive lightens, negative darkens,
+    // exactly 0 if no stroke reaches it (or there are none, or the stage is off).
+    float dodge_burn_stops = 0.0f;
 
     [[nodiscard]] const SampleStage& at(StageId id) const noexcept {
         return stages[static_cast<std::size_t>(id)];
@@ -114,7 +117,15 @@ struct SampleRows {
     std::string range;
     // What one preview pixel averages, if the preview is smaller than the file; otherwise empty.
     std::string average;
+    // sample_dodge_burn_text, for a stage at or after Dodge & burn; otherwise empty.
+    std::string dodge_burn;
 };
+
+// The line about the strokes under the pixel, or nothing where they do not reach it:
+//   "Dodge & burn: 0.5 stop darker here" / "Dodge & burn: 1.5 stops lighter here"
+// The number is the size of the change in stops, to one decimal place; "stop" up to 1.0, "stops"
+// above.
+[[nodiscard]] std::string sample_dodge_burn_text(const PixelTrace& trace);
 
 [[nodiscard]] SampleRows sample_rows(const PixelTrace& trace, StageId stage,
                                      SampleScale scale = {});
