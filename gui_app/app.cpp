@@ -22,6 +22,7 @@
 #include "prism/gui/export_size.hpp"
 #include "prism/gui/file_types.hpp"
 #include "prism/gui/layout.hpp"
+#include "prism/gui/neutral_pick.hpp"
 #include "prism/gui/paper_grade.hpp"
 #include "prism/gui/photo_format.hpp"
 #include "prism/gui/presets.hpp"
@@ -354,6 +355,7 @@ void App::open_now(const fs::path& path) {
     view_ = {};  // each photo starts whole
     sample_.opened();
     sample_click_.cancel();
+    leave_pick();
     sample_pin_trace_.clear();
     sample_hover_trace_.clear();
     explain_last_.clear();
@@ -871,6 +873,9 @@ void App::update_preview() {
     if (strip_ && !gui::strip_available(viewed_stage_)) {
         strip_.reset();  // the Decode stage shows no edit, so there is nothing to vary
     }
+    if (pick_.on() && !gui::pick_available(viewed_stage_, compare_stage_)) {
+        leave_pick();  // White balance isn't in the picture, so there is nothing to judge a grey by
+    }
     gui::PreviewOptions options;
     options.scopes = prefs_.scope != gui::ScopeChoice::histogram;
     // The Light path is on screen whenever a photo is open, and shows every stage's clipping, so
@@ -1280,6 +1285,7 @@ void App::handle_shortcuts() {
     // has the keyboard focus, so Esc did nothing until the picture was clicked.
     if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
         gui::EscapeContext esc;
+        esc.picking = pick_.on();
         esc.sampling = sample_.on();
         esc.test_strip = strip_.has_value();
         esc.comparing = gui::effective_compare(viewed_stage_, compare_stage_).has_value();
@@ -1293,7 +1299,8 @@ void App::handle_shortcuts() {
                 *focused_window_last_frame_ = false;  // the window's own open flag
                 break;
             case gui::EscapeAction::leave_pick:
-                break;  // Pick mode comes to the window in a later change
+                leave_pick();
+                break;
             case gui::EscapeAction::clear_sample:
                 clear_sample();
                 break;
@@ -1331,6 +1338,9 @@ void App::handle_shortcuts() {
     }
     if (ImGui::Shortcut(ImGuiKey_I, ImGuiInputFlags_RouteGlobal)) {
         toggle_sample();  // I: the sampler, routed like J and T
+    }
+    if (ImGui::Shortcut(ImGuiKey_W, ImGuiInputFlags_RouteGlobal)) {
+        toggle_pick();  // W: the white balance picker, routed like the others
     }
     // Zoom: plain keys, routed like J and T. Cmd/Ctrl with + - 0 is the interface size, above.
     if (global(ImGuiKey_F)) {
@@ -1425,6 +1435,15 @@ void App::draw_menu() {
                             session_.has_file() || sample_.on())) {
             toggle_sample();
         }
+        const bool can_pick = gui::pick_available(viewed_stage_, compare_stage_);
+        if (ImGui::MenuItem("Pick Neutral", "W", pick_.on(),
+                            pick_.on() || (session_.has_file() && can_pick))) {
+            toggle_pick();
+        }
+        if (session_.has_file() && !pick_.on() && !can_pick &&
+            ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled)) {
+            ImGui::SetTooltip("%s", gui::view_hint(viewed_stage_, compare_stage_).c_str());
+        }
         ImGui::Separator();
         const bool can_zoom = view_available();
         const float zoom = can_zoom ? gui::view_zoom(view_, view_geometry_) : 1.0f;
@@ -1516,6 +1535,8 @@ void App::draw_canvas() {
         update_hand_drag();
         update_sample_cursor();
         draw_sample_markers(draw);
+        update_pick_cursor();
+        draw_pick_overlay(draw);
     } else if (!session_.has_file() && !pending_open_) {
         // Empty state: a dashed drop area with the one thing to do. It lights up while a file is
         // dragged over the window.
@@ -1660,6 +1681,10 @@ void App::update_hand_drag() {
             // Its own record of the press: at fit, where a drag moves nothing, the hand isn't pressed.
             sample_click_.press(cursor, io.MouseDragThreshold);
         }
+        if (gui::pick_press_can_pick(pick_.on(), gui::pick_available(viewed_stage_, compare_stage_),
+                                     strip_.has_value(), over_control, hand_key_held_)) {
+            pick_click_.press(cursor, io.MouseDragThreshold);  // as the sampler's, for the same reason
+        }
         if (hand_key_held_) {
             hand_drag_.press(cursor, 0.0f);
         } else if (gui::plain_drag_pans(view_.fit, strip_.has_value(), over_control)) {
@@ -1671,9 +1696,11 @@ void App::update_hand_drag() {
             view_ = gui::view_toggled(view_, view_geometry_, cursor);
             hand_drag_.release();
             sample_click_.cancel();
+            pick_click_.cancel();
         }
     } else {
         sample_click_.move(cursor);
+        pick_click_.move(cursor);
         if (const std::optional<gui::ViewPoint> moved = hand_drag_.move(cursor)) {
             view_ = gui::view_panned_by(view_, view_geometry_, moved->x, moved->y);
         }
@@ -1685,6 +1712,9 @@ void App::update_hand_drag() {
             sample_.place({pixel->x, pixel->y}, base->width, base->height);
         }
     }
+    if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && pick_click_.release(cursor)) {
+        pick_at(cursor);
+    }
     if (hand_drag_.dragging() || (hand_key_held_ && !view_.fit)) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
     }
@@ -1695,6 +1725,7 @@ void App::toggle_sample() {
         clear_sample();
     } else if (session_.has_file()) {
         sample_.toggle();
+        leave_pick();  // one tool at a time
     }
 }
 
@@ -1704,6 +1735,120 @@ void App::clear_sample() {
     sample_hover_.reset();
     sample_pin_trace_.clear();
     sample_hover_trace_.clear();
+}
+
+void App::toggle_pick() {
+    const gui::CanvasTools before{sample_.on(), pick_.on(), strip_.has_value()};
+    const gui::CanvasTools after = gui::tools_after_key(
+        before, gui::ToolKey::pick,
+        session_.has_file() && gui::pick_available(viewed_stage_, compare_stage_), true);
+    if (after == before) {
+        return;
+    }
+    if (!after.picking) {
+        leave_pick();
+        return;
+    }
+    pick_.toggle();
+    pick_message_.clear();
+    if (before.sampling) {
+        clear_sample();
+    }
+    if (before.strip) {
+        strip_.reset();
+    }
+}
+
+void App::leave_pick() {
+    pick_.leave();
+    pick_click_.cancel();
+    pick_hover_.reset();
+    pick_message_.clear();
+}
+
+// A click in Pick mode. Only on a base that is the picture on screen, as the sampler requires: the
+// pixels clicked are the base's.
+void App::pick_at(gui::ViewPoint cursor) {
+    const std::shared_ptr<const Image> base = session_.preview_base();
+    const std::optional<gui::ViewPixel> pixel = gui::view_pixel_at(view_, view_geometry_, cursor);
+    if (!base || !pixel || base->width != texture_.width() || base->height != texture_.height()) {
+        return;
+    }
+    const gui::NeutralPick pick = gui::pick_neutral(*base, pixel->x, pixel->y, session_.as_shot_white());
+    if (pick.outcome == gui::PickOutcome::unavailable) {
+        return;
+    }
+    pick_message_ = gui::pick_message(pick);
+    pick_message_until_ = ImGui::GetTime() + 6.0;
+    if (pick.outcome == gui::PickOutcome::picked) {
+        gui::EditSettings edited = session_.settings();
+        gui::apply_pick(edited, pick);
+        report(session_.set_settings(edited));  // one undo step
+    }
+}
+
+void App::update_pick_cursor() {
+    pick_hover_.reset();
+    if (!pick_.on()) {
+        return;
+    }
+    const std::shared_ptr<const Image> base = session_.preview_base();
+    if (!base || base->width != texture_.width() || base->height != texture_.height() ||
+        !ImGui::IsWindowHovered() || ImGui::IsAnyItemHovered() || strip_) {
+        return;
+    }
+    const ImVec2 mouse = ImGui::GetIO().MousePos;
+    if (const std::optional<gui::ViewPixel> pixel =
+            gui::view_pixel_at(view_, view_geometry_, {mouse.x, mouse.y})) {
+        pick_hover_ = gui::SamplePin{pixel->x, pixel->y};
+    }
+}
+
+// The ring around the patch a click would average (white on a dark edge, like the sampler's marker,
+// so that it shows on any picture), and the chip with the last pick's words at the canvas's foot.
+void App::draw_pick_overlay(ImDrawList* draw) {
+    if (!pick_.on()) {
+        return;
+    }
+    const float scale = ui_scale();
+    const float line = std::max(1.0f, std::round(scale));
+    if (pick_hover_ && gui::pick_available(viewed_stage_, compare_stage_)) {
+        const gui::PickMarker m = gui::pick_marker(view_, view_geometry_, *pick_hover_,
+                                                   texture_.width(), texture_.height());
+        if (m.on_canvas) {
+            // At least as big as a ring can be seen at.
+            const float least = 9.0f * scale;
+            const float grow_x = std::max(0.0f, (least - m.patch.width()) / 2);
+            const float grow_y = std::max(0.0f, (least - m.patch.height()) / 2);
+            const ImVec2 min(m.patch.min.x - grow_x, m.patch.min.y - grow_y);
+            const ImVec2 max(m.patch.max.x + grow_x, m.patch.max.y + grow_y);
+            draw->AddRect(ImVec2(min.x - line, min.y - line), ImVec2(max.x + line, max.y + line),
+                          IM_COL32(0, 0, 0, 200), 0.0f, 0, line);
+            draw->AddRect(min, max, IM_COL32(255, 255, 255, 255), 0.0f, 0, line);
+        }
+    }
+    if (pick_message_.empty() || ImGui::GetTime() > pick_message_until_) {
+        return;
+    }
+    const gui::TokenMetrics& metrics = token_metrics();
+    const gui::TokenColours& tokens = token_colours();
+    const auto rgba = [](const gui::Rgba& c) {
+        return ImGui::ColorConvertFloat4ToU32(ImVec4(c.r, c.g, c.b, c.a));
+    };
+    const gui::ViewRect canvas = gui::view_canvas_rect(view_geometry_);
+    ImGui::PushFont(nullptr, token_type().small);
+    const ImVec2 text = ImGui::CalcTextSize(pick_message_.c_str());
+    const float pad = metrics.strip_chip_margin * 0.75f;
+    const ImVec2 chip_min(canvas.min.x + metrics.strip_chip_margin,
+                          canvas.max.y - metrics.strip_chip_margin - text.y - pad);
+    const ImVec2 chip_max(chip_min.x + text.x + 2 * pad, chip_min.y + text.y + pad);
+    draw->PushClipRect(ImVec2(canvas.min.x, canvas.min.y), ImVec2(canvas.max.x, canvas.max.y), true);
+    draw->AddRectFilled(chip_min, chip_max, rgba(tokens.strip_chip_bg), metrics.overlay_rounding);
+    draw->AddText(ImVec2(chip_min.x + pad, chip_min.y + pad / 2), rgba(tokens.strip_chip_text),
+                  pick_message_.c_str());
+    draw->PopClipRect();
+    canvas_taken_.push_back({{chip_min.x, chip_min.y}, {chip_max.x, chip_max.y}});
+    ImGui::PopFont();
 }
 
 void App::update_sample_cursor() {
@@ -1902,6 +2047,7 @@ void App::toggle_test_strip() {
     strip.step = strip_step_;
     strip_ = strip;
     compare_stage_.reset();  // a comparison and a strip don't mix
+    leave_pick();
 }
 
 void App::set_strip_step(gui::StripStep step) {
@@ -2798,6 +2944,9 @@ void App::draw_light_path_panel() {
     data.strip_on = strip_.has_value();
     data.strip_available = gui::strip_available(viewed_stage_);
     data.strip_hint = gui::strip_unavailable_hint();
+    data.pick_on = pick_.on();
+    data.pick_available = gui::pick_available(viewed_stage_, compare_stage_);
+    data.pick_hint = gui::view_hint(viewed_stage_, compare_stage_);
 
     LightPathCallbacks cb;
     cb.view_stage = [this](gui::StageId stage) { viewed_stage_ = stage; };
@@ -2855,6 +3004,7 @@ void App::draw_light_path_panel() {
         }
     };
     cb.toggle_strip = [this] { toggle_test_strip(); };
+    cb.toggle_pick = [this] { toggle_pick(); };
     cb.set_compare = [this](std::optional<gui::StageId> stage) {
         compare_stage_ = stage;
         if (stage) {

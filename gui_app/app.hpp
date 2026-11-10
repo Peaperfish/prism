@@ -153,6 +153,13 @@ private:
     void update_sample_traces();
     void draw_sample_markers(ImDrawList* draw) const;
     void draw_sample_block();
+    // Pick mode (the white balance picker). W, View > Pick Neutral and the White balance row's button
+    // toggle it; a click on the photo picks; the ring shows the patch the click would average.
+    void toggle_pick();
+    void leave_pick();
+    void pick_at(gui::ViewPoint cursor);
+    void update_pick_cursor();
+    void draw_pick_overlay(ImDrawList* draw);
     // The trace the Sample block shows: the pin's, else the last pixel the cursor read.
     [[nodiscard]] const gui::PixelTrace* sample_on_show() const;
     [[nodiscard]] gui::SampleScale sample_scale() const;
@@ -326,6 +333,11 @@ private:
     gui::HandDrag hand_drag_;
     gui::SampleMode sample_;
     gui::SampleClick sample_click_;
+    gui::PickMode pick_;
+    gui::SampleClick pick_click_;
+    std::optional<gui::SamplePin> pick_hover_;  // the pixel under the cursor this frame
+    std::string pick_message_;                  // the chip: what the last pick did, or why not
+    double pick_message_until_ = 0.0;           // ImGui::GetTime() at which the chip goes
     std::optional<gui::SamplePin> sample_hover_;  // the pixel under the cursor this frame
     gui::SampleCache sample_pin_trace_;
     gui::SampleCache sample_hover_trace_;
