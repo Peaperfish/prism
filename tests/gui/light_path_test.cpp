@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <filesystem>
 #include <iterator>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -66,6 +67,23 @@ LightPathRow white_balance_row(const EditSettings& s, std::optional<Chromaticity
 
 float height_of(const LightPathRow& row) {
     return light_path_row_layout(row, metrics).height;
+}
+
+// `burns` strokes that darken and `dodges` that lighten, as one stroke each.
+Strokes strokes_of(std::size_t burns, std::size_t dodges) {
+    auto field = std::make_shared<prism::StrokeField>();
+    field->aspect = 1.5f;
+    for (std::size_t i = 0; i < burns + dodges; ++i) {
+        field->strokes.push_back(std::make_shared<const prism::FieldStroke>(prism::FieldStroke{
+            {{0.5f, 0.5f}}, 0.05f, 0.5f, i < burns ? -0.5f : 0.5f}));
+    }
+    return Strokes(std::move(field));
+}
+
+EditSettings with_strokes(std::size_t burns, std::size_t dodges) {
+    EditSettings s;
+    s.strokes = strokes_of(burns, dodges);
+    return s;
 }
 
 }  // namespace
@@ -569,4 +587,89 @@ TEST(LightPathRowPick, OnlyWhiteBalanceHasThePickNeutralButtonAndItTakesNoRoom) 
     const LightPathRowLayout with = light_path_row_layout(row, metrics);
     row.pick_neutral = false;
     EXPECT_EQ(light_path_row_layout(row, metrics), with);
+}
+
+// --- Dodge & burn's row -------------------------------------------------------------------------
+
+TEST(LightPathDodgeBurn, TheValueSaysNoneDodgesBurnsOrBoth) {
+    EXPECT_EQ(strokes_text(0, 0), "None");
+    EXPECT_EQ(strokes_text(0, 1), "1 dodge");
+    EXPECT_EQ(strokes_text(0, 3), "3 dodges");
+    EXPECT_EQ(strokes_text(1, 0), "1 burn");
+    EXPECT_EQ(strokes_text(3, 0), "3 burns");
+    EXPECT_EQ(strokes_text(2, 1), "2 burns \xC2\xB7 1 dodge");  // burns first
+    EXPECT_EQ(strokes_text(1, 2), "1 burn \xC2\xB7 2 dodges");
+    EXPECT_EQ(strokes_text(999, 999), "999 burns \xC2\xB7 999 dodges");
+}
+
+TEST(LightPathDodgeBurn, TheRowCountsTheStrokesByTheirSign) {
+    EXPECT_EQ(row_for(StageId::dodge_burn, EditSettings{}).value, "None");
+    EXPECT_EQ(row_for(StageId::dodge_burn, with_strokes(0, 3)).value, "3 dodges");
+    EXPECT_EQ(row_for(StageId::dodge_burn, with_strokes(1, 0)).value, "1 burn");
+    EXPECT_EQ(row_for(StageId::dodge_burn, with_strokes(2, 1)).value, "2 burns \xC2\xB7 1 dodge");
+    EXPECT_EQ(strokes_text(Strokes{}), "None");
+}
+
+TEST(LightPathDodgeBurn, SwitchedOffItKeepsTheCountAndSaysWhenOn) {
+    EditSettings s = with_strokes(2, 1);
+    s.dodge_burn_on = false;
+    const LightPathRow off = row_for(StageId::dodge_burn, s);
+    EXPECT_EQ(off.value, "2 burns \xC2\xB7 1 dodge when on");
+    EXPECT_TRUE(off.value_muted);
+    EXPECT_FALSE(off.enabled);
+    EXPECT_TRUE(off.can_toggle);
+    // Without strokes there is nothing to come back: just None.
+    EditSettings none;
+    none.dodge_burn_on = false;
+    EXPECT_EQ(row_for(StageId::dodge_burn, none).value, "None");
+    // The widest the value can read is what the panel's minimum width allows for.
+    EditSettings most = with_strokes(999, 999);
+    most.dodge_burn_on = false;
+    EXPECT_EQ(row_for(StageId::dodge_burn, most).value, widest_strokes_value);
+}
+
+TEST(LightPathDodgeBurn, TheControlsLineCarriesTheStrengthAndWhetherThereIsAnythingToClear) {
+    const LightPathRow plain = row_for(StageId::dodge_burn, EditSettings{});
+    ASSERT_TRUE(plain.brush_controls.has_value());
+    EXPECT_FLOAT_EQ(plain.brush_controls->strength, 0.5f);
+    EXPECT_EQ(plain.brush_controls->strength_text, "0.5 stop");
+    EXPECT_EQ(plain.brush_controls->strength_reset, "Reset to 0.5 stop");
+    EXPECT_FALSE(plain.brush_controls->can_clear);
+    const EditSettings drawn = with_strokes(1, 0);
+    LightPathInputs in{drawn, InputKind::raw, "RAW", final_stage, std::nullopt, nullptr, std::nullopt, 1.5f};
+    const LightPathRow strong = light_path_row(in, StageId::dodge_burn);
+    EXPECT_EQ(strong.brush_controls->strength_text, "1.5 stops");
+    EXPECT_FLOAT_EQ(strong.brush_controls->strength, 1.5f);
+    EXPECT_TRUE(strong.brush_controls->can_clear);
+    // Only this row has them; the strength is no part of the edit.
+    for (const StageInfo& stage : pipeline_stages()) {
+        EXPECT_EQ(row_for(stage.id, drawn).brush_controls.has_value(), stage.id == StageId::dodge_burn);
+    }
+}
+
+TEST(LightPathDodgeBurn, TheControlsLineIsOneSliderHighAndTheRowHeightFollowsTheStageAlone) {
+    const LightPathRowLayout layout = light_path_row_layout(row_for(StageId::dodge_burn, {}), metrics);
+    ASSERT_TRUE(layout.controls_y.has_value());
+    EXPECT_FALSE(layout.slider_y.has_value());
+    EXPECT_FALSE(layout.subtitle_y.has_value());
+    EXPECT_EQ(*layout.controls_y, metrics.pad_top + metrics.line + metrics.gap);
+    EXPECT_EQ(layout.clip_y, *layout.controls_y + metrics.slider + metrics.gap);  // then the clip line
+    EXPECT_EQ(layout.height, layout.clip_y + metrics.secondary + metrics.pad_bottom);
+    for (const StageInfo& stage : pipeline_stages()) {
+        EXPECT_EQ(light_path_row_layout(row_for(stage.id, {}), metrics).controls_y.has_value(),
+                  stage.id == StageId::dodge_burn);
+    }
+    // 0, 1 and 500 strokes, on and off, viewed or dimmed, clipped or not: the same row.
+    for (const std::size_t count : {std::size_t{0}, std::size_t{1}, std::size_t{500}}) {
+        for (const bool on : {true, false}) {
+            EditSettings s = with_strokes(count / 2, count - count / 2);
+            s.dodge_burn_on = on;
+            for (const StageId viewed : all_stages) {
+                const ClipReport report = report_with(ClipFate::lost);
+                EXPECT_EQ(light_path_row_layout(row_for(StageId::dodge_burn, s, &report, viewed), metrics),
+                          layout)
+                    << count << (on ? " on " : " off ") << static_cast<int>(viewed);
+            }
+        }
+    }
 }

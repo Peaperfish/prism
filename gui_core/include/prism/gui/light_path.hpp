@@ -1,11 +1,13 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "prism/gui/canvas_input.hpp"
 #include "prism/gui/clipping.hpp"
 #include "prism/gui/presets.hpp"
 #include "prism/gui/settings.hpp"
@@ -24,6 +26,10 @@ inline constexpr std::string_view title = "Light path";
 inline constexpr std::string_view beyond_slider = "(beyond the slider)";
 inline constexpr std::string_view pick_neutral = "Pick neutral";
 inline constexpr std::string_view test_strip = "Test strip";
+inline constexpr std::string_view brush = "Brush";
+inline constexpr std::string_view clear_strokes = "Clear";
+// The widest Strength reads "2.0 stops" (brush_strength_text); the controls line measures it.
+inline constexpr std::string_view widest_strength = "2.0 stops";
 }  // namespace light_path_text
 
 // --- Clip marks ----------------------------------------------------------------------------------
@@ -96,6 +102,18 @@ struct LightPathRow {
     };
     std::optional<WhiteBalanceSliders> white_balance;
 
+    // Dodge & burn's controls line: the Brush button, the Strength slider and Clear. The line is
+    // always there, so its height never depends on what is shown in it.
+    struct BrushControls {
+        float strength = 0.0f;         // the brush's, in stops (brush_strength_min to _max)
+        std::string strength_text;     // "0.5 stop", "1.5 stops"
+        std::string strength_reset;    // "Reset to 0.5 stop"
+        bool can_clear = false;        // there are strokes to clear
+
+        bool operator==(const BrushControls&) const = default;
+    };
+    std::optional<BrushControls> brush_controls;
+
     // The Tone curve's tabs, and the number of the curves that take one.
     bool curve_tabs = false;
     CurveKind curve = CurveKind::none;
@@ -124,7 +142,22 @@ struct LightPathInputs {
     // The photo's as-shot light (Session::as_shot_white): what As shot reads, and where the White
     // balance sliders sit until a light is chosen.
     std::optional<Chromaticity> as_shot_white;
+    // The Brush's strength (BrushMode::strength): a tool setting, not part of the edit.
+    float brush_strength = brush_strength_default;
 };
+
+// What Dodge & burn's row says it holds: "None"; "1 dodge", "3 dodges"; "1 burn", "3 burns"; both,
+// burns first, "2 burns · 1 dodge". A stroke that dodges has a positive weight, one that burns a
+// negative weight. With the stage off and strokes on the photo the caller appends " when on".
+// `burns` and `dodges` are counts.
+[[nodiscard]] std::string strokes_text(std::size_t burns, std::size_t dodges);
+
+// "1 dodge", "3 burns", ...: the count of each kind in `strokes`, as strokes_text.
+[[nodiscard]] std::string strokes_text(const Strokes& strokes);
+
+// "999 burns · 999 dodges when on": the longest the value can read, which the panel's minimum
+// width allows for (light_path_min_width).
+inline constexpr std::string_view widest_strokes_value = "999 burns \xC2\xB7 999 dodges when on";
 
 // "RAW, camera colour", "RAW, your camera matrix", "JPEG, read as sRGB", "PNG, read as sRGB" or
 // "HEIC, converted from its own colours".
@@ -172,6 +205,7 @@ struct LightPathRowLayout {
     std::optional<float> tabs_y;
     std::optional<float> parameter_y;
     std::optional<float> parameter_slider_y;
+    std::optional<float> controls_y;  // Dodge & burn's Brush, Strength and Clear
     // The clip line is always there, whether or not it has a mark to show (#38).
     float clip_y = 0;
     float clip_height = 0;
@@ -183,7 +217,8 @@ struct LightPathRowLayout {
 // choice of the user's opens or closes a row, so nothing below it moves on its own.
 [[nodiscard]] bool row_expanded(const LightPathRow& row) noexcept;
 
-// White balance has a subtitle and two sliders, whatever is chosen.
+// White balance has a subtitle and two sliders, whatever is chosen. Dodge & burn has one controls
+// line, as tall as a slider.
 //
 // A row's layout, from its stage and row_expanded alone: never from the values it shows, its clip
 // marks, whether it is viewed, dimmed or off, or the mouse. A height that followed any of those

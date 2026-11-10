@@ -41,7 +41,39 @@ void add_mark(std::vector<ClipMark>& marks, ClipMarkKind kind, ClipFate fate,
     marks.push_back(std::move(mark));
 }
 
+std::string plural(std::size_t n, const char* one, const char* many) {
+    return std::to_string(n) + " " + (n == 1 ? one : many);
+}
+
 }  // namespace
+
+std::string strokes_text(std::size_t burns, std::size_t dodges) {
+    if (burns == 0 && dodges == 0) {
+        return "None";
+    }
+    if (dodges == 0) {
+        return plural(burns, "burn", "burns");
+    }
+    if (burns == 0) {
+        return plural(dodges, "dodge", "dodges");
+    }
+    return plural(burns, "burn", "burns") + " \xC2\xB7 " + plural(dodges, "dodge", "dodges");
+}
+
+std::string strokes_text(const Strokes& strokes) {
+    std::size_t burns = 0;
+    std::size_t dodges = 0;
+    if (strokes.field()) {
+        for (const auto& stroke : strokes.field()->strokes) {
+            if (stroke->weight > 0.0f) {
+                ++dodges;
+            } else if (stroke->weight < 0.0f) {
+                ++burns;
+            }
+        }
+    }
+    return strokes_text(burns, dodges);
+}
 
 std::vector<ClipMark> clip_marks(const StageClip& clip, std::uint64_t total) {
     std::vector<ClipMark> marks;
@@ -116,8 +148,20 @@ LightPathRow light_path_row(const LightPathInputs& in, StageId stage) {
         case StageId::encode:
             row.subtitle = "sRGB for the screen";
             break;
-        case StageId::dodge_burn:
-            break;  // no row is shown yet (StageInfo::hidden)
+        case StageId::dodge_burn: {
+            row.value = strokes_text(s.strokes);
+            row.value_muted = !row.enabled || s.strokes.empty();
+            if (!row.enabled && !s.strokes.empty()) {
+                row.value += " when on";
+            }
+            LightPathRow::BrushControls controls;
+            controls.strength = snap_brush_strength(in.brush_strength);
+            controls.strength_text = brush_strength_text(in.brush_strength);
+            controls.strength_reset = "Reset to " + brush_strength_text(brush_strength_default);
+            controls.can_clear = !s.strokes.empty();
+            row.brush_controls = std::move(controls);
+            break;
+        }
         case StageId::white_balance: {
             row.subtitle = white_balance_subtitle(in.as_shot_white);
             row.value = white_balance_value_text(s);
@@ -258,8 +302,10 @@ LightPathRowLayout light_path_row_layout(const LightPathRow& row,
             layout.slider_y = take(m.slider);
             layout.second_slider_y = take(m.slider);
             break;
-        case StageId::matrix:
         case StageId::dodge_burn:
+            layout.controls_y = take(m.slider);
+            break;
+        case StageId::matrix:
             break;
     }
     layout.clip_y = y;

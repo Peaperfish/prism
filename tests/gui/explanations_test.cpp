@@ -21,7 +21,8 @@
 namespace prism::gui {
 namespace {
 
-constexpr StageId all_stages[] = {StageId::decode,   StageId::exposure,   StageId::white_balance,
+constexpr StageId all_stages[] = {StageId::decode,   StageId::exposure,   StageId::dodge_burn,
+                                  StageId::white_balance,
                                   StageId::matrix,   StageId::saturation, StageId::contrast,
                                   StageId::curve,    StageId::encode};
 constexpr ScopeChoice all_scopes[] = {ScopeChoice::histogram, ScopeChoice::parade,
@@ -231,7 +232,8 @@ TEST(Explanations, WhiteBalanceSaysWhatKelvinAndTintMeanAndNeverBrightness) {
         }
         return all.size();
     };
-    EXPECT_EQ(index_of("stage.white_balance"), index_of("stage.exposure") + 1);
+    EXPECT_EQ(index_of("stage.dodge_burn"), index_of("stage.exposure") + 1);
+    EXPECT_EQ(index_of("stage.white_balance"), index_of("stage.dodge_burn") + 1);
     EXPECT_EQ(index_of("stage.matrix"), index_of("stage.white_balance") + 1);
 }
 

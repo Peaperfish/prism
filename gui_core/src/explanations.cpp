@@ -85,6 +85,10 @@ constexpr Explanation templates[] = {
      "Multiplies every value by 2 to the power of the stops. Because it works on linear light, +1 "
      "stop is exactly twice as bright.",
      LiveKind::exposure},
+    {"stage.dodge_burn", "Hold back or add light in parts of the picture.",
+     "Dodging holds light back from a part, as a card under the enlarger does; burning gives it "
+     "more time. Each stroke moves the light there by its strength, in stops, right after "
+     "Exposure. Recipes don't keep strokes."},
     {"stage.white_balance", "The light the photo was lit by, in Kelvin and tint.",
      "Kelvin is the colour of the light: higher means bluer, so the photo is warmed. Tint is "
      "green–magenta: higher means a greener light, so more magenta. The heading reads As shot or "
@@ -243,6 +247,19 @@ constexpr Explanation templates[] = {
      "Click a patch that should be neutral. Prism averages 5 by 5 pixels there and sets Kelvin and "
      "tint so it comes out grey. A spot that is too dark or clipped is refused. Esc leaves."},
 
+    // --- Dodge & burn --------------------------------------------------------------------------
+    {"dodge_burn.switch", "Turn the dodging and burning off and on.",
+     "Off, the strokes stay on the photo but change no light, so you can judge the picture without "
+     "them. On brings them back."},
+    {"dodge_burn.brush", "Paint where to hold back or add light.",
+     "While it is on, strokes on the photo use the strength set here. Only while you view Dodge & "
+     "burn or a later stage. Esc leaves; so do I, T and W."},
+    {"dodge_burn.strength", "How many stops one stroke moves the light.",
+     "From 0.1 to 2 stops, in steps of 0.1. A stroke of 1 stop moves the light as much as doubling or "
+     "halving the time. It belongs to the brush: undo leaves it, and it isn't saved."},
+    {"dodge_burn.clear", "Take every stroke off the photo.",
+     "Removes all the dodging and burning in one undo step. Greyed out when there is none."},
+
     // --- Preferences -------------------------------------------------------------------------
     {"pref.theme", "Light, dark, or follow the system.",
      "The photo canvas stays neutral grey in both so your eyes judge the photo, not the frame."},
@@ -259,7 +276,7 @@ constexpr Explanation templates[] = {
 
 // Ids that have no enum of their own: the controls the window shows beyond the stages, the curve
 // kinds, the scopes and the presets.
-constexpr std::array<std::string_view, 37> other_ids{
+constexpr std::array<std::string_view, 41> other_ids{
     explain::look,         explain::look_reset,   explain::look_view_recipe,
     explain::recipe_load,  explain::recipe_save,
     explain::recipe_loaded, explain::recipe_name, explain::recipe_description,
@@ -272,6 +289,8 @@ constexpr std::array<std::string_view, 37> other_ids{
     explain::view_zoom,    explain::view_fit,     explain::view_actual,
     explain::sample,       explain::sample_values, explain::sample_light, explain::sample_range,
     explain::pick,
+    explain::dodge_burn_switch, explain::dodge_burn_brush, explain::dodge_burn_strength,
+    explain::dodge_burn_clear,
     explain::pref_theme,   explain::pref_size,    explain::pref_panel,  explain::pref_explain,
 };
 
