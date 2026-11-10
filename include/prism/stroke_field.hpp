@@ -153,6 +153,35 @@ struct RasterStats {
 void rasterise_field(const StrokeField& field, const PixelGrid& grid, int row_begin, int row_end,
                      std::span<float> out, RasterStats* stats = nullptr);
 
+// A field made ready to rasterise on one grid: every stroke's segments and their pixel boxes,
+// worked out once, for a caller that rasterises many row ranges (the dodge & burn stage, one tile
+// of rows at a time on each thread). rasterise_field is exactly
+// PreparedField(field, grid).rasterise(row_begin, row_end, out, stats), so the two give
+// bit-identical fields. It holds its own copy of what it needs (not `field`), never changes after
+// construction, and rasterise() may be called from several threads at once.
+class PreparedField {
+public:
+    // Throws std::invalid_argument on a bad grid, or a field with strokes but no valid aspect.
+    PreparedField(const StrokeField& field, const PixelGrid& grid);
+    ~PreparedField();
+    PreparedField(PreparedField&&) noexcept;
+    PreparedField& operator=(PreparedField&&) noexcept;
+    PreparedField(const PreparedField&) = delete;
+    PreparedField& operator=(const PreparedField&) = delete;
+
+    [[nodiscard]] const PixelGrid& grid() const noexcept;
+    // True if no segment can reach grid rows [row_begin, row_end): rasterise() would write only 0
+    // there, so a caller may skip those rows altogether.
+    [[nodiscard]] bool rows_untouched(int row_begin, int row_end) const noexcept;
+    // As rasterise_field. Only the segments whose boxes meet [row_begin, row_end) are looked at.
+    void rasterise(int row_begin, int row_end, std::span<float> out,
+                   RasterStats* stats = nullptr) const;
+
+private:
+    struct Data;
+    std::unique_ptr<const Data> data_;
+};
+
 // ---------------------------------------------------------------------------------------------
 // Incremental API, for a stroke being drawn: keep `coverage` (the stroke's coverage so far, over
 // the whole grid, starting all 0) and `before` (the field of the strokes before it, from

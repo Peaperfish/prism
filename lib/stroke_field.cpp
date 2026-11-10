@@ -244,7 +244,90 @@ GridRect segment_bounds(const FieldStroke& stroke, std::size_t segment, float as
 
 void rasterise_field(const StrokeField& field, const PixelGrid& grid, int row_begin, int row_end,
                      std::span<float> out, RasterStats* stats) {
+    PreparedField(field, grid).rasterise(row_begin, row_end, out, stats);
+}
+
+namespace {
+
+// Grows `box` to cover `add` (or makes it `add`, if `box` is still empty).
+void unite(GridRect& box, const GridRect& add) noexcept {
+    if (box.empty()) {
+        box = add;
+        return;
+    }
+    box.i_begin = std::min(box.i_begin, add.i_begin);
+    box.i_end = std::max(box.i_end, add.i_end);
+    box.j_begin = std::min(box.j_begin, add.j_begin);
+    box.j_end = std::max(box.j_end, add.j_end);
+}
+
+}  // namespace
+
+struct PreparedField::Data {
+    PixelGrid grid;
+    Mapping m;
+    std::vector<PreparedStroke> strokes;  // in stroke order; only those with a non-empty box
+};
+
+PreparedField::PreparedField(const StrokeField& field, const PixelGrid& grid) {
     check_grid(grid, "rasterise_field");
+    auto data = std::make_unique<Data>();
+    data->grid = grid;
+    if (!field.strokes.empty()) {
+        if (!valid_aspect(field.aspect)) {
+            throw std::invalid_argument("rasterise_field: field has strokes but no valid aspect");
+        }
+        // Every stroke's segments and their boxes, dropping those that miss the grid.
+        data->m = mapping_for(field.aspect, grid);
+        data->strokes.reserve(field.strokes.size());
+        for (const auto& sp : field.strokes) {
+            if (!sp) {
+                continue;
+            }
+            PreparedStroke ps;
+            ps.brush = brush_for(*sp);
+            ps.weight = sp->weight;
+            if (!ps.brush.draws) {
+                continue;
+            }
+            for (std::size_t k = 0; k < segment_count(*sp); ++k) {
+                Segment seg = segment_for(*sp, k, data->m);
+                seg.box = bounds_for(seg, ps.brush, data->m, grid);
+                if (seg.box.empty()) {
+                    continue;
+                }
+                unite(ps.box, seg.box);
+                ps.segments.push_back(seg);
+            }
+            if (!ps.segments.empty()) {
+                data->strokes.push_back(std::move(ps));
+            }
+        }
+    }
+    data_ = std::move(data);
+}
+
+PreparedField::~PreparedField() = default;
+PreparedField::PreparedField(PreparedField&&) noexcept = default;
+PreparedField& PreparedField::operator=(PreparedField&&) noexcept = default;
+
+const PixelGrid& PreparedField::grid() const noexcept {
+    return data_->grid;
+}
+
+bool PreparedField::rows_untouched(int row_begin, int row_end) const noexcept {
+    for (const PreparedStroke& ps : data_->strokes) {
+        if (ps.box.j_begin < row_end && ps.box.j_end > row_begin) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void PreparedField::rasterise(int row_begin, int row_end, std::span<float> out,
+                              RasterStats* stats) const {
+    const PixelGrid& grid = data_->grid;
+    const Mapping& m = data_->m;
     const int gw = grid.width();
     const int gh = grid.height();
     if (row_begin < 0 || row_end > gh || row_begin > row_end) {
@@ -255,50 +338,38 @@ void rasterise_field(const StrokeField& field, const PixelGrid& grid, int row_be
         throw std::invalid_argument("rasterise_field: output buffer has the wrong size");
     }
     std::fill(out.begin(), out.end(), 0.0f);
-    if (field.strokes.empty() || row_begin == row_end) {
+    if (row_begin == row_end) {
         return;
     }
-    if (!valid_aspect(field.aspect)) {
-        throw std::invalid_argument("rasterise_field: field has strokes but no valid aspect");
-    }
 
-    // Precompute every stroke's segments and their boxes, dropping what misses this row range.
-    const Mapping m = mapping_for(field.aspect, grid);
-    std::vector<PreparedStroke> strokes;
-    strokes.reserve(field.strokes.size());
-    for (const auto& sp : field.strokes) {
-        if (!sp) {
+    // The segments whose boxes meet these rows, stroke by stroke in stroke order; a segment that
+    // misses them has coverage 0 on every one of them, so leaving it out changes nothing.
+    struct Run {
+        const PreparedStroke* stroke = nullptr;
+        std::size_t first = 0;  // into `segments`
+        std::size_t count = 0;
+        GridRect box;  // union of these segments' boxes
+    };
+    std::vector<Run> runs;
+    std::vector<const Segment*> segments;
+    for (const PreparedStroke& ps : data_->strokes) {
+        if (ps.box.j_end <= row_begin || ps.box.j_begin >= row_end) {
             continue;
         }
-        PreparedStroke ps;
-        ps.brush = brush_for(*sp);
-        ps.weight = sp->weight;
-        if (!ps.brush.draws) {
-            continue;
-        }
-        bool any = false;
-        for (std::size_t k = 0; k < segment_count(*sp); ++k) {
-            Segment seg = segment_for(*sp, k, m);
-            seg.box = bounds_for(seg, ps.brush, m, grid);
-            if (seg.box.empty() || seg.box.j_end <= row_begin || seg.box.j_begin >= row_end) {
+        Run run{&ps, segments.size(), 0, {}};
+        for (const Segment& seg : ps.segments) {
+            if (seg.box.j_end <= row_begin || seg.box.j_begin >= row_end) {
                 continue;
             }
-            if (!any) {
-                ps.box = seg.box;
-                any = true;
-            } else {
-                ps.box.i_begin = std::min(ps.box.i_begin, seg.box.i_begin);
-                ps.box.i_end = std::max(ps.box.i_end, seg.box.i_end);
-                ps.box.j_begin = std::min(ps.box.j_begin, seg.box.j_begin);
-                ps.box.j_end = std::max(ps.box.j_end, seg.box.j_end);
-            }
-            ps.segments.push_back(seg);
+            unite(run.box, seg.box);
+            segments.push_back(&seg);
         }
-        if (any) {
-            strokes.push_back(std::move(ps));
+        run.count = segments.size() - run.first;
+        if (run.count > 0) {
+            runs.push_back(run);
         }
     }
-    if (strokes.empty()) {
+    if (runs.empty()) {
         return;
     }
 
@@ -309,13 +380,15 @@ void rasterise_field(const StrokeField& field, const PixelGrid& grid, int row_be
     for (int j = row_begin; j < row_end; ++j) {
         const float Y = pixel_y(m, grid, j);
         float* row = out.data() + static_cast<std::size_t>(j - row_begin) * width;
-        for (const PreparedStroke& ps : strokes) {
-            if (j < ps.box.j_begin || j >= ps.box.j_end) {
+        for (const Run& run : runs) {
+            if (j < run.box.j_begin || j >= run.box.j_end) {
                 continue;
             }
+            const PreparedStroke& ps = *run.stroke;
             int lo = gw;
             int hi = 0;
-            for (const Segment& seg : ps.segments) {
+            for (std::size_t s = run.first; s < run.first + run.count; ++s) {
+                const Segment& seg = *segments[s];
                 if (j < seg.box.j_begin || j >= seg.box.j_end) {
                     continue;
                 }

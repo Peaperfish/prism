@@ -232,6 +232,42 @@ TEST_F(StrokeFieldGrid, RowRangesSplitAnywhereAreBitIdentical) {
     }
 }
 
+// One PreparedField rasterising tiles of rows equals rasterise_field, a tile that rows_untouched
+// says no stroke reaches is all 0, and the per-tile cull evaluates exactly the pixels a whole-image
+// pass does (no segment is evaluated twice or skipped).
+TEST_F(StrokeFieldGrid, PreparedFieldTilesAreBitIdenticalAndCulled) {
+    for (const PixelGrid g : {PixelGrid::whole(W, H), PixelGrid{W, H, 1, 2, 3}}) {
+        const prism::PreparedField prepared(f, g);
+        const int gh = g.height();
+        const std::size_t gw = static_cast<std::size_t>(g.width());
+        RasterStats whole_stats;
+        (void)rasterise(f, g, &whole_stats);
+        for (const int tile : {1, 7, 16}) {
+            std::vector<float> joined;
+            RasterStats stats;
+            int untouched = 0;
+            for (int t = 0; t < gh; t += tile) {
+                const int end = std::min(t + tile, gh);
+                std::vector<float> part(static_cast<std::size_t>(end - t) * gw);
+                prepared.rasterise(t, end, part, &stats);
+                if (prepared.rows_untouched(t, end)) {
+                    ++untouched;
+                    EXPECT_TRUE(std::all_of(part.begin(), part.end(),
+                                            [](float v) { return v == 0.0f; }))
+                        << "rows " << t << " to " << end;
+                }
+                joined.insert(joined.end(), part.begin(), part.end());
+            }
+            EXPECT_EQ(first_bit_difference(joined, expected(g)), -1)
+                << "stride " << g.stride << ", tile " << tile;
+            EXPECT_EQ(stats.evaluated, whole_stats.evaluated) << "tile " << tile;
+            if (g.stride == 1 && tile == 1) {
+                EXPECT_GT(untouched, 0);  // sample_field leaves some rows alone
+            }
+        }
+    }
+}
+
 // --- The formula's properties.
 
 TEST(StrokeField, SelfCrossingEqualsOnce) {
