@@ -2,9 +2,22 @@
 
 #include <gtest/gtest.h>
 
+#include <ostream>
 #include <vector>
 
 namespace prism::gui {
+
+// So that a failure reads "add_point", not the enum's bytes.
+void PrintTo(BrushActionKind kind, std::ostream* os) {
+    constexpr const char* names[] = {"begin_stroke",  "add_point",   "commit_stroke",
+                                     "cancel_stroke", "leave_brush", "passthrough"};
+    *os << names[static_cast<int>(kind)];
+}
+
+void PrintTo(BrushTone tone, std::ostream* os) {
+    *os << (tone == BrushTone::dodge ? "dodge" : "burn");
+}
+
 namespace {
 
 using Kind = BrushActionKind;
