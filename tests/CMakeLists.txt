@@ -19,6 +19,7 @@ add_executable(prism_tests
   cli_test.cpp
   color_test.cpp
   dng_profile_test.cpp
+  dodge_burn_test.cpp
   exif_test.cpp
   heic_test.cpp
   histogram_test.cpp
