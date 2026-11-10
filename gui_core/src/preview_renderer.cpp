@@ -504,10 +504,14 @@ PreviewRenderer::PreviewRenderer(OptionsRenderFunction render) : render_(std::mo
 
 PreviewRenderer::~PreviewRenderer() {
     {
+        // Both under the lock, the thread's stop first. With the thread's stop asked for after
+        // the lock was let go, a worker whose render had just given up could take the pending
+        // request in between and start it with a fresh stop source that nothing would stop,
+        // so join() waited for that whole render.
         std::lock_guard lock(mutex_);
+        worker_.request_stop();       // wakes the worker if it is waiting for a request
         render_stop_.request_stop();  // the render in progress, if any, gives up at its next check
     }
-    worker_.request_stop();  // wakes the worker if it is waiting for a request
     worker_.join();
 }
 
