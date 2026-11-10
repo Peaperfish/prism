@@ -600,3 +600,96 @@ TEST(PickMarkerPlace, IsThePatchAroundThePixelCutAtTheEdges) {
 
 }  // namespace
 }  // namespace prism::gui
+
+// --- Brush mode --------------------------------------------------------------------------------
+
+using namespace prism::gui;
+
+TEST(BrushMode, IsAvailableOnlyFromDodgeAndBurnOn) {
+    EXPECT_FALSE(brush_available(StageId::decode));
+    EXPECT_FALSE(brush_available(StageId::exposure));
+    EXPECT_TRUE(brush_available(StageId::dodge_burn));
+    for (const StageId later : {StageId::white_balance, StageId::matrix, StageId::saturation,
+                                StageId::contrast, StageId::curve, StageId::encode}) {
+        EXPECT_TRUE(brush_available(later));
+    }
+}
+
+TEST(BrushMode, TurnsOnAndOffAndLeavesWhenAsked) {
+    BrushMode mode;
+    EXPECT_FALSE(mode.on());
+    mode.toggle();
+    EXPECT_TRUE(mode.on());
+    mode.toggle();
+    EXPECT_FALSE(mode.on());
+    mode.toggle();
+    mode.leave();
+    EXPECT_FALSE(mode.on());
+    mode.toggle();
+    mode.opened();  // another photo
+    EXPECT_FALSE(mode.on());
+}
+
+TEST(BrushMode, StrengthStartsAtHalfAStopAndSnapsToTenths) {
+    BrushMode mode;
+    EXPECT_FLOAT_EQ(mode.strength(), 0.5f);
+    mode.set_strength(1.04f);
+    EXPECT_FLOAT_EQ(mode.strength(), 1.0f);
+    mode.set_strength(0.0f);
+    EXPECT_FLOAT_EQ(mode.strength(), 0.1f);
+    mode.set_strength(9.0f);
+    EXPECT_FLOAT_EQ(mode.strength(), 2.0f);
+    mode.set_strength(std::nanf(""));
+    EXPECT_FLOAT_EQ(mode.strength(), 0.5f);
+    // It is a tool setting: another photo does not reset it, and leaving the mode keeps it.
+    mode.set_strength(1.5f);
+    mode.toggle();
+    mode.opened();
+    EXPECT_FLOAT_EQ(mode.strength(), 1.5f);
+}
+
+TEST(BrushMode, StrengthReadsInStopsSingularUpToOne) {
+    EXPECT_EQ(brush_strength_text(0.1f), "0.1 stop");
+    EXPECT_EQ(brush_strength_text(0.5f), "0.5 stop");
+    EXPECT_EQ(brush_strength_text(1.0f), "1.0 stop");
+    EXPECT_EQ(brush_strength_text(1.1f), "1.1 stops");
+    EXPECT_EQ(brush_strength_text(1.5f), "1.5 stops");
+    EXPECT_EQ(brush_strength_text(2.0f), "2.0 stops");
+}
+
+TEST(BrushTools, TheButtonEntersBrushModeAndLeavesTheOthers) {
+    EXPECT_EQ(tools_after_key({}, ToolKey::brush, true, true, true),
+              (CanvasTools{false, false, false, true}));
+    EXPECT_EQ(tools_after_key(CanvasTools{true, false, true, false}, ToolKey::brush, true, true, true),
+              (CanvasTools{false, false, false, true}));
+    EXPECT_EQ(tools_after_key(CanvasTools{false, true, false, false}, ToolKey::brush, true, true, true),
+              (CanvasTools{false, false, false, true}));
+    // Again leaves it.
+    EXPECT_EQ(tools_after_key(CanvasTools{false, false, false, true}, ToolKey::brush, true, true, true),
+              CanvasTools{});
+}
+
+TEST(BrushTools, IAndTAndWLeaveBrushMode) {
+    const CanvasTools brushing{false, false, false, true};
+    EXPECT_EQ(tools_after_key(brushing, ToolKey::sample, true, true, true),
+              (CanvasTools{true, false, false, false}));
+    EXPECT_EQ(tools_after_key(brushing, ToolKey::strip, true, true, true),
+              (CanvasTools{false, false, true, false}));
+    EXPECT_EQ(tools_after_key(brushing, ToolKey::pick, true, true, true),
+              (CanvasTools{false, true, false, false}));
+}
+
+TEST(BrushTools, AnUnavailableBrushChangesNothingButCanBeLeft) {
+    const CanvasTools sampling{true, false, true, false};
+    EXPECT_EQ(tools_after_key(sampling, ToolKey::brush, true, true, false), sampling);
+    EXPECT_EQ(tools_after_key({}, ToolKey::brush, true, true, false), CanvasTools{});
+    // The default says unavailable too.
+    EXPECT_EQ(tools_after_key({}, ToolKey::brush, true, true), CanvasTools{});
+    // The view moved before Dodge & burn with the Brush on: the key still turns it off.
+    EXPECT_EQ(tools_after_key(CanvasTools{false, false, false, true}, ToolKey::brush, true, true, false),
+              CanvasTools{});
+    // A tool that can't start leaves the Brush on.
+    const CanvasTools brushing{false, false, false, true};
+    EXPECT_EQ(tools_after_key(brushing, ToolKey::pick, false, true, true), brushing);
+    EXPECT_EQ(tools_after_key(brushing, ToolKey::strip, true, false, true), brushing);
+}

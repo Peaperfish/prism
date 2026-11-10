@@ -395,6 +395,28 @@ TEST(Escape, FirstClearsTheComparisonThenReturnsToTheFinalPicture) {
     EXPECT_EQ(escape_action(c), EscapeAction::none);
 }
 
+TEST(Escape, BrushModeGoesFirst) {
+    EscapeContext c;
+    c.brushing = true;
+    c.picking = true;  // cannot happen together, but the order still holds
+    c.sampling = true;
+    c.test_strip = true;
+    c.comparing = true;
+    c.viewing_earlier = true;
+    EXPECT_EQ(escape_action(c), EscapeAction::leave_brush);
+    c.brushing = false;
+    EXPECT_EQ(escape_action(c), EscapeAction::leave_pick);
+    c.picking = false;
+    EXPECT_EQ(escape_action(c), EscapeAction::clear_sample);
+    // Only the Brush leaves, and only when Esc is Prism's to take.
+    c.brushing = true;
+    c.text_editing = true;
+    EXPECT_EQ(escape_action(c), EscapeAction::none);
+    c.text_editing = false;
+    c.window_focused = true;
+    EXPECT_EQ(escape_action(c), EscapeAction::close_window);
+}
+
 TEST(Escape, PickModeGoesBeforeSampleModeTheStripTheComparisonAndTheStage) {
     EscapeContext c;
     c.picking = true;

@@ -1,6 +1,9 @@
 #include "prism/gui/canvas_input.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <string>
 
 #include "prism/gui/neutral_pick.hpp"
 
@@ -184,18 +187,42 @@ bool pick_press_can_pick(bool picking, bool available, bool strip_on, bool over_
     return picking && available && !strip_on && !over_control && !hand_held;
 }
 
-CanvasTools tools_after_key(CanvasTools tools, ToolKey key, bool pick_ok, bool strip_ok) noexcept {
+bool brush_available(StageId viewed) noexcept {
+    return static_cast<int>(viewed) >= static_cast<int>(StageId::dodge_burn);
+}
+
+float snap_brush_strength(float strength) noexcept {
+    if (std::isnan(strength)) {
+        return brush_strength_default;
+    }
+    const float steps = std::round(std::clamp(strength, brush_strength_min, brush_strength_max) /
+                                   brush_strength_step);
+    return std::clamp(steps * brush_strength_step, brush_strength_min, brush_strength_max);
+}
+
+std::string brush_strength_text(float strength) {
+    const float snapped = snap_brush_strength(strength);
+    char buffer[32];
+    std::snprintf(buffer, sizeof buffer, "%.1f", static_cast<double>(snapped));
+    // Judged on the tenths, so that 1.0 is a stop and 1.1 is stops.
+    const bool one_or_less = std::lround(snapped * 10.0f) <= 10;
+    return std::string(buffer) + (one_or_less ? " stop" : " stops");
+}
+
+CanvasTools tools_after_key(CanvasTools tools, ToolKey key, bool pick_ok, bool strip_ok,
+                            bool brush_ok) noexcept {
     switch (key) {
         case ToolKey::pick:
             if (tools.picking) {
                 tools.picking = false;
             } else if (pick_ok) {
-                tools = {false, true, false};
+                tools = {false, true, false, false};
             }
             break;
         case ToolKey::sample:
             tools.sampling = !tools.sampling;
             tools.picking = tools.picking && !tools.sampling;
+            tools.brushing = false;
             break;
         case ToolKey::strip:
             if (tools.strip) {
@@ -203,6 +230,14 @@ CanvasTools tools_after_key(CanvasTools tools, ToolKey key, bool pick_ok, bool s
             } else if (strip_ok) {
                 tools.strip = true;
                 tools.picking = false;
+                tools.brushing = false;
+            }
+            break;
+        case ToolKey::brush:
+            if (tools.brushing) {
+                tools.brushing = false;
+            } else if (brush_ok) {
+                tools = {false, false, false, true};
             }
             break;
     }

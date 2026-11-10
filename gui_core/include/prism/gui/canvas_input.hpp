@@ -2,7 +2,9 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 
+#include "prism/gui/settings.hpp"
 #include "prism/gui/view_transform.hpp"
 #include "prism/gui/wheel_scaling.hpp"
 
@@ -195,11 +197,52 @@ private:
     bool on_ = false;
 };
 
-// Which of the canvas's three tools are on.
+// --- Brush mode (Dodge & burn, #22) ------------------------------------------------------------
+//
+// Brush mode is the tool that will paint the strokes. It is Pick mode's sibling: one of Sample, Pick
+// and Brush at a time, and the test strip is off with it. It is available only while Dodge & burn or
+// a later stage is on view: before that the strokes' effect is not in the picture.
+
+// The Brush's strength, in stops: the range of its slider, its step and where it starts. A tool
+// setting, not an edit: it is not in EditSettings or the history, and is not saved.
+inline constexpr float brush_strength_min = 0.1f;
+inline constexpr float brush_strength_max = 2.0f;
+inline constexpr float brush_strength_step = 0.1f;
+inline constexpr float brush_strength_default = 0.5f;
+
+// Whether the Brush can be turned on with `viewed` on view: Dodge & burn or later.
+[[nodiscard]] bool brush_available(StageId viewed) noexcept;
+
+// `strength` moved to the nearest step inside the range (the default for a number that isn't one).
+[[nodiscard]] float snap_brush_strength(float strength) noexcept;
+
+// "0.5 stop", "1.0 stop", "1.5 stops": singular up to one stop. Of the snapped strength.
+[[nodiscard]] std::string brush_strength_text(float strength);
+
+// Whether Brush mode is on, and the strength it paints with. Leaving it is Esc
+// (EscapeAction::leave_brush), the Brush button or key again, I, T or W, the view moving to a stage
+// before Dodge & burn, or another photo.
+class BrushMode {
+public:
+    [[nodiscard]] bool on() const noexcept { return on_; }
+    void toggle() noexcept { on_ = !on_; }  // the row's Brush button
+    void leave() noexcept { on_ = false; }
+    void opened() noexcept { on_ = false; }  // a photo was opened: the strength stays
+
+    [[nodiscard]] float strength() const noexcept { return strength_; }
+    void set_strength(float strength) noexcept { strength_ = snap_brush_strength(strength); }
+
+private:
+    bool on_ = false;
+    float strength_ = brush_strength_default;
+};
+
+// Which of the canvas's tools are on.
 struct CanvasTools {
     bool sampling = false;
     bool picking = false;
     bool strip = false;
+    bool brushing = false;
 
     bool operator==(const CanvasTools&) const = default;
 };
@@ -208,13 +251,16 @@ enum class ToolKey {
     pick,    // W
     sample,  // I
     strip,   // T
+    brush,   // the Brush button
 };
 
-// What the tools are after a key: a key toggles its tool, and turning one on turns the others off.
-// A tool that is not available (`pick_ok`: white balance is not visible at the viewed stage;
-// `strip_ok`: see strip_available) can be turned off but not on, and then nothing else changes.
+// What the tools are after a key: a key toggles its tool, and turning one on turns the others off
+// (Sample and the strip can be on together; Pick and Brush are on alone). A tool that is not
+// available (`pick_ok`: white balance is not visible at the viewed stage; `strip_ok`: see
+// strip_available; `brush_ok`: see brush_available) can be turned off but not on, and then nothing
+// else changes. I, T and W leave Brush mode.
 [[nodiscard]] CanvasTools tools_after_key(CanvasTools tools, ToolKey key, bool pick_ok,
-                                          bool strip_ok) noexcept;
+                                          bool strip_ok, bool brush_ok = false) noexcept;
 
 // Where Pick mode's patch goes on the screen: the square of pixels it averages around `pixel` in a
 // width x height picture, cut off at the picture's edges.
