@@ -11,6 +11,7 @@
 #include "prism/gui/paper_grade.hpp"
 #include "prism/gui/stage_controls.hpp"
 #include "prism/ranges.hpp"
+#include "prism/white_balance.hpp"
 #include "prism/gui/typed_value.hpp"
 #include "theme.hpp"
 #include "widgets.hpp"
@@ -30,6 +31,26 @@ constexpr ImGuiButtonFlags press_only =
 float px(float mock_px) {
     return std::round(mock(mock_px));
 }
+
+// The row's sides: its text starts after the rail's dot, and ends a little inside the row.
+float row_left() { return px(27.0f); }
+float row_right_inset() { return px(8.0f); }
+// Between a row's name and its value, or the switch and what is left of it.
+float first_line_gap() { return px(8.0f); }
+// Around "(beyond the slider)".
+float flag_gap() { return px(6.0f); }
+// Whether the row says "(beyond the slider)" after its name. Contrast does not: its value already
+// says "Softer than grade 0" or "Harder than grade 5", which is the same thing in more words.
+bool shows_beyond_flag(const gui::LightPathRow& row) {
+    return row.beyond_slider && row.stage != gui::StageId::contrast;
+}
+// The padding at each side of the Test strip and the Pick neutral buttons' labels.
+float strip_button_padding() { return px(8.0f); }
+float pick_button_padding() { return px(6.0f); }
+// Between a Tone curve tab's edge and its label.
+float tab_padding() { return px(6.0f); }
+// The least a White balance slider's track is wide.
+float wb_min_track() { return px(72.0f); }
 
 // A dimmed row draws everything in it at a lower alpha, and a window opened from inside would take
 // that alpha along. So tooltips and popups are opened at full strength, under this.
@@ -55,6 +76,14 @@ void text_in_band(ImDrawList* draw, float x, float y, float band, ImU32 colour,
                   std::string_view text) {
     draw->AddText(ImVec2(x, std::round(y + (band - ImGui::GetFontSize()) * 0.5f)), colour,
                   text.data(), text.data() + text.size());
+}
+
+// Writes down a text that has to fit, for the tests (the font it is measured in is the current one).
+void note_fit(const LightPathData& data, const char* what, std::string_view text,
+              std::string_view shown, float room) {
+    if (data.fits != nullptr) {
+        data.fits->push_back({what, std::string(text), std::string(shown), text_width(text), room});
+    }
 }
 
 gui::LightPathMetrics row_metrics() {
@@ -115,6 +144,16 @@ void draw_clip_marks(const LightPathData& data, const gui::LightPathRow& row, fl
         words += dot + text_width(mark.text) + m.dot_between;
     }
     const bool with_words = words - m.dot_between <= room;
+    if (data.fits != nullptr) {
+        std::string all_words;
+        std::string all_percents;
+        for (const gui::ClipMark& mark : row.marks) {
+            all_words += (all_words.empty() ? "" : "  ") + mark.text;
+            all_percents += (all_percents.empty() ? "" : "  ") + mark.percent;
+        }
+        data.fits->push_back({"Clip note", all_words, with_words ? all_words : all_percents,
+                              words - m.dot_between, room});
+    }
 
     draw->PushClipRect(ImVec2(x, y), ImVec2(x + room, y + height), true);
     float at = x;
@@ -166,28 +205,30 @@ void draw_clip_marks(const LightPathData& data, const gui::LightPathRow& row, fl
 }
 
 // The Test strip button at the right of the clip line, drawn in its pressed look while the strip
-// is on. Returns its left edge.
+// is on. Like Pick neutral it is as tall as its line and the gap (which is empty above and below
+// the line anyway), so it adds nothing to the row. Returns its left edge.
 float draw_strip_button(const LightPathData& data, float right, float y, float line_height,
-                        const LightPathCallbacks& cb) {
-    constexpr const char* label = "Test strip";
+                        float gap, const LightPathCallbacks& cb) {
+    const std::string label(gui::light_path_text::test_strip);
     ImGui::PushFont(nullptr, token_type().small);
-    const float height = px(24.0f);
-    const float width = text_width(label) + 2 * px(8.0f);
+    const float height = line_height + gap;
+    const float width = text_width(label) + 2 * strip_button_padding();
     const float left = right - width;
-    ImGui::SetCursorScreenPos(ImVec2(left, std::round(y + (line_height - height) * 0.5f)));
+    ImGui::SetCursorScreenPos(ImVec2(left, y - gap * 0.5f));
     const bool can_act = data.strip_on || data.strip_available;
     ImGui::BeginDisabled(!can_act);
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, px(6.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(strip_button_padding(), 0.0f));
     if (data.strip_on) {
         ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
     }
-    if (ImGui::Button(label, ImVec2(width, height))) {
+    if (ImGui::Button(label.c_str(), ImVec2(width, height))) {
         cb.toggle_strip();
     }
     if (data.strip_on) {
         ImGui::PopStyleColor();
     }
-    ImGui::PopStyleVar();
+    ImGui::PopStyleVar(2);
     ImGui::EndDisabled();
     ImGui::PopFont();
     const FullStrength full;
@@ -208,21 +249,21 @@ float draw_strip_button(const LightPathData& data, float right, float y, float l
 // line anyway), so it adds nothing to the row. Acts on the press. Returns its left edge.
 float draw_pick_button(const LightPathData& data, float right, float line_y, float line_height,
                        float gap, const LightPathCallbacks& cb) {
-    constexpr const char* label = "Pick neutral";
+    const std::string label(gui::light_path_text::pick_neutral);
     ImGui::PushFont(nullptr, token_type().small);
     const float height = line_height + gap;
-    const float width = text_width(label) + 2 * px(6.0f);
+    const float width = text_width(label) + 2 * pick_button_padding();
     const float left = right - width;
     ImGui::SetCursorScreenPos(ImVec2(left, line_y - gap * 0.5f));
     const bool can_act = data.pick_on || data.pick_available;
     ImGui::BeginDisabled(!can_act);
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, px(5.0f));
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(px(6.0f), 0.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(pick_button_padding(), 0.0f));
     if (data.pick_on) {
         ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
     }
     ImGui::PushID("pick");
-    if (ImGui::ButtonEx(label, ImVec2(width, height), press_only) && cb.toggle_pick) {
+    if (ImGui::ButtonEx(label.c_str(), ImVec2(width, height), press_only) && cb.toggle_pick) {
         cb.toggle_pick();
     }
     ImGui::PopID();
@@ -329,9 +370,13 @@ void draw_stage_slider(const gui::LightPathRow& row, float x, float y, float wid
 }
 
 // The captions of White balance's two sliders, and the room they take at the sliders' left: the
-// wider caption's width, so both sliders start at the same place whatever they are set to.
+// wider caption's width, so both sliders start at the same place whatever they are set to. Each
+// line reads caption, slider, value, and the values share one column, as wide as the widest value
+// there can be, so both sliders also end at the same place.
 constexpr const char* kelvin_caption = "Kelvin";
 constexpr const char* tint_caption = "Tint";
+constexpr const char* widest_kelvin = "15000 K";
+constexpr const char* widest_tint = "\xE2\x88\x92" "100";  // U+2212, not a hyphen
 
 float white_balance_caption_width() {
     ImGui::PushFont(nullptr, token_type().small);
@@ -340,15 +385,25 @@ float white_balance_caption_width() {
     return std::ceil(width) + px(8.0f);
 }
 
-// One of White balance's sliders, with its caption at the left. Kelvin's position is even in
-// mireds (gui_core maps it); Tint's is the tint itself, in whole numbers. Typing takes the number
-// as the value line shows it. A drag reports the value only on a frame that moved it, so a press
-// alone leaves an As shot photo As shot.
-void draw_white_balance_slider(const gui::LightPathRow& row, gui::WhiteBalanceControl control,
-                               float x, float y, float width, const LightPathCallbacks& cb) {
+float white_balance_value_width() {
+    ImGui::PushFont(nullptr, token_type().small);
+    const float width = std::max(text_width(widest_kelvin), text_width(widest_tint));
+    ImGui::PopFont();
+    return std::ceil(width);
+}
+
+// One of White balance's sliders, as caption, slider, value. Kelvin's position is even in mireds
+// (gui_core maps it); Tint's is the tint itself, in whole numbers. Typing takes the number as the
+// value shows it. A drag reports the value only on a frame that moved it, so a press alone leaves
+// an As shot photo As shot.
+void draw_white_balance_slider(const LightPathData& data, const gui::LightPathRow& row,
+                               gui::WhiteBalanceControl control, float x, float y, float width,
+                               const LightPathCallbacks& cb) {
     const gui::LightPathRow::WhiteBalanceSliders& wb = *row.white_balance;
     const bool kelvin = control == gui::WhiteBalanceControl::kelvin;
     const float caption = white_balance_caption_width();
+    const float value_width = white_balance_value_width();
+    const float track = std::max(1.0f, width - caption - first_line_gap() - value_width);
     ImGui::PushFont(nullptr, token_type().small);
     text_in_band(ImGui::GetWindowDrawList(), x, y, slider_height(),
                  ImGui::GetColorU32(ImGuiCol_TextDisabled), kelvin ? kelvin_caption : tint_caption);
@@ -357,7 +412,7 @@ void draw_white_balance_slider(const gui::LightPathRow& row, gui::WhiteBalanceCo
     ImGui::PushID(kelvin ? "kelvin" : "tint");
     ImGui::BeginDisabled(!row.enabled);
     ImGui::SetCursorScreenPos(ImVec2(x + caption, y));
-    ImGui::SetNextItemWidth(std::max(1.0f, width - caption));
+    ImGui::SetNextItemWidth(track);
     float position = kelvin ? wb.kelvin_position : wb.tint_position;
     SliderTyping typing;
     const bool changed =
@@ -394,11 +449,28 @@ void draw_white_balance_slider(const gui::LightPathRow& row, gui::WhiteBalanceCo
     }
     ImGui::EndDisabled();
     ImGui::PopID();
+
+    // The value, right-aligned in the shared column. On the frame a drag moves the slider it is the
+    // slider's own (snapped as the setter will), else the one the row was made with.
+    const std::string value =
+        changed ? (kelvin ? gui::format_kelvin(gui::kelvin_at_slider_position(position))
+                          : gui::format_tint(position))
+                : (kelvin ? wb.kelvin_text : wb.tint_text);
+    ImGui::PushFont(nullptr, token_type().small);
+    text_in_band(ImGui::GetWindowDrawList(), x + width - text_width(value), y, slider_height(),
+                 ImGui::GetColorU32(row.enabled ? ImGuiCol_Text : ImGuiCol_TextDisabled), value);
+    note_fit(data, kelvin ? "Kelvin value" : "Tint value", value, value, value_width);
+    if (data.fits != nullptr) {
+        // The track keeps its least width: a sliver of a slider is not a slider.
+        data.fits->push_back({kelvin ? "Kelvin track" : "Tint track", "track", track >= wb_min_track() ? "track" : "",
+                              wb_min_track(), track});
+    }
+    ImGui::PopFont();
 }
 
 // One tab per curve: choosing one is one undo step. Greyed out and fixed while the stage is off.
-void draw_curve_tabs(const gui::LightPathRow& row, float x, float y, float width,
-                     const LightPathCallbacks& cb) {
+void draw_curve_tabs(const LightPathData& data, const gui::LightPathRow& row, float x, float y,
+                     float width, const LightPathCallbacks& cb) {
     std::array<const char*, std::size(gui::curve_kinds)> labels{};
     std::array<std::string, std::size(gui::curve_kinds)> names;
     int current = 0;
@@ -408,6 +480,16 @@ void draw_curve_tabs(const gui::LightPathRow& row, float x, float y, float width
         if (gui::curve_kinds[i] == row.curve) {
             current = static_cast<int>(i);
         }
+    }
+    if (data.fits != nullptr) {
+        // Every label with room around it, in the face the current tab is drawn in.
+        const float room = segmented_tab_width(width, static_cast<int>(labels.size())) -
+                           2 * tab_padding();
+        ImGui::PushFont(fonts().semibold, token_type().small);
+        for (const std::string& name : names) {
+            note_fit(data, "Tone curve tab", name, name, room);
+        }
+        ImGui::PopFont();
     }
     ImGui::BeginDisabled(!row.enabled);
     ImGui::SetCursorScreenPos(ImVec2(x, y));
@@ -435,8 +517,9 @@ void draw_curve_tabs(const gui::LightPathRow& row, float x, float y, float width
 // The curve's one number: its name and value on one line, its slider on the next. The slider moves
 // a position (gui_core maps it to the value, in ratios for Reinhard), so it takes no typed input:
 // that would be a position, not the value.
-void draw_curve_parameter(const gui::LightPathRow& row, const gui::LightPathRowLayout& layout,
-                          float x, float top, float width, const LightPathCallbacks& cb) {
+void draw_curve_parameter(const LightPathData& data, const gui::LightPathRow& row,
+                          const gui::LightPathRowLayout& layout, float x, float top, float width,
+                          const LightPathCallbacks& cb) {
     const gui::CurveParameter& p = *row.parameter;
     ImDrawList* draw = ImGui::GetWindowDrawList();
     const gui::LightPathMetrics metrics = row_metrics();
@@ -447,6 +530,12 @@ void draw_curve_parameter(const gui::LightPathRow& row, const gui::LightPathRowL
     text_in_band(draw, x + width - text_width(row.parameter_text), line_y, metrics.secondary,
                  ImGui::GetColorU32(row.enabled ? ImGuiCol_Text : ImGuiCol_TextDisabled),
                  row.parameter_text);
+    if (data.fits != nullptr) {
+        const std::string both = std::string(p.label) + " " + row.parameter_text;
+        data.fits->push_back({"Curve number", both, both,
+                              text_width(p.label) + first_line_gap() + text_width(row.parameter_text),
+                              width});
+    }
     ImGui::PopFont();
 
     ImGui::BeginDisabled(!row.enabled);
@@ -498,8 +587,8 @@ void draw_row(const LightPathData& data, const gui::LightPathRow& row,
     const float line_y = row_min.y + layout.line_y;
     draw_dot(draw, ImVec2(dot_x, std::round(line_y + metrics.line * 0.5f)), row.viewed);
 
-    const float x = row_min.x + px(27.0f);
-    const float right = row_max.x - px(8.0f);
+    const float x = row_min.x + row_left();
+    const float right = row_max.x - row_right_inset();
     const float content = std::max(1.0f, right - x);
 
     // The first line: the name, the value and the switch.
@@ -522,7 +611,7 @@ void draw_row(const LightPathData& data, const gui::LightPathRow& row,
             const FullStrength full;
             cb.describe(gui::explain_id(row.stage));
         }
-        value_right = right - size.x - px(8.0f);
+        value_right = right - size.x - first_line_gap();
     }
     // What's on the first line never wraps: what doesn't fit is shortened, or left out.
     const auto measure = [](std::string_view s) { return text_width(s); };
@@ -530,22 +619,26 @@ void draw_row(const LightPathData& data, const gui::LightPathRow& row,
     if (!row.value.empty()) {
         const bool small = row.stage == gui::StageId::matrix;
         ImGui::PushFont(nullptr, small ? token_type().small : token_type().body);
-        const float room = std::max(0.0f, value_right - name_end - px(8.0f));
+        const float room = std::max(0.0f, value_right - name_end - first_line_gap());
         const std::string shown = gui::ellipsize_middle(row.value, room, measure);
+        note_fit(data, "Value", row.value, shown, room);
         value_left = value_right - text_width(shown);
         text_in_band(draw, value_left, line_y, metrics.line,
                      ImGui::GetColorU32(row.value_muted ? ImGuiCol_TextDisabled : ImGuiCol_Text),
                      shown);
         ImGui::PopFont();
     }
-    if (row.beyond_slider) {
-        constexpr const char* flag = "(beyond the slider)";
+    if (shows_beyond_flag(row)) {
+        const std::string flag(gui::light_path_text::beyond_slider);
         ImGui::PushFont(nullptr, token_type().small);
-        const float flag_x = name_end + px(6.0f);
-        if (flag_x + text_width(flag) + px(6.0f) <= value_left) {
+        const float flag_x = name_end + flag_gap();
+        const bool fits = flag_x + text_width(flag) + flag_gap() <= value_left;
+        if (fits) {
             text_in_band(draw, flag_x, line_y, metrics.line,
                          ImGui::GetColorU32(ImGuiCol_TextDisabled), flag);
         }
+        note_fit(data, "Beyond the slider", flag, fits ? flag : "",
+                 value_left - flag_gap() - flag_x);
         ImGui::PopFont();
     }
 
@@ -554,34 +647,36 @@ void draw_row(const LightPathData& data, const gui::LightPathRow& row,
         if (row.pick_neutral) {
             const float left = draw_pick_button(data, right, row_min.y + *layout.subtitle_y,
                                                 metrics.secondary, metrics.gap, cb);
-            subtitle_room = std::max(1.0f, left - px(8.0f) - x);
+            subtitle_room = std::max(1.0f, left - first_line_gap() - x);
         }
         ImGui::PushFont(nullptr, token_type().small);
+        const std::string subtitle = gui::ellipsize_middle(row.subtitle, subtitle_room, measure);
         text_in_band(draw, x, row_min.y + *layout.subtitle_y, metrics.secondary,
-                     ImGui::GetColorU32(ImGuiCol_TextDisabled),
-                     gui::ellipsize_middle(row.subtitle, subtitle_room, measure));
+                     ImGui::GetColorU32(ImGuiCol_TextDisabled), subtitle);
+        note_fit(data, "Subtitle", row.subtitle, subtitle, subtitle_room);
         ImGui::PopFont();
     }
     if (row.white_balance && layout.slider_y && layout.second_slider_y) {
-        draw_white_balance_slider(row, gui::WhiteBalanceControl::kelvin, x,
+        draw_white_balance_slider(data, row, gui::WhiteBalanceControl::kelvin, x,
                                   row_min.y + *layout.slider_y, content, cb);
-        draw_white_balance_slider(row, gui::WhiteBalanceControl::tint, x,
+        draw_white_balance_slider(data, row, gui::WhiteBalanceControl::tint, x,
                                   row_min.y + *layout.second_slider_y, content, cb);
     } else if (layout.slider_y && row.slider) {
         draw_stage_slider(row, x, row_min.y + *layout.slider_y, content, cb);
     }
     if (layout.tabs_y) {
-        draw_curve_tabs(row, x, row_min.y + *layout.tabs_y, content, cb);
+        draw_curve_tabs(data, row, x, row_min.y + *layout.tabs_y, content, cb);
     }
     if (layout.parameter_y) {
-        draw_curve_parameter(row, layout, x, row_min.y, content, cb);
+        draw_curve_parameter(data, row, layout, x, row_min.y, content, cb);
     }
 
     // The clip line, with Exposure's Test strip button at its right.
     const float clip_y = row_min.y + layout.clip_y;
     float marks_right = right;
     if (row.test_strip) {
-        marks_right = draw_strip_button(data, right, clip_y, layout.clip_height, cb) - px(8.0f);
+        marks_right = draw_strip_button(data, right, clip_y, layout.clip_height, metrics.gap, cb) -
+                      first_line_gap();
     }
     draw_clip_marks(data, row, x, clip_y, layout.clip_height, marks_right - x, cb);
 
@@ -636,12 +731,169 @@ void draw_compare_popup(const LightPathData& data, const LightPathCallbacks& cb)
 
 }  // namespace
 
+float light_path_min_width() {
+    const std::string flag(gui::light_path_text::beyond_slider);
+    const gui::TokenMetrics& tm = token_metrics();
+
+    // Every text that can be on a row's first line, in the worst light each stage can put it in:
+    // a stage's value at its extremes, a stage that is off ("when on"), a chosen white balance at
+    // the ends of its sliders, and every kind of file.
+    std::vector<gui::EditSettings> variants;
+    const auto add = [&](auto&& change) {
+        for (const bool on : {true, false}) {
+            gui::EditSettings s;
+            change(s, on);
+            variants.push_back(s);
+        }
+    };
+    for (const float stops : {-10.0f, 10.0f}) {
+        add([&](gui::EditSettings& s, bool on) { s.exposure_stops = stops; s.exposure_on = on; });
+    }
+    for (const float saturation : {0.0f, 1.0f, 10.0f}) {
+        add([&](gui::EditSettings& s, bool on) { s.saturation = saturation; s.saturation_on = on; });
+    }
+    // Soft and hard ends, and values between the half grades.
+    for (const float contrast : {0.3f, 0.6f, 1.15f, 1.45f, 2.4f, 6.0f}) {
+        add([&](gui::EditSettings& s, bool on) { s.contrast = contrast; s.contrast_on = on; });
+    }
+    for (const prism::WhiteBalance light : {prism::WhiteBalance{15000, -100}, prism::WhiteBalance{2000, 100}}) {
+        add([&](gui::EditSettings& s, bool on) { s.white_balance = light; s.white_balance_on = on; });
+    }
+    add([](gui::EditSettings& s, bool on) { s.matrix = gui::MatrixFile{}; s.matrix_on = on; });
+    add([](gui::EditSettings& s, bool) { s.raw_camera_matrix = gui::MatrixFile{}; });
+    add([](gui::EditSettings&, bool) {});
+
+    float row_need = 0.0f;  // the room inside a row, between its margins
+    const float switch_room = switch_size().x + first_line_gap();
+    const auto first_line = [&](const gui::LightPathRow& row) {
+        ImGui::PushFont(fonts().semibold, token_type().body);
+        const float name = text_width(row.name);
+        ImGui::PopFont();
+        const bool small = row.stage == gui::StageId::matrix;
+        ImGui::PushFont(nullptr, small ? token_type().small : token_type().body);
+        const float value = text_width(row.value);
+        ImGui::PopFont();
+        ImGui::PushFont(nullptr, token_type().small);
+        const float between =
+            shows_beyond_flag(row) ? 2 * flag_gap() + text_width(flag) : first_line_gap();
+        ImGui::PopFont();
+        const float toggle = row.can_toggle ? switch_room : 0.0f;
+        row_need = std::max(row_need, name + std::max(first_line_gap(), between) + value + toggle);
+    };
+    const auto small_text = [&](std::string_view text) {
+        ImGui::PushFont(nullptr, token_type().small);
+        const float width = text_width(text);
+        ImGui::PopFont();
+        return width;
+    };
+    const float pick_room = first_line_gap() + small_text(gui::light_path_text::pick_neutral) +
+                            2 * pick_button_padding();
+    for (const gui::EditSettings& s : variants) {
+        for (const bool light_known : {true, false}) {
+            for (const gui::InputKind kind : {gui::InputKind::raw, gui::InputKind::image}) {
+                const std::optional<prism::Chromaticity> white =
+                    light_known ? std::optional<prism::Chromaticity>(
+                                      prism::white_of(prism::WhiteBalance{5328, 26.7}))
+                                : std::nullopt;
+                for (const char* file : {"RAW", "JPEG", "PNG", "HEIC"}) {
+                    const gui::LightPathView view =
+                        gui::light_path_view({s, kind, file, gui::final_stage, std::nullopt, nullptr, white});
+                    for (const gui::LightPathRow& row : view.rows) {
+                        first_line(row);
+                        if (row.parameter) {  // the Tone curve's number: its name and value
+                            row_need = std::max(row_need, small_text(row.parameter->label) +
+                                                              first_line_gap() +
+                                                              small_text(row.parameter_text));
+                        }
+                        if (!row.subtitle.empty()) {
+                            row_need = std::max(row_need, small_text(row.subtitle) +
+                                                              (row.pick_neutral ? pick_room : 0.0f));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // White balance's sliders: caption, a track, value.
+    row_need = std::max(row_need, white_balance_caption_width() + wb_min_track() +
+                                      first_line_gap() + white_balance_value_width());
+
+    // The Tone curve's tabs, each label (in the face the current one is drawn in) with room around
+    // it, and its number's line.
+    ImGui::PushFont(fonts().semibold, token_type().small);
+    float widest_tab = 0.0f;
+    for (const gui::CurveKind kind : gui::curve_kinds) {
+        widest_tab = std::max(widest_tab, text_width(gui::curve_kind_name(kind)));
+    }
+    ImGui::PopFont();
+    row_need = std::max(row_need, segmented_width_for(std::ceil(widest_tab) + 2 * tab_padding(),
+                                                      static_cast<int>(std::size(gui::curve_kinds))));
+
+    // A clip note beside its button: one mark with its words, whichever kind and however many
+    // digits. (Two or three marks on a row that cannot hold their words fall back to their numbers,
+    // which is by design.)
+    float note = 0.0f;
+    for (const std::uint64_t count : {100000ull, 88000ull, 8800ull, 1ull}) {
+        for (const int kind : {0, 1, 2}) {
+            gui::StageClip clip;
+            clip.ran = true;
+            gui::ClipCounts& counts = kind == 0 ? clip.under : kind == 1 ? clip.over : clip.gamut;
+            counts.any = count;
+            (kind == 0 ? clip.under_fate : kind == 1 ? clip.over_fate : clip.gamut_fate) =
+                gui::ClipFate::recoverable;
+            for (const gui::ClipMark& mark : gui::clip_marks(clip, 100000)) {
+                note = std::max(note, 2 * tm.dot_radius + tm.dot_gap + small_text(mark.text));
+            }
+        }
+    }
+    row_need = std::max(row_need, note);
+    row_need = std::max(row_need, note + first_line_gap() + small_text(gui::light_path_text::test_strip) +
+                                          2 * strip_button_padding());
+
+    // The header: the title, the gap between items, and the longest Compare action.
+    ImGui::PushFont(fonts().semibold, token_type().section);
+    const float title = text_width(gui::light_path_text::title);
+    ImGui::PopFont();
+    float action = 0.0f;
+    ImGui::PushFont(fonts().regular, token_type().section);
+    action = std::max(action, text_width(gui::compare_action_text(gui::final_stage, std::nullopt)));
+    for (const gui::StageInfo& stage : gui::pipeline_stages()) {
+        const gui::StageId viewed = stage.id == gui::final_stage ? gui::StageId::decode : gui::final_stage;
+        action = std::max(action, text_width(gui::compare_action_text(viewed, stage.id)));
+    }
+    ImGui::PopFont();
+    const float header_need = title + ImGui::GetStyle().ItemSpacing.x + action;
+
+    const float inside =
+        std::max(row_need + row_left() + row_right_inset(), header_need);
+    // The panel's own padding at both sides, and the scrollbar that takes room when the panel scrolls.
+    return std::ceil(inside + 2 * tm.panel_pad.x + ImGui::GetStyle().ScrollbarSize);
+}
+
+float light_path_min_mock_px() {
+    return light_path_min_width() / mock(1.0f);
+}
+
 std::vector<LightPathRowRect> draw_light_path(const LightPathData& data,
                                               const LightPathCallbacks& cb) {
     bool title_hovered = false;
+    const float header_x = ImGui::GetCursorScreenPos().x;
     const bool compare_clicked =
-        section_text("Light path", data.view.compare_text.c_str(), &title_hovered);
+        section_text(std::string(gui::light_path_text::title).c_str(), data.view.compare_text.c_str(), &title_hovered);
     const ImVec2 action_corner = ImGui::GetItemRectMax();
+    if (data.fits != nullptr) {
+        // The title and the action share a line: the action sits at the right, and must leave the
+        // usual gap between items after the title.
+        ImGui::PushFont(fonts().semibold, token_type().section);
+        const float title_end = header_x + text_width(gui::light_path_text::title);
+        ImGui::PopFont();
+        data.fits->push_back({"Header", std::string(gui::light_path_text::title) + " " + data.view.compare_text,
+                              ImGui::GetItemRectMin().x - title_end >= ImGui::GetStyle().ItemSpacing.x
+                                  ? std::string(gui::light_path_text::title) + " " + data.view.compare_text
+                                  : std::string(),
+                              ImGui::GetStyle().ItemSpacing.x, ImGui::GetItemRectMin().x - title_end});
+    }
     cb.describe(gui::explain::compare);
     if (title_hovered) {
         cb.hover(gui::explain::light_path);

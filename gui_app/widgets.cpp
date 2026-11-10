@@ -228,6 +228,19 @@ float segmented_height() {
     return std::round(mock(26.0f)) + 2 * std::round(mock(2.0f));
 }
 
+float segmented_tab_width(float width, int count) {
+    const float pad = std::round(mock(2.0f));
+    const float gap = std::round(mock(2.0f));
+    return std::max(1.0f, std::floor((width - 2 * pad - gap * static_cast<float>(count - 1)) /
+                                     static_cast<float>(std::max(1, count))));
+}
+
+float segmented_width_for(float tab_width, int count) {
+    const float pad = std::round(mock(2.0f));
+    const float gap = std::round(mock(2.0f));
+    return 2 * pad + gap * static_cast<float>(count - 1) + tab_width * static_cast<float>(count);
+}
+
 bool segmented(const char* id, std::span<const char* const> labels, int* current,
                const std::function<void(int)>& after_item, float wanted_width) {
     ImGuiWindow* window = ImGui::GetCurrentWindow();
@@ -241,8 +254,7 @@ bool segmented(const char* id, std::span<const char* const> labels, int* current
     const float tab_h = std::round(mock(26.0f));
     const float width =
         std::max(1.0f, wanted_width > 0.0f ? wanted_width : ImGui::GetContentRegionAvail().x);
-    const float tab_w = std::max(
-        1.0f, std::floor((width - 2 * pad - gap * static_cast<float>(count - 1)) / count));
+    const float tab_w = segmented_tab_width(width, count);
     const ImVec2 origin = window->DC.CursorPos;
     const ImRect well(origin, ImVec2(origin.x + width, origin.y + tab_h + 2 * pad));
     ImGui::ItemSize(well);

@@ -79,6 +79,12 @@ bool segmented(const char* id, std::span<const char* const> labels, int* current
 // The height of a segmented control: its tabs and the well's padding.
 [[nodiscard]] float segmented_height();
 
+// How wide each tab of a segmented control of `count` tabs and `width` pixels is (the well's
+// padding and the gaps between tabs taken off, whole pixels), and the width `count` tabs of
+// `tab_width` each need: the inverse, for finding the narrowest control that holds its labels.
+[[nodiscard]] float segmented_tab_width(float width, int count);
+[[nodiscard]] float segmented_width_for(float tab_width, int count);
+
 // The same, round, with a dot: ImGui::RadioButton.
 bool styled_radio(const char* label, int* current, int value);
 

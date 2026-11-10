@@ -16,6 +16,16 @@ namespace prism::gui {
 // The Light path panel as data: what each stage's row says and holds, and how tall it is. No ImGui
 // here, so the wording and the heights are tested without a window; gui_app/light_path.cpp draws it.
 
+// --- Texts both the drawing and the panel's minimum width use ------------------------------------
+// One source for each: the drawing code draws these, and light_path_min_width measures these.
+
+namespace light_path_text {
+inline constexpr std::string_view title = "Light path";
+inline constexpr std::string_view beyond_slider = "(beyond the slider)";
+inline constexpr std::string_view pick_neutral = "Pick neutral";
+inline constexpr std::string_view test_strip = "Test strip";
+}  // namespace light_path_text
+
 // --- Clip marks ----------------------------------------------------------------------------------
 
 enum class ClipMarkKind { below_black, above_white, out_of_gamut };

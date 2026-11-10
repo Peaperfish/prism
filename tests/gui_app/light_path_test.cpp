@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <set>
 #include <string>
@@ -15,6 +16,7 @@
 #include "imgui_internal.h"
 #include "light_path.hpp"
 #include "prism/gui/explanations.hpp"
+#include "prism/gui/layout.hpp"
 #include "prism/gui/light_path.hpp"
 #include "prism/gui/paper_grade.hpp"
 #include "prism/gui/settings.hpp"
@@ -115,12 +117,21 @@ protected:
         ImGui::GetIO().DeltaTime = 1.0f / 60.0f;
         ImGui::NewFrame();
         ImGui::SetNextWindowPos(ImVec2(0, 0));
-        ImGui::SetNextWindowSize(ImVec2(panel_width, scroll_room));
+        ImGui::SetNextWindowSize(ImVec2(width_, height_));
+        // The app's panel is a child with the panel's padding, and scrolls (so it has a scrollbar).
+        if (app_padding_) {
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
+                                ImVec2(token_metrics().panel_pad.x, token_metrics().panel_pad.y));
+        }
         ImGui::Begin("panel", nullptr,
                      ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
                          ImGuiWindowFlags_NoTitleBar);
+        if (app_padding_) {
+            ImGui::PopStyleVar();
+        }
         LightPathData data;
-        data.view = gui::light_path_view({settings_, kind_, "RAW", viewed_, compare_,
+        data.fits = fits_;
+        data.view = gui::light_path_view({settings_, kind_, file_kind_, viewed_, compare_,
                                           clips_ ? &*clips_ : nullptr, as_shot_});
         data.theme = gui::Theme::dark;
         data.strip_on = strip_on_;
@@ -301,6 +312,11 @@ protected:
     gui::StageId viewed_ = gui::final_stage;
     std::optional<gui::StageId> compare_;
     std::optional<gui::ClipReport> clips_;
+    std::string_view file_kind_ = "RAW";
+    float width_ = panel_width;
+    float height_ = scroll_room;
+    bool app_padding_ = false;
+    std::vector<TextFit>* fits_ = nullptr;
     bool strip_on_ = false;
     bool strip_available_ = true;
     bool pick_on_ = false;
@@ -1231,6 +1247,308 @@ TEST_F(LightPathHeadless, TypedWhiteBalanceFieldKeepsEveryRowWhereItWas) {
         EXPECT_EQ(heights_of(frame()), heights);
     }
     EXPECT_TRUE(white_balance_frames_.empty());
+}
+
+// --- The minimum width -------------------------------------------------------------------------
+
+// A clip report in which every stage has just one kind of mark, recoverable, at `count` of 1000.
+gui::ClipReport one_mark_report(gui::ClipMarkKind kind, std::uint64_t count) {
+    gui::ClipReport report;
+    report.sample_count = 1000;
+    for (const gui::StageInfo& stage : gui::pipeline_stages()) {
+        gui::StageClip& clip = report.stages[static_cast<std::size_t>(stage.id)];
+        clip.stage = stage.id;
+        clip.ran = true;
+        switch (kind) {
+            case gui::ClipMarkKind::below_black:
+                clip.under.any = count;
+                clip.under_fate = gui::ClipFate::recoverable;
+                break;
+            case gui::ClipMarkKind::above_white:
+                clip.over.any = count;
+                clip.over_fate = gui::ClipFate::recoverable;
+                break;
+            case gui::ClipMarkKind::out_of_gamut:
+                clip.gamut.any = count;
+                clip.gamut_fate = gui::ClipFate::recoverable;
+                break;
+        }
+    }
+    return report;
+}
+
+// The panel at its minimum width, as the app draws it (the panel's padding, and a scrollbar), with
+// the worst cases of every text in it, one after the other. Every text that has to fit is written
+// down by the panel (LightPathData::fits) and must have been drawn in full.
+class MinimumWidth : public LightPathHeadless {
+protected:
+    void SetUp() override {
+        LightPathHeadless::SetUp();
+        app_padding_ = true;
+        height_ = 600.0f;  // shorter than the rows, so the panel scrolls
+        fits_ = &frame_fits_;
+    }
+
+    // Draws the case and keeps what it wrote down.
+    void run_case() {
+        frame();
+        frame_fits_.clear();
+        frame();
+        fits_seen_.insert(fits_seen_.end(), frame_fits_.begin(), frame_fits_.end());
+    }
+
+    void run_all_cases(float scale) {
+        apply_style(gui::Theme::dark, scale);
+        ImGui::NewFrame();
+        const float minimum = light_path_min_width();
+        ImGui::EndFrame();
+        width_ = minimum;
+        as_shot_ = prism::white_of(prism::WhiteBalance{5328, 26.7});
+
+        // Exposure at both ends of its range, on (with "beyond the slider") and off ("when on").
+        for (const float stops : {-10.0f, 10.0f}) {
+            for (const bool on : {true, false}) {
+                settings_ = {};
+                settings_.exposure_stops = stops;
+                settings_.exposure_on = on;
+                run_case();
+            }
+        }
+        // Contrast: past both ends of the grades, between two, and off.
+        for (const float contrast : {0.6f, 2.4f, 1.15f, 1.45f}) {
+            for (const bool on : {true, false}) {
+                settings_ = {};
+                settings_.contrast = contrast;
+                settings_.contrast_on = on;
+                run_case();
+            }
+        }
+        settings_ = {};
+        settings_.saturation = 0.0f;
+        run_case();
+        // White balance: As shot on a RAW file with its light and on files without one, and a
+        // chosen light at the ends of both sliders, on and off.
+        settings_ = {};
+        run_case();
+        for (const std::string_view file : {"JPEG", "PNG", "HEIC", "RAW"}) {
+            file_kind_ = file;
+            kind_ = file == "RAW" ? gui::InputKind::raw : gui::InputKind::image;
+            as_shot_ = std::nullopt;
+            run_case();
+        }
+        as_shot_ = prism::white_of(prism::WhiteBalance{5328, 26.7});
+        file_kind_ = "RAW";
+        kind_ = gui::InputKind::raw;
+        for (const prism::WhiteBalance light :
+             {prism::WhiteBalance{15000, -100}, prism::WhiteBalance{2000, 100}}) {
+            for (const bool on : {true, false}) {
+                settings_ = {};
+                settings_.white_balance = light;
+                settings_.white_balance_on = on;
+                run_case();
+            }
+        }
+        // Colour matrix: the camera's, none, and a recipe's.
+        settings_ = {};
+        run_case();
+        kind_ = gui::InputKind::image;
+        file_kind_ = "JPEG";
+        run_case();
+        settings_.matrix = gui::MatrixFile{};
+        run_case();
+        kind_ = gui::InputKind::raw;
+        file_kind_ = "RAW";
+        settings_ = {};
+        settings_.raw_camera_matrix = gui::MatrixFile{};
+        run_case();
+        // Tone curve: each kind, and the number's line at its widest.
+        for (const gui::CurveKind curve : gui::curve_kinds) {
+            settings_ = {};
+            settings_.curve = curve;
+            settings_.reinhard_white = 16.0f;
+            settings_.gamma = 4.0f;
+            run_case();
+        }
+        // A clip note on every row, of each kind and at its widest, beside Exposure's button.
+        settings_ = {};
+        for (const gui::ClipMarkKind kind :
+             {gui::ClipMarkKind::below_black, gui::ClipMarkKind::above_white,
+              gui::ClipMarkKind::out_of_gamut}) {
+            for (const std::uint64_t count : {1000ull, 880ull, 88ull}) {
+                clips_ = one_mark_report(kind, count);
+                run_case();
+            }
+        }
+        clips_.reset();
+        // The header with Compare on, at its longest.
+        viewed_ = gui::StageId::curve;
+        for (const gui::StageInfo& stage : gui::pipeline_stages()) {
+            compare_ = stage.id;
+            run_case();
+        }
+        viewed_ = gui::final_stage;
+        compare_.reset();
+    }
+
+    [[nodiscard]] bool seen(std::string_view what, std::string_view text) const {
+        return std::any_of(fits_seen_.begin(), fits_seen_.end(), [&](const TextFit& fit) {
+            return fit.what == what && fit.text == text;
+        });
+    }
+    [[nodiscard]] bool seen_starting(std::string_view what, std::string_view start) const {
+        return std::any_of(fits_seen_.begin(), fits_seen_.end(), [&](const TextFit& fit) {
+            return fit.what == what && fit.text.rfind(start, 0) == 0;
+        });
+    }
+
+    std::vector<TextFit> frame_fits_;
+    std::vector<TextFit> fits_seen_;
+};
+
+TEST_F(MinimumWidth, EveryWorstCaseTextIsDrawnInFullAtTheMinimumWidth) {
+    for (const float scale : {1.0f, 1.5f, 2.0f}) {
+        fits_seen_.clear();
+        run_all_cases(scale);
+        for (const TextFit& fit : fits_seen_) {
+            EXPECT_TRUE(fit.whole()) << scale << "x: " << fit.what << " '" << fit.text << "' drawn as '"
+                                     << fit.shown << "', " << fit.width << " wide in " << fit.room;
+        }
+        // The worst cases were there to be checked.
+        EXPECT_TRUE(seen("Value", "-10.00 stops")) << scale;
+        EXPECT_TRUE(seen("Value", "+10.00 stops")) << scale;
+        EXPECT_TRUE(seen("Value", "+10.00 stops when on")) << scale;
+        EXPECT_TRUE(seen("Beyond the slider", std::string(gui::light_path_text::beyond_slider))) << scale;
+        EXPECT_TRUE(seen("Value", "Softer than grade 0 \xC2\xB7 \xC3\x97" "0.60")) << scale;
+        EXPECT_TRUE(seen("Value", "Harder than grade 5 \xC2\xB7 \xC3\x97" "2.40 when on")) << scale;
+        EXPECT_TRUE(seen_starting("Value", "Grade 2")) << scale;  // between two grades
+        EXPECT_TRUE(seen("Value", "As shot")) << scale;
+        EXPECT_TRUE(seen("Value", "Chosen when on")) << scale;
+        EXPECT_TRUE(seen("Subtitle", "The light the photo was lit by")) << scale;
+        EXPECT_TRUE(seen("Subtitle", "Light not recorded, taken as 6500 K")) << scale;
+        EXPECT_TRUE(seen("Subtitle", "HEIC, converted from its own colours")) << scale;
+        EXPECT_TRUE(seen("Kelvin value", "15000 K")) << scale;
+        EXPECT_TRUE(seen("Tint value", "\xE2\x88\x92" "100")) << scale;
+        EXPECT_TRUE(seen("Value", "Camera default")) << scale;
+        EXPECT_TRUE(seen("Value", "From recipe")) << scale;
+        for (const char* tab : {"None", "Gamma", "Reinhard", "Filmic"}) {
+            EXPECT_TRUE(seen("Tone curve tab", tab)) << scale << " " << tab;
+        }
+        EXPECT_TRUE(seen("Curve number", "White point 16.00")) << scale;
+        EXPECT_TRUE(seen("Clip note", "100% outside sRGB here")) << scale;
+        EXPECT_TRUE(seen("Clip note", "100% above white here")) << scale;
+        EXPECT_TRUE(seen("Clip note", "100% below black here")) << scale;
+        EXPECT_TRUE(seen("Header", "Light path Compare: after Output encode")) << scale;
+        EXPECT_TRUE(seen("Kelvin track", "track")) << scale;
+    }
+}
+
+TEST_F(MinimumWidth, ThePanelReportsTextsThatDoNotFitWhenItIsNarrower) {
+    // The test above is only worth something if it can fail: 40 mock pixels narrower than the
+    // minimum, the worst cases of the rows that set it are reported as cut.
+    ImGui::NewFrame();
+    width_ = light_path_min_width() - mock(40.0f);
+    ImGui::EndFrame();
+    as_shot_ = prism::white_of(prism::WhiteBalance{5328, 26.7});
+    for (const float stops : {-10.0f, 10.0f}) {
+        settings_ = {};
+        settings_.exposure_stops = stops;
+        run_case();
+    }
+    settings_ = {};
+    settings_.contrast = 2.4f;
+    settings_.contrast_on = false;
+    run_case();
+    settings_ = {};
+    settings_.curve = gui::CurveKind::reinhard;
+    run_case();
+    const auto cut = std::count_if(fits_seen_.begin(), fits_seen_.end(),
+                                   [](const TextFit& fit) { return !fit.whole(); });
+    EXPECT_GE(cut, 2);
+}
+
+TEST_F(MinimumWidth, AWhiteBalanceNumberBeyondTheColumnIsReportedAsNotFitting) {
+    const TextFit wide{"Kelvin value", "115000 K", "115000 K", 80.0f, 60.0f};
+    EXPECT_FALSE(wide.whole());
+    const TextFit cut{"Value", "Chosen when on", "Cho\xE2\x80\xA6", 40.0f, 60.0f};
+    EXPECT_FALSE(cut.whole());
+    const TextFit fine{"Value", "As shot", "As shot", 40.0f, 60.0f};
+    EXPECT_TRUE(fine.whole());
+}
+
+TEST_F(MinimumWidth, ASavedWidthBelowTheMinimumIsWidenedToIt) {
+    ImGui::NewFrame();
+    const float minimum = light_path_min_width();
+    ImGui::EndFrame();
+    // What an older version saved: 320 points, narrower than the texts need.
+    ASSERT_GT(minimum, 320.0f);
+    EXPECT_GE(minimum, 240.0f);
+    EXPECT_GE(static_cast<float>(gui::widen_panel_width(320, 1.0f, minimum)), minimum);
+    EXPECT_GE(gui::panel_width_pixels(320.0f, 1.0f, 1280.0f, minimum), minimum);
+    EXPECT_GE(gui::panel_width_pixels(240.0f, 1.0f, 1280.0f, minimum), minimum);
+    // The default panel width holds the texts, so a photo opened with it shows nothing cut.
+    EXPECT_GE(static_cast<float>(gui::panel_width_default), minimum);
+    // The mockup's pixels: the same minimum at 1.5x is 1.5x the pixels, give or take the fonts.
+    apply_style(gui::Theme::dark, 1.5f);
+    ImGui::NewFrame();
+    const float bigger = light_path_min_width();
+    ImGui::EndFrame();
+    EXPECT_NEAR(bigger, minimum * 1.5f, minimum * 0.03f);
+}
+
+TEST_F(MinimumWidth, TheWhiteBalanceValuesLineUpWhateverTheyRead) {
+    app_padding_ = true;
+    ImGui::NewFrame();
+    width_ = light_path_min_width();
+    ImGui::EndFrame();
+    std::vector<std::pair<ImVec2, ImVec2>> kelvin_rects;
+    std::vector<std::pair<ImVec2, ImVec2>> tint_rects;
+    std::vector<float> kelvin_rooms;
+    std::vector<float> tint_rooms;
+    const prism::WhiteBalance lights[] = {
+        {15000, -100}, {2000, 100}, {5810, 34}, {5330, 0}, {6500, -8}};
+    for (std::size_t i = 0; i <= std::size(lights); ++i) {
+        settings_ = {};
+        if (i < std::size(lights)) {
+            settings_.white_balance = lights[i];
+        }
+        frame_fits_.clear();
+        frame();
+        frame();
+        const std::vector<Placed> sliders = white_balance_sliders();
+        kelvin_rects.push_back({sliders[0].min, sliders[0].max});
+        tint_rects.push_back({sliders[1].min, sliders[1].max});
+        for (const TextFit& fit : frame_fits_) {
+            if (fit.what == "Kelvin value") {
+                kelvin_rooms.push_back(fit.room);
+                EXPECT_TRUE(fit.whole()) << fit.text;
+            } else if (fit.what == "Tint value") {
+                tint_rooms.push_back(fit.room);
+                EXPECT_TRUE(fit.whole()) << fit.text;
+            }
+        }
+    }
+    ASSERT_EQ(kelvin_rects.size(), std::size(lights) + 1);
+    for (std::size_t i = 0; i < kelvin_rects.size(); ++i) {
+        // One slider under the other, the same width, ending in the same place whatever they read.
+        EXPECT_EQ(kelvin_rects[i].first.x, tint_rects[i].first.x) << i;
+        EXPECT_EQ(kelvin_rects[i].second.x, tint_rects[i].second.x) << i;
+        EXPECT_EQ(kelvin_rects[i].second.x, kelvin_rects[0].second.x) << i;
+        EXPECT_EQ(kelvin_rects[i].first.x, kelvin_rects[0].first.x) << i;
+    }
+    // And the values share one column, wide enough for the widest (15000 K and the real minus -100).
+    ImGui::NewFrame();
+    ImGui::PushFont(nullptr, token_type().small);
+    const float widest = std::max(ImGui::CalcTextSize("15000 K").x,
+                                  ImGui::CalcTextSize("\xE2\x88\x92" "100").x);
+    ImGui::PopFont();
+    ImGui::EndFrame();
+    for (const float room : kelvin_rooms) {
+        EXPECT_EQ(room, kelvin_rooms[0]);
+        EXPECT_GE(room, widest);
+    }
+    for (const float room : tint_rooms) {
+        EXPECT_EQ(room, kelvin_rooms[0]);
+    }
 }
 
 }  // namespace
