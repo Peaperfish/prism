@@ -42,6 +42,7 @@ add_library(prism_gui_core STATIC
   src/layout.cpp
   src/light_path.cpp
   src/live_preview.cpp
+  src/neutral_pick.cpp
   src/paper_grade.cpp
   src/photo_format.cpp
   src/preferences.cpp
