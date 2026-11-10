@@ -216,9 +216,13 @@ float App::content_scale(SDL_Window* window) {
 }
 
 void App::apply_minimum_size() {
-    // Small enough for a laptop at 200%, big enough that the panel and canvas both fit. Window
-    // coordinates are points on macOS but pixels on Windows, hence the content scale.
-    SDL_SetWindowMinimumSize(window_, static_cast<int>(640 * display_scale_),
+    // Small enough for a laptop at 200%, big enough that the panel and canvas both fit: room for
+    // the panel at the narrowest that shows its texts in full, a splitter and some canvas, and
+    // never less than 640 wide. Window coordinates are points on macOS but pixels on Windows,
+    // hence the content scale.
+    const float width = gui::window_minimum_width(panel_text_min_, token_metrics().item_spacing.x,
+                                                  scale(), 640 * display_scale_);
+    SDL_SetWindowMinimumSize(window_, static_cast<int>(std::ceil(width)),
                              static_cast<int>(440 * display_scale_));
 }
 
@@ -1006,6 +1010,7 @@ void App::before_frame() {
     if (style_dirty_) {
         apply_style(theme(), scale());
         style_dirty_ = false;
+        panel_text_min_dirty_ = true;
     }
 }
 
@@ -1115,6 +1120,19 @@ void App::frame() {
     explain_focus_.clear();
     handle_shortcuts();
     update_preview();
+    if (panel_text_min_dirty_) {
+        // The fonts and the style are in place now, so the texts can be measured: the panel is
+        // never narrower than they need, a width saved before is widened to it, and the window
+        // leaves room for it.
+        panel_text_min_ = light_path_min_width();
+        panel_text_min_dirty_ = false;
+        const int widened = gui::widen_panel_width(prefs_.panel_width, ui_scale(), panel_text_min_);
+        if (widened != prefs_.panel_width) {
+            prefs_.panel_width = widened;
+            save_preferences();
+        }
+        apply_minimum_size();
+    }
 
     // One window covering the whole SDL window, without a title bar: the app's main view.
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -1143,8 +1161,8 @@ void App::frame() {
     // The splitter between canvas and panel: as wide as the usual gap between items, drawn in the
     // canvas colour, so the panel's edge (with its hair line) is where the panel begins.
     const float splitter = ImGui::GetStyle().ItemSpacing.x;
-    const float panel =
-        gui::panel_width_pixels(static_cast<float>(prefs_.panel_width), ui_scale(), avail.x);
+    const float panel = gui::panel_width_pixels(static_cast<float>(prefs_.panel_width), ui_scale(),
+                                                avail.x, panel_text_min_);
     const float canvas = std::max(1.0f, avail.x - panel - splitter);
     // The panel's surface and the hair line on its left, under the panel's and the Explain area's
     // own (transparent) windows.
@@ -2561,7 +2579,8 @@ void App::draw_splitter(float canvas_width, float width, float height, float ava
     if (ImGui::IsItemActive()) {
         // The panel is what lies right of the mouse; panel_width_pixels clamps it next frame.
         const float panel = available - (canvas_width + ImGui::GetIO().MouseDelta.x) - width;
-        prefs_.panel_width = gui::panel_points_from_pixels(panel, ui_scale());
+        prefs_.panel_width = gui::widen_panel_width(gui::panel_points_from_pixels(panel, ui_scale()),
+                                                    ui_scale(), panel_text_min_);
     }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal) && !ImGui::IsItemActive()) {
         ImGui::SetTooltip("Drag to resize the panel");
@@ -3227,9 +3246,11 @@ void App::draw_preferences() {
     ImGui::TextUnformatted(width_text);
     ImGui::SetNextItemWidth(slider_width);
     int width = p.panel_width;
-    if (styled_slider_int("##panel_width", &width, gui::panel_width_min, gui::panel_width_max,
+    const int panel_min_points =
+        gui::widen_panel_width(gui::panel_width_min, ui_scale(), panel_text_min_);
+    if (styled_slider_int("##panel_width", &width, panel_min_points, gui::panel_width_max,
                           gui::panel_width_default, ImGuiSliderFlags_AlwaysClamp)) {
-        p.panel_width = gui::clamp_panel_width(width);
+        p.panel_width = gui::widen_panel_width(width, ui_scale(), panel_text_min_);
     }
     describe(gui::explain::pref_panel);
     const bool dragging = ImGui::IsItemActive();

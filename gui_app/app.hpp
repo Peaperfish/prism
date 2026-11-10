@@ -381,6 +381,10 @@ private:
     Uint32 native_about_event_ = 0;
     float display_scale_ = 1.0f;  // the display's content scale (1.5 at 150% on Windows)
     bool style_dirty_ = true;     // rebuild the style before the next frame
+    // The narrowest panel that shows every text of the Light path in full, in pixels at the
+    // current interface size (light_path_min_width), measured again whenever the style is rebuilt.
+    float panel_text_min_ = 0.0f;
+    bool panel_text_min_dirty_ = true;
 
     int quiet_frames_ = 0;  // frames drawn since the last event
 };
