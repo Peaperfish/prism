@@ -27,6 +27,7 @@
 #include <functional>
 #include <iomanip>
 #include <iostream>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -34,6 +35,7 @@
 #include <vector>
 
 #include "prism/color.hpp"
+#include "prism/dodge_burn.hpp"
 #include "prism/frame.hpp"
 #include "prism/gui/preview_renderer.hpp"
 #include "prism/gui/settings.hpp"
@@ -43,6 +45,7 @@
 #include "prism/pipeline.hpp"
 #include "prism/raw.hpp"
 #include "prism/resize.hpp"
+#include "prism/stroke_field.hpp"
 
 namespace {
 
@@ -451,6 +454,45 @@ int main(int argc, char* argv[]) {
     };
     bench_turn("frame turn 2560", preview);
     bench_turn("frame turn 60 MP", input);
+
+    // Dodge & burn: twelve wavy strokes of 40 points across the photo (about a third of it under
+    // some stroke), rasterised and applied, on today's whole grid and on the framed grid of that
+    // 3 degree turn, whose every pixel takes its photo position from the frame map. The 60 MP
+    // framed image is the one the turn above just made. Bytes: the image read and written.
+    const auto bench_strokes = [](const prism::Image& photo) {
+        prism::StrokeField f;
+        f.aspect = prism::aspect_of(photo.width, photo.height);
+        for (int k = 0; k < 12; ++k) {
+            const float v0 = 0.08f + 0.075f * static_cast<float>(k);
+            std::vector<prism::FieldPoint> points;
+            for (int n = 0; n < 40; ++n) {
+                const float u = 0.1f + 0.8f * static_cast<float>(n) / 39.0f;
+                points.push_back({u, v0 + 0.04f * std::sin(9.0f * u + static_cast<float>(k))});
+            }
+            f.strokes.push_back(std::make_shared<const prism::FieldStroke>(prism::FieldStroke{
+                std::move(points), 0.03f, 0.5f, k % 2 == 0 ? 0.5f : -0.5f}));
+        }
+        return f;
+    };
+    const auto bench_field = [&](std::string_view name, const prism::Image& img,
+                                 const prism::Image& photo, const prism::PixelGrid& grid) {
+        const prism::LocalExposure local{bench_strokes(photo), grid};
+        prism::Image dodged;
+        const double img_f32 = static_cast<double>(img.pixels.size()) * sizeof(float);
+        bench_stage(s, name, 2 * img_f32, [&] { dodged = img; },
+                    [&](int t) { prism::dodge_burn(dodged, local, t); });
+    };
+    const auto framed_grid = [&](const prism::Image& photo, const prism::Image& framed) {
+        return prism::PixelGrid::framed(prism::fit_frame(turn, photo.width, photo.height),
+                                        photo.width, photo.height, 1.0f, framed.width,
+                                        framed.height);
+    };
+    const prism::Image turned_preview =
+        prism::apply_frame(preview, prism::fit_frame(turn, preview.width, preview.height));
+    bench_field("d&b 2560", preview, preview, prism::PixelGrid::whole(preview.width, preview.height));
+    bench_field("d&b turn 2560", turned_preview, preview, framed_grid(preview, turned_preview));
+    bench_field("d&b 60 MP", input, input, prism::PixelGrid::whole(input.width, input.height));
+    bench_field("d&b turn 60 MP", turned, input, framed_grid(input, turned));
 
     // What the GUI does each time a setting changes: every stage plus the sRGB encode, on that
     // 2560 px preview base (render_preview, as PreviewRenderer's worker thread calls it).
