@@ -9,12 +9,17 @@ Prism's desktop app, for macOS and Windows.
   Above 200% you see the pixels as squares.
 - Reads any pixel: the linear values, its share "of white's light" and how many stops it is
   above or below middle grey, at the stage you are viewing.
-- Simple mode: looks for RAW and for PNG/JPEG, and sliders for the main adjustments, with
-  undo and redo.
+- Looks: a built-in look for RAW and one for PNG/JPEG, from the Look menu. A look sets Exposure,
+  Saturation, Contrast and the Tone curve, with undo and redo.
+- Light path: every stage of the edit in the order the light passes through it, one row each,
+  with its own switch and slider. Click a row to see the photo after that stage.
+- Dodge & burn with a brush: paint to hold back or add light, in stops.
+- White balance in Kelvin and tint, with a neutral picker that sets the light from a grey in the
+  photo.
+- Contrast shown as a paper grade, from 0 to 5.
 - Recipes: save an edit as a small, readable text file (`.prism`) and load it on any photo. The
   built-in looks are recipes too, and the app shows their numbers and their file.
-- Pipeline view: every stage in the order the light passes through it, with its controls. Turn
-  stages on or off and click one to see the photo at that point.
+- Export at a smaller size: the original, a long side in pixels or a percentage.
 - Compare any two stages, including the original, side by side.
 - Histogram, parade, waveform and vectorscope for the stage you are viewing.
 - Clipping by stage, shown per stage and on the photo, plus a warning for colours outside sRGB.
@@ -25,7 +30,8 @@ Prism's desktop app, for macOS and Windows.
 - Light and dark themes, following the system by default.
 - Preferences for the theme, the interface size and the panel width.
 - The command-line tool `prism` is included in both downloads. It edits one photo or a whole
-  shoot at once with `--recipe` and `--out-dir`.
+  shoot at once with `--recipe` and `--out-dir`, sets white balance with `--kelvin` and `--tint`,
+  and sizes the output with `--long-side`.
 
 ## Downloads
 
