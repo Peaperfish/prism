@@ -9,6 +9,7 @@
 #include <variant>
 #include <vector>
 
+#include "prism/frame.hpp"
 #include "prism/gui/recipe_settings.hpp"
 #include "prism/heic.hpp"
 #include "prism/raw.hpp"
@@ -149,7 +150,7 @@ MaybeError Session::open_file(const fs::path& path) {
     Photo& photo = std::get<Photo>(decoded);
     const Image& img = photo.image;
     try {
-        preview_base_ = std::make_shared<const Image>(
+        whole_base_ = std::make_shared<const Image>(
             downscale(img, options_.preview_long_side, options_.threads));
     } catch (const std::bad_alloc&) {
         return Error{ErrorKind::out_of_memory, "Not enough memory to open this photo.", ""};
@@ -172,6 +173,10 @@ MaybeError Session::open_file(const fs::path& path) {
     }
     preview_camera_matrix_.reset();
     history_.reset(settings);
+    // A new file's settings have no frame: the framed base is the whole base.
+    framed_base_ = whole_base_;
+    framed_from_ = whole_base_;
+    framing_.reset();
     return std::nullopt;
 }
 
@@ -179,7 +184,9 @@ MaybeError Session::set_settings(const EditSettings& s) {
     if (const std::vector<std::string> problems = validate(s); !problems.empty()) {
         return invalid_settings_error(problems);
     }
-    history_.set(s);
+    EditSettings stored = s;
+    stored.frame = normalised_frame(s.frame);
+    history_.set(stored);
     return update_preview_base();
 }
 
@@ -211,23 +218,72 @@ MaybeError Session::redo() {
 MaybeError Session::update_preview_base() {
     const std::optional<Matrix3> wanted = camera_matrix_of(settings());
     if (!has_file() || kind_ != InputKind::raw || wanted == preview_camera_matrix_) {
-        return std::nullopt;
+        return update_framed_base();
     }
     RawOptions raw;
     raw.half_size = true;
     raw.camera_matrix = wanted;
     std::variant<Photo, Error> decoded = decode(path_, kind_, raw, options_.threads);
     if (Error* e = std::get_if<Error>(&decoded)) {
+        // The old whole base stays, and is framed as the settings now say; the decode's error is
+        // the one to report.
+        (void)update_framed_base();
         return std::move(*e);
     }
     try {
-        preview_base_ = std::make_shared<const Image>(downscale(
+        whole_base_ = std::make_shared<const Image>(downscale(
             std::get<Photo>(decoded).image, options_.preview_long_side, options_.threads));
     } catch (const std::bad_alloc&) {
+        (void)update_framed_base();
         return Error{ErrorKind::out_of_memory, "Not enough memory to open this photo.", ""};
     }
     preview_camera_matrix_ = wanted;
+    return update_framed_base();
+}
+
+MaybeError Session::update_framed_base() {
+    if (!has_file()) {
+        return std::nullopt;
+    }
+    std::optional<PictureFrame> wanted;
+    try {
+        wanted = picture_frame_of(settings().frame, whole_base_->width, whole_base_->height);
+    } catch (const std::invalid_argument& e) {
+        // validate() let no invalid frame into the history, so this does not happen.
+        return Error{ErrorKind::invalid_settings, "The frame isn't valid.", e.what()};
+    }
+    if (framed_from_ == whole_base_ && wanted == framing_) {
+        return std::nullopt;
+    }
+    try {
+        framed_base_ = wanted ? std::make_shared<const Image>(
+                                    apply_frame(*whole_base_, wanted->fitted, options_.threads))
+                              : whole_base_;
+    } catch (const std::bad_alloc&) {
+        // Back to the whole photo, never a base that does not match its framing.
+        framed_base_ = whole_base_;
+        framed_from_ = whole_base_;
+        framing_.reset();
+        return Error{ErrorKind::out_of_memory, "Not enough memory to frame this photo.", ""};
+    }
+    framed_from_ = whole_base_;
+    framing_ = wanted;
     return std::nullopt;
+}
+
+PixelSize Session::framed_file_size() const {
+    if (!has_file()) {
+        return {};
+    }
+    return plan_export_frame(settings().frame, file_width_, file_height_).size;
+}
+
+PixelSize Session::framed_start_size() const {
+    const PixelSize start = export_start_size();
+    if (!has_file() || start.width < 1 || start.height < 1) {
+        return start;
+    }
+    return plan_export_frame(settings().frame, start.width, start.height).size;
 }
 
 std::optional<Chromaticity> as_shot_white_of(const PhotoInfo& info) noexcept {
@@ -272,27 +328,40 @@ MaybeError export_image(const ExportJob& job, const fs::path& output, std::stop_
     if (Error* e = std::get_if<Error>(&decoded)) {
         return std::move(*e);
     }
-    Image& img = std::get<Photo>(decoded).image;
     const std::optional<Chromaticity> as_shot = as_shot_white_of(std::get<Photo>(decoded).info);
+    const int decoded_width = std::get<Photo>(decoded).image.width;
+    const int decoded_height = std::get<Photo>(decoded).image.height;
 
-    // Reduce before editing: every stage then works on the small image. Assigning frees the full
-    // decode (which on a 60 MP photo is ~730 MB) before the pipeline allocates its own buffers.
-    if (job.long_side && std::max(img.width, img.height) > *job.long_side) {
-        try {
-            img = downscale(img, *job.long_side, job.threads);
-        } catch (const std::bad_alloc&) {
-            return Error{ErrorKind::out_of_memory, "Not enough memory to shrink this photo.", ""};
-        }
-        if (stop.stop_requested()) {
-            return cancelled();
-        }
+    // Frame, then reduce, before editing: the turn works on the full decode and every stage then
+    // works on the small image. The full decode (which on a 60 MP photo is ~730 MB) is moved in and
+    // freed before the pipeline allocates its own buffers. Without a frame this is the reduction
+    // alone, exactly as before frames existed.
+    FramedExport framed;
+    try {
+        framed = frame_and_reduce(std::move(std::get<Photo>(decoded).image), job.settings.frame,
+                                  job.long_side, job.threads);
+    } catch (const std::bad_alloc&) {
+        return Error{ErrorKind::out_of_memory, "Not enough memory to frame or shrink this photo.",
+                     ""};
     }
+    if (stop.stop_requested()) {
+        return cancelled();
+    }
+    Image& img = framed.image;
 
-    // The strokes sit on the image as reduced, not on the original: they cover the same part of the
-    // photo at any export size.
+    // The strokes sit on the image as framed and reduced, not on the original: they cover the same
+    // part of the photo at any export size. Without a frame the grid is the whole image (as in
+    // 0.5.0); with one it is the framed grid of the decode, with the reduction as its scale.
+    std::optional<PictureFrame> framing;
+    if (framed.frame.fitted) {
+        const PixelSize size = framed.frame.size;
+        const float scale = static_cast<float>(std::max(size.width, size.height)) /
+                            static_cast<float>(std::max(img.width, img.height));
+        framing = PictureFrame{*framed.frame.fitted, decoded_width, decoded_height, scale};
+    }
     if (process(img,
                 to_process_settings(job.settings, final_stage, as_shot,
-                                    stage_grid(img.width, img.height)),
+                                    stage_grid(framing, img.width, img.height)),
                 job.threads, stop, on_stage) ==
             ProcessResult::cancelled ||
         stop.stop_requested()) {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -56,10 +57,10 @@ struct ExportJob {
     InputKind kind = InputKind::image;
     EditSettings settings;
     int threads = 0;
-    // Reduce the decoded image so its longer side is at most this many pixels, right after
-    // decoding and before any editing (area averaging on linear light, as downscale does). Nothing
-    // means the full decoded size; an image already this small is left as it is. With RAW
-    // half-size on, this applies to the half-size decode.
+    // Reduce the framed image so its longer side is at most this many pixels, right after
+    // decoding and framing and before any editing (area averaging on linear light, as downscale
+    // does). Nothing means the full framed size; an image already this small is left as it is.
+    // With RAW half-size on, this applies to the half-size decode, framed.
     std::optional<int> long_side;
 };
 
@@ -78,7 +79,7 @@ public:
     // failure nothing changes: the previous file, if any, stays open.
     [[nodiscard]] MaybeError open_file(const std::filesystem::path& path);
 
-    [[nodiscard]] bool has_file() const noexcept { return preview_base_ != nullptr; }
+    [[nodiscard]] bool has_file() const noexcept { return whole_base_ != nullptr; }
     [[nodiscard]] const std::filesystem::path& path() const noexcept { return path_; }
     [[nodiscard]] InputKind kind() const noexcept { return kind_; }
     // The size the file was decoded at when opened (half the sensor size for RAW).
@@ -102,24 +103,38 @@ public:
     }
 
     // The image previews are rendered from: never changed once made, so it can be shared with the
-    // preview thread. A new one replaces it when another file is opened or the RAW camera matrix
-    // changes. Null before the first successful open_file().
+    // preview thread. With a frame (EditSettings::frame) it is the framed base, apply_frame of the
+    // whole base with the fitted frame (preview_framing), and otherwise the whole base itself. So
+    // every stage, the Decode view, Sample, Pick neutral and the clip report see only the framed
+    // picture. A new one replaces it when another file is opened, the RAW camera matrix changes or
+    // the frame changes (it is built here, on the calling thread). Null before the first successful
+    // open_file().
     [[nodiscard]] std::shared_ptr<const Image> preview_base() const noexcept {
-        return preview_base_;
+        return framed_base_;
+    }
+    // The whole photo at the preview's size, before any frame: what framing shows and what the
+    // scopes read while framing. The same object as preview_base() when there is no frame.
+    [[nodiscard]] std::shared_ptr<const Image> whole_base() const noexcept { return whole_base_; }
+    // Where preview_base() sits on the photo: the fitted frame on whole_base()'s size, at scale 1,
+    // or nothing when preview_base() is the whole photo. What PreviewOptions::framing, sample_trace
+    // and compute_clip_report take with preview_base().
+    [[nodiscard]] const std::optional<PictureFrame>& preview_framing() const noexcept {
+        return framing_;
     }
 
     [[nodiscard]] const EditSettings& settings() const noexcept { return history_.current(); }
     [[nodiscard]] const History& history() const noexcept { return history_; }
 
     // Changes the settings through the undo history (see History::set). Invalid settings are
-    // refused with ErrorKind::invalid_settings and change nothing. If the RAW camera matrix
-    // changed, the file is decoded again for a new preview base, here on the calling thread (about
-    // a second for a 60 MP RAW file); if that fails, the settings stay changed but the preview base
-    // does not.
+    // refused with ErrorKind::invalid_settings and change nothing. A frame that is the whole photo
+    // is stored as none (normalised_frame). If the RAW camera matrix changed, the file is decoded
+    // again for a new preview base, here on the calling thread (about a second for a 60 MP RAW
+    // file); if that fails, the settings stay changed but the preview base does not. If the frame
+    // changed, the framed base is built again, also here.
     [[nodiscard]] MaybeError set_settings(const EditSettings& s);
     // Applies a recipe to the current settings (apply_recipe in recipe_settings.hpp) through
     // set_settings: one undo step, or none if it changes nothing. A recipe never changes the RAW
-    // options, so this never decodes the file again.
+    // options or the frame, so this never decodes the file again or frames it anew.
     [[nodiscard]] MaybeError apply_recipe(const Recipe& recipe);
     // Takes every Dodge & burn stroke off the photo (the Clear button): one undo step, or none if
     // there are no strokes. Undo brings them back (the strokes are shared, not copied).
@@ -137,9 +152,10 @@ public:
     void set_export_size(const ExportSize& size) { export_size_ = size; }
     [[nodiscard]] const ExportSize& export_size() const noexcept { return export_size_; }
     // The longer side the current export size gives for the open file, or nothing for its own size
-    // (see export_long_side; a percentage is of file_width() x file_height()).
+    // (see export_long_side; a percentage is of framed_file_size(), the file's size framed).
     [[nodiscard]] std::optional<int> export_long_side() const {
-        return prism::gui::export_long_side(export_size_, file_width_, file_height_);
+        const PixelSize file = framed_file_size();
+        return prism::gui::export_long_side(export_size_, file.width, file.height);
     }
 
     // The size an export decodes at before any reduction: the file's own size, or for a RAW file
@@ -151,17 +167,34 @@ public:
         }
         return {file_width_, file_height_};
     }
-    // What the current export size will write, for the open file and settings (see plan_export).
+    // The size of the framed picture on the file's own size: plan_export_frame(frame, file_width(),
+    // file_height()).size, the file's size without a frame. What Original, Long side and Percent
+    // measure; an estimate whenever file_size_exact() is false. Zero before a file is open.
+    [[nodiscard]] PixelSize framed_file_size() const;
+    // framed_file_size()'s longer side: what one pixel of the preview base is compared with (the
+    // zoom's and Sample's "file pixels across"), since the base is the framed picture too.
+    [[nodiscard]] int framed_file_long_side() const {
+        const PixelSize size = framed_file_size();
+        return std::max(size.width, size.height);
+    }
+    // The size an export has after framing and before any reduction: the frame on
+    // export_start_size(), which is what export_image frames. export_start_size() without a frame.
+    [[nodiscard]] PixelSize framed_start_size() const;
+    // What the current export size will write, for the open file and settings (see plan_export):
+    // the framed picture, reduced if the export size asks for it.
     [[nodiscard]] ExportPlan export_plan() const {
-        return plan_export(export_size_, {file_width_, file_height_}, export_start_size());
+        return plan_export(export_size_, framed_file_size(), framed_start_size());
     }
 
     // A copy of what export_image() needs for the current file, settings and export size.
     [[nodiscard]] ExportJob export_job() const;
 
 private:
-    // Decodes the file again if the preview base was made with another RAW camera matrix.
+    // Decodes the file again if the preview base was made with another RAW camera matrix, then
+    // frames it (update_framed_base).
     MaybeError update_preview_base();
+    // Builds the framed base again if the whole base or the fitted frame changed since it was made.
+    MaybeError update_framed_base();
 
     SessionOptions options_;
     std::filesystem::path path_;
@@ -172,16 +205,20 @@ private:
     int file_height_ = 0;
     bool file_size_exact_ = true;
     PhotoInfo photo_info_;
-    std::shared_ptr<const Image> preview_base_;
-    std::optional<Matrix3> preview_camera_matrix_;  // what preview_base_ was decoded with
+    std::shared_ptr<const Image> whole_base_;
+    std::optional<Matrix3> preview_camera_matrix_;  // what whole_base_ was decoded with
+    std::shared_ptr<const Image> framed_base_;      // whole_base_ framed by framing_
+    std::shared_ptr<const Image> framed_from_;      // the whole base framed_base_ was made from
+    std::optional<PictureFrame> framing_;
     History history_;
     ExportSize export_size_;
 };
 
 // Renders `job` at full resolution and saves it as PNG or JPEG (by the extension of `output`;
 // the library's fixed JPEG quality), on the calling thread. The source file is decoded again:
-// RAW at full size unless job.settings.raw_half_size, with its camera matrix, then reduced if
-// job.long_side asks for it. A chosen white balance is measured against the as-shot light that
+// RAW at full size unless job.settings.raw_half_size, with its camera matrix, then framed and
+// reduced if job.long_side asks for it (frame_and_reduce), and the stages run on the result, with
+// the strokes on PixelGrid::whole without a frame (as in 0.5.0) and on the framed grid with one. A chosen white balance is measured against the as-shot light that
 // decode reads from the file, the same one the session read when it opened it. `stop` is checked between decoding,
 // reducing, each stage and saving; once it is triggered the export returns ErrorKind::cancelled
 // and writes nothing. on_stage reports each pipeline stage, for progress.

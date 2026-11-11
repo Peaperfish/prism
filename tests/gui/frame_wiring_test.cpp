@@ -219,3 +219,493 @@ TEST(FramedFieldCache, DrawingOnAFramedGridIsBitIdenticalToRasterisingAfresh) {
         field = next;
     }
 }
+
+namespace {
+
+fs::path temp_file(const std::string& name) {
+    const testing::TestInfo* test = testing::UnitTest::GetInstance()->current_test_info();
+#ifdef _WIN32
+    const int pid = _getpid();
+#else
+    const int pid = static_cast<int>(getpid());
+#endif
+    return fs::path(testing::TempDir()) / ("prism_frame_wiring_" + std::string(test->name()) +
+                                           "_" + std::to_string(pid) + "_" + name);
+}
+
+// A w x h image of varied colours within 0..1 (so a PNG keeps them), different in every pixel's
+// neighbourhood so that a turn or a misplaced stroke changes many values.
+fs::path write_png(const std::string& name, int w, int h) {
+    const fs::path path = temp_file(name);
+    prism::save_image(path, make_image(w, h));
+    return path;
+}
+
+// Strokes on a w x h photo: a long soft burn across it, a soft dodge dab and a hard dodge line.
+std::vector<std::uint32_t> bits(const Image& img) {
+    std::vector<std::uint32_t> out;
+    out.reserve(img.pixels.size());
+    for (const float v : img.pixels) {
+        out.push_back(std::bit_cast<std::uint32_t>(v));
+    }
+    return out;
+}
+
+// The stages run on `picture` with the strokes on `grid`, as 8-bit sRGB.
+std::vector<std::uint8_t> rendered(Image picture, const EditSettings& s, const PixelGrid& grid,
+                                   StageId stop_after = prism::gui::final_stage, int threads = 0) {
+    EXPECT_EQ(prism::process(picture,
+                             prism::gui::to_process_settings(s, stop_after, std::nullopt, grid),
+                             threads),
+              prism::ProcessResult::completed);
+    return prism::encode_srgb8(picture, threads);
+}
+
+// A Session on a 300 x 200 PNG with a 200 px preview (200 x 133), its look with strokes and,
+// if given, a frame.
+struct Opened {
+    fs::path png;
+    Session session{{.preview_long_side = 200, .threads = 0}};
+
+    explicit Opened(const std::string& name, std::optional<Frame> frame = std::nullopt,
+                    int w = 300, int h = 200)
+        : png(write_png(name, w, h)) {
+        EXPECT_EQ(session.open_file(png), std::nullopt);
+        EditSettings s = look_with_strokes(w, h);
+        s.frame = frame;
+        EXPECT_EQ(session.set_settings(s), std::nullopt);
+    }
+    ~Opened() { fs::remove(png); }
+    Opened(const Opened&) = delete;
+    Opened& operator=(const Opened&) = delete;
+};
+
+PreviewFrame render(const Session& session, PreviewOptions options = {},
+                    StageId stop_after = prism::gui::final_stage,
+                    prism::gui::FieldCache* cache = nullptr) {
+    options.framing = session.preview_framing();
+    std::optional<PreviewFrame> frame =
+        prism::gui::render_preview(*session.preview_base(), session.settings(), 0, {}, {},
+                                   stop_after, options, cache);
+    EXPECT_TRUE(frame.has_value());
+    EXPECT_EQ(frame ? frame->error : std::string("none"), "");
+    return frame ? std::move(*frame) : PreviewFrame{};
+}
+
+prism::gui::ExportSize long_side_size(int pixels) {
+    prism::gui::ExportSize size;
+    size.mode = prism::gui::ExportSize::Mode::long_side;
+    size.long_side = pixels;
+    return size;
+}
+
+prism::gui::ExportSize percent_size(int percent) {
+    prism::gui::ExportSize size;
+    size.mode = prism::gui::ExportSize::Mode::percent;
+    size.percent = percent;
+    return size;
+}
+
+}  // namespace
+
+// --- The frame in the session, and a whole-photo one --------------------------------------------
+
+TEST(FrameSettings, AWholePhotoFrameIsStoredAsNoneAndAddsNoUndoStep) {
+    Opened o("in.png");
+    const std::size_t steps = o.session.history().undo_steps();
+    EditSettings s = o.session.settings();
+    s.frame = Frame{};
+    s.frame->aspect = prism::Aspect::square;  // a lock moves no pixel
+    ASSERT_EQ(o.session.set_settings(s), std::nullopt);
+    EXPECT_FALSE(o.session.settings().frame.has_value());
+    EXPECT_EQ(o.session.history().undo_steps(), steps);
+    EXPECT_EQ(o.session.preview_base(), o.session.whole_base());  // the very same image
+    EXPECT_FALSE(o.session.preview_framing().has_value());
+    EXPECT_EQ(o.session.framed_file_size(), (PixelSize{300, 200}));
+    EXPECT_EQ(o.session.framed_start_size(), (PixelSize{300, 200}));
+}
+
+TEST(FrameSettings, AnInvalidFrameIsRefusedWithItsMessage) {
+    Opened o("in.png");
+    EditSettings s = o.session.settings();
+    s.frame = Frame{50.0f, 0.0f, 0.0f, 1.0f, 1.0f};
+    const prism::gui::MaybeError error = o.session.set_settings(s);
+    ASSERT_TRUE(error.has_value());
+    EXPECT_EQ(error->kind, prism::gui::ErrorKind::invalid_settings);
+    EXPECT_NE(error->details.find("Frame angle must be from -45 to 45"), std::string::npos)
+        << error->details;
+    EXPECT_FALSE(o.session.settings().frame.has_value());
+}
+
+// Every reader of the preview base, with a whole-photo frame left in the settings (not
+// normalised): the same bits as with no frame at all, which is the path 0.5.0 took.
+TEST(FrameSettings, ExportsWithoutAFrameOrWithAWholeOneAreThoseOfBefore) {
+    const fs::path png = write_png("in.png", 301, 199);
+    const fs::path out = temp_file("out.png");
+    Session session({.preview_long_side = 64, .threads = 0});
+    ASSERT_EQ(session.open_file(png), std::nullopt);
+    ASSERT_EQ(session.set_settings(look_with_strokes(301, 199)), std::nullopt);
+    for (const prism::gui::ExportSize& size :
+         {prism::gui::ExportSize{}, long_side_size(101), percent_size(40)}) {
+        session.set_export_size(size);
+        Image expected = prism::load_image(png);
+        if (const std::optional<int> side = session.export_long_side()) {
+            expected = prism::downscale(expected, *side);
+        }
+        const std::vector<std::uint8_t> want =
+            rendered(expected, session.settings(), PixelGrid::whole(expected.width, expected.height));
+        for (const bool whole_frame : {false, true}) {
+            prism::gui::ExportJob job = session.export_job();
+            if (whole_frame) {
+                job.settings.frame = Frame{};
+            }
+            ASSERT_EQ(prism::gui::export_image(job, out), std::nullopt);
+            const Image written = prism::load_image(out);
+            EXPECT_EQ(written.width, expected.width);
+            EXPECT_EQ(written.height, expected.height);
+            EXPECT_EQ(prism::encode_srgb8(written), want)
+                << "mode " << static_cast<int>(size.mode) << (whole_frame ? ", whole frame" : "");
+        }
+    }
+    fs::remove(png);
+    fs::remove(out);
+}
+
+// --- The framed preview -------------------------------------------------------------------------
+
+TEST(FramedPreview, TheFramedBaseIsTheWholeBaseFramedAndPickReadsIt) {
+    const Frame frame = turned_frame(3.0f);
+    Opened o("in.png", frame);
+    const Image& whole = *o.session.whole_base();
+    ASSERT_EQ(whole.width, 200);
+    ASSERT_EQ(whole.height, 133);
+    const Frame fitted = prism::fit_frame(frame, whole.width, whole.height);
+    ASSERT_NE(fitted, frame) << "the frame must need fitting for this test";
+    ASSERT_TRUE(o.session.preview_framing().has_value());
+    EXPECT_EQ(*o.session.preview_framing(), (PictureFrame{fitted, 200, 133, 1.0f}));
+    const Image expected = prism::apply_frame(whole, fitted);
+    const Image& base = *o.session.preview_base();
+    ASSERT_EQ(base.width, expected.width);
+    ASSERT_EQ(base.height, expected.height);
+    EXPECT_EQ(bits(base), bits(expected));
+    EXPECT_LT(base.width, whole.width);
+    // The Decode view shows the framed base.
+    const PreviewFrame decode = render(o.session, {}, StageId::decode);
+    EXPECT_EQ(decode.width, expected.width);
+    EXPECT_EQ(decode.rgb8, prism::encode_srgb8(expected));
+}
+
+TEST(FramedPreview, TheRenderIsTheStagesOnTheFramedBaseWithTheFramedGrid) {
+    for (const float angle : {3.0f, -2.0f, 0.0f}) {
+        const Frame frame = turned_frame(angle);
+        Opened o("in.png", frame);
+        const Image& whole = *o.session.whole_base();
+        const Frame fitted = prism::fit_frame(frame, whole.width, whole.height);
+        const Image framed = prism::apply_frame(whole, fitted);
+        const PixelGrid grid =
+            PixelGrid::framed(fitted, whole.width, whole.height, 1.0f, framed.width, framed.height);
+        const std::vector<std::uint8_t> want = rendered(framed, o.session.settings(), grid);
+
+        PreviewOptions options;
+        options.clip_report = true;
+        prism::gui::FieldCache cache;
+        const PreviewFrame without_cache = render(o.session, options);
+        const PreviewFrame with_cache = render(o.session, options, prism::gui::final_stage, &cache);
+        EXPECT_EQ(without_cache.rgb8, want) << angle;
+        EXPECT_EQ(with_cache.rgb8, want) << angle;
+        EXPECT_EQ(cache.grid().framing.has_value(), true);
+        // The strokes moved the picture: the same stages with the whole photo's grid differ.
+        EXPECT_NE(rendered(framed, o.session.settings(),
+                           prism::gui::stage_grid(framed.width, framed.height)),
+                  want);
+        // The clip report measures the framed picture.
+        ASSERT_TRUE(with_cache.clips.has_value());
+        EXPECT_EQ(*with_cache.clips,
+                  prism::gui::compute_clip_report(*o.session.preview_base(), o.session.settings(),
+                                                  0, std::nullopt, o.session.preview_framing()));
+        EXPECT_EQ(*with_cache.clips,
+                  prism::gui::compute_clip_report(framed, o.session.settings(), 0, std::nullopt,
+                                                  PictureFrame{fitted, whole.width, whole.height,
+                                                               1.0f}));
+    }
+}
+
+TEST(FramedPreview, AFramingThatDoesNotFitTheSettingsIsRefused) {
+    Opened o("in.png", turned_frame(3.0f));
+    const Image& base = *o.session.preview_base();
+    // The framed base handed over as if it were the whole photo.
+    EXPECT_THROW((void)prism::gui::render_preview(base, o.session.settings(), 0, {}),
+                 std::invalid_argument);
+    // The whole base with the framing of the frame.
+    PreviewOptions options;
+    options.framing = o.session.preview_framing();
+    EXPECT_THROW((void)prism::gui::render_preview(*o.session.whole_base(), o.session.settings(), 0,
+                                                  {}, {}, prism::gui::final_stage, options),
+                 std::invalid_argument);
+    EXPECT_THROW((void)prism::gui::sample_trace(base, o.session.settings(), 1, 1),
+                 std::invalid_argument);
+}
+
+// --- The framed export --------------------------------------------------------------------------
+
+// The sheet's numbers are the file written, and its pixels are the decode framed (full resolution),
+// then reduced, then the stages with the strokes on the framed grid with the reduction as its scale.
+TEST(FramedExport, SizesMeasureTheFrameAndPixelsAreFramedThenReducedThenEdited) {
+    const Frame frame = turned_frame(2.5f);
+    const fs::path out = temp_file("out.png");
+    Opened o("in.png", frame, 301, 199);
+    const Frame fitted = prism::fit_frame(frame, 301, 199);
+    const PixelSize framed = prism::framed_size(fitted, 301, 199);
+    EXPECT_EQ(o.session.framed_file_size(), framed);
+    EXPECT_EQ(o.session.framed_start_size(), framed);
+    for (const prism::gui::ExportSize& size :
+         {prism::gui::ExportSize{}, long_side_size(101), percent_size(40)}) {
+        o.session.set_export_size(size);
+        const prism::gui::ExportPlan plan = o.session.export_plan();
+        EXPECT_EQ(plan.start, framed);
+        if (size.mode == prism::gui::ExportSize::Mode::percent) {
+            ASSERT_TRUE(plan.long_side.has_value());
+            EXPECT_EQ(*plan.long_side,
+                      prism::long_side_for_percent(framed.width, framed.height, 40));
+        }
+        ASSERT_EQ(prism::gui::export_image(o.session.export_job(), out), std::nullopt);
+        const Image written = prism::load_image(out);
+        EXPECT_EQ((PixelSize{written.width, written.height}), plan.size);
+
+        prism::FramedExport expected = prism::frame_and_reduce(
+            prism::load_image(o.png), o.session.settings().frame, plan.long_side);
+        ASSERT_TRUE(expected.frame.fitted.has_value());
+        const Image& img = expected.image;
+        const float scale = static_cast<float>(std::max(framed.width, framed.height)) /
+                            static_cast<float>(std::max(img.width, img.height));
+        const PixelGrid grid = PixelGrid::framed(*expected.frame.fitted, 301, 199, scale,
+                                                 img.width, img.height);
+        EXPECT_EQ(prism::encode_srgb8(written), rendered(img, o.session.settings(), grid))
+            << "mode " << static_cast<int>(size.mode);
+        EXPECT_EQ(expected.reduced, plan.reduced());
+    }
+    fs::remove(out);
+}
+
+// RAW, with half-size decoding on and off: the sheet's sizes (estimated or not) are the file's.
+TEST(FramedExport, RawSizesMeasureTheFrameWithAndWithoutHalfSize) {
+    if (!prism::raw_support_available()) {
+        GTEST_SKIP() << "needs LibRaw";
+    }
+    const fs::path dng = temp_file("in.dng");
+    {
+        const std::vector<std::byte> bytes = prism_test::synthetic_dng(16384);
+        std::ofstream file(dng, std::ios::binary);
+        file.write(reinterpret_cast<const char*>(bytes.data()),
+                   static_cast<std::streamsize>(bytes.size()));
+    }
+    const fs::path out = temp_file("out.png");
+    Session session;
+    ASSERT_EQ(session.open_file(dng), std::nullopt);
+    for (const bool half : {false, true}) {
+        EditSettings s = session.settings();
+        s.raw_half_size = half;
+        s.frame = turned_frame(-4.0f);
+        ASSERT_EQ(session.set_settings(s), std::nullopt);
+        for (const prism::gui::ExportSize& size :
+             {prism::gui::ExportSize{}, long_side_size(9), percent_size(50)}) {
+            session.set_export_size(size);
+            const prism::gui::ExportPlan plan = session.export_plan();
+            ASSERT_EQ(prism::gui::export_image(session.export_job(), out), std::nullopt);
+            const Image written = prism::load_image(out);
+            EXPECT_EQ((PixelSize{written.width, written.height}), plan.size)
+                << (half ? "half size, " : "full size, ") << static_cast<int>(size.mode);
+            const PixelSize start = session.export_start_size();
+            EXPECT_EQ(plan.start, prism::framed_size(prism::fit_frame(*s.frame, start.width,
+                                                                      start.height),
+                                                     start.width, start.height));
+        }
+    }
+    fs::remove(dng);
+    fs::remove(out);
+}
+
+// --- Sample and Pick on the framed picture ------------------------------------------------------
+
+TEST(FramedSample, SampleAndPickReadTheFramedRender) {
+    Opened o("in.png", turned_frame(-3.5f));
+    const Image& base = *o.session.preview_base();
+    const PreviewFrame frame = render(o.session);
+    for (const auto& [x, y] : {std::pair{10, 12}, std::pair{base.width / 2, base.height / 2},
+                               std::pair{base.width - 3, base.height - 2}}) {
+        const auto trace = prism::gui::sample_trace(base, o.session.settings(), x, y, std::nullopt,
+                                                    o.session.preview_framing());
+        ASSERT_TRUE(trace.has_value());
+        const std::size_t i = (static_cast<std::size_t>(y) * base.width + x) * 3;
+        EXPECT_EQ(trace->srgb8[0], frame.rgb8[i]) << x << ", " << y;
+        EXPECT_EQ(trace->srgb8[1], frame.rgb8[i + 1]);
+        EXPECT_EQ(trace->srgb8[2], frame.rgb8[i + 2]);
+        // The Decode row is the framed base's own pixel, which Pick averages around.
+        EXPECT_EQ(trace->at(StageId::decode).rgb[0], base.pixels[i]);
+    }
+    // The cache passes the framing on.
+    prism::gui::SampleCache cache;
+    const prism::gui::PixelTrace* cached =
+        cache.read(o.session.preview_base(), o.session.settings(), std::nullopt,
+                   prism::gui::final_stage, std::nullopt, 10, 12, std::nullopt,
+                   o.session.preview_framing());
+    ASSERT_NE(cached, nullptr);
+    EXPECT_EQ(cached->srgb8[0], frame.rgb8[(12u * base.width + 10u) * 3u]);
+
+    // Pick: the patch is the framed base's (Session::preview_base), the picture on screen.
+    const int x = base.width / 3;
+    const int y = base.height / 3;
+    const std::optional<prism::gui::PickPatch> patch = prism::gui::pick_patch(base, x, y);
+    ASSERT_TRUE(patch.has_value());
+    const PreviewFrame decode = render(o.session, {}, StageId::decode);
+    ASSERT_EQ(decode.rgb8, prism::encode_srgb8(base));
+    const std::optional<prism::gui::PickPatch> whole_patch =
+        prism::gui::pick_patch(*o.session.whole_base(), x, y);
+    ASSERT_TRUE(whole_patch.has_value());
+    EXPECT_NE(patch->mean, whole_patch->mean) << "the framed picture is another part of the photo";
+    // A pixel inside the whole base but past the framed picture's edge is off the picture.
+    EXPECT_EQ(prism::gui::pick_neutral(base, base.width + 2, 5, std::nullopt).outcome,
+              prism::gui::PickOutcome::unavailable);
+    ASSERT_LT(base.width + 2, o.session.whole_base()->width);
+}
+
+// --- The test strip on a framed grid ------------------------------------------------------------
+
+TEST(FramedStrip, EachBandIsTheFullFramedRenderAtItsExposure) {
+    Opened o("in.png", turned_frame(2.0f));
+    const Image& base = *o.session.preview_base();
+    PreviewOptions options;
+    options.test_strip = prism::gui::TestStrip{};
+    prism::gui::FieldCache cache;
+    for (prism::gui::FieldCache* c : {static_cast<prism::gui::FieldCache*>(nullptr), &cache}) {
+        const PreviewFrame strip = render(o.session, options, prism::gui::final_stage, c);
+        const std::vector<prism::gui::StripRect> bands =
+            prism::gui::strip_bands(base.width, base.height, options.test_strip->count);
+        for (std::size_t b = 0; b < bands.size(); ++b) {
+            const EditSettings band = prism::gui::strip_band_settings(
+                o.session.settings(), options.test_strip->step, options.test_strip->count,
+                static_cast<int>(b));
+            const auto full = prism::gui::render_preview(base, band, 0, {}, {},
+                                                         prism::gui::final_stage,
+                                                         [&] {
+                                                             PreviewOptions p;
+                                                             p.framing = o.session.preview_framing();
+                                                             return p;
+                                                         }());
+            ASSERT_TRUE(full.has_value());
+            const prism::gui::StripRect& r = bands[b];
+            for (int y = r.y; y < r.y + r.height; ++y) {
+                const std::size_t from = (static_cast<std::size_t>(y) * base.width + r.x) * 3;
+                ASSERT_TRUE(std::equal(full->rgb8.begin() + static_cast<std::ptrdiff_t>(from),
+                                       full->rgb8.begin() +
+                                           static_cast<std::ptrdiff_t>(from + r.width * 3u),
+                                       strip.rgb8.begin() + static_cast<std::ptrdiff_t>(from)))
+                    << "band " << b << ", row " << y << (c ? ", cached" : "");
+            }
+        }
+    }
+}
+
+// --- Recipes and undo ---------------------------------------------------------------------------
+
+TEST(FrameRecipes, ARecipeNeitherSavesNorChangesTheFrame) {
+    Opened o("in.png", turned_frame(1.5f));
+    const std::optional<Frame> frame = o.session.settings().frame;
+    ASSERT_TRUE(frame.has_value());
+    EditSettings without = o.session.settings();
+    without.frame.reset();
+    const std::string text = prism::write_recipe(prism::gui::recipe_from(o.session.settings()));
+    EXPECT_EQ(text, prism::write_recipe(prism::gui::recipe_from(without)));
+    EXPECT_EQ(prism::recipe_format_version, 2);
+    EXPECT_EQ(text.find("frame"), std::string::npos);
+    EXPECT_EQ(text.find("angle"), std::string::npos);
+
+    // Applying (or loading and applying) a recipe of another look keeps the frame and the base.
+    EditSettings other;
+    other.exposure_stops = -1.0f;
+    other.contrast = 1.6f;
+    const prism::Recipe recipe =
+        prism::parse_recipe(prism::write_recipe(prism::gui::recipe_from(other)));
+    const std::shared_ptr<const Image> base = o.session.preview_base();
+    ASSERT_EQ(o.session.apply_recipe(recipe), std::nullopt);
+    EXPECT_EQ(o.session.settings().exposure_stops, -1.0f);
+    EXPECT_EQ(o.session.settings().frame, frame);
+    EXPECT_EQ(o.session.preview_base(), base) << "the same frame needs no new framed base";
+}
+
+TEST(FrameRecipes, UndoAndRedoBringFrameChangesBackWithTheirBases) {
+    Opened o("in.png");
+    const std::shared_ptr<const Image> whole = o.session.preview_base();
+    EditSettings s = o.session.settings();
+    s.frame = turned_frame(2.0f);
+    ASSERT_EQ(o.session.set_settings(s), std::nullopt);
+    const std::shared_ptr<const Image> first = o.session.preview_base();
+    s.frame = turned_frame(-1.0f);
+    ASSERT_EQ(o.session.set_settings(s), std::nullopt);
+    const std::vector<std::uint32_t> second = bits(*o.session.preview_base());
+
+    ASSERT_EQ(o.session.undo(), std::nullopt);
+    EXPECT_EQ(o.session.settings().frame, turned_frame(2.0f));
+    EXPECT_EQ(bits(*o.session.preview_base()), bits(*first));
+    ASSERT_EQ(o.session.undo(), std::nullopt);
+    EXPECT_FALSE(o.session.settings().frame.has_value());
+    EXPECT_EQ(o.session.preview_base(), whole);
+    EXPECT_FALSE(o.session.preview_framing().has_value());
+    ASSERT_EQ(o.session.redo(), std::nullopt);
+    ASSERT_EQ(o.session.redo(), std::nullopt);
+    EXPECT_EQ(o.session.settings().frame, turned_frame(-1.0f));
+    EXPECT_EQ(bits(*o.session.preview_base()), second);
+    EXPECT_EQ(o.session.preview_framing(),
+              prism::gui::picture_frame_of(turned_frame(-1.0f), 200, 133));
+}
+
+// --- Threads ------------------------------------------------------------------------------------
+
+// A framed export with strokes, large enough that the frame, the reduction and every stage split
+// into chunks: 1 thread and 8 threads write the same bytes.
+TEST(FramedExport, OneAndEightThreadsWriteTheSameFile) {
+    constexpr int w = 2400;
+    constexpr int h = 1600;
+    const fs::path png = write_png("big.png", w, h);
+    const fs::path out1 = temp_file("one.png");
+    const fs::path out8 = temp_file("eight.png");
+    Session session({.preview_long_side = 64, .threads = 0});
+    ASSERT_EQ(session.open_file(png), std::nullopt);
+    EditSettings s = look_with_strokes(w, h);
+    Frame frame;
+    frame.angle = 1.5f;
+    frame.left = 0.04f;
+    frame.top = 0.05f;
+    frame.right = 0.97f;
+    frame.bottom = 0.96f;
+    frame.aspect = prism::Aspect::free;
+    s.frame = frame;
+    ASSERT_EQ(session.set_settings(s), std::nullopt);
+    session.set_export_size(long_side_size(1700));
+
+    const double least = 1.5 * static_cast<double>(prism::parallel_min_pixels);
+    const PixelSize framed = session.framed_start_size();
+    const prism::gui::ExportPlan plan = session.export_plan();
+    ASSERT_TRUE(plan.reduced());
+    // The framed decode and the reduced image (what the stages run on) are both large enough to
+    // split.
+    ASSERT_GE(static_cast<double>(framed.width) * framed.height, least);
+    ASSERT_GE(static_cast<double>(plan.size.width) * plan.size.height, least);
+    const prism::FramedExport check =
+        prism::frame_and_reduce(prism::load_image(png), s.frame, plan.long_side, 8);
+    EXPECT_EQ(check.frame_threads, 8);
+    EXPECT_EQ(check.reduce_threads, 8);
+
+    prism::gui::ExportJob job = session.export_job();
+    job.threads = 1;
+    ASSERT_EQ(prism::gui::export_image(job, out1), std::nullopt);
+    job.threads = 8;
+    ASSERT_EQ(prism::gui::export_image(job, out8), std::nullopt);
+    const Image one = prism::load_image(out1);
+    const Image eight = prism::load_image(out8);
+    EXPECT_EQ((PixelSize{one.width, one.height}), plan.size);
+    EXPECT_EQ(prism::encode_srgb8(one), prism::encode_srgb8(eight));
+    fs::remove(png);
+    fs::remove(out1);
+    fs::remove(out8);
+}
