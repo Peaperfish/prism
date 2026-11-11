@@ -277,14 +277,7 @@ std::string brush_status_text(BrushTone tone, float strength) {
 
 BrushRing brush_ring(const ViewState& s, const ViewGeometry& g, float radius,
                      float softness) noexcept {
-    const int long_side = std::max(g.image_width, g.image_height);
-    if (long_side <= 0 || g.density <= 0.0f || !std::isfinite(radius) || radius <= 0.0f) {
-        return {};
-    }
-    // Zoom is device pixels per image pixel; screen units are device pixels over the density.
-    const float outer = radius * static_cast<float>(long_side) * view_zoom(s, g) / g.density;
-    const float soft = std::isfinite(softness) ? std::clamp(softness, 0.0f, 1.0f) : 0.0f;
-    return {outer, outer * (1.0f - soft)};
+    return brush_ring(s, g, BrushCanvas{g.image_width, g.image_height}, radius, softness);
 }
 
 BrushRing brush_ring(const ViewState& s, const ViewGeometry& g, const BrushCanvas& canvas,

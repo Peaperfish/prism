@@ -88,8 +88,8 @@ enum class ExportEnd { saved, cancelled, failed };
 enum class RecipeEnd { saved, cancelled, failed };
 
 // A request to quit or to open another photo arrived.
-//  - no photo, or nothing unsaved and no strokes or frame: proceed (a running export of a clean photo still finishes
-//    first, so a quit never kills a write half-way);
+//  - no photo, or nothing unsaved and no strokes or frame: proceed (a running export of a clean
+//    photo still finishes first, so a quit never kills a write half-way);
 //  - an export is running: wait for it, then ask again with the new state;
 //  - otherwise: ask.
 [[nodiscard]] CloseStep close_requested(const CloseState& state) noexcept;

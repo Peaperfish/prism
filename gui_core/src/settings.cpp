@@ -195,9 +195,9 @@ void check_framed_base(int width, int height, const EditSettings& s,
     }
     const PixelSize size = framed_size(wanted->fitted, wanted->photo_width, wanted->photo_height);
     if (size.width != width || size.height != height) {
-        throw std::invalid_argument("the picture is " + std::to_string(width) + " x " +
+        throw std::invalid_argument("the picture is " + std::to_string(width) + " × " +
                                     std::to_string(height) + " pixels but the frame is " +
-                                    std::to_string(size.width) + " x " +
+                                    std::to_string(size.width) + " × " +
                                     std::to_string(size.height));
     }
 }

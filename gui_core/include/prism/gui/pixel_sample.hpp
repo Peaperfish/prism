@@ -153,8 +153,9 @@ class SampleCache {
 public:
     // The trace of pixel (x, y), with the settings sample_settings gives. Computes it only if the
     // pixel, the base, the settings, the viewed stage, the compare stage, the strip, the photo's
-    // as-shot light or the base's framing differ from the last call. Nothing for a pixel off the picture, and for settings that can't be rendered
-    // (the preview says why; a readout must not take the window down).
+    // as-shot light or the base's framing differ from the last call. Nothing for a pixel off the
+    // picture, and for settings that can't be rendered (the preview says why; a readout must not
+    // take the window down).
     [[nodiscard]] const PixelTrace* read(std::shared_ptr<const Image> base,
                                          const EditSettings& settings,
                                          const std::optional<TestStrip>& strip, StageId viewed,

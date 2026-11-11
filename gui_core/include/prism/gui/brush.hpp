@@ -205,9 +205,9 @@ struct BrushRing {
 };
 [[nodiscard]] BrushRing brush_ring(const ViewState& s, const ViewGeometry& g, float radius,
                                    float softness) noexcept;
-// The same on `canvas`, whose picture is the one in `g`: the radius is a fraction of the WHOLE
-// photo's long side (brush_long_side), framed or not, so the ring is the circle a stroke paints.
-// Without framing it is the ring above.
+// The same on `canvas`, whose picture is the one in `g` (the app checks that their sizes match):
+// the radius is a fraction of the WHOLE photo's long side (brush_long_side), framed or not, so the
+// ring is the circle a stroke paints. The overload above is this on a canvas of g's picture.
 [[nodiscard]] BrushRing brush_ring(const ViewState& s, const ViewGeometry& g,
                                    const BrushCanvas& canvas, float radius,
                                    float softness) noexcept;

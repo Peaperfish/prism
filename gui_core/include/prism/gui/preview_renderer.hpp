@@ -135,9 +135,9 @@ struct PreviewFrame {
 // thread that owns the cache may pass it. Without one, a render rasterises as it always did (and
 // a stroke mask is made from a field rasterised just for it).
 //
-// With options.framing, `base` is the framed base and every grid (the picture, each band, the
-// clip report's sample grid) is a framed grid of the photo (stage_grid). Throws
-// std::invalid_argument if options.framing does not fit the settings and `base` (check_framed_base).
+// With options.framing, `base` is the framed base and every grid (the picture, each band, the clip
+// report's sample grid) is a framed grid of the photo (stage_grid). Throws std::invalid_argument if
+// options.framing does not fit the settings and `base` (check_framed_base).
 [[nodiscard]] std::optional<PreviewFrame> render_preview(const Image& base,
                                                          const EditSettings& settings, int threads,
                                                          std::stop_token stop,

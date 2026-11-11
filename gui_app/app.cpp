@@ -3833,7 +3833,8 @@ void App::draw_close_prompt() {
         }
         return std::string();
     };
-    const gui::PromptButtons buttons = gui::prompt_buttons(ImGui::GetIO().ConfigMacOSXBehaviors, has_strokes || has_frame);
+    const gui::PromptButtons buttons =
+        gui::prompt_buttons(ImGui::GetIO().ConfigMacOSXBehaviors, has_strokes || has_frame);
     const ImGuiStyle& style = ImGui::GetStyle();
     float widths[4];
     float packed = 0;
