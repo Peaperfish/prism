@@ -73,7 +73,7 @@ Recipe recipe_from(const EditSettings& s) {
     const auto& [exposure_stops, exposure_on, strokes, dodge_burn_on, white_balance,
                  white_balance_on, matrix, matrix_on, saturation, saturation_on, contrast,
                  contrast_on, curve, gamma, reinhard_white, curve_on, raw_half_size,
-                 raw_camera_matrix] = s;
+                 raw_camera_matrix, frame] = s;
     // The white balance switch is only saved with a chosen white balance (below): As shot has no
     // section, so there is nowhere for its switch, and off or on it changes nothing.
     // Strokes (and their switch) are not saved in 0.5.0: the recipe format has no section for them.
@@ -82,6 +82,9 @@ Recipe recipe_from(const EditSettings& s) {
     // Not in a recipe: they say how the file is decoded, not how it looks.
     (void)raw_half_size;
     (void)raw_camera_matrix;
+    // Not in a recipe (#58): the frame is this photo's composition, not a look, and the format
+    // stays at version 2. Applying a recipe leaves it as it is (apply_recipe never touches it).
+    (void)frame;
 
     Recipe r;
     r.exposure = RecipeExposure{exposure_stops, exposure_on};

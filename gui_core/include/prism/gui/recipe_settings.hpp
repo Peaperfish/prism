@@ -10,7 +10,9 @@ namespace prism::gui {
 // A recipe holds the five edit stages with their switches. It does not hold where the photo came
 // from, how it is being viewed, the sliders' positions (they are worked out from the
 // settings) or the RAW options (raw_half_size, raw_camera_matrix), which describe how the file is
-// decoded rather than the look. So applying a recipe never makes the file decode again.
+// decoded rather than the look. So applying a recipe never makes the file decode again. Nor does
+// it hold the strokes or the frame (#58), which belong to this photo: applying a recipe leaves
+// both as they are, and the format stays at version 2.
 //
 // The GUI's colour matrix is normally none. A recipe always has a [matrix], so none is saved as
 // the identity matrix without a `from`, and such a section loads as none again.

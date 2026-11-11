@@ -5,6 +5,7 @@
 #include <cmath>
 #include <iterator>
 #include <stdexcept>
+#include <string>
 #include <system_error>
 
 #include "prism/ranges.hpp"
@@ -149,6 +150,65 @@ PixelGrid stage_grid(int full_w, int full_h, int x0, int y0, int stride, int col
     return PixelGrid{full_w, full_h, x0, y0, stride, cols, rows};
 }
 
+std::optional<PictureFrame> picture_frame_of(const std::optional<Frame>& frame, int photo_width,
+                                             int photo_height) {
+    if (!frame) {
+        return std::nullopt;
+    }
+    const ExportFrame plan = plan_export_frame(frame, photo_width, photo_height);
+    if (!plan.fitted) {
+        return std::nullopt;
+    }
+    return PictureFrame{*plan.fitted, photo_width, photo_height, 1.0f};
+}
+
+PixelGrid stage_grid(const std::optional<PictureFrame>& framing, int width, int height, int x0,
+                     int y0, int stride, int cols, int rows) noexcept {
+    if (!framing) {
+        return stage_grid(width, height, x0, y0, stride, cols, rows);
+    }
+    // A framed grid holds exactly cols x rows pixels, so "to the edge" is counted here, as
+    // PixelGrid::width() counts it for a grid without framing.
+    const auto reach = [stride](int size, int first) {
+        return size > first && first >= 0 && stride > 0 ? (size - first + stride - 1) / stride : 0;
+    };
+    const int across = cols > 0 ? std::min(cols, reach(width, x0)) : reach(width, x0);
+    const int down = rows > 0 ? std::min(rows, reach(height, y0)) : reach(height, y0);
+    return PixelGrid{framing->photo_width, framing->photo_height, x0,   y0, stride, across, down,
+                     GridFrame::of(framing->fitted, framing->scale)};
+}
+
+void check_framed_base(int width, int height, const EditSettings& s,
+                       const std::optional<PictureFrame>& framing) {
+    if (!framing) {
+        if (normalised_frame(s.frame)) {
+            throw std::invalid_argument(
+                "the settings have a frame, but the picture's place on the photo was not given");
+        }
+        return;
+    }
+    const std::optional<PictureFrame> wanted =
+        picture_frame_of(s.frame, framing->photo_width, framing->photo_height);
+    if (!wanted || !(*wanted == *framing)) {
+        throw std::invalid_argument(
+            "the picture's place on the photo is not the frame of the settings");
+    }
+    const PixelSize size = framed_size(wanted->fitted, wanted->photo_width, wanted->photo_height);
+    if (size.width != width || size.height != height) {
+        throw std::invalid_argument("the picture is " + std::to_string(width) + " x " +
+                                    std::to_string(height) + " pixels but the frame is " +
+                                    std::to_string(size.width) + " x " +
+                                    std::to_string(size.height));
+    }
+}
+
+std::optional<Frame> normalised_frame(const std::optional<Frame>& frame) noexcept {
+    if (frame && is_whole_photo(*frame)) {
+        return std::nullopt;
+    }
+    return frame;
+}
+
 bool operator==(const Strokes& a, const Strokes& b) noexcept {
     if (a.empty() || b.empty()) {
         return a.empty() == b.empty();
@@ -178,6 +238,10 @@ std::vector<std::string> validate(const EditSettings& s) {
     check_range(problems, "Contrast", s.contrast, contrast_range);
     check_positive(problems, "Gamma", s.gamma);
     check_positive(problems, "Reinhard white point", s.reinhard_white);
+    if (s.frame) {
+        const std::vector<std::string> frame_problems = validate_frame(*s.frame);
+        problems.insert(problems.end(), frame_problems.begin(), frame_problems.end());
+    }
     return problems;
 }
 

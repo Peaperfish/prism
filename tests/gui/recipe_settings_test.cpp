@@ -578,6 +578,7 @@ constexpr Field fields[] = {
      "a RAW decoding option tied to the camera; changing it decodes the file again"},
     {"strokes", false, "Dodge & burn strokes: the recipe format has no section for them in 0.5.0"},
     {"dodge_burn_on", false, "Dodge & burn's switch: without strokes in a recipe it has no use"},
+    {"frame", false, "the easel's frame: this photo's composition, not a look (#58)"},
 };
 
 // The settings with field `i` changed from its default (the curve chosen so that its parameter
@@ -586,7 +587,7 @@ EditSettings changed(std::size_t i) {
     EditSettings s;
     auto& [exposure_stops, exposure_on, strokes, dodge_burn_on, white_balance, white_balance_on,
            matrix, matrix_on, saturation, saturation_on, contrast, contrast_on, curve, gamma,
-           reinhard_white, curve_on, raw_half_size, raw_camera_matrix] = s;
+           reinhard_white, curve_on, raw_half_size, raw_camera_matrix, frame] = s;
     switch (i) {
         case 0: exposure_stops = 1.0f; break;
         case 1: exposure_on = false; break;
@@ -613,6 +614,7 @@ EditSettings changed(std::size_t i) {
             break;
         }
         case 17: dodge_burn_on = false; break;
+        case 18: frame = prism::Frame{2.5f, 0.1f, 0.1f, 0.9f, 0.8f}; break;
         default: break;
     }
     return s;
@@ -621,7 +623,7 @@ EditSettings changed(std::size_t i) {
 }  // namespace
 
 TEST(RecipeSettings, EveryFieldIsEitherInARecipeOrLeftOutForAReason) {
-    ASSERT_EQ(std::size(fields), 18u);
+    ASSERT_EQ(std::size(fields), 19u);
     const EditSettings defaults;
     for (std::size_t i = 0; i < std::size(fields); ++i) {
         const Field& f = fields[i];
