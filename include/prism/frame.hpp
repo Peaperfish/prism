@@ -237,6 +237,12 @@ struct FramedExport {
     // How long apply_frame and downscale took, in milliseconds (0 for a step that did not run).
     double frame_ms = 0.0;
     double reduce_ms = 0.0;
+    // The threads each step really used (0 for a step that did not run): apply_frame is sized by
+    // the framed image and downscale by the image it reduces, as `threads` (0 = automatic, else a
+    // cap) is resolved by threads_for_pixels, so a large decode turns on many threads even when
+    // the result is small.
+    int frame_threads = 0;
+    int reduce_threads = 0;
 };
 
 // The order of an export: the decoded image is framed (plan_export_frame, then apply_frame, so the

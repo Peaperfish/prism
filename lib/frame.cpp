@@ -442,9 +442,15 @@ FramedExport frame_and_reduce(Image decoded, const std::optional<Frame>& frame,
         // Assigning frees the full decode before the reduction below allocates.
         decoded = apply_frame(decoded, *out.frame.fitted, threads);
         out.frame_ms = millis(start);
+        out.frame_threads = threads_for_pixels(
+            static_cast<std::size_t>(decoded.width) * static_cast<std::size_t>(decoded.height),
+            threads);
     }
     if (long_side && std::max(decoded.width, decoded.height) > *long_side) {
         const auto start = Clock::now();
+        out.reduce_threads = threads_for_pixels(
+            static_cast<std::size_t>(decoded.width) * static_cast<std::size_t>(decoded.height),
+            threads);
         decoded = downscale(decoded, *long_side, threads);
         out.reduce_ms = millis(start);
         out.reduced = true;

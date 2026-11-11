@@ -20,6 +20,7 @@
 #include "prism/frame.hpp"
 #include "prism/heic.hpp"
 #include "prism/image.hpp"
+#include "prism/parallel.hpp"
 #include "prism/pipeline.hpp"
 #include "prism/process.hpp"
 #include "prism/raw.hpp"
@@ -1039,7 +1040,15 @@ TEST(CliFrame, ARecipeAndFrameFlagsCombineAndTheRecipeIsNeverWritten) {
 }
 
 TEST(CliFrame, ATurnedExportIsTheSameOnOneAndEightThreads) {
-    const fs::path input = write_smooth_input("threads.png", 1501, 701);
+    // Big enough that the framed image itself is well over the size below which every stage runs
+    // on one thread, or the turn would never be split and the comparison would prove nothing.
+    constexpr int W = 2000;
+    constexpr int H = 1000;
+    const fs::path input = write_smooth_input("threads.png", W, H);
+    const prism::Frame frame = make_frame(-3.5f, 0.02f, 0.03f, 0.98f, 0.97f);
+    const prism::PixelSize framed = prism::framed_size(prism::fit_frame(frame, W, H), W, H);
+    ASSERT_GE(static_cast<std::size_t>(framed.width) * framed.height,
+              prism::parallel_min_pixels * 3 / 2);
     const std::string flags = "--rotate -3.5 --crop 0.02,0.03,0.98,0.97 --exposure 0.5";
     for (const std::string& size : {std::string(), std::string(" --long-side 900")}) {
         const FramedRun one = run_framed(input, flags + size + " --threads 1");
@@ -1050,6 +1059,28 @@ TEST(CliFrame, ATurnedExportIsTheSameOnOneAndEightThreads) {
         EXPECT_EQ(one.image.width, eight.image.width);
         EXPECT_EQ(prism::encode_srgb8(one.image), prism::encode_srgb8(eight.image)) << size;
     }
+    fs::remove(input);
+}
+
+TEST(CliFrame, TimeSaysHowManyThreadsAFrameOfALargeDecodeUsed) {
+    const fs::path input = write_smooth_input("time_threads.png", 2000, 1000);
+    // The result is 300 px wide, so the stages on it use one thread, but the turn and the
+    // reduction worked on megapixels with the 4 asked for.
+    const FramedRun many = run_framed(input, "--rotate 3 --long-side 300 --threads 4 --time");
+    ASSERT_EQ(many.run.exit_code, 0) << many.run.output;
+    EXPECT_TRUE(contains(many.run.output, "time (1 thread):")) << many.run.output;
+    const auto line = [&](const std::string& stage) {
+        const std::size_t at = many.run.output.find("  " + stage + " ");
+        return at == std::string::npos ? std::string()
+                                       : many.run.output.substr(at, many.run.output.find('\n', at) - at);
+    };
+    EXPECT_TRUE(contains(line("frame"), "(4 threads)")) << many.run.output;
+    EXPECT_TRUE(contains(line("resize"), "(4 threads)")) << many.run.output;
+    EXPECT_FALSE(contains(line("load"), "thread")) << many.run.output;
+    // With one thread asked there is nothing to add.
+    const FramedRun one = run_framed(input, "--rotate 3 --long-side 300 --threads 1 --time");
+    ASSERT_EQ(one.run.exit_code, 0) << one.run.output;
+    EXPECT_FALSE(contains(one.run.output, " ms  (")) << one.run.output;
     fs::remove(input);
 }
 

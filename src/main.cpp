@@ -474,7 +474,11 @@ public:
     }
 
     // Records a stage that was timed elsewhere (by prism::process).
-    void add(std::string name, double ms) { stages_.push_back({std::move(name), ms}); }
+    // `threads` is set for a stage that used a different number of threads than the final image
+    // (a frame or reduction of a large decode); print() then says so on its line.
+    void add(std::string name, double ms, int threads = 0) {
+        stages_.push_back({std::move(name), ms, threads});
+    }
 
     void print(int threads) const {
         double total = 0;
@@ -482,7 +486,11 @@ public:
                   << std::fixed << std::setprecision(1);
         for (const Stage& s : stages_) {
             std::cout << "  " << std::left << std::setw(14) << s.name << std::right << std::setw(9)
-                      << s.ms << " ms\n";
+                      << s.ms << " ms";
+            if (s.threads > 0 && s.threads != threads) {
+                std::cout << "  (" << s.threads << (s.threads == 1 ? " thread)" : " threads)");
+            }
+            std::cout << '\n';
             total += s.ms;
         }
         std::cout << "  " << std::left << std::setw(14) << "total" << std::right << std::setw(9)
@@ -494,6 +502,7 @@ private:
     struct Stage {
         std::string name;
         double ms;
+        int threads;
     };
     std::vector<Stage> stages_;
 };
@@ -597,7 +606,7 @@ void run_one(const std::string& input, const std::optional<std::string>& output,
         std::move(img), frame_of(frame_flags, decoded_width, decoded_height), long_side, threads);
     img = std::move(framed.image);
     if (framed.frame.fitted) {
-        timer.add("frame", framed.frame_ms);
+        timer.add("frame", framed.frame_ms, framed.frame_threads);
         if (framed.frame.changed) {
             std::cerr << "note: " << input
                       << ": the frame was made smaller so no corner shows; it is now "
@@ -607,7 +616,7 @@ void run_one(const std::string& input, const std::optional<std::string>& output,
     }
     if (long_side) {
         if (framed.reduced) {
-            timer.add("resize", framed.reduce_ms);
+            timer.add("resize", framed.reduce_ms, framed.reduce_threads);
         } else {
             std::cerr << "note: " << input << " is " << framed.frame.size.width << 'x'
                       << framed.frame.size.height << ", not larger than --long-side " << *long_side
@@ -649,7 +658,8 @@ void run_one(const std::string& input, const std::optional<std::string>& output,
     }
 
     if (time) {
-        // Report what was actually used: small images run single-threaded whatever was asked.
+        // The header is what the stages on the final image used: small images run single-threaded
+        // whatever was asked. A frame or reduction of a larger decode says its own count.
         timer.print(prism::threads_for_pixels(
             static_cast<std::size_t>(img.width) * static_cast<std::size_t>(img.height), threads));
     }

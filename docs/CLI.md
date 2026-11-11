@@ -142,7 +142,7 @@ time (1 thread):
   total               8.2 ms
 ```
 
-The stages that can appear are `load`, `frame` (with a frame that changes the photo), `resize` (with `--long-side`), `exposure`, `white_balance`, `matrix`, `saturation`, `contrast`, `curve`, `save` and `histogram`. A stage that was skipped (a neutral value, or no `-o` or `--histogram`) isn't listed. The thread count shown is the number actually used.
+The stages that can appear are `load`, `frame` (with a frame that changes the photo), `resize` (with `--long-side`), `exposure`, `white_balance`, `matrix`, `saturation`, `contrast`, `curve`, `save` and `histogram`. A stage that was skipped (a neutral value, or no `-o` or `--histogram`) isn't listed. The thread count in the heading is the number the stages on the final image actually used (an image under about 1 MP runs on one thread). A `frame` or `resize` step that worked on a larger image than the result, and so used a different number, says its own on its line, as `(12 threads)`.
 
 ### `-h`, `--help`
 
