@@ -156,6 +156,7 @@ Move either slider and the row reads **Chosen** instead, and the numbers are you
 
 Prism refuses, and changes nothing, when the spot cannot tell it the light: **"Too dark to judge; click a lighter grey"** when any colour of the patch averages below 0.5% of white, and **"Clipped; click a grey that isn't blown out"** when any pixel in the patch is at white in the file or above it, since a clipped pixel has lost its colour. Dragging still moves the picture (and `Space` still holds the hand); a double-click still zooms; a click on a control does not pick. The picker needs White balance in view, so it is greyed out while you are viewing Decode or Exposure (a tooltip says why), and turning it on leaves Sample mode and the test strip. `Esc`, `W` again, `I` or `T` leave it, and so does opening another photo.
 
+<a id="contrast-as-a-paper-grade"></a>
 **Contrast as a paper grade.** Contrast is shown the way darkroom printers set it, as a paper grade from 0 (softest) to 5 (hardest), with 2 as normal. Each whole grade is the contrast of a real paper through one of its filters: the ISO range *R* of Ilford Multigrade RC Deluxe (current), from Ilford's MULTIGRADE RC papers technical information (ISO 6846, filters 0 to 5). A paper with a longer range of exposure is softer, so a grade's multiplier is 90 ÷ *R*, which makes grade 2 exactly ×1.00:
 
 | Grade | ISO range *R* | Multiplier |
