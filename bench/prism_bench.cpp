@@ -34,6 +34,7 @@
 #include <vector>
 
 #include "prism/color.hpp"
+#include "prism/frame.hpp"
 #include "prism/gui/preview_renderer.hpp"
 #include "prism/gui/settings.hpp"
 #include "prism/histogram.hpp"
@@ -433,6 +434,24 @@ int main(int argc, char* argv[]) {
     bench_stage(s, "downscale 2560", f32, none,
                 [&](int t) { preview = prism::downscale(input, 2560, t); });
 
+    // Straightening on the easel: a 3 degree turn, the frame fitted so no corner shows (about 89%
+    // of each side), Catmull-Rom from the 16 pixels around each one. The GUI turns the 2560 px
+    // preview base once per committed frame; an export turns the full-size decode (the default
+    // --size is a 60 MP frame). Bytes: the photo read once and the framed image written.
+    prism::Frame turn;
+    turn.angle = 3.0f;
+    prism::Image turned;
+    const auto bench_turn = [&](std::string_view name, const prism::Image& photo) {
+        const prism::Frame fitted = prism::fit_frame(turn, photo.width, photo.height);
+        const prism::PixelSize size = prism::framed_size(fitted, photo.width, photo.height);
+        const double photo_f32 = static_cast<double>(photo.pixels.size()) * sizeof(float);
+        const double framed_f32 = static_cast<double>(size.width) * size.height * 3 * sizeof(float);
+        bench_stage(s, name, photo_f32 + framed_f32, none,
+                    [&](int t) { turned = prism::apply_frame(photo, fitted, t); });
+    };
+    bench_turn("frame turn 2560", preview);
+    bench_turn("frame turn 60 MP", input);
+
     // What the GUI does each time a setting changes: every stage plus the sRGB encode, on that
     // 2560 px preview base (render_preview, as PreviewRenderer's worker thread calls it).
     prism::gui::EditSettings look;
@@ -463,7 +482,7 @@ int main(int argc, char* argv[]) {
 
     // Use the results so the optimiser cannot decide the work is pointless and delete it.
     if (encoded.empty() || hist.pixel_count != samples / 3 || preview.pixels.empty() || !frame ||
-        frame->rgb8.empty()) {
+        frame->rgb8.empty() || turned.pixels.empty()) {
         std::cerr << "unexpected result\n";
         return 1;
     }
