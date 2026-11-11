@@ -15,14 +15,69 @@ BrushAction act(BrushActionKind kind, BrushTone tone = BrushTone::dodge, FieldPo
 
 }  // namespace
 
-FieldPoint brush_point(ViewPoint image, BrushCanvas canvas) noexcept {
+BrushCanvas brush_canvas(const Session& session) {
+    const std::shared_ptr<const Image> base = session.preview_base();
+    if (!base) {
+        return {};
+    }
+    return {base->width, base->height, session.preview_framing()};
+}
+
+PixelSize brush_photo_size(const BrushCanvas& canvas) noexcept {
+    if (canvas.framing) {
+        return {canvas.framing->photo_width, canvas.framing->photo_height};
+    }
+    return {canvas.width, canvas.height};
+}
+
+int brush_long_side(const BrushCanvas& canvas) noexcept {
+    if (canvas.width <= 0 || canvas.height <= 0) {
+        return 0;
+    }
+    const PixelSize photo = brush_photo_size(canvas);
+    const int long_side = std::max(photo.width, photo.height);
+    if (!canvas.framing) {
+        return long_side;
+    }
+    const double scale = static_cast<double>(canvas.framing->scale);
+    if (!(scale > 0.0) || !std::isfinite(scale)) {
+        return 0;
+    }
+    return std::max(1, static_cast<int>(std::lround(static_cast<double>(long_side) / scale)));
+}
+
+FieldPoint brush_point(ViewPoint image, const BrushCanvas& canvas) {
     if (canvas.width <= 0 || canvas.height <= 0) {
         return {};
+    }
+    if (canvas.framing) {
+        // Image coordinates are framed positions over the scale (pixel i's centre at i + 0.5,
+        // FramePoint's convention), and to_photo gives the photo point under one.
+        const PictureFrame& f = *canvas.framing;
+        const double scale = static_cast<double>(f.scale);
+        const PhotoPoint q = FrameMap(f.fitted, f.photo_width, f.photo_height)
+                                 .to_photo({static_cast<double>(image.x) * scale,
+                                            static_cast<double>(image.y) * scale});
+        return {static_cast<float>(q.u), static_cast<float>(q.v)};
     }
     // Image coordinates run along the pixels' edges, so pixel x's centre is at x + 0.5, and
     // stroke_field.hpp's u = (x + 0.5) / W is the image coordinate over the width.
     return {image.x / static_cast<float>(canvas.width),
             image.y / static_cast<float>(canvas.height)};
+}
+
+ViewPoint brush_canvas_point(FieldPoint p, const BrushCanvas& canvas) {
+    if (canvas.width <= 0 || canvas.height <= 0) {
+        return {};
+    }
+    if (canvas.framing) {
+        const PictureFrame& f = *canvas.framing;
+        const double scale = static_cast<double>(f.scale);
+        const FramePoint q = FrameMap(f.fitted, f.photo_width, f.photo_height)
+                                 .to_frame({static_cast<double>(p.u), static_cast<double>(p.v)});
+        return {static_cast<float>(q.x / scale), static_cast<float>(q.y / scale)};
+    }
+    return {p.u * static_cast<float>(canvas.width), p.v * static_cast<float>(canvas.height)};
 }
 
 std::vector<BrushAction> BrushGesture::press(ViewPoint at, BrushModifiers keys, BrushTone base,
@@ -48,7 +103,8 @@ std::vector<BrushAction> BrushGesture::press(ViewPoint at, BrushModifiers keys, 
 
 void BrushGesture::add_if_far(ViewPoint at, std::vector<BrushAction>& out) {
     const FieldPoint p = brush_point(at, canvas_);
-    if (far_enough(last_, p, aspect_of(canvas_.width, canvas_.height), spacing_)) {
+    const PixelSize photo = brush_photo_size(canvas_);
+    if (far_enough(last_, p, aspect_of(photo.width, photo.height), spacing_)) {
         last_ = p;
         out.push_back(act(BrushActionKind::add_point, tone_, p));
     }
@@ -145,7 +201,8 @@ MaybeError StrokePainter::apply(const BrushAction& action, const BrushStyle& sty
             auto field = before_->field() ? std::make_shared<StrokeField>(*before_->field())
                                           : std::make_shared<StrokeField>();
             if (field->strokes.empty()) {
-                field->aspect = aspect_of(canvas.width, canvas.height);
+                const PixelSize photo = brush_photo_size(canvas);
+                field->aspect = aspect_of(photo.width, photo.height);
             }
             field->strokes.push_back(std::make_shared<const FieldStroke>(stroke_));
             return set_strokes(session, Strokes(std::move(field)));
@@ -225,6 +282,18 @@ BrushRing brush_ring(const ViewState& s, const ViewGeometry& g, float radius,
         return {};
     }
     // Zoom is device pixels per image pixel; screen units are device pixels over the density.
+    const float outer = radius * static_cast<float>(long_side) * view_zoom(s, g) / g.density;
+    const float soft = std::isfinite(softness) ? std::clamp(softness, 0.0f, 1.0f) : 0.0f;
+    return {outer, outer * (1.0f - soft)};
+}
+
+BrushRing brush_ring(const ViewState& s, const ViewGeometry& g, const BrushCanvas& canvas,
+                     float radius, float softness) noexcept {
+    const int long_side = brush_long_side(canvas);
+    if (long_side <= 0 || g.density <= 0.0f || !std::isfinite(radius) || radius <= 0.0f ||
+        g.image_width <= 0 || g.image_height <= 0) {
+        return {};
+    }
     const float outer = radius * static_cast<float>(long_side) * view_zoom(s, g) / g.density;
     const float soft = std::isfinite(softness) ? std::clamp(softness, 0.0f, 1.0f) : 0.0f;
     return {outer, outer * (1.0f - soft)};

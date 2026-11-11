@@ -28,7 +28,25 @@ struct BrushModifiers {
 struct BrushCanvas {
     int width = 0;
     int height = 0;
+    // Where the picture sits on the photo when it is the framed base (Session::preview_framing):
+    // canvas pixels are then framed pixels at framing->scale, while the strokes stay on the whole
+    // photo, framing->photo_width x photo_height. None: the picture is the whole photo.
+    std::optional<PictureFrame> framing = std::nullopt;
 };
+
+// The canvas of `session`'s preview base: its size and its framing (Session::preview_framing). An
+// empty canvas (0 x 0) with no photo open.
+[[nodiscard]] BrushCanvas brush_canvas(const Session& session);
+
+// The whole photo the strokes are on, in pixels: framing's photo size, or the canvas's own size.
+// Every brush distance is measured on it (the field's aspect, the radius, the point spacing), never
+// on the framed picture.
+[[nodiscard]] PixelSize brush_photo_size(const BrushCanvas& canvas) noexcept;
+
+// The whole photo's long side in canvas pixels: the long side of brush_photo_size over the
+// framing's scale (rounded, at least 1), the canvas's own long side without framing, and 0 for an
+// empty canvas. What min_point_spacing and the ring measure the radius on.
+[[nodiscard]] int brush_long_side(const BrushCanvas& canvas) noexcept;
 
 enum class BrushActionKind {
     begin_stroke,   // a stroke starts, in `tone`; one undo step from here
@@ -48,8 +66,16 @@ struct BrushAction {
 };
 
 // The (u, v) of stroke_field.hpp for a point in image coordinates (view_transform.hpp's: (0, 0) at
-// the picture's top left corner, one unit per preview pixel). (0, 0) for an empty canvas.
-[[nodiscard]] FieldPoint brush_point(ViewPoint image, BrushCanvas canvas) noexcept;
+// the picture's top left corner, one unit per preview pixel). On a framed canvas the point is a
+// framed position (times the framing's scale), and (u, v) is the whole-photo point under it
+// (FrameMap::to_photo), so a stroke lands on the subject whatever the frame. (0, 0) for an empty
+// canvas.
+[[nodiscard]] FieldPoint brush_point(ViewPoint image, const BrushCanvas& canvas);
+
+// The inverse: where the photo point `p` is on the canvas, in image coordinates, for drawing
+// strokes and rings over the picture. Off the canvas for a point the frame leaves out. (0, 0) for
+// an empty canvas.
+[[nodiscard]] ViewPoint brush_canvas_point(FieldPoint p, const BrushCanvas& canvas);
 
 // One press of the mouse on the canvas in Brush mode, from press to release.
 //
@@ -125,7 +151,8 @@ struct BrushStyle {
 //                  the gesture ends where it began (the switch back off if the stroke turned it
 //                  on): no undo step, and redo is left as it was.
 // leave_brush and passthrough are not the painter's. An action out of turn (a point without a
-// begin) does nothing. On the first stroke of a photo the field's aspect is set from `canvas`.
+// begin) does nothing. On the first stroke of a photo the field's aspect is set from `canvas`:
+// the whole photo's (brush_photo_size), never the framed picture's.
 class StrokePainter {
 public:
     [[nodiscard]] MaybeError apply(const BrushAction& action, const BrushStyle& style,
@@ -177,6 +204,12 @@ struct BrushRing {
     float inner = 0.0f;
 };
 [[nodiscard]] BrushRing brush_ring(const ViewState& s, const ViewGeometry& g, float radius,
+                                   float softness) noexcept;
+// The same on `canvas`, whose picture is the one in `g`: the radius is a fraction of the WHOLE
+// photo's long side (brush_long_side), framed or not, so the ring is the circle a stroke paints.
+// Without framing it is the ring above.
+[[nodiscard]] BrushRing brush_ring(const ViewState& s, const ViewGeometry& g,
+                                   const BrushCanvas& canvas, float radius,
                                    float softness) noexcept;
 
 // Whether the stroke mask shows: while M is held in Brush mode, and not while typing.

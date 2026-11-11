@@ -709,3 +709,105 @@ TEST(FramedExport, OneAndEightThreadsWriteTheSameFile) {
     fs::remove(out1);
     fs::remove(out8);
 }
+
+// --- The brush on a framed canvas ---------------------------------------------------------------
+
+namespace {
+
+// Where the dab of a stroke painted at `at` on the framed canvas peaks in the framed render: the
+// centroid of the stroke mask's dodge, in canvas units (pixel i's centre at i + 0.5).
+prism::gui::ViewPoint painted_peak(Session& session, prism::gui::ViewPoint at) {
+    const prism::gui::BrushCanvas canvas = prism::gui::brush_canvas(session);
+    prism::gui::BrushStyle style;
+    style.radius = 0.05f;
+    style.softness = 1.0f;
+    style.strength = 1.0f;
+    prism::gui::BrushGesture gesture;
+    prism::gui::StrokePainter painter;
+    const float spacing = prism::min_point_spacing(style.radius, prism::gui::brush_long_side(canvas));
+    for (const auto& action : gesture.press(at, {}, prism::gui::BrushTone::dodge, spacing, canvas)) {
+        EXPECT_EQ(painter.apply(action, style, canvas, session), std::nullopt);
+    }
+    for (const auto& action : gesture.release(at)) {
+        EXPECT_EQ(painter.apply(action, style, canvas, session), std::nullopt);
+    }
+    PreviewOptions options;
+    options.stroke_mask = true;
+    const PreviewFrame frame = render(session, options);
+    double sum = 0.0;
+    double sx = 0.0;
+    double sy = 0.0;
+    for (int y = 0; y < frame.height; ++y) {
+        for (int x = 0; x < frame.width; ++x) {
+            const int byte = frame.stroke_mask[static_cast<std::size_t>(y) * frame.width + x];
+            const double w = byte > 128 ? byte - 128 : 0;
+            sum += w;
+            sx += w * (x + 0.5);
+            sy += w * (y + 0.5);
+        }
+    }
+    EXPECT_GT(sum, 0.0);
+    return {static_cast<float>(sx / sum), static_cast<float>(sy / sum)};
+}
+
+}  // namespace
+
+TEST(FramedBrush, AStrokeLandsUnderThePointerOnATurnedCroppedCanvas) {
+    for (const float angle : {4.0f, -4.0f}) {
+        Opened o("in.png", turned_frame(angle));
+        EditSettings s = o.session.settings();
+        s.strokes = Strokes{};
+        ASSERT_EQ(o.session.set_settings(s), std::nullopt);
+        const Image& base = *o.session.preview_base();
+        // Off the middle, and off the pixel grid, so that a map about the wrong centre, a missing
+        // turn or a missing crop all move the dab.
+        const prism::gui::ViewPoint at{static_cast<float>(base.width) * 0.62f + 0.3f,
+                                       static_cast<float>(base.height) * 0.41f + 0.7f};
+        const prism::gui::ViewPoint peak = painted_peak(o.session, at);
+        EXPECT_NEAR(peak.x, at.x, 0.5f) << angle;
+        EXPECT_NEAR(peak.y, at.y, 0.5f) << angle;
+        // The point the stroke holds is the photo point under the pointer, and maps back to it.
+        const prism::gui::BrushCanvas canvas = prism::gui::brush_canvas(o.session);
+        const FieldPoint p = prism::gui::brush_point(at, canvas);
+        const prism::gui::ViewPoint back = prism::gui::brush_canvas_point(p, canvas);
+        EXPECT_NEAR(back.x, at.x, 1e-3f);
+        EXPECT_NEAR(back.y, at.y, 1e-3f);
+        ASSERT_FALSE(o.session.settings().strokes.empty());
+        EXPECT_EQ(o.session.settings().strokes.field()->strokes[0]->points[0], p);
+    }
+}
+
+TEST(FramedBrush, TheRingSpacingAndAspectAreTheWholePhotos) {
+    Opened o("in.png", turned_frame(3.0f));
+    const prism::gui::BrushCanvas canvas = prism::gui::brush_canvas(o.session);
+    ASSERT_TRUE(canvas.framing.has_value());
+    ASSERT_LT(canvas.width, 200);
+    EXPECT_EQ(prism::gui::brush_photo_size(canvas), (PixelSize{200, 133}));
+    EXPECT_EQ(prism::gui::brush_long_side(canvas), 200);
+    // The ring: 0.05 of the whole photo's 200 px at the view's zoom, on a density-1 canvas,
+    // whatever the framed picture's size.
+    const prism::gui::ViewGeometry g{0.0f, 0.0f, 900.0f, 700.0f, 1.0f, canvas.width,
+                                     canvas.height};
+    const prism::gui::ViewState s = prism::gui::view_zoomed_to(prism::gui::ViewState{}, g, 3.0f);
+    const prism::gui::BrushRing ring = prism::gui::brush_ring(s, g, canvas, 0.05f, 0.5f);
+    const float zoom = prism::gui::view_zoom(s, g);
+    EXPECT_FLOAT_EQ(ring.outer, 0.05f * 200.0f * zoom);
+    EXPECT_FLOAT_EQ(ring.inner, 0.05f * 200.0f * zoom * 0.5f);
+    // A first stroke sets the field's aspect from the whole photo.
+    EditSettings none = o.session.settings();
+    none.strokes = Strokes{};
+    ASSERT_EQ(o.session.set_settings(none), std::nullopt);
+    prism::gui::StrokePainter painter;
+    const prism::gui::BrushStyle style;
+    ASSERT_EQ(painter.apply({prism::gui::BrushActionKind::begin_stroke, prism::gui::BrushTone::dodge, {}},
+                            style, canvas, o.session),
+              std::nullopt);
+    ASSERT_EQ(painter.apply({prism::gui::BrushActionKind::add_point, prism::gui::BrushTone::dodge,
+                             {0.5f, 0.5f}},
+                            style, canvas, o.session),
+              std::nullopt);
+    EXPECT_EQ(o.session.settings().strokes.field()->aspect, prism::aspect_of(200, 133));
+    // The point spacing's one-pixel floor is a pixel of the whole photo's long side.
+    EXPECT_FLOAT_EQ(prism::min_point_spacing(0.0001f, prism::gui::brush_long_side(canvas)),
+                    1.0f / 200.0f);
+}
