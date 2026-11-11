@@ -811,3 +811,34 @@ TEST(FramedBrush, TheRingSpacingAndAspectAreTheWholePhotos) {
     EXPECT_FLOAT_EQ(prism::min_point_spacing(0.0001f, prism::gui::brush_long_side(canvas)),
                     1.0f / 200.0f);
 }
+
+// --- The close prompt ---------------------------------------------------------------------------
+
+TEST(FrameCloseGuard, AFrameAsksEvenRightAfterAnExport) {
+    prism::gui::CloseState state;
+    state.has_file = true;
+    state.dirty = false;  // exported just now
+    EXPECT_EQ(prism::gui::close_requested(state), prism::gui::CloseStep::proceed);
+    state.has_frame = true;
+    EXPECT_EQ(prism::gui::close_requested(state), prism::gui::CloseStep::ask);
+    state.export_running = true;
+    EXPECT_EQ(prism::gui::close_requested(state), prism::gui::CloseStep::wait_for_export);
+
+    // The baseline is clean after the export, and the frame still asks.
+    EditSettings framed;
+    framed.frame = turned_frame(1.0f);
+    prism::gui::SavedBaseline baseline;
+    baseline.opened(EditSettings{});
+    baseline.exported(framed, "out.jpg");
+    EXPECT_FALSE(baseline.dirty(framed));
+
+    using prism::gui::Pending;
+    EXPECT_EQ(prism::gui::prompt_text(Pending::quit, false, true).strokes_note,
+              "Framing isn't saved in recipes and is lost when the photo closes.");
+    EXPECT_EQ(prism::gui::prompt_text(Pending::quit, true, true).strokes_note,
+              "Framing and dodging and burning aren't saved in recipes and are lost when the photo "
+              "closes.");
+    EXPECT_EQ(prism::gui::prompt_text(Pending::quit, true, false).strokes_note,
+              "Dodging and burning isn't saved in recipes and is lost when the photo closes.");
+    EXPECT_EQ(prism::gui::prompt_text(Pending::quit, false, false).strokes_note, "");
+}

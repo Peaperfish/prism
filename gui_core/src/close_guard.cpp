@@ -35,7 +35,8 @@ CloseStep close_requested(const CloseState& state) noexcept {
     if (state.export_running) {
         return CloseStep::wait_for_export;
     }
-    return state.dirty || state.has_strokes ? CloseStep::ask : CloseStep::proceed;
+    return state.dirty || state.has_strokes || state.has_frame ? CloseStep::ask
+                                                                : CloseStep::proceed;
 }
 
 CloseStep prompt_choice(PromptChoice choice) noexcept {
@@ -64,11 +65,17 @@ CloseStep recipe_save_finished(RecipeEnd end) noexcept {
     return end == RecipeEnd::saved ? CloseStep::proceed : CloseStep::cancel;
 }
 
-PromptText prompt_text(Pending pending, bool has_strokes) noexcept {
-    return {"You have edits that haven't been exported or saved as a recipe.",
-            has_strokes ? "Dodging and burning isn't saved in recipes and is lost when the photo "
-                          "closes."
-                        : "",
+PromptText prompt_text(Pending pending, bool has_strokes, bool has_frame) noexcept {
+    std::string_view note;
+    if (has_strokes && has_frame) {
+        note = "Framing and dodging and burning aren't saved in recipes and are lost when the "
+               "photo closes.";
+    } else if (has_frame) {
+        note = "Framing isn't saved in recipes and is lost when the photo closes.";
+    } else if (has_strokes) {
+        note = "Dodging and burning isn't saved in recipes and is lost when the photo closes.";
+    }
+    return {"You have edits that haven't been exported or saved as a recipe.", note,
             "Export…", "Save Recipe…",
             pending == Pending::quit ? "Quit Without Saving" : "Open Without Saving", "Cancel"};
 }
