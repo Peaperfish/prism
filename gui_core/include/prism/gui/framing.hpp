@@ -26,7 +26,8 @@ namespace prism::gui {
 // Sizes are in pixels of the photo the frame is edited on: the whole preview base, whose fractions
 // are the file's too (prism/frame.hpp).
 
-// --- The view while framing -----------------------------------------------------------------------
+// --- The view while framing
+// -----------------------------------------------------------------------
 
 // A position on the canvas, in the canvas's own units (screen units in the app), from its top left
 // corner, y down.
@@ -88,7 +89,8 @@ struct FramingView {
 // `frame`'s rectangle on the canvas (upright: the view turns with the frame's angle).
 [[nodiscard]] CanvasRect frame_rect(const FramingView& view, const Frame& frame) noexcept;
 
-// --- Handles and drags ----------------------------------------------------------------------------
+// --- Handles and drags
+// ----------------------------------------------------------------------------
 
 enum class FrameHandle {
     none,
@@ -137,10 +139,11 @@ struct FrameEdit {
                                                   int photo_height);
 
 // `start` turned to `angle` degrees (clamped to -45..45) about the FRAME's own centre: the photo
-// point under the frame's centre stays where it is, the frame keeps its size in pixels, and fit_frame
-// then closes the blades in so no corner shows (moving the centre straight towards the photo's
-// centre only if it had left the photo). Turning back to `start`'s own angle gives `start` exactly,
-// so a gesture that computes every step from its start never shrinks for good (#58).
+// point under the frame's centre stays where it is, the frame keeps its size in pixels, and
+// fit_frame then closes the blades in so no corner shows. The centre moves only if it would leave
+// the photo or the straightened bounds the edges must keep to, and then straight towards the
+// photo's centre. Turning back to `start`'s own angle gives `start` exactly, so a gesture that
+// works out every step from its start never shrinks for good (#58).
 [[nodiscard]] FrameEdit turn_frame(const Frame& start, float angle, int photo_width,
                                    int photo_height);
 
@@ -151,7 +154,7 @@ struct FrameEdit {
                                                     CanvasPoint b) noexcept;
 
 // `f` with aspect `aspect` chosen: Free only unlocks it; any other shape is apply_aspect about the
-// frame's centre, then fit_frame.
+// frame's centre, then fit_frame. Choosing the aspect `f` has already changes nothing.
 [[nodiscard]] FrameEdit choose_aspect(const Frame& f, Aspect aspect, int photo_width,
                                       int photo_height);
 
@@ -160,7 +163,8 @@ struct FrameEdit {
 // fit_frame.
 [[nodiscard]] FrameEdit turn_aspect(const Frame& f, int photo_width, int photo_height);
 
-// --- The framing state ------------------------------------------------------------------------------
+// --- The framing state
+// ------------------------------------------------------------------------------
 
 // What a gesture under way is.
 enum class FramingGesture {
@@ -245,7 +249,8 @@ private:
     bool fitted_ = false;
 };
 
-// --- Guides -----------------------------------------------------------------------------------------
+// --- Guides
+// -----------------------------------------------------------------------------------------
 
 enum class FramingGuides {
     none,
@@ -265,7 +270,8 @@ inline constexpr int framing_grid_cells = 8;
 [[nodiscard]] std::vector<CanvasLine> framing_guide_lines(const CanvasRect& frame,
                                                           FramingGuides guides);
 
-// --- Keys and the other tools -----------------------------------------------------------------------
+// --- Keys and the other tools
+// -----------------------------------------------------------------------
 
 enum class FramingKey {
     c,           // C: framing on or off
@@ -276,10 +282,10 @@ enum class FramingKey {
 
 enum class FramingKeyAction {
     none,
-    begin_framing,  // enter framing (FramingState::begin)
-    leave_framing,  // leave, keeping the frame (FramingState::leave)
+    begin_framing,   // enter framing (FramingState::begin)
+    leave_framing,   // leave, keeping the frame (FramingState::leave)
     cancel_gesture,  // FramingState::cancel
-    turn_aspect,    // FramingState::flip_aspect
+    turn_aspect,     // FramingState::flip_aspect
 };
 
 struct FramingKeyContext {
@@ -292,8 +298,8 @@ struct FramingKeyContext {
 };
 
 // What `key` does: nothing behind a modal sheet (Return keeps its meaning there), while a text
-// field has the keyboard, or during a brush stroke. C enters framing with a photo open and leaves it
-// when on; Return leaves; Esc cancels a framing gesture under way (Esc otherwise goes to
+// field has the keyboard, or during a brush stroke. C enters framing with a photo open and leaves
+// it when on; Return leaves; Esc cancels a framing gesture under way (Esc otherwise goes to
 // escape_action, where leaving framing comes first); X turns the aspect while framing.
 [[nodiscard]] FramingKeyAction framing_key(FramingKey key, const FramingKeyContext& c) noexcept;
 
@@ -301,7 +307,8 @@ struct FramingKeyContext {
 // comparison is dropped as well (#58).
 [[nodiscard]] CanvasTools tools_when_framing(CanvasTools tools) noexcept;
 
-// --- Scopes -----------------------------------------------------------------------------------------
+// --- Scopes
+// -----------------------------------------------------------------------------------------
 
 enum class ScopeSource {
     framed_base,  // the picture as rendered: the framed part
@@ -314,7 +321,8 @@ enum class ScopeSource {
 // The words in the scopes' title for that: "whole photo, while framing", or nothing.
 [[nodiscard]] std::string_view scope_source_detail(ScopeSource source) noexcept;
 
-// --- Explanations -----------------------------------------------------------------------------------
+// --- Explanations
+// -----------------------------------------------------------------------------------
 
 // The angle in words, to a tenth of a degree: "Upright" at exactly 0, "turned 2.5° clockwise",
 // "turned 0.5° anticlockwise", and "turned under 0.1° clockwise" for a turn too small to show.

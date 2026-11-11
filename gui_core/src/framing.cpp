@@ -140,7 +140,8 @@ std::string times(PixelSize size) {
 
 }  // namespace
 
-// --- The view ---------------------------------------------------------------------------------------
+// --- The view
+// ---------------------------------------------------------------------------------------
 
 FramingView framing_view(float angle, int photo_width, int photo_height, double canvas_width,
                          double canvas_height, double margin) {
@@ -189,12 +190,17 @@ std::array<CanvasPoint, 4> photo_corners(const FramingView& view) noexcept {
 CanvasRect frame_rect(const FramingView& view, const Frame& frame) noexcept {
     const double w = view.photo_width;
     const double h = view.photo_height;
-    const auto x = [&](float f) { return view.centre.x + view.scale * (static_cast<double>(f) - 0.5) * w; };
-    const auto y = [&](float f) { return view.centre.y + view.scale * (static_cast<double>(f) - 0.5) * h; };
+    const auto x = [&](float f) {
+        return view.centre.x + view.scale * (static_cast<double>(f) - 0.5) * w;
+    };
+    const auto y = [&](float f) {
+        return view.centre.y + view.scale * (static_cast<double>(f) - 0.5) * h;
+    };
     return {{x(frame.left), y(frame.top)}, {x(frame.right), y(frame.bottom)}};
 }
 
-// --- Handles and drags ------------------------------------------------------------------------------
+// --- Handles and drags
+// ------------------------------------------------------------------------------
 
 FrameHandle frame_handle_at(const FramingView& view, const Frame& frame, CanvasPoint at,
                             double reach) noexcept {
@@ -283,8 +289,8 @@ std::optional<FrameEdit> drag_frame(const Frame& start, FrameHandle handle, Canv
         // As far as the photo's straightened bounds allow from the held corner, keeping the shape.
         const double room_w = moves_left ? ox + w / 2.0 : w / 2.0 - ox;
         const double room_h = moves_top ? oy + h / 2.0 : h / 2.0 - oy;
-        const double k = std::min({1.0, room_w / std::max(width, 1e-12),
-                                   room_h / std::max(height, 1e-12)});
+        const double k =
+            std::min({1.0, room_w / std::max(width, 1e-12), room_h / std::max(height, 1e-12)});
         width *= k;
         height *= k;
         left = moves_left ? ox - width : ox;
@@ -384,6 +390,20 @@ FrameEdit turn_frame(const Frame& start, float angle, int photo_width, int photo
     const double pv = -was.s * b.cx + was.c * b.cy;
     const Turn now = turn_of(wanted);
     Box turned{now.c * pu - now.s * pv, now.s * pu + now.c * pv, b.ax, b.ay};
+    // A centre past the straightened bounds (a point near a corner, turned far) moves straight
+    // towards the photo's centre until it is half a pixel inside them, as fit_frame moves one that
+    // is off the photo, then the rectangle shrinks about it to fit them.
+    const double reach_x = std::max(w / 2.0 - 0.5, 0.0);
+    const double reach_y = std::max(h / 2.0 - 0.5, 0.0);
+    double m = 1.0;
+    if (std::abs(turned.cx) > reach_x) {
+        m = std::min(m, reach_x / std::abs(turned.cx));
+    }
+    if (std::abs(turned.cy) > reach_y) {
+        m = std::min(m, reach_y / std::abs(turned.cy));
+    }
+    turned.cx *= m;
+    turned.cy *= m;
     turned = inside_bounds(turned, w, h);
     Frame asked = with_box(start, turned, w, h);
     asked.angle = wanted;
@@ -409,15 +429,18 @@ std::optional<float> straighten_angle(const FramingView& view, CanvasPoint a,
     }
     // Within 45 degrees of level it is made level, otherwise upright.
     const double off = std::abs(on_screen) <= 45.0 ? on_screen
-                       : on_screen > 0.0          ? on_screen - 90.0
-                                                  : on_screen + 90.0;
+                       : on_screen > 0.0           ? on_screen - 90.0
+                                                   : on_screen + 90.0;
     // The view turns the photo by its angle; turning it by `off` less brings the line to level.
     const double limit = frame_angle_range.max;
-    return static_cast<float>(
-        std::clamp(static_cast<double>(view.angle) - off, -limit, limit));
+    return static_cast<float>(std::clamp(static_cast<double>(view.angle) - off, -limit, limit));
 }
 
 FrameEdit choose_aspect(const Frame& f, Aspect aspect, int photo_width, int photo_height) {
+    if (aspect == f.aspect) {
+        (void)fit_frame(f, photo_width, photo_height);  // throws for an invalid frame
+        return {f, false};                              // the lock it has already: nothing changes
+    }
     Frame asked = f;
     asked.aspect = aspect;
     if (aspect == Aspect::free) {
@@ -445,7 +468,8 @@ FrameEdit turn_aspect(const Frame& f, int photo_width, int photo_height) {
     return fitted(asked, photo_width, photo_height);
 }
 
-// --- The framing state ------------------------------------------------------------------------------
+// --- The framing state
+// ------------------------------------------------------------------------------
 
 namespace {
 
@@ -522,8 +546,9 @@ bool FramingState::press(CanvasPoint at, bool alt, const FramingView& view, doub
             return false;
         }
     }
-    start(alt ? FramingGesture::horizon
-              : handle == FrameHandle::inside ? FramingGesture::move : FramingGesture::handle);
+    start(alt                             ? FramingGesture::horizon
+          : handle == FrameHandle::inside ? FramingGesture::move
+                                          : FramingGesture::handle);
     handle_ = handle;
     view_ = view;
     from_ = at;
@@ -637,7 +662,8 @@ void FramingState::follow(const std::optional<Frame>& current) {
     }
 }
 
-// --- Guides -----------------------------------------------------------------------------------------
+// --- Guides
+// -----------------------------------------------------------------------------------------
 
 FramingGuides framing_guides(FramingGesture gesture) noexcept {
     switch (gesture) {
@@ -671,7 +697,8 @@ std::vector<CanvasLine> framing_guide_lines(const CanvasRect& frame, FramingGuid
     return lines;
 }
 
-// --- Keys and the other tools -----------------------------------------------------------------------
+// --- Keys and the other tools
+// -----------------------------------------------------------------------
 
 FramingKeyAction framing_key(FramingKey key, const FramingKeyContext& c) noexcept {
     if (shortcuts_blocked(c.sheets) || c.text_editing || c.stroking) {
@@ -689,8 +716,7 @@ FramingKeyAction framing_key(FramingKey key, const FramingKeyContext& c) noexcep
             return c.framing && c.gesture ? FramingKeyAction::cancel_gesture
                                           : FramingKeyAction::none;
         case FramingKey::x:
-            return c.framing && !c.gesture ? FramingKeyAction::turn_aspect
-                                           : FramingKeyAction::none;
+            return c.framing && !c.gesture ? FramingKeyAction::turn_aspect : FramingKeyAction::none;
     }
     return FramingKeyAction::none;
 }
@@ -699,7 +725,8 @@ CanvasTools tools_when_framing(CanvasTools /*tools*/) noexcept {
     return CanvasTools{};
 }
 
-// --- Scopes -----------------------------------------------------------------------------------------
+// --- Scopes
+// -----------------------------------------------------------------------------------------
 
 ScopeSource scope_source(bool framing) noexcept {
     return framing ? ScopeSource::whole_base : ScopeSource::framed_base;
@@ -709,7 +736,8 @@ std::string_view scope_source_detail(ScopeSource source) noexcept {
     return source == ScopeSource::whole_base ? "whole photo, while framing" : "";
 }
 
-// --- Explanations -----------------------------------------------------------------------------------
+// --- Explanations
+// -----------------------------------------------------------------------------------
 
 std::string framing_angle_text(float angle) {
     if (angle == 0.0f || !std::isfinite(angle)) {
