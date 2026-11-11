@@ -114,13 +114,16 @@ struct BrushStyle {
 [[nodiscard]] float brush_weight(BrushTone tone, float strength) noexcept;
 
 // Applies a BrushGesture's actions to the Session's strokes, one undo step a stroke:
-//   begin_stroke   a gesture begins (Session::begin_gesture), with the brush of `style`;
+//   begin_stroke   a gesture begins (Session::begin_gesture), with the brush of `style`; if the
+//                  Dodge & burn switch is off it is switched on inside the gesture, so the stroke
+//                  and the switch are one undo step (as the neutral picker does for White balance);
 //   add_point      the first makes the stroke, after every stroke already there, and each one
 //                  after that is added to its end: a new stroke object each time, with the old
 //                  points first, so the preview's FieldCache only rasterises what is new;
 //   commit_stroke  the gesture ends: one undo step;
 //   cancel_stroke  the strokes go back to the very ones there were before (the same objects), and
-//                  the gesture ends where it began: no undo step, and redo is left as it was.
+//                  the gesture ends where it began (the switch back off if the stroke turned it
+//                  on): no undo step, and redo is left as it was.
 // leave_brush and passthrough are not the painter's. An action out of turn (a point without a
 // begin) does nothing. On the first stroke of a photo the field's aspect is set from `canvas`.
 class StrokePainter {
@@ -134,6 +137,7 @@ private:
     MaybeError set_strokes(Session& session, Strokes strokes);
 
     std::optional<Strokes> before_;  // the strokes before this one
+    bool switched_on_ = false;       // this stroke turned the Dodge & burn switch on
     FieldStroke stroke_;             // this one so far
 };
 
@@ -184,11 +188,5 @@ struct BrushRing {
 // ABGR8888 lays bytes out: R in the low byte, A in the high one).
 [[nodiscard]] std::uint32_t stroke_mask_abgr(std::uint8_t byte, std::uint32_t dodge_abgr,
                                              std::uint32_t burn_abgr) noexcept;
-
-// Turning the Brush on while the Dodge & burn switch is off switches it on, so that the strokes the
-// Brush is about to paint show. As the neutral picker does for White balance (apply_pick, then
-// Session::set_settings): one undo step, and none when the switch is already on. Returns the
-// session's error, if any.
-[[nodiscard]] MaybeError brush_turns_dodge_burn_on(Session& session);
 
 }  // namespace prism::gui

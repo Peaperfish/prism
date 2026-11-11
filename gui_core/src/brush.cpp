@@ -119,6 +119,19 @@ MaybeError StrokePainter::apply(const BrushAction& action, const BrushStyle& sty
             }
             session.begin_gesture();
             before_ = session.settings().strokes;
+            switched_on_ = false;
+            if (!session.settings().dodge_burn_on) {
+                // In the stroke's own gesture: one undo step for the stroke and the switch.
+                EditSettings on = session.settings();
+                on.dodge_burn_on = true;
+                switched_on_ = true;
+                if (MaybeError error = session.set_settings(on)) {
+                    session.end_gesture();
+                    before_.reset();
+                    switched_on_ = false;
+                    return error;
+                }
+            }
             stroke_ = {};
             stroke_.radius = style.radius;
             stroke_.softness = style.softness;
@@ -147,9 +160,14 @@ MaybeError StrokePainter::apply(const BrushAction& action, const BrushStyle& sty
             if (!before_) {
                 return std::nullopt;
             }
-            Strokes before = std::move(*before_);
+            EditSettings restored = session.settings();
+            restored.strokes = std::move(*before_);
+            if (switched_on_) {
+                restored.dodge_burn_on = false;
+            }
             before_.reset();
-            MaybeError error = set_strokes(session, std::move(before));
+            switched_on_ = false;
+            MaybeError error = session.set_settings(restored);
             session.end_gesture();
             return error;
         }
@@ -226,15 +244,6 @@ std::uint32_t stroke_mask_abgr(std::uint8_t byte, std::uint32_t dodge_abgr,
     const std::uint32_t alpha = (colour >> 24) & 0xFFu;
     const std::uint32_t scaled = (alpha * static_cast<std::uint32_t>(distance) + 63u) / 127u;
     return (colour & 0x00FFFFFFu) | (scaled << 24);
-}
-
-MaybeError brush_turns_dodge_burn_on(Session& session) {
-    if (session.settings().dodge_burn_on) {
-        return std::nullopt;
-    }
-    EditSettings edited = session.settings();
-    edited.dodge_burn_on = true;
-    return session.set_settings(edited);  // one undo step
 }
 
 }  // namespace prism::gui

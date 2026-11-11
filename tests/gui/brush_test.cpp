@@ -788,32 +788,78 @@ TEST(StrokeMaskRender, ThreeStrokesUndoneAndRedoneComeBackExactly) {
     EXPECT_EQ(session.settings().strokes.field(), states[3].strokes.field());
 }
 
-TEST(BrushTurnsDodgeBurnOn, SwitchesTheStageOnAsOneUndoStep) {
-    Session session;
+// The first stroke switches Dodge & burn on when it is off, inside its own gesture.
+EditSettings with_switch_off() {
     EditSettings s;
     s.exposure_stops = 1.0f;
     s.dodge_burn_on = false;
-    ASSERT_EQ(session.set_settings(s), std::nullopt);
+    return s;
+}
+
+TEST(StrokePainter, AFirstStrokeWithTheSwitchOffSwitchesItOnInTheSameUndoStep) {
+    Session session;
+    StrokePainter painter;
+    ASSERT_EQ(session.set_settings(with_switch_off()), std::nullopt);
     const std::size_t steps = session.history().undo_steps();
-    ASSERT_EQ(brush_turns_dodge_burn_on(session), std::nullopt);
+    paint(painter, session, {{0.1f, 0.1f}, {0.2f, 0.2f}});
     EXPECT_TRUE(session.settings().dodge_burn_on);
-    EXPECT_EQ(session.settings().exposure_stops, 1.0f);  // nothing else moved
-    EXPECT_EQ(session.history().undo_steps(), steps + 1);
+    EXPECT_FALSE(session.settings().strokes.empty());
+    EXPECT_EQ(session.settings().exposure_stops, 1.0f);
+    EXPECT_EQ(session.history().undo_steps(), steps + 1);  // the stroke and the switch: one step
     ASSERT_EQ(session.undo(), std::nullopt);
+    EXPECT_TRUE(session.settings().strokes.empty());
     EXPECT_FALSE(session.settings().dodge_burn_on);
     EXPECT_EQ(session.history().undo_steps(), steps);
 }
 
-TEST(BrushTurnsDodgeBurnOn, LeavesASwitchThatIsAlreadyOnAlone) {
+TEST(StrokePainter, ACancelWithTheSwitchOffLeavesItOffWithNoStepAndRedoAsItWas) {
     Session session;
-    EditSettings s;
-    s.exposure_stops = 1.0f;
-    ASSERT_EQ(session.set_settings(s), std::nullopt);
+    StrokePainter painter;
+    ASSERT_EQ(session.set_settings(with_switch_off()), std::nullopt);
+    EditSettings later = with_switch_off();
+    later.exposure_stops = 2.0f;
+    ASSERT_EQ(session.set_settings(later), std::nullopt);
+    ASSERT_EQ(session.undo(), std::nullopt);  // so that there is a redo step to keep
+    const EditSettings before = session.settings();
+    const std::size_t undo_before = session.history().undo_steps();
+    const std::size_t redo_before = session.history().redo_steps();
+    ASSERT_EQ(redo_before, 1u);
+
+    ASSERT_EQ(painter.apply(begin(), {}, canvas, session), std::nullopt);
+    ASSERT_EQ(painter.apply(point(0.5f, 0.5f), {}, canvas, session), std::nullopt);
+    EXPECT_TRUE(session.settings().dodge_burn_on);  // it shows while the stroke is drawn
+    ASSERT_EQ(painter.apply(cancel(), {}, canvas, session), std::nullopt);
+
+    EXPECT_FALSE(session.settings().dodge_burn_on);
+    EXPECT_EQ(session.settings(), before);
+    EXPECT_FALSE(session.history().in_gesture());
+    EXPECT_EQ(session.history().undo_steps(), undo_before);
+    EXPECT_EQ(session.history().redo_steps(), redo_before);
+}
+
+TEST(StrokePainter, AStrokeWithTheSwitchAlreadyOnChangesNothingElse) {
+    Session session;
+    StrokePainter painter;
+    EditSettings on;
+    on.exposure_stops = 1.0f;
+    ASSERT_EQ(session.set_settings(on), std::nullopt);
     ASSERT_TRUE(session.settings().dodge_burn_on);
     const std::size_t steps = session.history().undo_steps();
-    ASSERT_EQ(brush_turns_dodge_burn_on(session), std::nullopt);
+    paint(painter, session, {{0.1f, 0.1f}});
     EXPECT_TRUE(session.settings().dodge_burn_on);
-    EXPECT_EQ(session.history().undo_steps(), steps);
+    EXPECT_EQ(session.history().undo_steps(), steps + 1);
+    ASSERT_EQ(session.undo(), std::nullopt);
+    EXPECT_TRUE(session.settings().dodge_burn_on);  // undoing the stroke does not touch the switch
+}
+
+TEST(StrokePainter, ACancelWithTheSwitchOnLeavesItOn) {
+    Session session;
+    StrokePainter painter;
+    ASSERT_EQ(painter.apply(begin(), {}, canvas, session), std::nullopt);
+    ASSERT_EQ(painter.apply(point(0.5f, 0.5f), {}, canvas, session), std::nullopt);
+    ASSERT_EQ(painter.apply(cancel(), {}, canvas, session), std::nullopt);
+    EXPECT_TRUE(session.settings().dodge_burn_on);
+    EXPECT_EQ(session.history().undo_steps(), 0u);
 }
 
 }  // namespace
