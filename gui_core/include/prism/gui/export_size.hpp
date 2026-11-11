@@ -55,8 +55,8 @@ struct ExportPlan {
 // The size of `frame`'s picture on a decode of `size` (plan_export_frame's size): `size` itself
 // without a frame or with a whole-photo one. What the Export sheet's Original, Long side and
 // Percent measure, on the file's size and on the size the export decodes at, including a RAW
-// file's estimated size (the result is then an estimate too). Zero for an empty size. Throws as
-// plan_export_frame for an invalid frame.
+// file's estimated size (the result is then an estimate too). `size` itself when either side is
+// below 1. Throws as plan_export_frame for an invalid frame.
 [[nodiscard]] PixelSize framed_export_size(const std::optional<Frame>& frame, PixelSize size);
 
 // The marker for a size that is only an estimate (a RAW file whose real size is not known yet): "about "

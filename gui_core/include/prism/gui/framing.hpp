@@ -26,8 +26,7 @@ namespace prism::gui {
 // Sizes are in pixels of the photo the frame is edited on: the whole preview base, whose fractions
 // are the file's too (prism/frame.hpp).
 
-// --- The view while framing
-// -----------------------------------------------------------------------
+// --- The view while framing ----------------------------------------------------------------------
 
 // A position on the canvas, in the canvas's own units (screen units in the app), from its top left
 // corner, y down.
@@ -89,8 +88,7 @@ struct FramingView {
 // `frame`'s rectangle on the canvas (upright: the view turns with the frame's angle).
 [[nodiscard]] CanvasRect frame_rect(const FramingView& view, const Frame& frame) noexcept;
 
-// --- Handles and drags
-// ----------------------------------------------------------------------------
+// --- Handles and drags ---------------------------------------------------------------------------
 
 enum class FrameHandle {
     none,
@@ -118,21 +116,25 @@ enum class FrameHandle {
 // The result of an edit that fit_frame finished.
 struct FrameEdit {
     Frame frame;
-    // Fitting changed what was asked for (a smaller frame, or one moved back onto the photo), so
-    // the frame is not where the pointer put it (framing_fit_note).
+    // Fitting made the frame smaller than what was asked for, or moved it back onto the photo
+    // (framing_fit_note says so). Changes under a hundredth of a pixel do not count.
     bool fitted = false;
 };
 
 // `start` (the frame when the drag began) with `handle` dragged from `from` to `to` (canvas points
 // in `view`, which shows `start`'s angle), on a photo_width x photo_height photo:
-//  - an edge moves on its own, and the aspect lock switches to Free (#58);
+//  - an edge moves on its own, and the aspect lock switches to Free if it moved (#58);
 //  - a corner moves with the opposite corner held; with an aspect lock the frame keeps its shape,
 //    the largest of that shape inside the rectangle the pointer spans;
-//  - inside moves the whole frame by the drag, keeping its size, and stops (sliding along) where a
-//    corner would leave the photo;
-// then fit_frame, so no corner shows. No side goes below framing_min_side. Nothing for
-// FrameHandle::none, or if the result would be smaller than that (the caller keeps what it had).
-// Throws as fit_frame if `start` is invalid.
+//  - an edge or a corner goes only as far as all four corners stay on the turned photo, the held
+//    sides staying where they are;
+//  - inside moves the whole frame by the drag, keeping its size: as far along the drag as every
+//    corner stays on the photo, then each axis's rest on its own, so it slides along an upright
+//    side of the straightened bounds (a slanted side of the turned photo stops it);
+// then fit_frame as a last guard, so no corner shows. No side goes below framing_min_side. No move
+// at all gives `start` back unchanged. Nothing for FrameHandle::none, or if the result would be
+// smaller than the minimum (the caller keeps what it had). Throws as fit_frame if `start` is
+// invalid.
 [[nodiscard]] std::optional<FrameEdit> drag_frame(const Frame& start, FrameHandle handle,
                                                   CanvasPoint from, CanvasPoint to,
                                                   const FramingView& view, int photo_width,
@@ -163,8 +165,7 @@ struct FrameEdit {
 // fit_frame.
 [[nodiscard]] FrameEdit turn_aspect(const Frame& f, int photo_width, int photo_height);
 
-// --- The framing state
-// ------------------------------------------------------------------------------
+// --- The framing state ---------------------------------------------------------------------------
 
 // What a gesture under way is.
 enum class FramingGesture {
@@ -249,8 +250,7 @@ private:
     bool fitted_ = false;
 };
 
-// --- Guides
-// -----------------------------------------------------------------------------------------
+// --- Guides --------------------------------------------------------------------------------------
 
 enum class FramingGuides {
     none,
@@ -270,8 +270,7 @@ inline constexpr int framing_grid_cells = 8;
 [[nodiscard]] std::vector<CanvasLine> framing_guide_lines(const CanvasRect& frame,
                                                           FramingGuides guides);
 
-// --- Keys and the other tools
-// -----------------------------------------------------------------------
+// --- Keys and the other tools --------------------------------------------------------------------
 
 enum class FramingKey {
     c,           // C: framing on or off
@@ -303,12 +302,11 @@ struct FramingKeyContext {
 // escape_action, where leaving framing comes first); X turns the aspect while framing.
 [[nodiscard]] FramingKeyAction framing_key(FramingKey key, const FramingKeyContext& c) noexcept;
 
-// The canvas tools when framing begins: all off (Brush, Sample, Pick and the test strip), and the
-// comparison is dropped as well (#58).
+// The canvas tools when framing begins: all off (Brush, Sample, Pick and the test strip, #58). The
+// caller also drops the comparison, which is not one of these.
 [[nodiscard]] CanvasTools tools_when_framing(CanvasTools tools) noexcept;
 
-// --- Scopes
-// -----------------------------------------------------------------------------------------
+// --- Scopes --------------------------------------------------------------------------------------
 
 enum class ScopeSource {
     framed_base,  // the picture as rendered: the framed part
@@ -321,12 +319,16 @@ enum class ScopeSource {
 // The words in the scopes' title for that: "whole photo, while framing", or nothing.
 [[nodiscard]] std::string_view scope_source_detail(ScopeSource source) noexcept;
 
-// --- Explanations
-// -----------------------------------------------------------------------------------
+// --- Explanations --------------------------------------------------------------------------------
 
 // The angle in words, to a tenth of a degree: "Upright" at exactly 0, "turned 2.5° clockwise",
 // "turned 0.5° anticlockwise", and "turned under 0.1° clockwise" for a turn too small to show.
 [[nodiscard]] std::string framing_angle_text(float angle);
+
+// The angle without "turned", for the Easel line and the framing bar (#58: "4:5 · 1.2° clockwise",
+// "Straighten … 1.2° clockwise"): "1.2° clockwise", "0.5° anticlockwise", "under 0.1° clockwise",
+// and "upright" at exactly 0.
+[[nodiscard]] std::string framing_turn_words(float angle);
 
 // The frame against the photo: "Frame 5120 × 3413 of 6000 × 4000 (73% of the photo)", the share
 // by area, rounded, "under 1%" when it rounds to nothing. With `exact` false both sizes read
