@@ -7,6 +7,7 @@
 #include <cstring>
 #include <exception>
 #include <mutex>
+#include <optional>
 #include <span>
 
 #include "prism/dodge_burn.hpp"
@@ -15,11 +16,6 @@
 namespace prism::gui {
 
 namespace {
-
-bool same_grid(const PixelGrid& a, const PixelGrid& b) noexcept {
-    return a.full_w == b.full_w && a.full_h == b.full_h && a.x0 == b.x0 && a.y0 == b.y0 &&
-           a.stride == b.stride && a.width() == b.width() && a.height() == b.height();
-}
 
 // The first `n` strokes of both are the same objects.
 bool same_strokes(const StrokeField& a, const StrokeField& b, std::size_t n) noexcept {
@@ -30,6 +26,15 @@ bool same_strokes(const StrokeField& a, const StrokeField& b, std::size_t n) noe
 
 bool same_bits(float a, float b) noexcept {
     return std::bit_cast<std::uint32_t>(a) == std::bit_cast<std::uint32_t>(b);
+}
+
+bool same_framing(const std::optional<GridFrame>& a, const std::optional<GridFrame>& b) noexcept {
+    if (!a || !b) {
+        return a.has_value() == b.has_value();
+    }
+    return same_bits(a->angle, b->angle) && same_bits(a->left, b->left) &&
+           same_bits(a->top, b->top) && same_bits(a->right, b->right) &&
+           same_bits(a->bottom, b->bottom) && same_bits(a->scale, b->scale);
 }
 
 // `now` is `was` with points added at the end, and the same brush.
@@ -64,6 +69,12 @@ std::size_t pixels_of(const PixelGrid& g) noexcept {
 }
 
 }  // namespace
+
+bool same_grid(const PixelGrid& a, const PixelGrid& b) noexcept {
+    return a.full_w == b.full_w && a.full_h == b.full_h && a.x0 == b.x0 && a.y0 == b.y0 &&
+           a.stride == b.stride && a.width() == b.width() && a.height() == b.height() &&
+           same_framing(a.framing, b.framing);
+}
 
 std::string_view field_path_name(FieldPath path) noexcept {
     switch (path) {
@@ -254,7 +265,8 @@ bool field_at(std::span<const float> field, const PixelGrid& grid, const PixelGr
     const int w = part.width();
     const int h = part.height();
     if (grid.stride <= 0 || part.stride <= 0 || part.full_w != grid.full_w ||
-        part.full_h != grid.full_h || field.size() != pixels_of(grid) ||
+        part.full_h != grid.full_h || !same_framing(part.framing, grid.framing) ||
+        field.size() != pixels_of(grid) ||
         part.stride % grid.stride != 0 || part.x0 < grid.x0 || part.y0 < grid.y0 ||
         (part.x0 - grid.x0) % grid.stride != 0 || (part.y0 - grid.y0) % grid.stride != 0) {
         return false;

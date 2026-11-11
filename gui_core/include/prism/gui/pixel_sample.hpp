@@ -53,12 +53,15 @@ struct PixelTrace {
 // full render's (see the thread-count note in prism/parallel.hpp). If a stage ever reads its
 // neighbours, this is the one function to change: run a small crop on the worker instead.
 //
-// Nothing for a pixel off the picture or an empty image. Throws std::invalid_argument for invalid
-// settings (see to_process_settings, also for `as_shot_white`) or a pixel buffer that does not
-// match the image's size.
+// `framing` is where `base` sits on the photo (PreviewOptions::framing): on the framed base, (x, y)
+// is a pixel of the framed picture. Nothing for a pixel off the picture or an empty image. Throws
+// std::invalid_argument for invalid settings (see to_process_settings, also for `as_shot_white`), a
+// pixel buffer that does not match the image's size, or a `framing` that does not fit the settings
+// and the base (check_framed_base).
 [[nodiscard]] std::optional<PixelTrace> sample_trace(
     const Image& base, const EditSettings& settings, int x, int y,
-    const std::optional<Chromaticity>& as_shot_white = std::nullopt);
+    const std::optional<Chromaticity>& as_shot_white = std::nullopt,
+    const std::optional<PictureFrame>& framing = std::nullopt);
 
 // The settings a pixel (x, y) of a width x height picture was rendered with: `s`, or the band's
 // (strip_band_settings) while a test strip is on. As in render_preview, no strip shows at Decode.
@@ -149,14 +152,15 @@ struct SampleRows {
 class SampleCache {
 public:
     // The trace of pixel (x, y), with the settings sample_settings gives. Computes it only if the
-    // pixel, the base, the settings, the viewed stage, the compare stage, the strip or the photo's
-    // as-shot light differ from the last call. Nothing for a pixel off the picture, and for settings that can't be rendered
+    // pixel, the base, the settings, the viewed stage, the compare stage, the strip, the photo's
+    // as-shot light or the base's framing differ from the last call. Nothing for a pixel off the picture, and for settings that can't be rendered
     // (the preview says why; a readout must not take the window down).
     [[nodiscard]] const PixelTrace* read(std::shared_ptr<const Image> base,
                                          const EditSettings& settings,
                                          const std::optional<TestStrip>& strip, StageId viewed,
                                          std::optional<StageId> compare, int x, int y,
-                                         const std::optional<Chromaticity>& as_shot_white = {});
+                                         const std::optional<Chromaticity>& as_shot_white = {},
+                                         const std::optional<PictureFrame>& framing = {});
 
     // The last read's result, without looking at anything.
     [[nodiscard]] const PixelTrace* current() const noexcept { return trace_ ? &*trace_ : nullptr; }
@@ -177,6 +181,7 @@ private:
         int x = 0;
         int y = 0;
         std::optional<Chromaticity> as_shot_white;
+        std::optional<PictureFrame> framing;
 
         bool operator==(const Key&) const = default;
     };

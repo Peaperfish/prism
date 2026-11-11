@@ -148,10 +148,14 @@ PixelGrid ClipRecorder::grid(const PixelGrid& image) const {
         return stage_grid(0, 0);
     }
     const int stride = report_.stride;
-    const int across = (width_ - first_ + stride - 1) / stride;
-    const int down = (height_ - first_ + stride - 1) / stride;
-    return stage_grid(image.full_w, image.full_h, image.x0 + first_ * image.stride,
-                      image.y0 + first_ * image.stride, stride * image.stride, across, down);
+    // A copy of `image`, so that a framed picture's sample grid is framed the same way.
+    PixelGrid g = image;
+    g.x0 = image.x0 + first_ * image.stride;
+    g.y0 = image.y0 + first_ * image.stride;
+    g.stride = stride * image.stride;
+    g.cols = (width_ - first_ + stride - 1) / stride;
+    g.rows = (height_ - first_ + stride - 1) / stride;
+    return g;
 }
 
 void ClipRecorder::stage_done_samples(StageId stage, const Image& grid) {
@@ -216,10 +220,12 @@ ClipReport ClipRecorder::report() const {
 }
 
 ClipReport compute_clip_report(const Image& base, const EditSettings& settings, int threads,
-                               const std::optional<Chromaticity>& as_shot_white) {
+                               const std::optional<Chromaticity>& as_shot_white,
+                               const std::optional<PictureFrame>& framing) {
+    check_framed_base(base.width, base.height, settings, framing);
     const ProcessSettings process_settings =
         to_process_settings(settings, final_stage, as_shot_white,
-                            stage_grid(base.width, base.height));
+                            stage_grid(framing, base.width, base.height));
     Image img = base;
     ClipRecorder recorder(img.width, img.height);
     recorder.decoded(img);

@@ -46,6 +46,11 @@ struct PreviewOptions {
     // The stroke mask (PreviewFrame::stroke_mask): where the Dodge & burn strokes are, and how
     // strongly they dodge or burn, one byte per pixel of the picture.
     bool stroke_mask = false;
+    // Like as_shot_white, what the picture is rather than something to compute: where the base sits
+    // on the photo when it is the framed base (Session::preview_framing), so that the strokes land
+    // where they were drawn. None for a base that is the whole photo. It must match the settings'
+    // frame and the base's size (check_framed_base), or the render fails with that message.
+    std::optional<PictureFrame> framing;
 
     PreviewOptions() = default;
     // Implicit, so that "scopes on/off" can still be written as a plain bool.
@@ -103,12 +108,14 @@ struct PreviewFrame {
 
 // Runs the pipeline on a copy of `base` up to and including `stop_after` (`final_stage` runs
 // every edit stage) and returns the linear float image at that point, before the 8-bit sRGB
-// encode. Nothing if `stop` was requested before it finished. Throws std::invalid_argument for
-// invalid settings (see to_process_settings).
+// encode. `framing` is where `base` sits on the photo (PreviewOptions::framing). Nothing if `stop`
+// was requested before it finished. Throws std::invalid_argument for invalid settings (see
+// to_process_settings) or a `framing` that does not fit them (check_framed_base).
 [[nodiscard]] std::optional<Image> render_stage_image(
     const Image& base, const EditSettings& settings, StageId stop_after, int threads = 0,
     std::stop_token stop = {}, const StageCallback& on_stage = {},
-    const std::optional<Chromaticity>& as_shot_white = std::nullopt);
+    const std::optional<Chromaticity>& as_shot_white = std::nullopt,
+    const std::optional<PictureFrame>& framing = std::nullopt);
 
 // Renders `base` with `settings` up to `stop_after` on the calling thread: runs only the stages
 // up to `stop_after` and then encodes that stage's image to 8-bit sRGB with encode_srgb8. With
@@ -127,6 +134,10 @@ struct PreviewFrame {
 // strip and by the clip report's sample grid; the frame is bit-identical either way. Only the
 // thread that owns the cache may pass it. Without one, a render rasterises as it always did (and
 // a stroke mask is made from a field rasterised just for it).
+//
+// With options.framing, `base` is the framed base and every grid (the picture, each band, the
+// clip report's sample grid) is a framed grid of the photo (stage_grid). Throws
+// std::invalid_argument if options.framing does not fit the settings and `base` (check_framed_base).
 [[nodiscard]] std::optional<PreviewFrame> render_preview(const Image& base,
                                                          const EditSettings& settings, int threads,
                                                          std::stop_token stop,

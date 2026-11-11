@@ -92,9 +92,15 @@ private:
     mutable std::atomic<std::size_t> field_reads_{0};
 };
 
+// Whether two grids are the same pixels on the same photo: the same size, place and stride, and
+// the same framing (both none, or the same angle, edges and scale, bit for bit). A frame turned or
+// moved with the same cols x rows is another grid.
+[[nodiscard]] bool same_grid(const PixelGrid& a, const PixelGrid& b) noexcept;
+
 // The values of `field` (on `grid`) at the pixels of `part`, row after row, into `out`: for a
 // render on a part of the picture (a test strip band, the clip report's sample grid) from the
-// field of the whole. False, and `out` cleared, if some pixel of `part` is not a pixel of `grid`.
+// field of the whole. False, and `out` cleared, if some pixel of `part` is not a pixel of `grid`
+// (which includes a `part` framed otherwise than `grid`).
 // The values are copied, so they are what rasterising on `part` gives (a pixel's field depends only
 // on the pixel and the strokes).
 bool field_at(std::span<const float> field, const PixelGrid& grid, const PixelGrid& part,

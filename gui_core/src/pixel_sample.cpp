@@ -345,7 +345,8 @@ std::string average_text(const SampleScale& scale) {
 }  // namespace
 
 std::optional<PixelTrace> sample_trace(const Image& base, const EditSettings& settings, int x,
-                                       int y, const std::optional<Chromaticity>& as_shot_white) {
+                                       int y, const std::optional<Chromaticity>& as_shot_white,
+                                       const std::optional<PictureFrame>& framing) {
     if (base.width < 0 || base.height < 0 ||
         base.pixels.size() != static_cast<std::size_t>(base.width) *
                                   static_cast<std::size_t>(base.height) * Image::channels) {
@@ -353,8 +354,10 @@ std::optional<PixelTrace> sample_trace(const Image& base, const EditSettings& se
     }
     // The one pixel's place on the preview, for Dodge & burn's strokes. Built once the base is
     // known to be a picture; the settings are checked even for a pixel off it.
-    const ProcessSettings process_settings = to_process_settings(
-        settings, final_stage, as_shot_white, stage_grid(base.width, base.height, x, y, 1, 1, 1));
+    check_framed_base(base.width, base.height, settings, framing);
+    const ProcessSettings process_settings =
+        to_process_settings(settings, final_stage, as_shot_white,
+                            stage_grid(framing, base.width, base.height, x, y, 1, 1, 1));
     if (x < 0 || y < 0 || x >= base.width || y >= base.height) {
         return std::nullopt;
     }
@@ -510,8 +513,9 @@ std::string describe_sample(const PixelTrace& trace, StageId viewed, std::option
 const PixelTrace* SampleCache::read(std::shared_ptr<const Image> base, const EditSettings& settings,
                                     const std::optional<TestStrip>& strip, StageId viewed,
                                     std::optional<StageId> compare, int x, int y,
-                                    const std::optional<Chromaticity>& as_shot_white) {
-    Key key{std::move(base), settings, strip, viewed, compare, x, y, as_shot_white};
+                                    const std::optional<Chromaticity>& as_shot_white,
+                                    const std::optional<PictureFrame>& framing) {
+    Key key{std::move(base), settings, strip, viewed, compare, x, y, as_shot_white, framing};
     if (key_ && *key_ == key) {
         return current();
     }
@@ -522,7 +526,7 @@ const PixelTrace* SampleCache::read(std::shared_ptr<const Image> base, const Edi
             trace_ = sample_trace(
                 *key.base,
                 sample_settings(settings, strip, viewed, key.base->width, key.base->height, x, y),
-                x, y, as_shot_white);
+                x, y, as_shot_white, framing);
         } catch (const std::invalid_argument&) {
             // Remembered too: asking again gives the same answer until the settings change.
         }

@@ -18,10 +18,12 @@ namespace prism::gui {
 std::optional<Image> render_stage_image(const Image& base, const EditSettings& settings,
                                         StageId stop_after, int threads, std::stop_token stop,
                                         const StageCallback& on_stage,
-                                        const std::optional<Chromaticity>& as_shot_white) {
+                                        const std::optional<Chromaticity>& as_shot_white,
+                                        const std::optional<PictureFrame>& framing) {
+    check_framed_base(base.width, base.height, settings, framing);
     const ProcessSettings process_settings =
         to_process_settings(settings, stop_after, as_shot_white,
-                            stage_grid(base.width, base.height));
+                            stage_grid(framing, base.width, base.height));
     if (stop.stop_requested()) {
         return std::nullopt;
     }
@@ -50,12 +52,9 @@ void use_field(ProcessSettings& p, const FieldView& view, std::vector<float>& st
     if (p.dodge_burn.field.strokes.empty() || view.values.empty()) {
         return;
     }
-    const PixelGrid& g = p.dodge_burn.grid;
-    const PixelGrid& v = view.grid;
-    if (g.full_w == v.full_w && g.full_h == v.full_h && g.x0 == v.x0 && g.y0 == v.y0 &&
-        g.stride == v.stride && g.width() == v.width() && g.height() == v.height()) {
+    if (same_grid(p.dodge_burn.grid, view.grid)) {
         p.dodge_burn.precomputed = view.values;
-    } else if (field_at(view.values, view.grid, g, storage)) {
+    } else if (field_at(view.values, view.grid, p.dodge_burn.grid, storage)) {
         p.dodge_burn.precomputed = storage;
     } else {
         return;
@@ -152,7 +151,7 @@ std::optional<PreviewFrame> render_strip(const Image& base, const EditSettings& 
             strip_band_settings(settings, strip.step, strip.count, static_cast<int>(i));
         // The band's place on the picture: the strokes keep their positions in every band.
         const PixelGrid band_grid =
-            stage_grid(base.width, base.height, r.x, r.y, 1, r.width, r.height);
+            stage_grid(options.framing, base.width, base.height, r.x, r.y, 1, r.width, r.height);
         // The band's part of the picture's field (read-only here: every band reads it at once).
         std::vector<float> band_field;
         FieldView band_view;
@@ -428,7 +427,8 @@ std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings
                                            int threads, std::stop_token stop,
                                            const StageCallback& on_stage, StageId stop_after,
                                            PreviewOptions options, FieldCache* field_cache) {
-    const PixelGrid whole = stage_grid(base.width, base.height);
+    check_framed_base(base.width, base.height, settings, options.framing);
+    const PixelGrid whole = stage_grid(options.framing, base.width, base.height);
     // Whether the Dodge & burn stage can run in this render: up to the viewed stage, or after it
     // for the clip report or a later compare stage.
     const auto reaches = [](StageId stage) {

@@ -207,7 +207,7 @@ public:
     // Where the pixels of sample_grid() sit on the photo, for the Dodge & burn stage that runs on
     // it: the recorder's image is `image` on the photo (stage_grid(W, H) for a whole picture, a
     // band's rectangle for a test strip band), and the sample grid takes every stride-th pixel of
-    // it from `first`. Empty (0 x 0) if the recorder has no dimensions.
+    // it from `first`, framed as `image` is. Empty (0 x 0) if the recorder has no dimensions.
     [[nodiscard]] PixelGrid grid(const PixelGrid& image) const;
     // Output encode, after the last stage: it clamps what the last stage left out of range.
     void finish();
@@ -235,11 +235,14 @@ private:
 
 // Runs the whole pipeline on a copy of `base` with `settings` and reports the clipping at every
 // stage. For tests and headless use; the preview renderer fills the same report during a render.
-// Throws std::invalid_argument for invalid settings (see to_process_settings, also for
-// `as_shot_white`).
+// `framing` is where `base` sits on the photo (PreviewOptions::framing): a framed base's report
+// measures the framed picture. Throws std::invalid_argument for invalid settings (see
+// to_process_settings, also for `as_shot_white`) or a `framing` that does not fit them
+// (check_framed_base).
 [[nodiscard]] ClipReport compute_clip_report(
     const Image& base, const EditSettings& settings, int threads = 0,
-    const std::optional<Chromaticity>& as_shot_white = std::nullopt);
+    const std::optional<Chromaticity>& as_shot_white = std::nullopt,
+    const std::optional<PictureFrame>& framing = std::nullopt);
 
 // Marks each pixel of `img` whose float values are out of range: bit 1 = some channel above 1.0,
 // bit 2 = no light (Y <= 0 with a negative channel), bit 4 = outside the gamut. NaN is none. One
