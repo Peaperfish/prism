@@ -18,7 +18,7 @@ prism <input>... [-o <output> | --out-dir <dir>] [--histogram <file>] [options]
 - At least one of `-o`, `--out-dir` and `--histogram` is required. With only `--histogram`, the whole pipeline still runs and the histogram shows the processed result, but no image is written. That is a quick way to check clipping before you export.
 - Every option except `--help`, `--version`, `--time`, `--raw-half` takes the next argument as its value, even if it starts with a minus sign, so `--exposure -1` works.
 - An option given twice is an error.
-- **Options are always applied in pipeline order**, whatever order you type them: reduction (`--long-side`), exposure, white balance, colour matrix, saturation, contrast, tone curve. `--long-side` comes first of all: the photo is reduced right after decoding, before exposure, so every later stage works on the small image. See [How Prism thinks about light](GUIDE.md#how-prism-thinks-about-light).
+- **Options are always applied in pipeline order**, whatever order you type them: the frame (`--rotate`, `--crop`, `--aspect`), reduction (`--long-side`), exposure, white balance, colour matrix, saturation, contrast, tone curve. The frame comes first of all, and `--long-side` after it: the photo is framed and reduced right after decoding, before exposure, so every later stage works on the small image. See [How Prism thinks about light](GUIDE.md#how-prism-thinks-about-light).
 - A stage left at its neutral value is skipped: exposure 0, the identity matrix, saturation 1 and contrast 1 leave every bit as it was. A tone curve always runs when you give one.
 - All processing is in linear light, in floating point. PNG and JPEG inputs are converted to linear light first and to 8-bit sRGB at the end. A RAW file is decoded to linear light with the camera's as-shot white balance (see the [README](../README.md#raw-files) for the details). A RAW file looks darker and flatter than the camera's JPEG until you add exposure and a tone curve; `--exposure +1 --curve filmic` is a good start.
 
@@ -88,6 +88,20 @@ clipped (0 / 255):  R 0.00% / 1.25%  G 0.00% / 0.80%  B 0.10% / 0.00%
 
 The file format follows the extension (`.png`, `.jpg`, `.jpeg`). The histogram is measured after the whole pipeline, on the 8-bit sRGB values that are saved (before any JPEG compression). It works with or without `-o`. No default.
 
+### `--rotate <degrees>`
+
+Straighten the photo by turning it about its centre, by a decimal from −45 to 45 degrees. Positive turns the picture clockwise on screen. A value outside the range, or text that is not a number, is a usage error (exit code 2). The frame is made smaller as needed so that no corner of the turned photo shows (a `note:` on stderr says so and gives the final size, and the exit code is unaffected). Default: 0.
+
+### `--crop <l,t,r,b>`
+
+Keep only this part of the photo: the left, top, right and bottom edges as four fractions from 0 to 1 of the photo's width and height, measured along the straightened axes (so at `--rotate 0` it is the plain crop). Left must be less than right, and top less than bottom; anything else is a usage error (exit code 2). Default: the whole photo.
+
+### `--aspect <shape>`
+
+Make the frame the largest one of this shape, centred in the `--crop` part (in the whole photo without `--crop`): `original` (the photo's own shape), `free` (no change), `1:1`, `4:5`, `5:7`, `3:2` or `16:9`, read as width:height, so `4:5` is tall on a landscape photo and `16:9` is turned to stand up on a portrait one. `5:4`, `7:5`, `2:3` and `9:16` are the same shapes turned. Anything else is a usage error (exit code 2). Default: not applied.
+
+The frame flags come first of all, right after decoding: the photo is turned and cropped at its full resolution, and then `--long-side` and every stage work on the framed picture. The `--histogram` and the output measure it too. A frame is not part of a recipe: `--recipe` and the frame flags combine, and a recipe never holds a frame.
+
 ### `--long-side <pixels>`
 
 Shrink the photo so that its longer side is this many pixels, keeping the aspect ratio (the shorter side is rounded to the nearest pixel). A whole number of at least 1, written in digits only: `0`, `-5`, `2.5` and `1e3` are usage errors (exit code 2). It works for RAW files too, and with `--raw-half` it applies to the half-size decode.
@@ -128,7 +142,7 @@ time (1 thread):
   total               8.2 ms
 ```
 
-The stages that can appear are `load`, `resize` (with `--long-side`), `exposure`, `white_balance`, `matrix`, `saturation`, `contrast`, `curve`, `save` and `histogram`. A stage that was skipped (a neutral value, or no `-o` or `--histogram`) isn't listed. The thread count shown is the number actually used.
+The stages that can appear are `load`, `frame` (with a frame that changes the photo), `resize` (with `--long-side`), `exposure`, `white_balance`, `matrix`, `saturation`, `contrast`, `curve`, `save` and `histogram`. A stage that was skipped (a neutral value, or no `-o` or `--histogram`) isn't listed. The thread count shown is the number actually used.
 
 ### `-h`, `--help`
 

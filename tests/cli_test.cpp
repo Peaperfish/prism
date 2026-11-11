@@ -17,6 +17,7 @@
 
 #include "env_var.hpp"
 #include "heic_damage.hpp"
+#include "prism/frame.hpp"
 #include "prism/heic.hpp"
 #include "prism/image.hpp"
 #include "prism/pipeline.hpp"
@@ -718,4 +719,366 @@ TEST(CliWhiteBalance, ARawPhotoIsRelativeToItsAsShotLight) {
     const auto cool = first_pixel(run_to_bytes(raw, "--raw-half --long-side 200 --kelvin 2000"));
     EXPECT_GT(warm[0] / warm[2], cool[0] / cool[2]);
     EXPECT_NE(run_to_bytes(raw, "--raw-half --long-side 200 --tint 30"), plain_run);
+}
+
+// --- --rotate, --crop and --aspect (#58) -----------------------------------------------------------
+
+namespace {
+
+struct FramedRun {
+    RunResult run;
+    prism::Image image;  // what was written (empty if the run failed)
+};
+
+// Runs prism on `input` with `flags` and loads what it wrote.
+FramedRun run_framed(const fs::path& input, const std::string& flags) {
+    const fs::path output = temp_file("frame_out.png");
+    fs::remove(output);
+    FramedRun result;
+    result.run = run_prism(quoted(input) + " -o " + quoted(output) + " " + flags);
+    result.run.output = plain(result.run.output);
+    if (result.run.exit_code == 0) {
+        result.image = prism::load_image(output);
+    }
+    fs::remove(output);
+    return result;
+}
+
+// A varied width x height photo, as write_sized_input, but smooth enough that turning it matters.
+fs::path write_smooth_input(const std::string& name, int width, int height) {
+    prism::Image img;
+    img.width = width;
+    img.height = height;
+    img.pixels.resize(static_cast<std::size_t>(width) * height * 3);
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            float* p = &img.pixels[(static_cast<std::size_t>(y) * width + x) * 3];
+            p[0] = 0.05f + 0.9f * static_cast<float>(x) / static_cast<float>(width);
+            p[1] = 0.05f + 0.9f * static_cast<float>(y) / static_cast<float>(height);
+            p[2] = 0.05f + 0.4f * static_cast<float>((x / 7 + y / 5) % 3);
+        }
+    }
+    const fs::path path = temp_file(name);
+    prism::save_image(path, img);
+    return path;
+}
+
+// What the frame flags should write: the frame fitted and applied to the decode, then reduced to
+// `long_side` if larger, as bytes.
+std::vector<std::uint8_t> expected_framed_bytes(const fs::path& input, const prism::Frame& frame,
+                                                std::optional<int> long_side) {
+    prism::Image img = prism::apply_frame(prism::load_image(input),
+                                          prism::fit_frame(frame, prism::load_image(input).width,
+                                                           prism::load_image(input).height));
+    if (long_side) {
+        img = prism::downscale(img, *long_side);
+    }
+    return prism::encode_srgb8(img);
+}
+
+prism::Frame make_frame(float angle, float l, float t, float r, float b) {
+    prism::Frame f;
+    f.angle = angle;
+    f.left = l;
+    f.top = t;
+    f.right = r;
+    f.bottom = b;
+    return f;
+}
+
+}  // namespace
+
+TEST(CliFrame, NoFrameFlagsKeepTodaysOutputAtEverySize) {
+    // What `prism` wrote before frames: the decode, reduced if --long-side asks, then the stages.
+    // LongSideShrinksBeforeTheStagesRun and LongSideNotSmallerKeepsTheSizeAndSaysSo above hold the
+    // same ground; this one names Original, a reduction and a --long-side that does not reduce.
+    const fs::path input = write_smooth_input("plain.png", 60, 40);
+    const prism::Image decoded = prism::load_image(input);
+    for (const std::optional<int> side :
+         {std::optional<int>{}, std::optional<int>{25}, std::optional<int>{60},
+          std::optional<int>{500}}) {
+        const FramedRun r =
+            run_framed(input, side ? "--long-side " + std::to_string(*side) : std::string());
+        ASSERT_EQ(r.run.exit_code, 0) << r.run.output;
+        const prism::Image today = side ? prism::downscale(decoded, *side) : decoded;
+        EXPECT_EQ(prism::encode_srgb8(r.image), prism::encode_srgb8(today));
+    }
+    fs::remove(input);
+}
+
+TEST(CliFrame, TheWholePhotoAtZeroDegreesIsTheSameAsNoFlagsAndTakesNoFramePath) {
+    const fs::path input = write_smooth_input("whole.png", 60, 40);
+    for (const std::string& size : {std::string(), std::string("--long-side 25"),
+                                    std::string("--long-side 500")}) {
+        const FramedRun plain_run = run_framed(input, size);
+        ASSERT_EQ(plain_run.run.exit_code, 0) << plain_run.run.output;
+        for (const std::string& frame : {std::string("--rotate 0 --crop 0,0,1,1"),
+                                        std::string("--rotate 0"), std::string("--crop 0,0,1,1"),
+                                        std::string("--aspect original"),
+                                        std::string("--aspect free --rotate -0")}) {
+            const FramedRun r = run_framed(input, frame + " " + size + " --time");
+            ASSERT_EQ(r.run.exit_code, 0) << frame << " " << size << ": " << r.run.output;
+            EXPECT_EQ(prism::encode_srgb8(r.image), prism::encode_srgb8(plain_run.image))
+                << frame << " " << size;
+            // apply_frame, even as a copy, would show up as a "frame" stage; the pixels alone
+            // cannot tell (a 0 degree frame copies), so the stage list says which path ran.
+            EXPECT_FALSE(contains(r.run.output, "  frame ")) << frame << " " << size << "\n"
+                                                              << r.run.output;
+            EXPECT_FALSE(contains(r.run.output, "the frame was made smaller")) << r.run.output;
+        }
+    }
+    // A real frame does list the stage.
+    const FramedRun cropped = run_framed(input, "--crop 0,0,0.5,1 --time");
+    ASSERT_EQ(cropped.run.exit_code, 0) << cropped.run.output;
+    EXPECT_TRUE(contains(cropped.run.output, "  frame ")) << cropped.run.output;
+    fs::remove(input);
+}
+
+TEST(CliFrame, TheFrameComesBeforeTheReductionAndLongSideMeasuresTheFramedPhoto) {
+    const fs::path input = write_smooth_input("order.png", 90, 60);
+    // Turned and cropped, then reduced: apply_frame(fit_frame(...)) followed by today's downscale.
+    const prism::Frame frame = make_frame(3.0f, 0.1f, 0.1f, 0.9f, 0.9f);
+    for (const int side : {40, 25, 7}) {
+        const FramedRun r = run_framed(input, "--rotate 3 --crop 0.1,0.1,0.9,0.9 --long-side " +
+                                                  std::to_string(side));
+        ASSERT_EQ(r.run.exit_code, 0) << r.run.output;
+        EXPECT_EQ(std::max(r.image.width, r.image.height), side);
+        EXPECT_EQ(prism::encode_srgb8(r.image), expected_framed_bytes(input, frame, side))
+            << "--long-side " << side;
+    }
+    // The framed photo is 72 x 48 (the turn fits): a long side of 80 is not smaller than that, so
+    // the photo keeps its framed size, though 80 is below the photo's own 90.
+    const FramedRun kept = run_framed(input, "--crop 0.1,0.1,0.9,0.9 --long-side 80");
+    ASSERT_EQ(kept.run.exit_code, 0) << kept.run.output;
+    EXPECT_EQ(kept.image.width, 72);
+    EXPECT_EQ(kept.image.height, 48);
+    EXPECT_TRUE(contains(kept.run.output, "is 72x48, not larger than --long-side 80; kept its size"))
+        << kept.run.output;
+    // Original is the framed size too, and --time puts "frame" between load and "resize".
+    const FramedRun timed = run_framed(input, "--crop 0.1,0.1,0.9,0.9 --long-side 36 --time");
+    ASSERT_EQ(timed.run.exit_code, 0) << timed.run.output;
+    EXPECT_EQ(timed.image.width, 36);
+    const std::size_t load = timed.run.output.find("  load ");
+    const std::size_t frame_stage = timed.run.output.find("  frame ");
+    const std::size_t resize = timed.run.output.find("  resize ");
+    ASSERT_NE(frame_stage, std::string::npos) << timed.run.output;
+    ASSERT_NE(resize, std::string::npos) << timed.run.output;
+    EXPECT_LT(load, frame_stage);
+    EXPECT_LT(frame_stage, resize);
+    fs::remove(input);
+}
+
+TEST(CliFrame, AspectAloneGivesTheLargestCentredFrameOfTheShape) {
+    const fs::path landscape = write_smooth_input("wide.png", 100, 80);
+    const fs::path portrait = write_smooth_input("tall.png", 80, 100);
+    const struct {
+        const char* aspect;
+        int landscape_w, landscape_h, portrait_w, portrait_h;
+    } cases[] = {
+        // W:H is read as width:height: 4:5 is tall, so it is turned on a landscape photo and the
+        // photo's own shape on a tall one; 16:9 is wide, so it is turned on a tall photo.
+        {"4:5", 64, 80, 80, 100},
+        {"5:4", 100, 80, 80, 64},
+        {"1:1", 80, 80, 80, 80},
+        {"5:7", 58, 80, 72, 100},
+        {"7:5", 100, 72, 80, 58},
+        {"3:2", 100, 66, 80, 54},
+        {"2:3", 54, 80, 66, 100},
+        {"16:9", 100, 56, 80, 45},
+        {"9:16", 45, 80, 56, 100},
+        {"original", 100, 80, 80, 100},
+        {"free", 100, 80, 80, 100},
+    };
+    for (const auto& c : cases) {
+        const FramedRun wide = run_framed(landscape, std::string("--aspect ") + c.aspect);
+        ASSERT_EQ(wide.run.exit_code, 0) << c.aspect << ": " << wide.run.output;
+        EXPECT_EQ(wide.image.width, c.landscape_w) << c.aspect << " on a landscape photo";
+        EXPECT_EQ(wide.image.height, c.landscape_h) << c.aspect << " on a landscape photo";
+        const FramedRun tall = run_framed(portrait, std::string("--aspect ") + c.aspect);
+        ASSERT_EQ(tall.run.exit_code, 0) << c.aspect << ": " << tall.run.output;
+        EXPECT_EQ(tall.image.width, c.portrait_w) << c.aspect << " on a portrait photo";
+        EXPECT_EQ(tall.image.height, c.portrait_h) << c.aspect << " on a portrait photo";
+    }
+    // Inside a crop: the middle of the left half, 50 x 80 pixels, made square.
+    const FramedRun square = run_framed(landscape, "--crop 0,0,0.5,1 --aspect 1:1");
+    ASSERT_EQ(square.run.exit_code, 0) << square.run.output;
+    EXPECT_EQ(square.image.width, 50);
+    EXPECT_EQ(square.image.height, 50);
+    EXPECT_EQ(prism::encode_srgb8(square.image),
+              prism::encode_srgb8(prism::apply_frame(
+                  prism::load_image(landscape), make_frame(0, 0.0f, 0.1875f, 0.5f, 0.8125f))));
+    fs::remove(landscape);
+    fs::remove(portrait);
+}
+
+TEST(CliFrame, ANoteSaysWhenFittingMadeTheFrameSmaller) {
+    const fs::path input = write_smooth_input("fit.png", 100, 80);
+    // Turning the whole photo has to close the blades in: the note gives the final size.
+    const prism::Frame turned = make_frame(10.0f, 0, 0, 1, 1);
+    const prism::PixelSize size =
+        prism::framed_size(prism::fit_frame(turned, 100, 80), 100, 80);
+    const FramedRun r = run_framed(input, "--rotate 10");
+    ASSERT_EQ(r.run.exit_code, 0) << r.run.output;
+    EXPECT_EQ(r.image.width, size.width);
+    EXPECT_EQ(r.image.height, size.height);
+    const std::string note = "note: " + input.string() +
+                             ": the frame was made smaller so no corner shows; it is now " +
+                             std::to_string(size.width) + " × " + std::to_string(size.height) +
+                             " px\n";
+    EXPECT_TRUE(contains(r.run.output, note)) << r.run.output << "\nwanted " << note;
+    // A frame that already fits says nothing: a small turn inside a generous crop, a pure crop,
+    // and an aspect on its own.
+    for (const char* flags : {"--rotate 2 --crop 0.2,0.2,0.8,0.8", "--crop 0.1,0.1,0.9,0.9",
+                              "--aspect 3:2", "--rotate 0.5 --crop 0.25,0.25,0.75,0.75 --aspect 1:1"}) {
+        const FramedRun quiet = run_framed(input, flags);
+        ASSERT_EQ(quiet.run.exit_code, 0) << flags << ": " << quiet.run.output;
+        EXPECT_FALSE(contains(quiet.run.output, "note:")) << flags << ": " << quiet.run.output;
+    }
+    fs::remove(input);
+}
+
+TEST(CliFrame, BadValuesAreUsageErrorsWithAClearMessage) {
+    const fs::path input = write_smooth_input("bad.png", 20, 20);
+    const struct {
+        const char* flags;
+        const char* message;
+    } cases[] = {
+        // --rotate: a number from -45 to 45.
+        {"--rotate 46", "error: --rotate needs a number from -45 to 45, got '46'\n"},
+        {"--rotate -45.5", "error: --rotate needs a number from -45 to 45, got '-45.5'\n"},
+        {"--rotate abc", "error: --rotate needs a number from -45 to 45, got 'abc'\n"},
+        {"--rotate \"\"", "error: --rotate needs a number from -45 to 45, got ''\n"},
+        {"--rotate nan", "error: --rotate needs a number from -45 to 45, got 'nan'\n"},
+        {"--rotate 1.5x", "error: --rotate needs a number from -45 to 45, got '1.5x'\n"},
+        // --crop: four numbers.
+        {"--crop 1,2",
+         "error: --crop needs four numbers from 0 to 1, left,top,right,bottom, got '1,2'\n"},
+        {"--crop 0.1,0.2,0.3",
+         "error: --crop needs four numbers from 0 to 1, left,top,right,bottom, got '0.1,0.2,0.3'\n"},
+        {"--crop 0,0,1,1,1",
+         "error: --crop needs four numbers from 0 to 1, left,top,right,bottom, got '0,0,1,1,1'\n"},
+        {"--crop a,b,c,d",
+         "error: --crop needs four numbers from 0 to 1, left,top,right,bottom, got 'a,b,c,d'\n"},
+        {"--crop 0,0,1,", "error: --crop needs four numbers from 0 to 1, left,top,right,bottom, "
+                         "got '0,0,1,'\n"},
+        {"--crop \"\"",
+         "error: --crop needs four numbers from 0 to 1, left,top,right,bottom, got ''\n"},
+        {"--crop 0,0,nan,1", "error: --crop needs four numbers from 0 to 1, left,top,right,bottom, "
+                            "got '0,0,nan,1'\n"},
+        // --crop: values from 0 to 1.
+        {"--crop -0.1,0,1,1", "error: --crop edges must be from 0 to 1, got '-0.1,0,1,1'\n"},
+        {"--crop 0,0,1.1,1", "error: --crop edges must be from 0 to 1, got '0,0,1.1,1'\n"},
+        {"--crop 0,0,1,2", "error: --crop edges must be from 0 to 1, got '0,0,1,2'\n"},
+        // --crop: left < right and top < bottom.
+        {"--crop 0.5,0,0.2,1",
+         "error: --crop needs left less than right and top less than bottom, got '0.5,0,0.2,1'\n"},
+        {"--crop 0.3,0,0.3,1",
+         "error: --crop needs left less than right and top less than bottom, got '0.3,0,0.3,1'\n"},
+        {"--crop 0,0.6,1,0.4",
+         "error: --crop needs left less than right and top less than bottom, got '0,0.6,1,0.4'\n"},
+        // --aspect: one of the shapes.
+        {"--aspect 7:3", "error: --aspect needs original, free, 1:1, 4:5, 5:7, 3:2 or 16:9 (also "
+                         "5:4, 7:5, 2:3 and 9:16), got '7:3'\n"},
+        {"--aspect 4/5", "error: --aspect needs original, free, 1:1, 4:5, 5:7, 3:2 or 16:9 (also "
+                        "5:4, 7:5, 2:3 and 9:16), got '4/5'\n"},
+        {"--aspect \"\"", "error: --aspect needs original, free, 1:1, 4:5, 5:7, 3:2 or 16:9 (also "
+                         "5:4, 7:5, 2:3 and 9:16), got ''\n"},
+        {"--aspect 4:5:1", "error: --aspect needs original, free, 1:1, 4:5, 5:7, 3:2 or 16:9 (also "
+                           "5:4, 7:5, 2:3 and 9:16), got '4:5:1'\n"},
+        // Missing values and repeats, as for the other flags.
+        {"--rotate", "--rotate needs a value"},
+        {"--crop", "--crop needs a value"},
+        {"--aspect", "--aspect needs a value"},
+        {"--rotate 1 --rotate 2", "--rotate given more than once"},
+        {"--crop 0,0,1,1 --crop 0,0,1,1", "--crop given more than once"},
+        {"--aspect 1:1 --aspect 4:5", "--aspect given more than once"},
+    };
+    for (const auto& c : cases) {
+        const FramedRun r = run_framed(input, c.flags);
+        EXPECT_EQ(r.run.exit_code, 2) << c.flags << ": " << r.run.output;
+        EXPECT_TRUE(contains(r.run.output, c.message)) << c.flags << ": " << r.run.output;
+        EXPECT_TRUE(r.run.output.rfind("error: ", 0) == 0) << c.flags << ": " << r.run.output;
+    }
+    // The edges of the ranges are fine.
+    for (const char* flags : {"--rotate 45", "--rotate -45", "--rotate +0.5", "--rotate 1e0",
+                              "--crop 0,0,1,1", "--crop 0.0,0.0,1.0,1.0", "--crop 0,0,0.5,0.5"}) {
+        EXPECT_EQ(run_framed(input, flags).run.exit_code, 0) << flags;
+    }
+    fs::remove(input);
+}
+
+TEST(CliFrame, ARecipeAndFrameFlagsCombineAndTheRecipeIsNeverWritten) {
+    const fs::path input = write_smooth_input("recipe_frame.png", 60, 40);
+    const fs::path recipe = temp_file("frame.prism");
+    const std::string text = "prism_recipe = 2\n[exposure]\nstops = 1\n";
+    {
+        std::ofstream out(recipe, std::ios::binary);
+        out << text;
+    }
+    const std::string flags = "--rotate 2 --crop 0.1,0.1,0.9,0.9 --long-side 30";
+    const FramedRun with_recipe = run_framed(input, "--recipe " + quoted(recipe) + " " + flags);
+    const FramedRun with_flag = run_framed(input, "--exposure 1 " + flags);
+    ASSERT_EQ(with_recipe.run.exit_code, 0) << with_recipe.run.output;
+    ASSERT_EQ(with_flag.run.exit_code, 0) << with_flag.run.output;
+    // Both the recipe's exposure and the frame are in the result, and the frame came first.
+    EXPECT_EQ(prism::encode_srgb8(with_recipe.image), prism::encode_srgb8(with_flag.image));
+    EXPECT_EQ(std::max(with_recipe.image.width, with_recipe.image.height), 30);
+    EXPECT_NE(prism::encode_srgb8(with_recipe.image),
+              prism::encode_srgb8(run_framed(input, "--rotate 2 --crop 0.1,0.1,0.9,0.9 --long-side 30")
+                                      .image));
+    // The recipe file is read, never written back: no frame can reach it, and it stays version 2.
+    std::ifstream in(recipe, std::ios::binary);
+    std::stringstream after;
+    after << in.rdbuf();
+    EXPECT_EQ(after.str(), text);
+    fs::remove(input);
+    fs::remove(recipe);
+}
+
+TEST(CliFrame, ATurnedExportIsTheSameOnOneAndEightThreads) {
+    const fs::path input = write_smooth_input("threads.png", 1501, 701);
+    const std::string flags = "--rotate -3.5 --crop 0.02,0.03,0.98,0.97 --exposure 0.5";
+    for (const std::string& size : {std::string(), std::string(" --long-side 900")}) {
+        const FramedRun one = run_framed(input, flags + size + " --threads 1");
+        const FramedRun eight = run_framed(input, flags + size + " --threads 8");
+        ASSERT_EQ(one.run.exit_code, 0) << one.run.output;
+        ASSERT_EQ(eight.run.exit_code, 0) << eight.run.output;
+        ASSERT_GT(one.image.width, 800);
+        EXPECT_EQ(one.image.width, eight.image.width);
+        EXPECT_EQ(prism::encode_srgb8(one.image), prism::encode_srgb8(eight.image)) << size;
+    }
+    fs::remove(input);
+}
+
+// Runs only with PRISM_TEST_RAW set. A frame is fractions of the photo, so on a half-size decode it
+// frames the same part: the written size is the frame's size on the half-size decode.
+TEST(CliFrame, ARawHalfSizeDecodeIsFramedByTheSameFractions) {
+    const fs::path raw = prism_test::env_var("PRISM_TEST_RAW");
+    if (raw.empty()) {
+        GTEST_SKIP() << "set PRISM_TEST_RAW to a RAW file to run this test";
+    }
+    if (!prism::raw_support_available()) {
+        GTEST_SKIP() << "Prism was built without LibRaw";
+    }
+    prism::RawOptions options;
+    options.half_size = true;
+    const prism::Image half = prism::load_photo(raw, options).image;
+    const prism::Frame frame = make_frame(1.5f, 0.1f, 0.2f, 0.9f, 0.8f);
+    const prism::Frame fitted = prism::fit_frame(frame, half.width, half.height);
+    const prism::PixelSize size = prism::framed_size(fitted, half.width, half.height);
+    const FramedRun r = run_framed(raw, "--raw-half --rotate 1.5 --crop 0.1,0.2,0.9,0.8");
+    ASSERT_EQ(r.run.exit_code, 0) << r.run.output;
+    EXPECT_EQ(r.image.width, size.width);
+    EXPECT_EQ(r.image.height, size.height);
+    EXPECT_EQ(prism::encode_srgb8(r.image),
+              prism::encode_srgb8(prism::apply_frame(half, fitted)));
+}
+
+TEST(CliFrame, HelpDescribesTheFrameFlags) {
+    const RunResult r = run_prism("--help");
+    EXPECT_EQ(r.exit_code, 0) << r.output;
+    EXPECT_TRUE(contains(r.output, "--rotate <degrees>")) << r.output;
+    EXPECT_TRUE(contains(r.output, "--crop <l,t,r,b>")) << r.output;
+    EXPECT_TRUE(contains(r.output, "--aspect <shape>")) << r.output;
+    EXPECT_TRUE(contains(r.output, "Frames are not part of a recipe")) << r.output;
 }

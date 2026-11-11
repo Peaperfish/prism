@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <cerrno>
 #include <chrono>
 #include <cmath>
@@ -18,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include "prism/frame.hpp"
 #include "prism/histogram.hpp"
 #include "prism/image.hpp"
 #include "prism/parallel.hpp"
@@ -49,10 +51,26 @@ void print_usage(const char* program) {
               << "                      --long-side <n>); needed for more than one input\n"
               << "  --format jpg|png    what --out-dir writes: JPEG (the default) or PNG\n"
               << "\n"
+              << "Frame (applied first of all, right after loading, before --long-side):\n"
+              << "  --rotate <degrees>  straighten the photo by turning it about its centre, -45 to\n"
+              << "                      45: positive turns the picture clockwise. The frame is\n"
+              << "                      made smaller as needed so no corner shows (a note says so)\n"
+              << "  --crop <l,t,r,b>    keep this part of the photo: left, top, right and bottom\n"
+              << "                      edges as fractions from 0 to 1 of the photo's width and\n"
+              << "                      height (left < right, top < bottom), measured along the\n"
+              << "                      straightened axes: --crop 0.1,0,0.9,1\n"
+              << "  --aspect <shape>    the largest frame of this shape, centred in the --crop\n"
+              << "                      part (the whole photo without --crop): original, free,\n"
+              << "                      1:1, 4:5, 5:7, 3:2 or 16:9, read as width:height, so 4:5 is\n"
+              << "                      tall on a landscape photo (5:4, 7:5, 2:3 and 9:16 turn it)\n"
+              << "                      Frames are not part of a recipe: they combine with --recipe\n"
+              << "                      and are never saved in one. --long-side, --histogram and\n"
+              << "                      the output all measure the framed photo\n"
+              << "\n"
               << "Size:\n"
-              << "  --long-side <pixels>  shrink the photo right after loading so its longer side\n"
-              << "                        is this many pixels (smaller only: a photo that is not\n"
-              << "                        larger keeps its size); works for RAW too\n"
+              << "  --long-side <pixels>  shrink the photo right after loading (and framing) so its\n"
+              << "                        longer side is this many pixels (smaller only: a photo\n"
+              << "                        that is not larger keeps its size); works for RAW too\n"
               << "\n"
               << "RAW input:\n"
               << "  --raw-half                  decode at half size (much faster; for previews)\n"
@@ -94,6 +112,13 @@ struct UsageError : std::runtime_error {
     using std::runtime_error::runtime_error;
 };
 
+// --aspect as typed. `wide` is whether the shape as written is at least as wide as it is tall
+// ("16:9", "5:4"): whether it is turned against the photo is known once the photo is.
+struct AspectFlag {
+    prism::Aspect aspect = prism::Aspect::original;
+    bool wide = true;
+};
+
 // File names stay as the text from argv (UTF-8: on Windows the manifest asks for it, see
 // src/CMakeLists.txt) and become paths with prism::path_from_utf8 where they are opened.
 struct Options {
@@ -112,6 +137,9 @@ struct Options {
     std::optional<std::string> histogram_path;
     bool raw_half = false;
     std::optional<std::string> raw_camera_matrix_path;
+    std::optional<float> rotate;  // degrees, -45 to 45
+    std::optional<std::array<float, 4>> crop;  // left, top, right, bottom fractions
+    std::optional<AspectFlag> aspect;
     std::optional<int> long_side;  // pixels, at least 1; unset = keep the size
     std::optional<int> threads;  // unset = automatic (one per hardware thread)
     bool time = false;
@@ -169,6 +197,68 @@ int parse_long_side(const std::string& text) {
                          "'");
     }
     return static_cast<int>(value);
+}
+
+// --crop: "l,t,r,b", four fractions from 0 to 1 with l < r and t < b.
+std::array<float, 4> parse_crop(const std::string& text) {
+    const std::string shape = "--crop needs four numbers from 0 to 1, left,top,right,bottom";
+    std::array<float, 4> edges{};
+    std::size_t start = 0;
+    for (std::size_t k = 0; k < edges.size(); ++k) {
+        const std::size_t comma = text.find(',', start);
+        const bool last = k + 1 == edges.size();
+        if ((comma == std::string::npos) != last) {
+            throw UsageError(shape + ", got '" + text + "'");
+        }
+        const std::string part =
+            text.substr(start, last ? std::string::npos : comma - start);
+        char* end = nullptr;
+        errno = 0;
+        const double value = std::strtod(part.c_str(), &end);
+        if (part.empty() || end != part.c_str() + part.size() || errno == ERANGE ||
+            !std::isfinite(value)) {
+            throw UsageError(shape + ", got '" + text + "'");
+        }
+        if (value < 0.0 || value > 1.0) {
+            throw UsageError("--crop edges must be from 0 to 1, got '" + text + "'");
+        }
+        edges[k] = static_cast<float>(value);
+        start = comma + 1;
+    }
+    if (!(edges[0] < edges[2]) || !(edges[1] < edges[3])) {
+        throw UsageError("--crop needs left less than right and top less than bottom, got '" +
+                         text + "'");
+    }
+    return edges;
+}
+
+// --aspect: original, free, or width:height as one of the shapes the frame knows, either way round.
+AspectFlag parse_aspect(const std::string& text) {
+    static const struct {
+        std::string_view name;
+        prism::Aspect aspect;
+        bool wide;
+    } shapes[] = {
+        {"original", prism::Aspect::original, true},
+        {"free", prism::Aspect::free, true},
+        {"1:1", prism::Aspect::square, true},
+        {"5:4", prism::Aspect::four_five, true},
+        {"4:5", prism::Aspect::four_five, false},
+        {"7:5", prism::Aspect::five_seven, true},
+        {"5:7", prism::Aspect::five_seven, false},
+        {"3:2", prism::Aspect::three_two, true},
+        {"2:3", prism::Aspect::three_two, false},
+        {"16:9", prism::Aspect::sixteen_nine, true},
+        {"9:16", prism::Aspect::sixteen_nine, false},
+    };
+    for (const auto& shape : shapes) {
+        if (text == shape.name) {
+            return {shape.aspect, shape.wide};
+        }
+    }
+    throw UsageError(
+        "--aspect needs original, free, 1:1, 4:5, 5:7, 3:2 or 16:9 (also 5:4, 7:5, 2:3 and 9:16), "
+        "got '" + text + "'");
 }
 
 // Stores `value` into `slot`, rejecting a flag given twice (which is almost always a mistake).
@@ -281,6 +371,14 @@ Options parse_args(int argc, char* argv[]) {
             set_once(opts.curve_spec, arg, next_value());
         } else if (arg == "--histogram") {
             set_once(opts.histogram_path, arg, next_value());
+        } else if (arg == "--rotate") {
+            set_once(opts.rotate, arg,
+                     parse_ranged(next_value(), arg, prism::frame_angle_range.min,
+                                  prism::frame_angle_range.max));
+        } else if (arg == "--crop") {
+            set_once(opts.crop, arg, parse_crop(next_value()));
+        } else if (arg == "--aspect") {
+            set_once(opts.aspect, arg, parse_aspect(next_value()));
         } else if (arg == "--long-side") {
             set_once(opts.long_side, arg, parse_long_side(next_value()));
         } else if (arg == "--threads") {
@@ -431,6 +529,40 @@ prism::ProcessSettings with_white_balance(prism::ProcessSettings flags,
     return flags;
 }
 
+// --rotate, --crop and --aspect, as given.
+struct FrameFlags {
+    std::optional<float> rotate;
+    std::optional<std::array<float, 4>> crop;
+    std::optional<AspectFlag> aspect;
+};
+
+// The frame the flags ask of a `width` x `height` photo, or nothing if none was given. The crop is
+// made the largest rectangle of the aspect inside it, centred (apply_aspect); fitting to the turned
+// photo is the export's job (frame_and_reduce). A shape as written is turned against the photo's
+// orientation when it is wide and the photo is not, or the other way round.
+std::optional<prism::Frame> frame_of(const FrameFlags& flags, int width, int height) {
+    if (!flags.rotate && !flags.crop && !flags.aspect) {
+        return std::nullopt;
+    }
+    prism::Frame frame;
+    frame.angle = flags.rotate.value_or(0.0f);
+    if (flags.crop) {
+        frame.left = (*flags.crop)[0];
+        frame.top = (*flags.crop)[1];
+        frame.right = (*flags.crop)[2];
+        frame.bottom = (*flags.crop)[3];
+    }
+    if (flags.aspect) {
+        frame.aspect = flags.aspect->aspect;
+        const bool shaped = frame.aspect != prism::Aspect::original &&
+                            frame.aspect != prism::Aspect::free &&
+                            frame.aspect != prism::Aspect::square;
+        frame.portrait = shaped && flags.aspect->wide != (width >= height);
+        frame = prism::apply_aspect(frame, width, height);
+    }
+    return frame;
+}
+
 // Loads one photo, runs the recipe and flags on it and writes what was asked for: the image to
 // `output` and the histogram to `histogram_path`, each when given. File names are UTF-8 text,
 // printed as they are.
@@ -438,7 +570,7 @@ void run_one(const std::string& input, const std::optional<std::string>& output,
              const std::optional<std::string>& histogram_path, bool time,
              const prism::Recipe& recipe, const prism::ProcessSettings& flags,
              const WhiteBalanceFlags& wb_flags, const prism::RawOptions& raw,
-             std::optional<int> long_side, int threads) {
+             const FrameFlags& frame_flags, std::optional<int> long_side, int threads) {
     StageTimer timer;
 
     prism::Image img;
@@ -455,21 +587,31 @@ void run_one(const std::string& input, const std::optional<std::string>& output,
     }
     const prism::ProcessSettings settings = prism::merge_recipe_and_flags(
         recipe, with_white_balance(flags, wb_flags, as_shot_white), as_shot_white);
-    // Reduce before any editing, so every stage works on the small image. A photo that is not
-    // larger keeps its size (downscale never enlarges), and that is said, since the user asked for
-    // a size and gets another.
+    // Frame, then reduce, before any editing, so every stage works on the small image. The frame
+    // comes first, so --long-side measures the framed photo. A photo that is not larger keeps its
+    // size (downscale never enlarges), and that is said, since the user asked for a size and gets
+    // another.
+    const int decoded_width = img.width;
+    const int decoded_height = img.height;
+    prism::FramedExport framed = prism::frame_and_reduce(
+        std::move(img), frame_of(frame_flags, decoded_width, decoded_height), long_side, threads);
+    img = std::move(framed.image);
+    if (framed.frame.fitted) {
+        timer.add("frame", framed.frame_ms);
+        if (framed.frame.changed) {
+            std::cerr << "note: " << input
+                      << ": the frame was made smaller so no corner shows; it is now "
+                      << framed.frame.size.width << " × " << framed.frame.size.height
+                      << " px\n";
+        }
+    }
     if (long_side) {
-        const int width = img.width;
-        const int height = img.height;
-        const bool larger = std::max(width, height) > *long_side;
-        timer.run("resize", [&] {
-            if (larger) {
-                img = prism::downscale(img, *long_side, threads);
-            }
-        });
-        if (!larger) {
-            std::cerr << "note: " << input << " is " << width << 'x' << height
-                      << ", not larger than --long-side " << *long_side << "; kept its size\n";
+        if (framed.reduced) {
+            timer.add("resize", framed.reduce_ms);
+        } else {
+            std::cerr << "note: " << input << " is " << framed.frame.size.width << 'x'
+                      << framed.frame.size.height << ", not larger than --long-side " << *long_side
+                      << "; kept its size\n";
         }
     }
     // process() applies the stages in the README's order and skips those left at their
@@ -548,13 +690,14 @@ int main(int argc, char* argv[]) {
         // white balance depends on the photo's as-shot light.
         (void)prism::merge_recipe_and_flags(recipe, flags);
         const WhiteBalanceFlags wb_flags{opts.kelvin, opts.tint};
+        const FrameFlags frame_flags{opts.rotate, opts.crop, opts.aspect};
 
         // 0 asks the library for one thread per hardware thread.
         const int threads = opts.threads.value_or(0);
         if (opts.inputs.size() == 1) {
             // A failure is reported by the catch blocks below, as it always was.
             run_one(opts.inputs[0], opts.outputs[0], opts.histogram_path, opts.time, recipe, flags,
-                    wb_flags, raw, opts.long_side, threads);
+                    wb_flags, raw, frame_flags, opts.long_side, threads);
             return 0;
         }
 
@@ -565,7 +708,7 @@ int main(int argc, char* argv[]) {
             const std::string& input = opts.inputs[i];
             try {
                 run_one(input, opts.outputs[i], std::nullopt, opts.time, recipe, flags, wb_flags,
-                        raw, opts.long_side, threads);
+                        raw, frame_flags, opts.long_side, threads);
                 ++written;
             } catch (const std::exception& e) {
                 // Keep the "wrote" lines before this one when both go to the same place.
