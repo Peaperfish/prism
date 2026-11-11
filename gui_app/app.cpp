@@ -267,6 +267,7 @@ gui::CloseState App::close_state() const {
     state.has_file = session_.has_file();
     state.dirty = state.has_file && baseline_.dirty(session_.settings());
     state.has_strokes = state.has_file && !session_.settings().strokes.empty();
+    state.has_frame = state.has_file && session_.settings().frame.has_value();
     state.export_running = exporter_.busy();
     return state;
 }
@@ -615,8 +616,7 @@ void App::draw_export_popup() {
     }
     ExportSheetCallbacks callbacks;
     callbacks.explain = [this](std::string_view id) { explain(id); };
-    const ExportSheetContext context{{session_.file_width(), session_.file_height()},
-                                     session_.export_start_size(),
+    const ExportSheetContext context{session_.framed_file_size(), session_.framed_start_size(),
                                      session_.file_size_exact()};
     const ExportSheetResult result = draw_export_sheet(*export_sheet_, context, callbacks);
     if (result != ExportSheetResult::none) {
@@ -913,6 +913,7 @@ void App::update_preview() {
     options.compare_stage = strip_ ? std::nullopt : gui::effective_compare(viewed_stage_, compare_stage_);
     options.test_strip = strip_;
     options.as_shot_white = session_.as_shot_white();
+    options.framing = session_.preview_framing();
     preview_.update(session_.preview_base(), session_.settings(), viewed_stage_, options);
     std::optional<gui::PreviewFrame> frame = preview_.poll();
     if (!frame) {
@@ -1927,7 +1928,7 @@ std::optional<gui::BrushCanvas> App::brush_canvas() const {
         base->width <= 0 || base->height <= 0) {
         return std::nullopt;
     }
-    return gui::BrushCanvas{base->width, base->height};
+    return gui::brush_canvas(session_);
 }
 
 gui::BrushStyle App::brush_style() const {
@@ -1951,7 +1952,7 @@ void App::update_brush_press(bool pressed, bool over_control) {
             stroke_canvas_ = *canvas;
             const gui::BrushStyle style = brush_style();
             const float spacing =
-                min_point_spacing(style.radius, std::max(canvas->width, canvas->height));
+                min_point_spacing(style.radius, gui::brush_long_side(*canvas));
             apply_brush(brush_gesture_.press(at, keys, brush_.tone(), spacing, *canvas));
         }
         return;
@@ -2111,7 +2112,7 @@ void App::update_sample_traces() {
         strip_ ? std::nullopt : gui::effective_compare(viewed_stage_, compare_stage_);
     const auto read = [&](gui::SampleCache& cache, gui::SamplePin pixel) {
         (void)cache.read(base, session_.settings(), strip_, viewed_stage_, compare, pixel.x, pixel.y,
-                         session_.as_shot_white());
+                         session_.as_shot_white(), session_.preview_framing());
     };
     if (sample_.pin()) {
         read(sample_pin_trace_, *sample_.pin());
@@ -2139,7 +2140,7 @@ const gui::PixelTrace* App::sample_on_show() const {
 
 gui::SampleScale App::sample_scale() const {
     return {std::max(texture_.width(), texture_.height()),
-            std::max(session_.file_width(), session_.file_height())};
+            session_.framed_file_long_side()};
 }
 
 // White on a dark edge, so that it shows on any picture, in either theme: the picture's colours
@@ -2823,11 +2824,15 @@ void App::draw_brush_ring(ImDrawList* draw) {
     const gui::ViewPoint cursor{io.MousePos.x, io.MousePos.y};
     if (!brush_.on() || !gui::brush_available(viewed_stage_) || !ImGui::IsWindowHovered() ||
         ImGui::IsAnyItemHovered() || hand_key_held_ || brush_gesture_.panning() ||
-        gui::view_point_in_any(cursor, canvas_chips_) || !brush_canvas()) {
+        gui::view_point_in_any(cursor, canvas_chips_)) {
+        return;
+    }
+    const std::optional<gui::BrushCanvas> canvas = brush_canvas();
+    if (!canvas) {
         return;
     }
     const gui::BrushRing ring =
-        gui::brush_ring(view_, view_geometry_, brush_.radius(), brush_.softness());
+        gui::brush_ring(view_, view_geometry_, *canvas, brush_.radius(), brush_.softness());
     ImGui::SetMouseCursor(ImGuiMouseCursor_None);  // the ring is the cursor
     const float scale = ui_scale();
     const ImVec2 centre(cursor.x, cursor.y);
@@ -2860,7 +2865,7 @@ void App::draw_zoom_chip() {
     const float fit = gui::view_fit_zoom(view_geometry_);
     const std::string label = gui::view_zoom_label(
         zoom, std::max(texture_.width(), texture_.height()),
-        std::max(session_.file_width(), session_.file_height()));
+        session_.framed_file_long_side());
     // The choice the view is at is lit; clicking it does nothing. 100% can't be chosen where Fit
     // already shows the photo at 100% or more.
     const bool fit_current = view_.fit;
@@ -3020,7 +3025,7 @@ App::ExplainText App::explain_text() const {
     context.recipe = recipes_.current();
     if (texture_.texture() != nullptr) {
         context.preview_long_side = std::max(texture_.width(), texture_.height());
-        context.file_long_side = std::max(session_.file_width(), session_.file_height());
+        context.file_long_side = session_.framed_file_long_side();
         context.file_size_exact = session_.file_size_exact();
     }
     context.sample = sample_on_show();
@@ -3803,7 +3808,8 @@ void App::draw_close_prompt() {
         return;
     }
     const bool has_strokes = !session_.settings().strokes.empty();
-    const gui::PromptText text = gui::prompt_text(*close_pending_, has_strokes);
+    const bool has_frame = session_.settings().frame.has_value();
+    const gui::PromptText text = gui::prompt_text(*close_pending_, has_strokes, has_frame);
     const std::string detail = gui::prompt_detail(baseline_.last_save());
     const float wrap = token_metrics().prompt_wrap;
     ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + wrap);
@@ -3827,7 +3833,7 @@ void App::draw_close_prompt() {
         }
         return std::string();
     };
-    const gui::PromptButtons buttons = gui::prompt_buttons(ImGui::GetIO().ConfigMacOSXBehaviors, has_strokes);
+    const gui::PromptButtons buttons = gui::prompt_buttons(ImGui::GetIO().ConfigMacOSXBehaviors, has_strokes || has_frame);
     const ImGuiStyle& style = ImGui::GetStyle();
     float widths[4];
     float packed = 0;
