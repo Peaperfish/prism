@@ -1,12 +1,14 @@
 #include <gtest/gtest.h>
 
 #include <cctype>
+#include <cstddef>
 
 #include <cmath>
 #include <filesystem>
 #include <limits>
 #include <string>
 
+#include "prism/gui/canvas_input.hpp"
 #include "prism/gui/paper_grade.hpp"
 #include "prism/gui/stage_controls.hpp"
 #include "prism/ranges.hpp"
@@ -823,4 +825,27 @@ TEST(WhiteBalanceControls, EveryChoiceTheSlidersCanMakeIsValid) {
             EXPECT_EQ(s.white_balance->tint, std::round(s.white_balance->tint));
         }
     }
+}
+
+using namespace prism::gui;
+
+TEST(HeadlessOpenAtDecode, AnyOpenStartsAtTheFirstRowWithNoComparison) {
+    // File > Open, the picker, a drop and the command line all end in the one function the app
+    // calls; what the previous photo viewed or compared, or a loaded recipe, doesn't enter into it.
+    const ViewAfterOpen start = view_after_open();
+    EXPECT_EQ(start.viewed, StageId::decode);
+    EXPECT_NE(start.viewed, final_stage);
+    EXPECT_FALSE(start.compare.has_value());
+    EXPECT_EQ(stage_info(start.viewed).slug, stage_info(StageId::decode).slug);
+}
+
+TEST(HeadlessOpenAtDecode, DecodeIsTheFirstRowOfTheLightPath) {
+    EXPECT_EQ(static_cast<std::size_t>(view_after_open().viewed), 0u);
+    EXPECT_FALSE(effective_compare(view_after_open().viewed, view_after_open().compare));
+}
+
+TEST(HeadlessOpenAtDecode, OpeningStillLeavesBrushModeAtDecode) {
+    const StageId viewed = view_after_open().viewed;
+    EXPECT_TRUE(brush_leaves(true, BrushEvent::photo_opened, viewed));
+    EXPECT_FALSE(brush_leaves(false, BrushEvent::photo_opened, viewed));
 }

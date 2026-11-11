@@ -355,8 +355,11 @@ void App::open_now(const fs::path& path) {
     stroke_mask_.clear();
     texture_.reset_stroke_overlay();
     scope_view_.set(std::nullopt);
-    viewed_stage_ = gui::final_stage;
-    compare_stage_.reset();
+    {
+        const gui::ViewAfterOpen start = gui::view_after_open();
+        viewed_stage_ = start.viewed;  // each photo opens at Decode, the first row
+        compare_stage_ = start.compare;
+    }
     strip_.reset();
     strip_bands_.clear();
     view_ = {};  // each photo starts whole

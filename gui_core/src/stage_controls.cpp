@@ -294,6 +294,10 @@ std::string stage_caption(StageId stage) {
                                     : "after " + std::string(stage_info(stage).name);
 }
 
+ViewAfterOpen view_after_open() noexcept {
+    return {StageId::decode, std::nullopt};
+}
+
 std::optional<StageId> effective_compare(StageId viewed, std::optional<StageId> compare) noexcept {
     return compare == viewed ? std::nullopt : compare;
 }

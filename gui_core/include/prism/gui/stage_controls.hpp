@@ -147,6 +147,17 @@ void set_curve_parameter(EditSettings& s, float value);
 [[nodiscard]] std::optional<StageId> effective_compare(StageId viewed,
                                                        std::optional<StageId> compare) noexcept;
 
+// Where the Light path's view stands once a photo is open: every route that opens one (File > Open,
+// the picker, a drop, the command line) starts at the first row, Decode, with no comparison, whatever
+// the previous photo was viewing and whether a recipe is loaded with the new one.
+struct ViewAfterOpen {
+    StageId viewed = StageId::decode;
+    std::optional<StageId> compare;
+
+    bool operator==(const ViewAfterOpen&) const = default;
+};
+[[nodiscard]] ViewAfterOpen view_after_open() noexcept;
+
 // The furthest stage that either picture shows: the later of `viewed` and `compare`.
 [[nodiscard]] StageId furthest_shown(StageId viewed, std::optional<StageId> compare = {}) noexcept;
 
