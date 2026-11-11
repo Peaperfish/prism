@@ -52,18 +52,23 @@ ExportPlan plan_export(const ExportSize& size, PixelSize file, PixelSize start) 
     return plan;
 }
 
-std::string export_result_text(const ExportSize& size, const ExportPlan& plan) {
-    if (plan.reduced()) {
-        return "Exports at " + times(plan.size);
-    }
-    if (size.mode == ExportSize::Mode::original) {
-        return "Exports at full size, " + times(plan.size);
-    }
-    return "Not smaller than the photo: exports at full size, " + times(plan.size);
+std::string_view size_estimate_prefix(bool exact) noexcept {
+    return exact ? "" : "about ";
 }
 
-std::string export_original_text(PixelSize file) {
-    return "Full size, " + times(file);
+std::string export_result_text(const ExportSize& size, const ExportPlan& plan, bool exact) {
+    const std::string at = std::string(size_estimate_prefix(exact)) + times(plan.size);
+    if (plan.reduced()) {
+        return "Exports at " + at;
+    }
+    if (size.mode == ExportSize::Mode::original) {
+        return "Exports at full size, " + at;
+    }
+    return "Not smaller than the photo: exports at full size, " + at;
+}
+
+std::string export_original_text(PixelSize file, bool exact) {
+    return "Full size, " + std::string(size_estimate_prefix(exact)) + times(file);
 }
 
 }  // namespace prism::gui

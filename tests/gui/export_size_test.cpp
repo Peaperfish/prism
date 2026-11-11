@@ -152,3 +152,32 @@ TEST(ExportPlan, NothingOpenPlansNothing) {
     const prism::gui::ExportPlan plan = plan_export(long_side(100), {0, 0}, {0, 0});
     EXPECT_FALSE(plan.reduced());
 }
+
+// --- An estimated RAW size is not shown as exact (#55) ---
+
+TEST(HeadlessEstimatedExportSize, BothLinesSayAboutWhenTheFileSizeIsAnEstimate) {
+    const PixelSize file{6000, 4000};
+    EXPECT_EQ(export_original_text(file, false), "Full size, about 6000 \xC3\x97 4000");
+    const auto text = [&](const ExportSize& size) {
+        return export_result_text(size, plan_export(size, file, file), false);
+    };
+    EXPECT_EQ(text(ExportSize{}), "Exports at full size, about 6000 \xC3\x97 4000");
+    EXPECT_EQ(text(long_side(2048)), "Exports at about 2048 \xC3\x97 1365");
+    EXPECT_EQ(text(long_side(9000)),
+              "Not smaller than the photo: exports at full size, about 6000 \xC3\x97 4000");
+}
+
+TEST(HeadlessEstimatedExportSize, AnExactSizeReadsAsBefore) {
+    const PixelSize file{6000, 4000};
+    EXPECT_EQ(export_original_text(file, true), "Full size, 6000 \xC3\x97 4000");
+    EXPECT_EQ(export_original_text(file), export_original_text(file, true));
+    const ExportSize size = long_side(2048);
+    const prism::gui::ExportPlan plan = plan_export(size, file, file);
+    EXPECT_EQ(export_result_text(size, plan, true), "Exports at 2048 \xC3\x97 1365");
+    EXPECT_EQ(export_result_text(size, plan), export_result_text(size, plan, true));
+}
+
+TEST(HeadlessEstimatedExportSize, TheMarkerIsTheStatusBarsOwn) {
+    EXPECT_EQ(prism::gui::size_estimate_prefix(false), "about ");
+    EXPECT_EQ(prism::gui::size_estimate_prefix(true), "");
+}

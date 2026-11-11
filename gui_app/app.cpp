@@ -616,7 +616,8 @@ void App::draw_export_popup() {
     ExportSheetCallbacks callbacks;
     callbacks.explain = [this](std::string_view id) { explain(id); };
     const ExportSheetContext context{{session_.file_width(), session_.file_height()},
-                                     session_.export_start_size()};
+                                     session_.export_start_size(),
+                                     session_.file_size_exact()};
     const ExportSheetResult result = draw_export_sheet(*export_sheet_, context, callbacks);
     if (result != ExportSheetResult::none) {
         ImGui::CloseCurrentPopup();

@@ -35,6 +35,7 @@ struct ExportSheetState {
 struct ExportSheetContext {
     prism::PixelSize file;   // the file's own size (a percentage is of this)
     prism::PixelSize start;  // what the export decodes at (the RAW half-size decode, or `file`)
+    bool file_size_exact = true;  // false: `file` is an estimate, and the sheet says "about"
 };
 
 enum class ExportSheetResult { none, cancel, save_as };

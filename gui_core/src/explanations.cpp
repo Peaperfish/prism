@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <vector>
 
+#include "prism/gui/export_size.hpp"
 #include "prism/gui/paper_grade.hpp"
 #include "prism/gui/pixel_sample.hpp"
 #include "prism/gui/stage_controls.hpp"
@@ -641,7 +642,7 @@ std::string live_line(std::string_view id, const EditSettings& s, const LiveCont
             const double across =
                 file_pixels_across(context.preview_long_side, context.file_long_side);
             return "Preview " + preview + " px, file " +
-                   (context.file_size_exact ? "" : "about ") + file +
+                   std::string(size_estimate_prefix(context.file_size_exact)) + file +
                    " px on the long side: each preview pixel stands for about " +
                    printf_string("%.1f", across) + " file pixels across";
         }

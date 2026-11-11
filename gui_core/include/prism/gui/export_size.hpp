@@ -2,6 +2,7 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 
 #include "prism/resize.hpp"
 
@@ -50,12 +51,20 @@ struct ExportPlan {
 // The shorter side is worked out as downscale() does.
 [[nodiscard]] ExportPlan plan_export(const ExportSize& size, PixelSize file, PixelSize start);
 
+// The marker for a size that is only an estimate (a RAW file whose real size is not known yet): "about "
+// before the number, "" when it is exact. The status bar's preview-size line and the Export sheet
+// both use it, so they say it the same way.
+[[nodiscard]] std::string_view size_estimate_prefix(bool exact) noexcept;
+
 // The Export sheet's result line, with the real multiplication sign and no digit grouping:
 // "Exports at 2048 x 1365" when reduced, "Not smaller than the photo: exports at full size, W x H"
 // when a size was asked for that does not reduce it, "Exports at full size, W x H" for Original.
-[[nodiscard]] std::string export_result_text(const ExportSize& size, const ExportPlan& plan);
+// With `exact` false the size reads "about W x H" (size_estimate_prefix), as it comes from an estimate.
+[[nodiscard]] std::string export_result_text(const ExportSize& size, const ExportPlan& plan,
+                                             bool exact = true);
 
-// The sheet's value row for Original: "Full size, W x H" with the file's size.
-[[nodiscard]] std::string export_original_text(PixelSize file);
+// The sheet's value row for Original: "Full size, W x H" with the file's size ("Full size, about
+// W x H" while `exact` is false).
+[[nodiscard]] std::string export_original_text(PixelSize file, bool exact = true);
 
 }  // namespace prism::gui

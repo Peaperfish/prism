@@ -208,7 +208,7 @@ ExportSheetResult draw_export_sheet(ExportSheetState& state, const ExportSheetCo
                 u32(colours.text_muted), false, true);
     } else {
         rects.field_min = rects.field_max = rects.row_min;
-        text_in(rects.row_min, rects.row_max, gui::export_original_text(context.file), nullptr,
+        text_in(rects.row_min, rects.row_max, gui::export_original_text(context.file, context.file_size_exact), nullptr,
                 token_type().body, u32(colours.text_muted), false, true);
     }
 
@@ -216,7 +216,7 @@ ExportSheetResult draw_export_sheet(ExportSheetState& state, const ExportSheetCo
     rects.result_min = add(origin, 0, l.result_y);
     rects.result_max = add(origin, l.width, l.result_y + l.result_h);
     const gui::ExportPlan plan = gui::plan_export(state.size, context.file, context.start);
-    text_in(rects.result_min, rects.result_max, gui::export_result_text(state.size, plan), nullptr,
+    text_in(rects.result_min, rects.result_max, gui::export_result_text(state.size, plan, context.file_size_exact), nullptr,
             token_type().small, u32(colours.text), true, false);
 
     // Buttons, right-aligned: Cancel, then Save As….
