@@ -85,6 +85,20 @@ private:
 [[nodiscard]] bool canvas_claims_space(bool canvas_hovered, bool text_field_active,
                                        bool control_active) noexcept;
 
+// The modal sheets and prompts that can be up over the photo.
+struct OpenSheets {
+    bool recipe_sheet = false;  // Save recipe…
+    bool export_sheet = false;  // Export…
+    bool close_prompt = false;  // the unexported-edits question
+    bool saving = false;        // the "Saving…" box, while an export runs or the close waits for one
+    bool operator==(const OpenSheets&) const = default;
+};
+
+// Whether the photo's own keys (J, T, I, W, B, X, M, brackets, zoom, undo, Space for the hand,
+// open, export, interface size…) do nothing: while any modal is up. Each sheet still reads its own
+// keys (Esc, Return, typing); quitting stays with the app.
+[[nodiscard]] bool shortcuts_blocked(const OpenSheets& open) noexcept;
+
 // A drag of the picture, from press to release. It moves nothing until the cursor is further than the
 // threshold from where it went down, and then catches up all at once, so the picture stays with the
 // hand. A threshold of 0 starts at once.

@@ -128,6 +128,7 @@ private:
     void undo();
     void redo();
 
+    gui::OpenSheets open_sheets() const;  // the modals up now, for shortcuts_blocked
     void handle_shortcuts();
     void draw_menu();
     void draw_canvas();

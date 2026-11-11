@@ -1301,15 +1301,25 @@ void App::step_interface_size(int direction) {
     set_preferences(std::move(p));
 }
 
+gui::OpenSheets App::open_sheets() const {
+    gui::OpenSheets open;
+    open.recipe_sheet = recipe_sheet_.has_value();
+    open.export_sheet = export_sheet_.has_value();
+    open.close_prompt = close_pending_ && close_phase_ == ClosePhase::asking;
+    open.saving = exporter_.busy();  // the "Saving" box shows exactly while it does
+    return open;
+}
+
 void App::handle_shortcuts() {
     // Hold M: the stroke mask, for as long as the key is down (not a shortcut, which fires once).
-    stroke_mask_on_ = gui::stroke_mask_shown(brush_.on() && !export_sheet_,
+    const bool blocked = gui::shortcuts_blocked(open_sheets());
+    stroke_mask_on_ = gui::stroke_mask_shown(brush_.on() && !blocked,
                                              ImGui::IsKeyDown(ImGuiKey_M),
                                              ImGui::GetIO().WantTextInput);
-    // The Export sheet is modal, and ImGui lets global shortcuts through a modal: so while it is up
-    // nothing but quitting is handled here (Esc and Enter are the sheet's own, read in
-    // draw_export_sheet). No I, T, J, zoom, undo, open or interface size behind it.
-    if (export_sheet_) {
+    // The sheets are modal, and ImGui lets global shortcuts through a modal: so while one is up
+    // nothing but quitting is handled here (Esc and Enter are each sheet's own, read where it is
+    // drawn). No I, T, J, zoom, undo, open or interface size behind it.
+    if (blocked) {
         if (!ImGui::GetIO().ConfigMacOSXBehaviors &&
             ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Q, ImGuiInputFlags_RouteGlobal)) {
             SDL_Event quit{};
@@ -1775,7 +1785,8 @@ void App::update_hand_key() {
         hand_drag_.release();
     }
     const bool hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
-    const bool claimed = gui::canvas_claims_space(hovered, io.WantTextInput, control_active());
+    const bool claimed = !gui::shortcuts_blocked(open_sheets()) &&
+                         gui::canvas_claims_space(hovered, io.WantTextInput, control_active());
     if (claimed) {
         // Every frame, not only once it is down: keyboard navigation reads it before this runs.
         ImGui::SetKeyOwner(ImGuiKey_Space, ImGui::GetID("##canvas_hand"));

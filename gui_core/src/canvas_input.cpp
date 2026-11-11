@@ -85,6 +85,10 @@ bool canvas_claims_space(bool canvas_hovered, bool text_field_active,
     return canvas_hovered && !text_field_active && !control_active;
 }
 
+bool shortcuts_blocked(const OpenSheets& open) noexcept {
+    return open.recipe_sheet || open.export_sheet || open.close_prompt || open.saving;
+}
+
 void HandDrag::press(ViewPoint at, float threshold) noexcept {
     pressed_ = true;
     dragging_ = threshold <= 0.0f;

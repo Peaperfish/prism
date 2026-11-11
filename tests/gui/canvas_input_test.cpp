@@ -722,3 +722,24 @@ TEST(BrushTools, AnUnavailableBrushChangesNothingButCanBeLeft) {
     EXPECT_EQ(tools_after_key(brushing, ToolKey::pick, false, true, true), brushing);
     EXPECT_EQ(tools_after_key(brushing, ToolKey::strip, true, false, true), brushing);
 }
+
+// --- Shortcuts behind a modal (#54) ---
+
+TEST(HeadlessShortcutsBlocked, NoSheetOpenBlocksNothing) {
+    EXPECT_FALSE(shortcuts_blocked(OpenSheets{}));
+}
+
+TEST(HeadlessShortcutsBlocked, EachSheetAloneBlocks) {
+    OpenSheets recipe;
+    recipe.recipe_sheet = true;
+    OpenSheets exporting;
+    exporting.export_sheet = true;
+    OpenSheets prompt;
+    prompt.close_prompt = true;
+    OpenSheets saving;
+    saving.saving = true;
+    EXPECT_TRUE(shortcuts_blocked(recipe));
+    EXPECT_TRUE(shortcuts_blocked(exporting));
+    EXPECT_TRUE(shortcuts_blocked(prompt));
+    EXPECT_TRUE(shortcuts_blocked(saving));
+}
