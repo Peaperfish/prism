@@ -1,6 +1,7 @@
 #include "prism/frame.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstring>
@@ -10,6 +11,7 @@
 
 #include "prism/parallel.hpp"
 #include "prism/ranges.hpp"
+#include "prism/resize.hpp"
 #include "sample_ranges.hpp"
 
 namespace prism {
@@ -126,6 +128,49 @@ std::optional<double> aspect_ratio(Aspect aspect, bool portrait, int width, int 
     }
     const bool landscape = (width >= height) != portrait;
     return landscape ? long_over_short : 1.0 / long_over_short;
+}
+
+bool is_whole_photo(const Frame& f) noexcept {
+    return f.angle == 0.0f && f.left == 0.0f && f.top == 0.0f && f.right == 1.0f &&
+           f.bottom == 1.0f;
+}
+
+Frame apply_aspect(const Frame& f, int width, int height) {
+    require_valid(f, width, height, "apply_aspect");
+    const std::optional<double> ratio = aspect_ratio(f.aspect, f.portrait, width, height);
+    if (!ratio) {
+        return f;
+    }
+    const double W = width;
+    const double H = height;
+    const double cx = (static_cast<double>(f.left) + f.right) / 2.0;
+    const double cy = (static_cast<double>(f.top) + f.bottom) / 2.0;
+    const double w = (static_cast<double>(f.right) - f.left) * W;
+    const double h = (static_cast<double>(f.bottom) - f.top) * H;
+    // Keep the whole side that is already short enough and shrink the other one.
+    // A rectangle already of the right shape, to within rounding, is kept as it is.
+    constexpr double tolerance = 1e-9;
+    const double shape = (w / h) / *ratio;
+    double new_w = w;
+    double new_h = h;
+    if (shape > 1.0 + tolerance) {
+        new_w = h * *ratio;
+    } else if (shape < 1.0 - tolerance) {
+        new_h = w / *ratio;
+    }
+    Frame out = f;
+    const auto edge = [](double centre, double size, double n, int sign) {
+        return static_cast<float>(std::clamp(centre + sign * size / n / 2.0, 0.0, 1.0));
+    };
+    if (new_w != w) {
+        out.left = edge(cx, new_w, W, -1);
+        out.right = edge(cx, new_w, W, 1);
+    }
+    if (new_h != h) {
+        out.top = edge(cy, new_h, H, -1);
+        out.bottom = edge(cy, new_h, H, 1);
+    }
+    return out;
 }
 
 Frame fit_frame(const Frame& f, int width, int height) {
@@ -366,6 +411,45 @@ Image apply_frame(const Image& img, const Frame& f, int threads) {
             }
         }
     });
+    return out;
+}
+
+ExportFrame plan_export_frame(const std::optional<Frame>& frame, int width, int height) {
+    if (!frame) {
+        if (width < 1 || height < 1) {
+            throw std::invalid_argument("plan_export_frame: width and height must be at least 1");
+        }
+        return {std::nullopt, {width, height}, false};
+    }
+    require_valid(*frame, width, height, "plan_export_frame");
+    if (is_whole_photo(*frame)) {
+        return {std::nullopt, {width, height}, false};
+    }
+    const Frame fitted = fit_frame(*frame, width, height);
+    return {fitted, framed_size(fitted, width, height), fitted != *frame};
+}
+
+FramedExport frame_and_reduce(Image decoded, const std::optional<Frame>& frame,
+                              std::optional<int> long_side, int threads) {
+    FramedExport out;
+    out.frame = plan_export_frame(frame, decoded.width, decoded.height);
+    using Clock = std::chrono::steady_clock;
+    const auto millis = [](Clock::time_point from) {
+        return std::chrono::duration<double, std::milli>(Clock::now() - from).count();
+    };
+    if (out.frame.fitted) {
+        const auto start = Clock::now();
+        // Assigning frees the full decode before the reduction below allocates.
+        decoded = apply_frame(decoded, *out.frame.fitted, threads);
+        out.frame_ms = millis(start);
+    }
+    if (long_side && std::max(decoded.width, decoded.height) > *long_side) {
+        const auto start = Clock::now();
+        decoded = downscale(decoded, *long_side, threads);
+        out.reduce_ms = millis(start);
+        out.reduced = true;
+    }
+    out.image = std::move(decoded);
     return out;
 }
 

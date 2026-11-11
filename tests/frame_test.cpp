@@ -689,4 +689,207 @@ TEST(Frame, AspectRatioFollowsThePhotoAndTurns) {
     EXPECT_THROW((void)aspect_ratio(static_cast<Aspect>(99), false, 1, 1), std::invalid_argument);
 }
 
+// --- Whole photo, aspect and the export order ----------------------------------------------------
+
+TEST(Frame, IsWholePhotoNeedsZeroAngleAndAllFourEdges) {
+    using prism::is_whole_photo;
+    EXPECT_TRUE(is_whole_photo(Frame{}));
+    // The aspect lock moves no pixel.
+    Frame locked;
+    locked.aspect = Aspect::three_two;
+    locked.portrait = true;
+    EXPECT_TRUE(is_whole_photo(locked));
+    EXPECT_FALSE(is_whole_photo(frame_of(0.1f, 0, 0, 1, 1)));
+    EXPECT_FALSE(is_whole_photo(frame_of(0, 0.01f, 0, 1, 1)));
+    EXPECT_FALSE(is_whole_photo(frame_of(0, 0, 0.01f, 1, 1)));
+    EXPECT_FALSE(is_whole_photo(frame_of(0, 0, 0, 0.99f, 1)));
+    EXPECT_FALSE(is_whole_photo(frame_of(0, 0, 0, 1, 0.99f)));
+}
+
+Frame with_aspect(Frame f, Aspect a, bool portrait = false) {
+    f.aspect = a;
+    f.portrait = portrait;
+    return f;
+}
+
+TEST(Frame, ApplyAspectGivesTheLargestCentredRectangleOfTheShape) {
+    using prism::apply_aspect;
+    // The whole of a 100 x 80 photo, 4:5 turned to stand up: 64 x 80, centred.
+    Frame f = apply_aspect(with_aspect(Frame{}, Aspect::four_five, true), 100, 80);
+    EXPECT_EQ(prism::framed_box(f, 100, 80), (FrameBox{18, 0, 64, 80}));
+    // Not turned it is 5 wide by 4 tall: 100 x 80 already, so the frame stays as it was.
+    f = apply_aspect(with_aspect(Frame{}, Aspect::four_five), 100, 80);
+    EXPECT_EQ(f, with_aspect(Frame{}, Aspect::four_five));
+    // A wide shape on a tall photo (turned against it) loses height: 16:9 on 80 x 100 is 80 x 45.
+    f = apply_aspect(with_aspect(Frame{}, Aspect::sixteen_nine, true), 80, 100);
+    EXPECT_EQ(prism::framed_size(f, 80, 100), (prism::PixelSize{80, 45}));
+    // A crop of 100 x 50 pixels, wider than 3:2: the width shrinks to 75, about the crop's centre.
+    f = apply_aspect(with_aspect(frame_of(0, 0.25f, 0.25f, 0.75f, 0.875f), Aspect::three_two), 200,
+                     80);
+    EXPECT_EQ(prism::framed_box(f, 200, 80), (FrameBox{63, 20, 75, 50}));
+    // Free keeps the rectangle as it is.
+    const Frame free_frame = with_aspect(frame_of(3, 0.1f, 0.2f, 0.7f, 0.9f), Aspect::free);
+    EXPECT_EQ(apply_aspect(free_frame, 100, 80), free_frame);
+}
+
+TEST(Frame, ApplyAspectKeepsACorrectShapeNeverGrowsAndKeepsTheRest) {
+    using prism::apply_aspect;
+    // Original on the whole photo is the photo's own shape: nothing moves, not even by a rounding
+    // error (a frame off 0 / 1 by 1e-17 would no longer be the whole photo).
+    for (const auto& [w, h] : {std::pair{6000, 4000}, {4000, 6000}, {1501, 701}, {977, 977},
+                          {100, 104}, {104, 100}, {100, 106}, {117, 103}}) {
+        const Frame whole = with_aspect(Frame{}, Aspect::original);
+        EXPECT_EQ(apply_aspect(whole, w, h), whole) << w << "x" << h;
+        EXPECT_TRUE(prism::is_whole_photo(apply_aspect(whole, w, h))) << w << "x" << h;
+    }
+    // Every shape, both ways, on a few photos and crops: inside the crop, same centre, right shape.
+    const Frame crops[] = {frame_of(0, 0, 0, 1, 1), frame_of(12.5f, 0.1f, 0.3f, 0.9f, 0.6f),
+                           frame_of(-30, 0.4f, 0.0f, 0.6f, 1.0f)};
+    for (const auto& [w, h] : {std::pair{6000, 4000}, {4000, 6000}, {500, 500}}) {
+        for (const Frame& crop : crops) {
+            for (const Aspect a : prism::all_aspects) {
+                if (a == Aspect::free) {
+                    continue;
+                }
+                for (const bool portrait : {false, true}) {
+                    const Frame in = with_aspect(crop, a, portrait);
+                    const Frame out = apply_aspect(in, w, h);
+                    EXPECT_GE(out.left, in.left);
+                    EXPECT_GE(out.top, in.top);
+                    EXPECT_LE(out.right, in.right);
+                    EXPECT_LE(out.bottom, in.bottom);
+                    EXPECT_NEAR(out.left + out.right, in.left + in.right, 2e-6);
+                    EXPECT_NEAR(out.top + out.bottom, in.top + in.bottom, 2e-6);
+                    const double shape = (static_cast<double>(out.right) - out.left) * w /
+                                         ((static_cast<double>(out.bottom) - out.top) * h);
+                    EXPECT_NEAR(shape, *prism::aspect_ratio(a, portrait, w, h), 1e-4);
+                    EXPECT_EQ(out.angle, in.angle);
+                    EXPECT_EQ(out.aspect, in.aspect);
+                    EXPECT_EQ(out.portrait, in.portrait);
+                }
+            }
+        }
+    }
+    Frame bad;
+    bad.left = 2.0f;
+    EXPECT_THROW((void)apply_aspect(bad, 10, 10), std::invalid_argument);
+    EXPECT_THROW((void)apply_aspect(Frame{}, 0, 10), std::invalid_argument);
+}
+
+TEST(Frame, PlanExportFrameTakesTodaysPathForNoFrameAndForTheWholePhoto) {
+    using prism::plan_export_frame;
+    for (const std::optional<Frame>& none :
+         {std::optional<Frame>{}, std::optional<Frame>{Frame{}},
+          std::optional<Frame>{with_aspect(Frame{}, Aspect::sixteen_nine, true)}}) {
+        const prism::ExportFrame plan = plan_export_frame(none, 120, 80);
+        EXPECT_FALSE(plan.fitted.has_value());
+        EXPECT_EQ(plan.size, (prism::PixelSize{120, 80}));
+        EXPECT_FALSE(plan.changed);
+    }
+}
+
+TEST(Frame, PlanExportFrameFitsAndSaysWhenFittingChangedTheFrame) {
+    using prism::plan_export_frame;
+    // Fits: kept, nothing to say.
+    const Frame fits = frame_of(2.0f, 0.2f, 0.2f, 0.8f, 0.8f);
+    prism::ExportFrame plan = plan_export_frame(fits, 120, 80);
+    ASSERT_TRUE(plan.fitted.has_value());
+    EXPECT_EQ(*plan.fitted, fits);
+    EXPECT_FALSE(plan.changed);
+    EXPECT_EQ(plan.size, prism::framed_size(fits, 120, 80));
+    // Turned whole photo: the corners show, so it shrinks.
+    const Frame turned = frame_of(10.0f, 0, 0, 1, 1);
+    plan = plan_export_frame(turned, 120, 80);
+    ASSERT_TRUE(plan.fitted.has_value());
+    EXPECT_EQ(*plan.fitted, prism::fit_frame(turned, 120, 80));
+    EXPECT_TRUE(plan.changed);
+    EXPECT_LT(plan.size.width, 120);
+    EXPECT_LT(plan.size.height, 80);
+    EXPECT_EQ(plan.size, prism::framed_size(*plan.fitted, 120, 80));
+    EXPECT_THROW((void)plan_export_frame(frame_of(0, 0.5f, 0, 0.4f, 1), 10, 10),
+                 std::invalid_argument);
+    EXPECT_THROW((void)plan_export_frame(std::nullopt, 0, 10), std::invalid_argument);
+}
+
+TEST(Frame, ExportMeasuresTheFramedSizeNotThePhotos) {
+    // A percentage or a long side is worked out from the plan's size, the framed one.
+    const Frame crop = frame_of(0, 0.25f, 0.0f, 0.75f, 1.0f);  // 100 x 80 of 200 x 80
+    const prism::ExportFrame plan = prism::plan_export_frame(crop, 200, 80);
+    ASSERT_EQ(plan.size, (prism::PixelSize{100, 80}));
+    const int percent_side = prism::long_side_for_percent(plan.size.width, plan.size.height, 50);
+    EXPECT_EQ(percent_side, 50);  // 50% of the framed 100 x 80, not of the photo's 200 x 80
+    const Image reduced = prism::frame_and_reduce(patterned(200, 80), crop, percent_side).image;
+    EXPECT_EQ(reduced.width, 50);
+    EXPECT_EQ(reduced.height, 40);
+    // Original: no reduction, the framed size.
+    const Image original = prism::frame_and_reduce(patterned(200, 80), crop, std::nullopt).image;
+    EXPECT_EQ(original.width, 100);
+    EXPECT_EQ(original.height, 80);
+}
+
+TEST(Frame, FrameAndReduceWithoutAFramePathIsExactlyTodaysDownscale) {
+    const Image img = patterned(150, 90);
+    const Frame whole_but_locked = with_aspect(Frame{}, Aspect::square);
+    for (const std::optional<Frame>& frame :
+         {std::optional<Frame>{}, std::optional<Frame>{Frame{}},
+          std::optional<Frame>{whole_but_locked}}) {
+        // Original, a long side, and ones that do not reduce.
+        for (const std::optional<int> side : {std::optional<int>{}, std::optional<int>{40},
+                                              std::optional<int>{150}, std::optional<int>{400}}) {
+            const prism::FramedExport out = prism::frame_and_reduce(img, frame, side, 1);
+            const Image today = side ? prism::downscale(img, *side, 1) : img;
+            ASSERT_EQ(out.image.width, today.width);
+            ASSERT_EQ(out.image.height, today.height);
+            EXPECT_EQ(first_bit_difference(out.image, today), -1);
+            EXPECT_FALSE(out.frame.fitted.has_value());
+            EXPECT_EQ(out.frame_ms, 0.0);
+        }
+    }
+    // A whole photo at a reduced size takes no apply_frame: it reports no fitted frame, which is
+    // what tells the caller to keep the whole-photo grid.
+    const prism::FramedExport reduced = prism::frame_and_reduce(img, Frame{}, 40, 1);
+    EXPECT_TRUE(reduced.reduced);
+    EXPECT_FALSE(reduced.frame.fitted.has_value());
+}
+
+TEST(Frame, FrameAndReduceFramesFirstThenReduces) {
+    const Image img = patterned(240, 160);
+    const Frame f = frame_of(6.0f, 0.1f, 0.05f, 0.9f, 0.95f);
+    const Frame fitted = prism::fit_frame(f, 240, 160);
+    const prism::FramedExport out = prism::frame_and_reduce(img, f, 50, 1);
+    ASSERT_TRUE(out.frame.fitted.has_value());
+    EXPECT_EQ(*out.frame.fitted, fitted);
+    EXPECT_TRUE(out.reduced);
+    // The long side is exactly what was asked, of the framed picture.
+    EXPECT_EQ(std::max(out.image.width, out.image.height), 50);
+    const Image expected = prism::downscale(prism::apply_frame(img, fitted, 1), 50, 1);
+    ASSERT_EQ(out.image.width, expected.width);
+    ASSERT_EQ(out.image.height, expected.height);
+    EXPECT_EQ(first_bit_difference(out.image, expected), -1);
+    // Reducing first and framing after is another picture altogether.
+    const Image other_way = prism::apply_frame(prism::downscale(img, 80, 1), fitted, 1);
+    EXPECT_NE(first_bit_difference(out.image, prism::downscale(other_way, 50, 1)), -1);
+    // A frame not larger than long_side keeps its framed size.
+    const prism::FramedExport kept = prism::frame_and_reduce(img, f, 10000, 1);
+    EXPECT_FALSE(kept.reduced);
+    EXPECT_EQ(kept.image.width, prism::framed_size(fitted, 240, 160).width);
+    EXPECT_EQ(first_bit_difference(kept.image, prism::apply_frame(img, fitted, 1)), -1);
+    EXPECT_THROW((void)prism::frame_and_reduce(img, f, 0, 1), std::invalid_argument);
+}
+
+TEST(Frame, FrameAndReduceOneAndEightThreadsAreBitIdentical) {
+    constexpr int W = 1501;
+    constexpr int H = 701;
+    const Image img = patterned(W, H);
+    const Frame f = frame_of(-4.0f, 0.02f, 0.03f, 0.97f, 0.98f);
+    for (const std::optional<int> side : {std::optional<int>{}, std::optional<int>{700}}) {
+        const prism::FramedExport one = prism::frame_and_reduce(img, f, side, 1);
+        const prism::FramedExport eight = prism::frame_and_reduce(img, f, side, 8);
+        ASSERT_TRUE(one.frame.fitted.has_value());
+        ASSERT_EQ(one.image.width, eight.image.width);
+        ASSERT_EQ(one.image.height, eight.image.height);
+        EXPECT_EQ(first_bit_difference(one.image, eight.image), -1);
+    }
+}
+
 }  // namespace

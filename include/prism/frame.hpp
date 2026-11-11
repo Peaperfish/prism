@@ -3,6 +3,7 @@
 #include <array>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "prism/image.hpp"
@@ -102,6 +103,22 @@ struct Frame {
 [[nodiscard]] std::optional<double> aspect_ratio(Aspect aspect, bool portrait, int width,
                                                  int height);
 
+// Whether `f` is the whole photo, upright: angle 0 and the edges at 0, 0, 1, 1 exactly. The aspect
+// lock is not looked at, as it moves no pixel. Such a frame changes nothing, and the export path
+// takes no part of the framing code for it (see frame_and_reduce).
+[[nodiscard]] bool is_whole_photo(const Frame& f) noexcept;
+
+// `f` with its rectangle made the largest one of f.aspect (turned if f.portrait) that fits inside
+// it, with the same centre: the rectangle shrinks about its centre until its shape is the aspect's
+// on a `width` x `height` photo. So a rectangle wider than the aspect loses width, a taller one
+// loses height, and one of the right shape (within float rounding) is kept. Aspect::free keeps the
+// rectangle as it is. The angle, aspect and portrait are kept; it never grows, so a rectangle
+// inside the photo stays inside it. Shapes are measured in pixels of the photo, not in fractions.
+// Fit the result with fit_frame to keep corners off the edge of a turned photo. Throws
+// std::invalid_argument with validate_frame's messages if `f` is invalid, or if width or height is
+// below 1.
+[[nodiscard]] Frame apply_aspect(const Frame& f, int width, int height);
+
 // `f` made to fit a `width` x `height` photo turned by f.angle: no corner of the rectangle past the
 // photo's edge, so nothing outside the picture is ever printed.
 //  1. If the rectangle's centre lies outside the turned photo, it moves straight towards the
@@ -194,5 +211,46 @@ private:
 // bit-identical for any value. Throws std::invalid_argument with validate_frame's messages if `f`
 // is invalid, if `img` is empty, or if its pixel buffer does not match width * height * 3.
 [[nodiscard]] Image apply_frame(const Image& img, const Frame& f, int threads = 0);
+
+// What an export does with the frame, for a decode of `width` x `height`.
+struct ExportFrame {
+    // The frame to apply, fitted (fit_frame); nothing when the export takes today's path: no frame,
+    // or a frame that is the whole photo (is_whole_photo). Nothing means no apply_frame, no framed
+    // grid for the dodge & burn stage and no change to the size or the pixels.
+    std::optional<Frame> fitted;
+    // The size after framing, before any reduction: the decode's own size when `fitted` is empty.
+    // Original, Long side and Percent all measure this size.
+    PixelSize size;
+    // Fitting made the frame smaller or moved it, so it is no longer what was asked for.
+    bool changed = false;
+};
+
+// The frame an export of a `width` x `height` decode applies. Throws std::invalid_argument with
+// validate_frame's messages if `frame` is invalid, or if width or height is below 1.
+[[nodiscard]] ExportFrame plan_export_frame(const std::optional<Frame>& frame, int width,
+                                            int height);
+
+struct FramedExport {
+    Image image;
+    ExportFrame frame;  // as plan_export_frame(...) gave it
+    bool reduced = false;  // downscale ran (the framed image was larger than long_side)
+    // How long apply_frame and downscale took, in milliseconds (0 for a step that did not run).
+    double frame_ms = 0.0;
+    double reduce_ms = 0.0;
+};
+
+// The order of an export: the decoded image is framed (plan_export_frame, then apply_frame, so the
+// turn works on the full-resolution decode), then reduced to `long_side` if the framed image is
+// larger (downscale, never an enlargement), and the caller runs the stages on the result. With no
+// framing to do (`frame.fitted` empty) the image is only reduced, exactly as before frames existed.
+// `decoded` is moved from, so the full decode is freed before the reduction allocates.
+//
+// A caller with a percentage works out `long_side` from plan_export_frame(...).size. For the dodge
+// & burn stage a framed export uses PixelGrid::framed(*frame.fitted, width, height, scale, w, h)
+// with the decode's `width` x `height`, the result's w x h and scale = framed size / w; an export
+// without a fitted frame uses PixelGrid::whole as it always did.
+// Throws as plan_export_frame, and std::invalid_argument (from downscale) if long_side is below 1.
+[[nodiscard]] FramedExport frame_and_reduce(Image decoded, const std::optional<Frame>& frame,
+                                            std::optional<int> long_side, int threads = 0);
 
 }  // namespace prism
