@@ -1069,7 +1069,7 @@ TEST_F(LightPathHeadless, ClearWorksOnlyWithStrokesAndSaysNothingElse) {
     EXPECT_TRUE(viewed_calls_.empty());
 }
 
-TEST_F(LightPathHeadless, TheStrengthSliderMovesInTenthsOfAStopAndResetsToHalf) {
+TEST_F(LightPathHeadless, TheStrengthSliderMovesInTenthsOfAStop) {
     frame();
     frame();
     const Placed strength = placed_with(gui::explain::dodge_burn_strength);
@@ -1082,6 +1082,33 @@ TEST_F(LightPathHeadless, TheStrengthSliderMovesInTenthsOfAStopAndResetsToHalf) 
         EXPECT_LE(v, 2.0f);
     }
     EXPECT_FLOAT_EQ(strength_calls_.back(), 2.0f);
+}
+
+TEST_F(LightPathHeadless, ARightClickOnTheStrengthSliderOffersResetToHalfAStop) {
+    frame();
+    frame();
+    const Placed strength = placed_with(gui::explain::dodge_burn_strength);
+    const ImVec2 at = strength.centre();
+    mouse_to(at);
+    frame();
+    frame();
+    mouse(true, 1);
+    frame();
+    mouse(false, 1);
+    frame();
+    frame();
+    EXPECT_TRUE(strength_calls_.empty());  // opening the menu changes nothing
+    // The popup's only item is right under the cursor, a little down.
+    mouse_to(ImVec2(at.x + 12, at.y + 12));
+    frame();
+    frame();
+    mouse(true);
+    frame();
+    mouse(false);
+    frame();
+    frame();
+    ASSERT_EQ(strength_calls_.size(), 1u);
+    EXPECT_FLOAT_EQ(strength_calls_[0], 0.5f);
 }
 
 // --- Explanations ------------------------------------------------------------------------------
