@@ -187,6 +187,7 @@ struct ViewAfterOpen {
 // What Esc does to the picture. All the flags describe the frame before the key arrived: by the time
 // the app sees the key, Dear ImGui has already used it to close a popup or end a drag.
 struct EscapeContext {
+    bool framing = false;        // framing mode (the easel, framing.hpp) is on
     bool brushing = false;       // Brush mode (Dodge & burn) is on
     bool picking = false;        // Pick mode (the white balance picker) is on
     bool sampling = false;       // Sample mode is on
@@ -203,6 +204,7 @@ struct EscapeContext {
 enum class EscapeAction {
     none,           // Esc belongs to something else, or there's nothing to back out of
     close_window,   // close the focused window (see EscapeContext::window_focused)
+    leave_framing,  // leave framing mode, keeping the frame
     leave_brush,    // leave Brush mode
     leave_pick,     // leave Pick mode
     clear_sample,   // leave Sample mode and clear its pin, in one press
@@ -214,8 +216,10 @@ enum class EscapeAction {
 // Esc backs out one level, whatever widget was used last, but never while it is closing a popup
 // (the Saving modal is one, so Esc can't dismiss it), ending a text edit or cancelling a drag. A
 // focused closable window takes the Esc itself, and then leaves Sample mode, the test strip, the
-// comparison and the viewed stage alone. Then, one level per press: Brush mode, Pick mode, Sample
-// mode, the test strip, the comparison, the viewed stage.
+// comparison and the viewed stage alone. Then, one level per press: framing (#58; it turns the
+// other tools off, so it never shares the chain with them), Brush mode, Pick mode, Sample mode, the
+// test strip, the comparison, the viewed stage. Esc during a framing gesture cancels the gesture
+// instead (framing_key), before this is asked.
 [[nodiscard]] EscapeAction escape_action(const EscapeContext& c) noexcept;
 
 }  // namespace prism::gui

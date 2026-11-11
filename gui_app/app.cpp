@@ -1413,6 +1413,7 @@ void App::handle_shortcuts() {
                 viewed_stage_ = gui::final_stage;
                 compare_stage_.reset();  // one that equalled the viewed stage goes too
                 break;
+            case gui::EscapeAction::leave_framing:  // framing has no window yet (#58)
             case gui::EscapeAction::none:
                 break;
         }

@@ -337,6 +337,9 @@ EscapeAction escape_action(const EscapeContext& c) noexcept {
     if (c.window_focused) {
         return EscapeAction::close_window;
     }
+    if (c.framing) {
+        return EscapeAction::leave_framing;
+    }
     if (c.brushing) {
         return EscapeAction::leave_brush;
     }

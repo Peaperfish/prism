@@ -177,6 +177,7 @@ MaybeError Session::open_file(const fs::path& path) {
     framed_base_ = whole_base_;
     framed_from_ = whole_base_;
     framing_.reset();
+    frame_lock_ = FrameLock{};
     return std::nullopt;
 }
 

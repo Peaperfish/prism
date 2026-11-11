@@ -41,6 +41,18 @@ struct Error {
 // Nothing on success, or what went wrong. (C++23's std::expected would say this more directly.)
 using MaybeError = std::optional<Error>;
 
+// The easel's aspect lock (prism/frame.hpp's Frame::aspect and portrait) as framing last left it.
+// A frame that is the whole photo is stored in the settings as none (normalised_frame), which
+// would drop a lock chosen on an uncropped photo (Free, or Original turned), so the session keeps
+// it beside the settings: not part of undo or of a recipe, and back to Original when another photo
+// is opened.
+struct FrameLock {
+    Aspect aspect = Aspect::original;
+    bool portrait = false;
+
+    bool operator==(const FrameLock&) const = default;
+};
+
 struct SessionOptions {
     int preview_long_side = 2560;  // the preview base's longer side, in pixels
     int threads = 0;               // as for the pipeline: 0 = one per hardware thread
@@ -124,6 +136,9 @@ public:
 
     [[nodiscard]] const EditSettings& settings() const noexcept { return history_.current(); }
     [[nodiscard]] const History& history() const noexcept { return history_; }
+    // The easel's aspect lock (FrameLock): set by framing, Original for a newly opened photo.
+    [[nodiscard]] const FrameLock& frame_lock() const noexcept { return frame_lock_; }
+    void set_frame_lock(const FrameLock& lock) noexcept { frame_lock_ = lock; }
 
     // Changes the settings through the undo history (see History::set). Invalid settings are
     // refused with ErrorKind::invalid_settings and change nothing. A frame that is the whole photo
@@ -213,6 +228,7 @@ private:
     std::shared_ptr<const Image> framed_from_;      // the whole base framed_base_ was made from
     std::optional<PictureFrame> framing_;
     History history_;
+    FrameLock frame_lock_;
     ExportSize export_size_;
 };
 
