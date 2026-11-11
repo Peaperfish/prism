@@ -85,6 +85,7 @@ add_executable(prism_gui_core_tests
   gui/explanations_test.cpp
   gui/field_cache_test.cpp
   gui/frame_wiring_test.cpp
+  gui/framing_test.cpp
   gui/export_size_test.cpp
   gui/file_types_test.cpp
   gui/histogram_paint_test.cpp
