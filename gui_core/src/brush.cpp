@@ -228,4 +228,13 @@ std::uint32_t stroke_mask_abgr(std::uint8_t byte, std::uint32_t dodge_abgr,
     return (colour & 0x00FFFFFFu) | (scaled << 24);
 }
 
+MaybeError brush_turns_dodge_burn_on(Session& session) {
+    if (session.settings().dodge_burn_on) {
+        return std::nullopt;
+    }
+    EditSettings edited = session.settings();
+    edited.dodge_burn_on = true;
+    return session.set_settings(edited);  // one undo step
+}
+
 }  // namespace prism::gui

@@ -185,4 +185,10 @@ struct BrushRing {
 [[nodiscard]] std::uint32_t stroke_mask_abgr(std::uint8_t byte, std::uint32_t dodge_abgr,
                                              std::uint32_t burn_abgr) noexcept;
 
+// Turning the Brush on while the Dodge & burn switch is off switches it on, so that the strokes the
+// Brush is about to paint show. As the neutral picker does for White balance (apply_pick, then
+// Session::set_settings): one undo step, and none when the switch is already on. Returns the
+// session's error, if any.
+[[nodiscard]] MaybeError brush_turns_dodge_burn_on(Session& session);
+
 }  // namespace prism::gui

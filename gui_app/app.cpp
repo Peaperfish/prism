@@ -1913,6 +1913,7 @@ void App::toggle_brush() {
     if (before.strip) {
         strip_.reset();
     }
+    report(gui::brush_turns_dodge_burn_on(session_));  // the strokes to come must show
 }
 
 void App::leave_brush() {

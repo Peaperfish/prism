@@ -788,5 +788,33 @@ TEST(StrokeMaskRender, ThreeStrokesUndoneAndRedoneComeBackExactly) {
     EXPECT_EQ(session.settings().strokes.field(), states[3].strokes.field());
 }
 
+TEST(BrushTurnsDodgeBurnOn, SwitchesTheStageOnAsOneUndoStep) {
+    Session session;
+    EditSettings s;
+    s.exposure_stops = 1.0f;
+    s.dodge_burn_on = false;
+    ASSERT_EQ(session.set_settings(s), std::nullopt);
+    const std::size_t steps = session.history().undo_steps();
+    ASSERT_EQ(brush_turns_dodge_burn_on(session), std::nullopt);
+    EXPECT_TRUE(session.settings().dodge_burn_on);
+    EXPECT_EQ(session.settings().exposure_stops, 1.0f);  // nothing else moved
+    EXPECT_EQ(session.history().undo_steps(), steps + 1);
+    ASSERT_EQ(session.undo(), std::nullopt);
+    EXPECT_FALSE(session.settings().dodge_burn_on);
+    EXPECT_EQ(session.history().undo_steps(), steps);
+}
+
+TEST(BrushTurnsDodgeBurnOn, LeavesASwitchThatIsAlreadyOnAlone) {
+    Session session;
+    EditSettings s;
+    s.exposure_stops = 1.0f;
+    ASSERT_EQ(session.set_settings(s), std::nullopt);
+    ASSERT_TRUE(session.settings().dodge_burn_on);
+    const std::size_t steps = session.history().undo_steps();
+    ASSERT_EQ(brush_turns_dodge_burn_on(session), std::nullopt);
+    EXPECT_TRUE(session.settings().dodge_burn_on);
+    EXPECT_EQ(session.history().undo_steps(), steps);
+}
+
 }  // namespace
 }  // namespace prism::gui
