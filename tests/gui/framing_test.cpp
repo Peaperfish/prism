@@ -290,8 +290,7 @@ TEST(FramingUndo, EveryWayOutOfFramingKeepsTheFrame) {
     EXPECT_EQ(prism::gui::escape_action(esc), prism::gui::EscapeAction::leave_framing);
 }
 
-// --- The aspect lock
-// -------------------------------------------------------------------------------
+// --- The aspect lock -----------------------------------------------------------------------------
 
 TEST(FramingLock, ALockChosenOnTheUncroppedPhotoSurvivesEveryGestureAndLeaving) {
     Opened o;
@@ -369,8 +368,7 @@ TEST(FramingView, PhotoAndCanvasRoundTripAndTheTurnedPhotoFitsTheCanvas) {
     }
 }
 
-// --- Handles and drags
-// -----------------------------------------------------------------------------
+// --- Handles and drags ---------------------------------------------------------------------------
 
 TEST(FramingDrag, HandlesAreFoundWhereTheyAreDrawn) {
     const Frame f = prism::fit_frame(frame_of(3.0f, 0.2f, 0.2f, 0.8f, 0.8f), photo_w, photo_h);
@@ -381,11 +379,8 @@ TEST(FramingDrag, HandlesAreFoundWhereTheyAreDrawn) {
         EXPECT_EQ(prism::gui::frame_handle_at(view, f, handle_point(view, f, h), 6.0), h);
         // Within reach of it, too.
         EXPECT_EQ(
-            prism::gui::frame_handle_at(view, f, offset(handle_point(view, f, h), 3.0, -3.0), 6.0),
-            h == FrameHandle::top_left || h == FrameHandle::top_right ||
-                    h == FrameHandle::bottom_right || h == FrameHandle::bottom_left
-                ? h
-                : prism::gui::frame_handle_at(view, f, handle_point(view, f, h), 6.0));
+            prism::gui::frame_handle_at(view, f, offset(handle_point(view, f, h), 2.0, -2.0), 6.0),
+            h);
     }
     const CanvasRect r = prism::gui::frame_rect(view, f);
     const CanvasPoint middle{(r.min.x + r.max.x) / 2, (r.min.y + r.max.y) / 2};
@@ -471,8 +466,7 @@ TEST(FramingDrag, ACornerKeepsALockedShape) {
     }
 }
 
-// --- Turning
-// ---------------------------------------------------------------------------------------
+// --- Turning -------------------------------------------------------------------------------------
 
 TEST(FramingTurn, TurningKeepsTheFramesCentreOnTheSamePhotoPoint) {
     const double tol = 1e-6 * std::max(photo_w, photo_h);
@@ -535,8 +529,7 @@ TEST(FramingTurn, AHorizonLineIsMadeLevelOrUpright) {
     EXPECT_NEAR(o.session.settings().frame->angle, 3.0f, 1e-4f);
 }
 
-// --- The aspect
-// --------------------------------------------------------------------------------------
+// --- The aspect ----------------------------------------------------------------------------------
 
 TEST(FramingAspect, ChoosingOrTurningTheAspectKeepsTheCentre) {
     const double tol = 1e-6 * std::max(photo_w, photo_h);
@@ -566,8 +559,7 @@ TEST(FramingAspect, ChoosingOrTurningTheAspectKeepsTheCentre) {
     EXPECT_FALSE(free.fitted);
 }
 
-// --- Words
-// -------------------------------------------------------------------------------------------
+// --- Words ---------------------------------------------------------------------------------------
 
 TEST(FramingWords, TheAngleSizeAspectAndFitInWords) {
     using prism::gui::framing_angle_text;
@@ -604,8 +596,7 @@ TEST(FramingWords, TheAngleSizeAspectAndFitInWords) {
               "horizon to level it.");
 }
 
-// --- Keys, tools, guides and scopes
-// ------------------------------------------------------------------
+// --- Keys, tools, guides and scopes --------------------------------------------------------------
 
 TEST(FramingKeys, KeysActOnlyWhenNothingElseHasThem) {
     using prism::gui::framing_key;
@@ -672,4 +663,130 @@ TEST(FramingScopes, TheScopesReadTheWholePhotoWhileFraming) {
     EXPECT_EQ(prism::gui::scope_source_detail(prism::gui::scope_source(true)),
               "whole photo, while framing");
     EXPECT_EQ(prism::gui::scope_source_detail(prism::gui::scope_source(false)), "");
+}
+
+// --- After review --------------------------------------------------------------------------------
+
+TEST(FramingUndo, APressWithoutAMoveChangesNothingEvenWithALock) {
+    Opened o;
+    FramingState f;
+    ASSERT_TRUE(f.begin(o.session));
+    ASSERT_EQ(f.set_aspect(Aspect::four_five, o.session), std::nullopt);
+    const Frame before = f.draft();
+    const std::size_t steps = o.session.history().undo_steps();
+    for (const FrameHandle h :
+         {FrameHandle::right, FrameHandle::top, FrameHandle::bottom_left, FrameHandle::inside}) {
+        ASSERT_EQ(drag(f, o.session, h, 0.0, 0.0, 1), std::nullopt);
+        EXPECT_TRUE(same_bits(f.draft(), before));
+        EXPECT_EQ(o.session.history().undo_steps(), steps);
+    }
+    EXPECT_EQ(o.session.frame_lock().aspect, Aspect::four_five);
+    // A real edge drag switches the lock to Free (#58), a corner drag keeps it.
+    ASSERT_EQ(drag(f, o.session, FrameHandle::bottom_left, 10.0, -6.0), std::nullopt);
+    EXPECT_EQ(f.draft().aspect, Aspect::four_five);
+    ASSERT_EQ(drag(f, o.session, FrameHandle::right, -10.0, 0.0), std::nullopt);
+    EXPECT_EQ(f.draft().aspect, Aspect::free);
+    EXPECT_EQ(o.session.frame_lock().aspect, Aspect::free);
+}
+
+TEST(FramingDrag, AnEdgeOrCornerPastTheTurnedPhotoLeavesTheHeldSidesAlone) {
+    const Frame start = prism::fit_frame(frame_of(10.0f, 0.3f, 0.3f, 0.6f, 0.6f), photo_w, photo_h);
+    const FramingView view = view_of(start);
+    const auto dragged = [&](FrameHandle h, double dx, double dy) {
+        const CanvasPoint at = handle_point(view, start, h);
+        const std::optional<FrameEdit> e =
+            prism::gui::drag_frame(start, h, at, offset(at, dx, dy), view, photo_w, photo_h);
+        EXPECT_TRUE(e.has_value());
+        return e ? e->frame : start;
+    };
+    // The held sides stay to a hundredth of a pixel: fit_frame, the last guard, may nudge a
+    // corner that lies on the photo's edge by float rounding, never by a visible amount.
+    Frame f = dragged(FrameHandle::right, 800.0, 0.0);
+    EXPECT_GT(f.right, start.right);
+    EXPECT_NEAR(f.left, start.left, 0.01 / photo_w);
+    EXPECT_NEAR(f.top, start.top, 0.01 / photo_h);
+    EXPECT_NEAR(f.bottom, start.bottom, 0.01 / photo_h);
+    expect_on_photo(f, photo_w, photo_h);
+    f = dragged(FrameHandle::bottom_right, 800.0, 800.0);
+    EXPECT_GT(f.right, start.right);
+    EXPECT_GT(f.bottom, start.bottom);
+    EXPECT_NEAR(f.left, start.left, 0.01 / photo_w);
+    EXPECT_NEAR(f.top, start.top, 0.01 / photo_h);
+    expect_on_photo(f, photo_w, photo_h);
+}
+
+TEST(FramingDrag, ASmallFrameCanStillBeMoved) {
+    const Frame f =
+        prism::fit_frame(frame_of(0.0f, 0.495f, 0.49f, 0.505f, 0.51f), photo_w, photo_h);
+    const FramingView view = view_of(f);
+    const CanvasRect r = prism::gui::frame_rect(view, f);
+    ASSERT_LT(r.max.x - r.min.x, 12.0);  // under twice the reach across
+    const CanvasPoint middle{(r.min.x + r.max.x) / 2, (r.min.y + r.max.y) / 2};
+    EXPECT_EQ(prism::gui::frame_handle_at(view, f, middle, 6.0), FrameHandle::inside);
+    EXPECT_EQ(prism::gui::frame_handle_at(view, f, r.min, 6.0), FrameHandle::top_left);
+}
+
+TEST(FramingLock, ResetGivesTheLargestCentredFrameOfTheLock) {
+    Opened o;
+    FramingState f;
+    ASSERT_TRUE(f.begin(o.session));
+    ASSERT_EQ(f.set_angle(6.0f, o.session), std::nullopt);
+    ASSERT_EQ(f.set_aspect(Aspect::four_five, o.session), std::nullopt);
+    ASSERT_EQ(f.reset(o.session), std::nullopt);
+    const Frame& r = f.draft();
+    EXPECT_EQ(r.angle, 0.0f);
+    EXPECT_EQ(r.aspect, Aspect::four_five);
+    EXPECT_NEAR(width_px(r, photo_w) / height_px(r, photo_h),
+                *prism::aspect_ratio(Aspect::four_five, false, photo_w, photo_h), 1e-4);
+    EXPECT_NEAR((static_cast<double>(r.left) + r.right) / 2.0, 0.5, 1e-6);
+    EXPECT_NEAR((static_cast<double>(r.top) + r.bottom) / 2.0, 0.5, 1e-6);
+    EXPECT_NEAR(height_px(r, photo_h), photo_h, 1e-3);  // as large as the photo allows
+    EXPECT_TRUE(same_bits(*o.session.settings().frame, r));
+}
+
+TEST(FramingLock, PickingTheLockAgainAfterAnUndoShapesTheFrame) {
+    Opened o;
+    FramingState f;
+    ASSERT_TRUE(f.begin(o.session));
+    ASSERT_EQ(f.set_aspect(Aspect::square, o.session), std::nullopt);
+    ASSERT_EQ(o.session.undo(), std::nullopt);
+    f.follow(o.session.settings().frame);
+    EXPECT_FALSE(o.session.settings().frame.has_value());
+    EXPECT_EQ(f.draft().aspect, Aspect::square);  // the lock outlives the undo
+    ASSERT_EQ(f.set_aspect(Aspect::square, o.session), std::nullopt);
+    ASSERT_TRUE(o.session.settings().frame.has_value());
+    EXPECT_NEAR(width_px(f.draft(), photo_w), height_px(f.draft(), photo_h), 1e-3);
+}
+
+TEST(FramingTurn, LeavingDuringAHorizonLineKeepsItAndATurnThatShrinksSaysSo) {
+    Opened o;
+    FramingState f;
+    ASSERT_TRUE(f.begin(o.session));
+    const FramingView v = view_of(f.draft());
+    const CanvasPoint a{200.0, 300.0};
+    ASSERT_TRUE(f.press(a, true, v, 6.0));
+    f.move({300.0, 300.0 + 100.0 * std::tan(4.0 * std::acos(-1.0) / 180.0)});
+    ASSERT_EQ(f.leave(o.session), std::nullopt);
+    ASSERT_TRUE(o.session.settings().frame.has_value());
+    EXPECT_NEAR(o.session.settings().frame->angle, -4.0f, 1e-3f);
+    EXPECT_TRUE(f.fitted());  // the whole photo turned has to close in
+    // Turning the whole photo needs the blades to close in; turning a small middle frame not.
+    EXPECT_TRUE(prism::gui::turn_frame(Frame{}, 3.0f, photo_w, photo_h).fitted);
+    EXPECT_FALSE(
+        prism::gui::turn_frame(frame_of(0.0f, 0.45f, 0.45f, 0.55f, 0.55f), 3.0f, photo_w, photo_h)
+            .fitted);
+}
+
+TEST(FramingWords, EveryMenuEntryAndBothHintsAndTheTurnAlone) {
+    using prism::gui::framing_aspect_menu_text;
+    EXPECT_EQ(framing_aspect_menu_text(Aspect::five_seven), "5:7 — a 5×7 inch sheet");
+    EXPECT_EQ(framing_aspect_menu_text(Aspect::free), "Free — any shape");
+    EXPECT_EQ(framing_aspect_menu_text(Aspect::square), "1:1 — a square");
+    EXPECT_EQ(framing_aspect_menu_text(Aspect::sixteen_nine), "16:9 — a widescreen picture");
+    EXPECT_EQ(prism::gui::framing_hint(false),
+              "Drag the blades to frame the print — drag inside to move them, Alt-drag along the "
+              "horizon to level it.");
+    EXPECT_EQ(prism::gui::framing_turn_words(1.2f), "1.2° clockwise");
+    EXPECT_EQ(prism::gui::framing_turn_words(-0.5f), "0.5° anticlockwise");
+    EXPECT_EQ(prism::gui::framing_turn_words(0.0f), "upright");
 }

@@ -222,4 +222,6 @@ TEST(FramedEstimatedExportSize, TheSheetMeasuresTheFrameOnTheEstimate) {
     // No frame, or the whole photo: the size itself.
     EXPECT_EQ(prism::gui::framed_export_size(std::nullopt, file), file);
     EXPECT_EQ(prism::gui::framed_export_size(prism::Frame{}, file), file);
+    // No size yet (no photo open): nothing to frame.
+    EXPECT_EQ(prism::gui::framed_export_size(frame, PixelSize{0, 0}), (PixelSize{0, 0}));
 }
