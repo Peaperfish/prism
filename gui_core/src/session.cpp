@@ -283,15 +283,14 @@ PixelSize Session::framed_file_size() const {
     if (!has_file()) {
         return {};
     }
-    return plan_export_frame(settings().frame, file_width_, file_height_).size;
+    return framed_export_size(settings().frame, {file_width_, file_height_});
 }
 
 PixelSize Session::framed_start_size() const {
-    const PixelSize start = export_start_size();
-    if (!has_file() || start.width < 1 || start.height < 1) {
-        return start;
+    if (!has_file()) {
+        return export_start_size();
     }
-    return plan_export_frame(settings().frame, start.width, start.height).size;
+    return framed_export_size(settings().frame, export_start_size());
 }
 
 std::optional<Chromaticity> as_shot_white_of(const PhotoInfo& info) noexcept {

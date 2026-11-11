@@ -52,6 +52,13 @@ ExportPlan plan_export(const ExportSize& size, PixelSize file, PixelSize start) 
     return plan;
 }
 
+PixelSize framed_export_size(const std::optional<Frame>& frame, PixelSize size) {
+    if (size.width < 1 || size.height < 1) {
+        return size;
+    }
+    return plan_export_frame(frame, size.width, size.height).size;
+}
+
 std::string_view size_estimate_prefix(bool exact) noexcept {
     return exact ? "" : "about ";
 }

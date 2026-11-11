@@ -4,6 +4,7 @@
 #include <string>
 #include <string_view>
 
+#include "prism/frame.hpp"
 #include "prism/resize.hpp"
 
 namespace prism::gui {
@@ -50,6 +51,13 @@ struct ExportPlan {
 // it: 50% of a 6000 x 4000 RAW is 3000, and its half-size decode (3000 x 2000) is already that.
 // The shorter side is worked out as downscale() does.
 [[nodiscard]] ExportPlan plan_export(const ExportSize& size, PixelSize file, PixelSize start);
+
+// The size of `frame`'s picture on a decode of `size` (plan_export_frame's size): `size` itself
+// without a frame or with a whole-photo one. What the Export sheet's Original, Long side and
+// Percent measure, on the file's size and on the size the export decodes at, including a RAW
+// file's estimated size (the result is then an estimate too). Zero for an empty size. Throws as
+// plan_export_frame for an invalid frame.
+[[nodiscard]] PixelSize framed_export_size(const std::optional<Frame>& frame, PixelSize size);
 
 // The marker for a size that is only an estimate (a RAW file whose real size is not known yet): "about "
 // before the number, "" when it is exact. The status bar's preview-size line and the Export sheet

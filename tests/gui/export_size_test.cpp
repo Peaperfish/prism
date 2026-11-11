@@ -5,6 +5,7 @@
 #include <string>
 
 #include "prism/gui/export_size.hpp"
+#include "prism/frame.hpp"
 #include "prism/gui/file_types.hpp"
 
 using prism::gui::export_long_side;
@@ -180,4 +181,45 @@ TEST(HeadlessEstimatedExportSize, AnExactSizeReadsAsBefore) {
 TEST(HeadlessEstimatedExportSize, TheMarkerIsTheStatusBarsOwn) {
     EXPECT_EQ(prism::gui::size_estimate_prefix(false), "about ");
     EXPECT_EQ(prism::gui::size_estimate_prefix(true), "");
+}
+
+// A RAW file whose size is only an estimate (made up here: 6000 x 4000, its half-size decode
+// 3000 x 2000), with a turned, cropped frame: the sheet's lines measure the frame on the
+// estimate, and still say "about".
+TEST(FramedEstimatedExportSize, TheSheetMeasuresTheFrameOnTheEstimate) {
+    prism::Frame frame;
+    frame.angle = 2.0f;
+    frame.left = 0.1f;
+    frame.top = 0.05f;
+    frame.right = 0.85f;
+    frame.bottom = 0.9f;
+    frame.aspect = prism::Aspect::free;
+    const PixelSize file{6000, 4000};
+    const PixelSize framed = prism::gui::framed_export_size(frame, file);
+    EXPECT_EQ(framed, prism::framed_size(prism::fit_frame(frame, 6000, 4000), 6000, 4000));
+    ASSERT_LT(framed.width, 6000);
+    const std::string times =
+        std::to_string(framed.width) + " \xC3\x97 " + std::to_string(framed.height);
+    EXPECT_EQ(export_original_text(framed, false), "Full size, about " + times);
+
+    ExportSize half;
+    half.mode = ExportSize::Mode::percent;
+    half.percent = 50;
+    const prism::gui::ExportPlan plan = plan_export(half, framed, framed);
+    ASSERT_TRUE(plan.reduced());
+    EXPECT_EQ(*plan.long_side,
+              prism::long_side_for_percent(framed.width, framed.height, 50));
+    const PixelSize reduced =
+        prism::downscaled_size(framed.width, framed.height, *plan.long_side);
+    EXPECT_EQ(export_result_text(half, plan, false),
+              "Exports at about " + std::to_string(reduced.width) + " \xC3\x97 " +
+                  std::to_string(reduced.height));
+
+    // With half-size decoding the export starts from the frame on the half-size decode.
+    const PixelSize start = prism::gui::framed_export_size(frame, {3000, 2000});
+    EXPECT_EQ(start, prism::framed_size(prism::fit_frame(frame, 3000, 2000), 3000, 2000));
+    EXPECT_EQ(plan_export(ExportSize{}, framed, start).size, start);
+    // No frame, or the whole photo: the size itself.
+    EXPECT_EQ(prism::gui::framed_export_size(std::nullopt, file), file);
+    EXPECT_EQ(prism::gui::framed_export_size(prism::Frame{}, file), file);
 }
