@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string>
 
@@ -33,11 +35,17 @@ float aspect_of(int width, int height) noexcept {
 }
 
 int PixelGrid::width() const noexcept {
+    if (framing) {
+        return std::max(cols, 0);
+    }
     const int n = (full_w > x0 && x0 >= 0 && stride > 0) ? (full_w - x0 + stride - 1) / stride : 0;
     return cols > 0 ? std::min(n, cols) : n;
 }
 
 int PixelGrid::height() const noexcept {
+    if (framing) {
+        return std::max(rows, 0);
+    }
     const int n = (full_h > y0 && y0 >= 0 && stride > 0) ? (full_h - y0 + stride - 1) / stride : 0;
     return rows > 0 ? std::min(n, rows) : n;
 }
@@ -77,6 +85,59 @@ float pixel_x(const Mapping& m, const PixelGrid& g, int i) noexcept {
 float pixel_y(const Mapping& m, const PixelGrid& g, int j) noexcept {
     const int y = g.y0 + j * g.stride;
     return (static_cast<float>(y) + 0.5f) * m.ky;
+}
+
+// How a grid's pixels land on the photo: the Mapping, and for a framed grid its FrameMap, made once
+// per grid so sin and cos are worked out once.
+struct Placement {
+    Mapping m;
+    PixelGrid g;
+    std::optional<FrameMap> map;  // framed grids only
+    double scale = 1.0;
+    bool turned = false;  // framed at an angle other than exactly 0
+    // Every grid pixel's photo position (before it is moved onto the photo) lies in
+    // [reach_x0, reach_x1] x [reach_y0, reach_y1], in photo pixels. Framed grids only.
+    double reach_x0 = 0.0;
+    double reach_x1 = 0.0;
+    double reach_y0 = 0.0;
+    double reach_y1 = 0.0;
+};
+
+// The frame point of image pixel (x, y)'s centre: ((x + 0.5) * scale, (y + 0.5) * scale).
+FramePoint frame_point(const Placement& p, int x, int y) noexcept {
+    return {(x + 0.5) * p.scale, (y + 0.5) * p.scale};
+}
+
+// A photo position (in photo pixels) in long-side units, moved first onto the photo: to the
+// nearest pixel centre's coordinate if it is off the photo. This is the whole of what an
+// unframed grid's (x + 0.5) * kx does, for a position that is not a whole number plus a half.
+float to_long_side(double photo_px, int full, float k) noexcept {
+    const double on_photo = std::clamp(photo_px, 0.5, static_cast<double>(full) - 0.5);
+    return static_cast<float>(on_photo) * k;
+}
+
+// Grid pixel (i, j)'s position in long-side units on a turned grid, worked out from (i, j) alone.
+void turned_position(const Placement& p, int i, int j, float& X, float& Y) noexcept {
+    const PixelGrid& g = p.g;
+    const FramePoint q = p.map->to_photo_pixels(frame_point(p, g.x0 + i * g.stride, g.y0 + j * g.stride));
+    X = to_long_side(q.x, g.full_w, p.m.kx);
+    Y = to_long_side(q.y, g.full_h, p.m.ky);
+}
+
+// Column i's and row j's positions on a framed grid at an angle of exactly 0. FrameMap's
+// to_photo_pixels gives x = W / 2 + (cos * dx + sin * dy) with cos exactly 1 and sin exactly 0
+// there, so sin * dy is a zero and x is W / 2 + dx whatever dy is (and the same for y): these are,
+// bit for bit, the per-pixel positions turned_position would give at 0 degrees.
+float framed_column_x(const Placement& p, int i) noexcept {
+    const PixelGrid& g = p.g;
+    return to_long_side(p.map->to_photo_pixels(frame_point(p, g.x0 + i * g.stride, 0)).x, g.full_w,
+                        p.m.kx);
+}
+
+float framed_row_y(const Placement& p, int j) noexcept {
+    const PixelGrid& g = p.g;
+    return to_long_side(p.map->to_photo_pixels(frame_point(p, 0, g.y0 + j * g.stride)).y, g.full_h,
+                        p.m.ky);
 }
 
 // A stroke's brush, precomputed.
@@ -219,9 +280,197 @@ float accumulate(float before, float weight, float coverage) noexcept {
 
 void check_grid(const PixelGrid& g, const char* who) {
     if (g.full_w <= 0 || g.full_h <= 0 || g.stride <= 0 || g.x0 < 0 || g.y0 < 0 ||
-        g.x0 >= g.full_w || g.y0 >= g.full_h) {
+        (!g.framing && (g.x0 >= g.full_w || g.y0 >= g.full_h)) ||
+        (g.framing && (g.cols <= 0 || g.rows <= 0))) {
         throw std::invalid_argument(std::string(who) + ": invalid pixel grid");
     }
+    if (g.framing) {
+        if (!(std::isfinite(g.framing->scale) && g.framing->scale > 0.0f)) {
+            throw std::invalid_argument(std::string(who) +
+                                        ": a framed grid's scale must be finite and above 0");
+        }
+        const std::vector<std::string> problems = validate_frame(g.framing->frame());
+        if (!problems.empty()) {
+            std::string message = std::string(who) + ": invalid frame:";
+            for (const std::string& problem : problems) {
+                message += " " + problem + ".";
+            }
+            throw std::invalid_argument(message);
+        }
+    }
+}
+
+// The Placement of a grid that passed check_grid, for a field of a valid `aspect`.
+Placement placement_for(float aspect, const PixelGrid& g) {
+    Placement p;
+    p.m = mapping_for(aspect, g);
+    p.g = g;
+    if (!g.framing) {
+        return p;
+    }
+    p.map.emplace(g.framing->frame(), g.full_w, g.full_h);
+    p.scale = static_cast<double>(g.framing->scale);
+    p.turned = g.framing->angle != 0.0f;
+    // The map is affine, so the grid's positions lie inside the box of its four corner pixels'.
+    const int last_x = g.x0 + (g.width() - 1) * g.stride;
+    const int last_y = g.y0 + (g.height() - 1) * g.stride;
+    bool first = true;
+    for (const int x : {g.x0, last_x}) {
+        for (const int y : {g.y0, last_y}) {
+            const FramePoint q = p.map->to_photo_pixels(frame_point(p, x, y));
+            p.reach_x0 = first ? q.x : std::min(p.reach_x0, q.x);
+            p.reach_x1 = first ? q.x : std::max(p.reach_x1, q.x);
+            p.reach_y0 = first ? q.y : std::min(p.reach_y0, q.y);
+            p.reach_y1 = first ? q.y : std::max(p.reach_y1, q.y);
+            first = false;
+        }
+    }
+    return p;
+}
+
+// One axis of a segment's box on the photo for a framed grid: photo pixels [lo, hi] (positions,
+// continuous) whose long-side coordinate lies within `r` of [c_min, c_max], widened by
+// box_margin_px. Positions are moved onto [0.5, full - 0.5] before use, so if that range does not
+// meet the box nothing on the grid can be covered (false), and if the box takes in an end of it,
+// every position past that end is in too: the box then runs out to the grid's reach.
+bool framed_axis_box(double c_min, double c_max, double r, double k, int full, double reach_lo,
+                     double reach_hi, double& lo, double& hi) noexcept {
+    lo = (c_min - r) / k - box_margin_px;
+    hi = (c_max + r) / k + box_margin_px;
+    const double first = 0.5;
+    const double last = static_cast<double>(full) - 0.5;
+    if (!(lo <= hi) || hi < first || lo > last) {
+        return false;  // off the photo (or NaN)
+    }
+    if (lo <= first) {
+        lo = std::min(reach_lo, first) - box_margin_px;
+    }
+    if (hi >= last) {
+        hi = std::max(reach_hi, last) + box_margin_px;
+    }
+    return true;
+}
+
+// bounds_for on a framed grid: the photo box's corners mapped back onto the grid (the map is
+// affine, so the box's image is inside their bounding box), widened by one grid pixel.
+GridRect framed_bounds_for(const Segment& seg, const Brush& brush, const Placement& p) noexcept {
+    GridRect rect;
+    if (!brush.draws) {
+        return rect;
+    }
+    const PixelGrid& g = p.g;
+    const double ax = seg.ax;
+    const double ay = seg.ay;
+    const double bx = ax + static_cast<double>(seg.dx);
+    const double by = ay + static_cast<double>(seg.dy);
+    double x_lo = 0.0;
+    double x_hi = 0.0;
+    double y_lo = 0.0;
+    double y_hi = 0.0;
+    if (!framed_axis_box(std::min(ax, bx), std::max(ax, bx), brush.r, p.m.kx, g.full_w,
+                         p.reach_x0, p.reach_x1, x_lo, x_hi) ||
+        !framed_axis_box(std::min(ay, by), std::max(ay, by), brush.r, p.m.ky, g.full_h,
+                         p.reach_y0, p.reach_y1, y_lo, y_hi)) {
+        return rect;
+    }
+    const double w = g.full_w;
+    const double h = g.full_h;
+    double i_min = std::numeric_limits<double>::infinity();
+    double i_max = -i_min;
+    double j_min = i_min;
+    double j_max = -i_min;
+    for (const double px : {x_lo, x_hi}) {
+        for (const double py : {y_lo, y_hi}) {
+            const FramePoint f = p.map->to_frame({px / w, py / h});
+            // Frame point -> image pixel (centre at x + 0.5) -> grid index.
+            const double i = (f.x / p.scale - 0.5 - g.x0) / g.stride;
+            const double j = (f.y / p.scale - 0.5 - g.y0) / g.stride;
+            i_min = std::min(i_min, i);
+            i_max = std::max(i_max, i);
+            j_min = std::min(j_min, j);
+            j_max = std::max(j_max, j);
+        }
+    }
+    const auto range = [](double lo, double hi, int count, int& begin, int& end) {
+        begin = 0;
+        end = 0;
+        lo = std::ceil(lo) - 1.0;
+        hi = std::floor(hi) + 1.0;
+        if (!(lo <= hi) || hi < 0.0 || lo > static_cast<double>(count - 1)) {
+            return;
+        }
+        begin = static_cast<int>(std::max(lo, 0.0));
+        end = static_cast<int>(std::min(hi, static_cast<double>(count - 1))) + 1;
+    };
+    range(i_min, i_max, g.width(), rect.i_begin, rect.i_end);
+    range(j_min, j_max, g.height(), rect.j_begin, rect.j_end);
+    if (rect.empty()) {
+        rect = {};
+    }
+    return rect;
+}
+
+GridRect bounds_on(const Segment& seg, const Brush& brush, const Placement& p) noexcept {
+    return p.map ? framed_bounds_for(seg, brush, p) : bounds_for(seg, brush, p.m, p.g);
+}
+
+// Where the rasterising loops get each pixel's position from, one kind per grid. row(j, lo, hi)
+// comes first on each row, with [lo, hi) holding every column that row will ask about; then x(i)
+// and y(i) give pixel (i, j)'s position in long-side units.
+
+// A grid without framing: as it always was.
+struct AxisPositions {
+    static constexpr bool per_pixel = false;
+    const Mapping& m;
+    const PixelGrid& g;
+    float Y = 0.0f;
+    void row(int j, int /*lo*/, int /*hi*/) noexcept { Y = pixel_y(m, g, j); }
+    [[nodiscard]] float x(int i) const noexcept { return pixel_x(m, g, i); }
+    [[nodiscard]] float y(int /*i*/) const noexcept { return Y; }
+};
+
+// A framed grid at exactly 0 degrees: a column's position from a table, a row's once per row.
+struct FramedAxisPositions {
+    static constexpr bool per_pixel = false;
+    const Placement& p;
+    const float* columns;  // columns[i - first] is column i's position
+    int first;
+    float Y = 0.0f;
+    void row(int j, int /*lo*/, int /*hi*/) noexcept { Y = framed_row_y(p, j); }
+    [[nodiscard]] float x(int i) const noexcept { return columns[i - first]; }
+    [[nodiscard]] float y(int /*i*/) const noexcept { return Y; }
+};
+
+// A turned grid: each pixel of [lo, hi) on the row worked out on its own (turned_position), into
+// two rows of floats.
+struct TurnedPositions {
+    static constexpr bool per_pixel = true;
+    const Placement& p;
+    std::vector<float> xs;
+    std::vector<float> ys;
+    std::size_t mapped = 0;
+    explicit TurnedPositions(const Placement& place)
+        : p(place),
+          xs(static_cast<std::size_t>(place.g.width())),
+          ys(static_cast<std::size_t>(place.g.width())) {}
+    void row(int j, int lo, int hi) noexcept {
+        for (int i = lo; i < hi; ++i) {
+            turned_position(p, i, j, xs[static_cast<std::size_t>(i)], ys[static_cast<std::size_t>(i)]);
+        }
+        mapped += static_cast<std::size_t>(std::max(hi - lo, 0));
+    }
+    [[nodiscard]] float x(int i) const noexcept { return xs[static_cast<std::size_t>(i)]; }
+    [[nodiscard]] float y(int i) const noexcept { return ys[static_cast<std::size_t>(i)]; }
+};
+
+// Column positions [begin, end) of a framed grid at 0 degrees.
+std::vector<float> framed_columns(const Placement& p, int begin, int end) {
+    std::vector<float> out;
+    out.reserve(static_cast<std::size_t>(std::max(end - begin, 0)));
+    for (int i = begin; i < end; ++i) {
+        out.push_back(framed_column_x(p, i));
+    }
+    return out;
 }
 
 struct PreparedStroke {
@@ -239,8 +488,17 @@ GridRect segment_bounds(const FieldStroke& stroke, std::size_t segment, float as
         grid.height() <= 0) {
         return {};
     }
-    const Mapping m = mapping_for(aspect, grid);
-    return bounds_for(segment_for(stroke, segment, m), brush_for(stroke), m, grid);
+    if (!grid.framing) {
+        const Mapping m = mapping_for(aspect, grid);
+        return bounds_for(segment_for(stroke, segment, m), brush_for(stroke), m, grid);
+    }
+    try {
+        check_grid(grid, "segment_bounds");
+        const Placement p = placement_for(aspect, grid);
+        return bounds_on(segment_for(stroke, segment, p.m), brush_for(stroke), p);
+    } catch (...) {
+        return {};  // an invalid framed grid (or no memory for the message saying so)
+    }
 }
 
 void rasterise_field(const StrokeField& field, const PixelGrid& grid, int row_begin, int row_end,
@@ -266,7 +524,8 @@ void unite(GridRect& box, const GridRect& add) noexcept {
 
 struct PreparedField::Data {
     PixelGrid grid;
-    Mapping m;
+    Placement place;
+    std::vector<float> columns;           // a framed grid at 0 degrees: every column's position
     std::vector<PreparedStroke> strokes;  // in stroke order; only those with a non-empty box
 };
 
@@ -279,7 +538,11 @@ PreparedField::PreparedField(const StrokeField& field, const PixelGrid& grid) {
             throw std::invalid_argument("rasterise_field: field has strokes but no valid aspect");
         }
         // Every stroke's segments and their boxes, dropping those that miss the grid.
-        data->m = mapping_for(field.aspect, grid);
+        data->place = placement_for(field.aspect, grid);
+        const Mapping& m = data->place.m;
+        if (data->place.map && !data->place.turned) {
+            data->columns = framed_columns(data->place, 0, grid.width());
+        }
         data->strokes.reserve(field.strokes.size());
         for (const auto& sp : field.strokes) {
             if (!sp) {
@@ -292,8 +555,8 @@ PreparedField::PreparedField(const StrokeField& field, const PixelGrid& grid) {
                 continue;
             }
             for (std::size_t k = 0; k < segment_count(*sp); ++k) {
-                Segment seg = segment_for(*sp, k, data->m);
-                seg.box = bounds_for(seg, ps.brush, data->m, grid);
+                Segment seg = segment_for(*sp, k, m);
+                seg.box = bounds_on(seg, ps.brush, data->place);
                 if (seg.box.empty()) {
                     continue;
                 }
@@ -325,10 +588,82 @@ bool PreparedField::rows_untouched(int row_begin, int row_end) const noexcept {
     return true;
 }
 
+namespace {
+
+// One run: the segments of one stroke whose boxes meet the rows being rasterised.
+struct Run {
+    const PreparedStroke* stroke = nullptr;
+    std::size_t first = 0;  // into `segments`
+    std::size_t count = 0;
+    GridRect box;  // union of these segments' boxes
+};
+
+// The rows [row_begin, row_end) of the field, with positions from `pos`; see rasterise().
+template <class Positions>
+std::size_t rasterise_rows(Positions& pos, int gw, int row_begin, int row_end,
+                           const std::vector<Run>& runs, const std::vector<const Segment*>& segments,
+                           std::span<float> out) {
+    const std::size_t width = static_cast<std::size_t>(gw);
+    // One row of the current stroke's coverage (the max over its segments), kept all zero
+    // between uses.
+    std::vector<float> scratch(width, 0.0f);
+    std::size_t evaluated = 0;
+    for (int j = row_begin; j < row_end; ++j) {
+        int row_lo = 0;
+        int row_hi = 0;
+        if constexpr (Positions::per_pixel) {
+            // Every column a segment on this row asks about: only those are mapped.
+            row_lo = gw;
+            for (const Run& run : runs) {
+                if (j >= run.box.j_begin && j < run.box.j_end) {
+                    row_lo = std::min(row_lo, run.box.i_begin);
+                    row_hi = std::max(row_hi, run.box.i_end);
+                }
+            }
+            if (row_lo >= row_hi) {
+                continue;
+            }
+        }
+        pos.row(j, row_lo, row_hi);
+        float* row = out.data() + static_cast<std::size_t>(j - row_begin) * width;
+        for (const Run& run : runs) {
+            if (j < run.box.j_begin || j >= run.box.j_end) {
+                continue;
+            }
+            const PreparedStroke& ps = *run.stroke;
+            int lo = gw;
+            int hi = 0;
+            for (std::size_t s = run.first; s < run.first + run.count; ++s) {
+                const Segment& seg = *segments[s];
+                if (j < seg.box.j_begin || j >= seg.box.j_end) {
+                    continue;
+                }
+                for (int i = seg.box.i_begin; i < seg.box.i_end; ++i) {
+                    const float c = coverage_at(seg, ps.brush, pos.x(i), pos.y(i));
+                    scratch[static_cast<std::size_t>(i)] =
+                        std::max(scratch[static_cast<std::size_t>(i)], c);
+                }
+                evaluated += static_cast<std::size_t>(seg.box.i_end - seg.box.i_begin);
+                lo = std::min(lo, seg.box.i_begin);
+                hi = std::max(hi, seg.box.i_end);
+            }
+            // Pixels in [lo, hi) that no segment reached hold 0 and get weight * 0 added, which
+            // leaves them unchanged, exactly as a pixel outside every box.
+            for (int i = lo; i < hi; ++i) {
+                const std::size_t ui = static_cast<std::size_t>(i);
+                row[ui] = accumulate(row[ui], ps.weight, scratch[ui]);
+                scratch[ui] = 0.0f;
+            }
+        }
+    }
+    return evaluated;
+}
+
+}  // namespace
+
 void PreparedField::rasterise(int row_begin, int row_end, std::span<float> out,
                               RasterStats* stats) const {
     const PixelGrid& grid = data_->grid;
-    const Mapping& m = data_->m;
     const int gw = grid.width();
     const int gh = grid.height();
     if (row_begin < 0 || row_end > gh || row_begin > row_end) {
@@ -345,12 +680,6 @@ void PreparedField::rasterise(int row_begin, int row_end, std::span<float> out,
 
     // The segments whose boxes meet these rows, stroke by stroke in stroke order; a segment that
     // misses them has coverage 0 on every one of them, so leaving it out changes nothing.
-    struct Run {
-        const PreparedStroke* stroke = nullptr;
-        std::size_t first = 0;  // into `segments`
-        std::size_t count = 0;
-        GridRect box;  // union of these segments' boxes
-    };
     std::vector<Run> runs;
     std::vector<const Segment*> segments;
     for (const PreparedStroke& ps : data_->strokes) {
@@ -374,45 +703,23 @@ void PreparedField::rasterise(int row_begin, int row_end, std::span<float> out,
         return;
     }
 
-    // One row of the current stroke's coverage (the max over its segments), kept all zero
-    // between uses.
-    std::vector<float> scratch(width, 0.0f);
+    const Placement& place = data_->place;
     std::size_t evaluated = 0;
-    for (int j = row_begin; j < row_end; ++j) {
-        const float Y = pixel_y(m, grid, j);
-        float* row = out.data() + static_cast<std::size_t>(j - row_begin) * width;
-        for (const Run& run : runs) {
-            if (j < run.box.j_begin || j >= run.box.j_end) {
-                continue;
-            }
-            const PreparedStroke& ps = *run.stroke;
-            int lo = gw;
-            int hi = 0;
-            for (std::size_t s = run.first; s < run.first + run.count; ++s) {
-                const Segment& seg = *segments[s];
-                if (j < seg.box.j_begin || j >= seg.box.j_end) {
-                    continue;
-                }
-                for (int i = seg.box.i_begin; i < seg.box.i_end; ++i) {
-                    const float c = coverage_at(seg, ps.brush, pixel_x(m, grid, i), Y);
-                    scratch[static_cast<std::size_t>(i)] =
-                        std::max(scratch[static_cast<std::size_t>(i)], c);
-                }
-                evaluated += static_cast<std::size_t>(seg.box.i_end - seg.box.i_begin);
-                lo = std::min(lo, seg.box.i_begin);
-                hi = std::max(hi, seg.box.i_end);
-            }
-            // Pixels in [lo, hi) that no segment reached hold 0 and get weight * 0 added, which
-            // leaves them unchanged, exactly as a pixel outside every box.
-            for (int i = lo; i < hi; ++i) {
-                const std::size_t ui = static_cast<std::size_t>(i);
-                row[ui] = accumulate(row[ui], ps.weight, scratch[ui]);
-                scratch[ui] = 0.0f;
-            }
-        }
+    std::size_t mapped = 0;
+    if (!place.map) {
+        AxisPositions pos{place.m, grid};
+        evaluated = rasterise_rows(pos, gw, row_begin, row_end, runs, segments, out);
+    } else if (!place.turned) {
+        FramedAxisPositions pos{place, data_->columns.data(), 0};
+        evaluated = rasterise_rows(pos, gw, row_begin, row_end, runs, segments, out);
+    } else {
+        TurnedPositions pos(place);
+        evaluated = rasterise_rows(pos, gw, row_begin, row_end, runs, segments, out);
+        mapped = pos.mapped;
     }
     if (stats) {
         stats->evaluated += evaluated;
+        stats->turned_positions += mapped;
     }
 }
 
@@ -430,20 +737,36 @@ GridRect add_segment_coverage(const FieldStroke& stroke, std::size_t segment, fl
     if (!valid_aspect(aspect)) {
         throw std::invalid_argument("add_segment_coverage: invalid aspect");
     }
-    const Mapping m = mapping_for(aspect, grid);
+    const Placement place = placement_for(aspect, grid);
     const Brush brush = brush_for(stroke);
-    const Segment seg = segment_for(stroke, segment, m);
-    const GridRect box = bounds_for(seg, brush, m, grid);
-    for (int j = box.j_begin; j < box.j_end; ++j) {
-        const float Y = pixel_y(m, grid, j);
-        float* row = coverage.data() + static_cast<std::size_t>(j) * width;
-        for (int i = box.i_begin; i < box.i_end; ++i) {
-            const float c = coverage_at(seg, brush, pixel_x(m, grid, i), Y);
-            row[i] = std::max(row[i], c);
+    const Segment seg = segment_for(stroke, segment, place.m);
+    const GridRect box = bounds_on(seg, brush, place);
+    const auto cover = [&](auto& pos) {
+        for (int j = box.j_begin; j < box.j_end; ++j) {
+            pos.row(j, box.i_begin, box.i_end);
+            float* row = coverage.data() + static_cast<std::size_t>(j) * width;
+            for (int i = box.i_begin; i < box.i_end; ++i) {
+                const float c = coverage_at(seg, brush, pos.x(i), pos.y(i));
+                row[i] = std::max(row[i], c);
+            }
         }
+    };
+    std::size_t mapped = 0;
+    if (!place.map) {
+        AxisPositions pos{place.m, grid};
+        cover(pos);
+    } else if (!place.turned) {
+        const std::vector<float> columns = framed_columns(place, box.i_begin, box.i_end);
+        FramedAxisPositions pos{place, columns.data(), box.i_begin};
+        cover(pos);
+    } else {
+        TurnedPositions pos(place);
+        cover(pos);
+        mapped = pos.mapped;
     }
     if (stats) {
         stats->evaluated += box.area();
+        stats->turned_positions += mapped;
     }
     return box;
 }

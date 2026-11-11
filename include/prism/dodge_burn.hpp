@@ -11,7 +11,8 @@ namespace prism {
 // The strokes are a StrokeField (stroke_field.hpp); `grid` says where the image being processed
 // sits on the photo the strokes were drawn on: PixelGrid::whole(W, H) for the whole photo, a band
 // {W, H, x, y, 1} for a crop that runs to the right and bottom edges, a strided grid for a
-// downsampled preview. Copying it copies the strokes' pointers, not their points.
+// downsampled preview, PixelGrid::framed for the framed (cropped, turned, possibly reduced)
+// picture. Copying it copies the strokes' pointers, not their points.
 struct LocalExposure {
     StrokeField field;
     PixelGrid grid;
