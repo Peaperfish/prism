@@ -199,6 +199,7 @@ private:
     // Makes the histogram and scopes those of band `band` of the frame on screen.
     void show_strip_band(int band);
     void draw_stage_badge();
+    void draw_decode_chip();
     // True while the canvas shows two halves: a compare stage is set and its picture has arrived.
     [[nodiscard]] bool splitting() const;
     // Both halves of the picture drawn at `at` with size `shown`, the divider and the two chips.

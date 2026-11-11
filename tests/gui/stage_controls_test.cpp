@@ -849,3 +849,26 @@ TEST(HeadlessOpenAtDecode, OpeningStillLeavesBrushModeAtDecode) {
     EXPECT_TRUE(brush_leaves(true, BrushEvent::photo_opened, viewed));
     EXPECT_FALSE(brush_leaves(false, BrushEvent::photo_opened, viewed));
 }
+
+TEST(DecodeChip, ShowsOnlyWhileDecodeIsViewedWithoutAComparison) {
+    EXPECT_TRUE(decode_chip_shown(StageId::decode));
+    // A compare against the viewed stage itself is no comparison.
+    EXPECT_TRUE(decode_chip_shown(StageId::decode, StageId::decode));
+    EXPECT_FALSE(decode_chip_shown(StageId::decode, StageId::exposure));
+    EXPECT_FALSE(decode_chip_shown(StageId::decode, final_stage));
+    for (const StageInfo& stage : pipeline_stages()) {
+        if (stage.id != StageId::decode) {
+            EXPECT_FALSE(decode_chip_shown(stage.id)) << stage.name;
+            EXPECT_FALSE(decode_chip_shown(stage.id, StageId::decode)) << stage.name;
+        }
+    }
+    EXPECT_FALSE(decode_chip_shown(final_stage));
+}
+
+TEST(DecodeChip, SaysWhatDecodeShowsInTheDarkroomsWords) {
+    const std::string text(decode_chip_text());
+    EXPECT_EQ(text,
+              "Showing Decode \xE2\x80\x94 the file's light before any edit. Pick a later stage to see "
+              "more.");
+    EXPECT_EQ(text.find("rightness"), std::string::npos);
+}

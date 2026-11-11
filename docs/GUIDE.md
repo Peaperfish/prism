@@ -116,7 +116,7 @@ The **Light path** lists the stages the light goes through, from the file to the
 8. **Tone curve**
 9. **Output encode**: light turned into the 8-bit sRGB file.
 
-(The section [How Prism thinks about light](#how-prism-thinks-about-light) explains why the order matters.) The stages are the controls: there are no separate sliders. Each photo opens at Decode, the first row.
+(The section [How Prism thinks about light](#how-prism-thinks-about-light) explains why the order matters.) The stages are the controls: there are no separate sliders. Each photo opens at Decode, the first row. A RAW looks dark and flat there, since nothing has been done to it yet, and a note at the top of the photo says so: "Showing Decode — the file's light before any edit. Pick a later stage to see more." The note goes when you view a later stage, and while Compare is on.
 
 A thin rail runs down the left, with a dot for each stage. The **viewed stage**'s dot is filled with the accent colour and has a faint glow, and its row has a lighter wash behind it. The photo, the scopes and the Sample block show the light at that stage. Output encode is the final picture.
 

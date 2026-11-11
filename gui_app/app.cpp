@@ -1255,6 +1255,7 @@ void App::frame() {
     draw_canvas();
     draw_banner();
     draw_stage_badge();
+    draw_decode_chip();
     draw_brush_chip();
     draw_zoom_chip();
     ImGui::EndChild();
@@ -2641,6 +2642,54 @@ void App::draw_banner() {
     canvas_taken_.push_back({{ImGui::GetItemRectMin().x, ImGui::GetItemRectMin().y},
                              {ImGui::GetItemRectMax().x, ImGui::GetItemRectMax().y}});
     ImGui::PopStyleColor(3);
+}
+
+// Top middle of the canvas, quiet and without a timer: why Decode looks the way it does. Drawn like
+// the pick chip; left out where the canvas is too narrow for its words, and registered so a press on
+// it is not a pan, a sample or a stroke.
+void App::draw_decode_chip() {
+    if (!view_available() || splitting() || !gui::decode_chip_shown(viewed_stage_, compare_stage_)) {
+        return;
+    }
+    const gui::TokenMetrics& metrics = token_metrics();
+    const gui::TokenColours& tokens = token_colours();
+    const auto rgba = [](const gui::Rgba& c) {
+        return ImGui::ColorConvertFloat4ToU32(ImVec4(c.r, c.g, c.b, c.a));
+    };
+    const std::string text_string(gui::decode_chip_text());
+    const gui::ViewRect canvas = gui::view_canvas_rect(view_geometry_);
+    ImGui::PushFont(nullptr, token_type().small);
+    const ImVec2 text = ImGui::CalcTextSize(text_string.c_str());
+    const float pad = metrics.strip_chip_margin * 0.75f;
+    const float width = text.x + 2 * pad;
+    if (width > canvas.width() - 2 * metrics.strip_chip_margin) {
+        ImGui::PopFont();
+        return;
+    }
+    const float left = std::round(canvas.min.x + (canvas.width() - width) / 2);
+    const float height = text.y + pad;
+    // Under whatever already sits where it would go (the badge, a banner): never on top of it.
+    float top = canvas.min.y + metrics.strip_chip_margin;
+    for (const gui::ViewRect& taken : canvas_taken_) {
+        if (!gui::view_intersect({{left, top}, {left + width, top + height}}, taken).empty()) {
+            top = std::max(top, taken.max.y + metrics.strip_chip_margin);
+        }
+    }
+    if (top + height > canvas.max.y) {
+        ImGui::PopFont();
+        return;
+    }
+    const ImVec2 chip_min(left, top);
+    const ImVec2 chip_max(left + width, top + height);
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    draw->PushClipRect(ImVec2(canvas.min.x, canvas.min.y), ImVec2(canvas.max.x, canvas.max.y), true);
+    draw->AddRectFilled(chip_min, chip_max, rgba(tokens.strip_chip_bg), metrics.overlay_rounding);
+    draw->AddText(ImVec2(chip_min.x + pad, chip_min.y + pad / 2), rgba(tokens.strip_chip_text),
+                  text_string.c_str());
+    draw->PopClipRect();
+    canvas_taken_.push_back({{chip_min.x, chip_min.y}, {chip_max.x, chip_max.y}});
+    canvas_chips_.push_back(canvas_taken_.back());
+    ImGui::PopFont();
 }
 
 void App::draw_stage_badge() {

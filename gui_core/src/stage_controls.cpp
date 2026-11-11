@@ -314,6 +314,14 @@ bool pick_available(StageId viewed, std::optional<StageId> compare) noexcept {
     return !stage_after_view(StageId::white_balance, viewed, compare);
 }
 
+bool decode_chip_shown(StageId viewed, std::optional<StageId> compare) noexcept {
+    return viewed == StageId::decode && !effective_compare(viewed, compare).has_value();
+}
+
+std::string_view decode_chip_text() noexcept {
+    return "Showing Decode \u2014 the file's light before any edit. Pick a later stage to see more.";
+}
+
 std::string view_hint(StageId viewed, std::optional<StageId> compare) {
     if (effective_compare(viewed, compare)) {
         return "Not visible here: the furthest stage shown is after " +

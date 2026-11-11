@@ -171,6 +171,15 @@ struct ViewAfterOpen {
 // is not, since the picture there is before any white balance.
 [[nodiscard]] bool pick_available(StageId viewed, std::optional<StageId> compare = {}) noexcept;
 
+// Whether the canvas shows its quiet note about Decode: only while Decode is the viewed stage and
+// no comparison is on (a compare against the viewed stage itself is no comparison). A RAW looks dark
+// and flat there, so the note says why.
+[[nodiscard]] bool decode_chip_shown(StageId viewed, std::optional<StageId> compare = {}) noexcept;
+
+// The note's words: "Showing Decode — the file's light before any edit. Pick a later stage to see
+// more."
+[[nodiscard]] std::string_view decode_chip_text() noexcept;
+
 // "Not visible here: you're viewing after Exposure." While comparing, the same for the furthest
 // stage shown: "Not visible here: the furthest stage shown is after Exposure."
 [[nodiscard]] std::string view_hint(StageId viewed, std::optional<StageId> compare = {});
