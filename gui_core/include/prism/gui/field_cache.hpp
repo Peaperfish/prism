@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -60,6 +61,14 @@ public:
     [[nodiscard]] std::span<const float> field() const noexcept { return field_; }
     [[nodiscard]] const PixelGrid& grid() const noexcept { return grid_; }
     [[nodiscard]] FieldPath last_path() const noexcept { return last_path_; }
+    // How many times a render has handed this cache's field to a Dodge & burn stage (the plain
+    // picture, each test strip band, the clip report's sample grid) since the cache was made. For
+    // tests: a render that stops reading the cache rasterises every stroke again, with the same
+    // picture. Counted from several threads (the bands), so only the total means anything.
+    [[nodiscard]] std::size_t field_reads() const noexcept {
+        return field_reads_.load(std::memory_order_relaxed);
+    }
+    void note_field_read() const noexcept { field_reads_.fetch_add(1, std::memory_order_relaxed); }
     // The memory the cache holds, in bytes (F, F_before and S).
     [[nodiscard]] std::size_t bytes() const noexcept;
     // Lets go of everything.
@@ -80,6 +89,7 @@ private:
     std::vector<float> coverage_;              // S, over coverage_box_ only
     GridRect coverage_box_;
     FieldPath last_path_ = FieldPath::none;
+    mutable std::atomic<std::size_t> field_reads_{0};
 };
 
 // The values of `field` (on `grid`) at the pixels of `part`, row after row, into `out`: for a

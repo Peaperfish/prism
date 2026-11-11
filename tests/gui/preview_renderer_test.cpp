@@ -1263,3 +1263,37 @@ TEST(PreviewRenderer, ItsFieldCacheGivesTheFramesOfARenderWithoutOne) {
         EXPECT_TRUE(got_other->rgb8 == want->rgb8) << "step " << k;
     }
 }
+
+// A render with the field cache hands the cache's field to the Dodge & burn stage instead of
+// rasterising the strokes again; the pictures are the same either way, so the cache counts the
+// reads. Warm (the same strokes again) each kind of render reads it, and takes the reuse path.
+TEST(PreviewRenderer, RendersReadTheCachedStrokeFieldPlainStripAndClipReport) {
+    const auto base = make_base(320, 200);
+    auto field = std::make_shared<prism::StrokeField>();
+    field->aspect = prism::aspect_of(320, 200);
+    field->strokes.push_back(std::make_shared<const prism::FieldStroke>(
+        prism::FieldStroke{{{0.3f, 0.3f}, {0.6f, 0.5f}}, 0.1f, 0.5f, 1.0f}));
+    EditSettings s = every_stage();
+    s.strokes = prism::gui::Strokes(field);
+
+    prism::gui::PreviewOptions plain;
+    prism::gui::PreviewOptions clip;
+    clip.clip_report = true;
+    const prism::gui::PreviewOptions strip =
+        strip_options(prism::gui::StripStep::half, false, false);
+    for (const prism::gui::PreviewOptions& options : {plain, clip, strip}) {
+        prism::gui::FieldCache cache;
+        ASSERT_EQ(cache.field_reads(), 0u);
+        const auto cold = prism::gui::render_preview(*base, s, 1, {}, {}, prism::gui::final_stage,
+                                                     options, &cache);
+        ASSERT_TRUE(cold && cold->error.empty());
+        EXPECT_GT(cache.field_reads(), 0u);
+        const std::size_t after_cold = cache.field_reads();
+        const auto warm = prism::gui::render_preview(*base, s, 1, {}, {}, prism::gui::final_stage,
+                                                     options, &cache);
+        ASSERT_TRUE(warm && warm->error.empty());
+        EXPECT_EQ(cache.last_path(), prism::gui::FieldPath::reuse);
+        EXPECT_GT(cache.field_reads(), after_cold);
+        EXPECT_TRUE(warm->rgb8 == cold->rgb8);
+    }
+}

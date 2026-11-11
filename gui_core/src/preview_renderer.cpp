@@ -40,6 +40,7 @@ namespace {
 struct FieldView {
     std::span<const float> values;
     PixelGrid grid;
+    const FieldCache* cache = nullptr;  // where it came from, told when a stage reads it
 };
 
 // Hands the field to the Dodge & burn stage of `p`, if `p` has one and the field is on its grid.
@@ -56,6 +57,11 @@ void use_field(ProcessSettings& p, const FieldView& view, std::vector<float>& st
         p.dodge_burn.precomputed = view.values;
     } else if (field_at(view.values, view.grid, g, storage)) {
         p.dodge_burn.precomputed = storage;
+    } else {
+        return;
+    }
+    if (view.cache) {
+        view.cache->note_field_read();
     }
 }
 
@@ -151,7 +157,7 @@ std::optional<PreviewFrame> render_strip(const Image& base, const EditSettings& 
         std::vector<float> band_field;
         FieldView band_view;
         if (field_at(field.values, field.grid, band_grid, band_field) && !band_field.empty()) {
-            band_view = {band_field, band_grid};
+            band_view = {band_field, band_grid, field.cache};
         }
         std::optional<PreviewFrame> part =
             render_plain(crop, band_grid, band_settings, band_threads, band_stop.get_token(),
@@ -437,10 +443,10 @@ std::optional<PreviewFrame> render_preview(const Image& base, const EditSettings
     FieldCache just_this_render;  // for a mask without a cache
     if (field_cache && (settings.strokes.empty() || stage_runs || mask)) {
         field_cache->update(settings.strokes, whole, threads);
-        field = {field_cache->field(), whole};
+        field = {field_cache->field(), whole, field_cache};
     } else if (!field_cache && mask && !settings.strokes.empty()) {
         just_this_render.update(settings.strokes, whole, threads);
-        field = {just_this_render.field(), whole};
+        field = {just_this_render.field(), whole, &just_this_render};
     }
     std::optional<PreviewFrame> frame;
     if (options.test_strip && stop_after != StageId::decode && options.test_strip->count >= 1 &&
