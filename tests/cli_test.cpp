@@ -1027,9 +1027,12 @@ TEST(CliFrame, ARecipeAndFrameFlagsCombineAndTheRecipeIsNeverWritten) {
               prism::encode_srgb8(run_framed(input, "--rotate 2 --crop 0.1,0.1,0.9,0.9 --long-side 30")
                                       .image));
     // The recipe file is read, never written back: no frame can reach it, and it stays version 2.
-    std::ifstream in(recipe, std::ios::binary);
+    // (Read in a scope of its own: Windows can't remove a file that is still open.)
     std::stringstream after;
-    after << in.rdbuf();
+    {
+        std::ifstream in(recipe, std::ios::binary);
+        after << in.rdbuf();
+    }
     EXPECT_EQ(after.str(), text);
     fs::remove(input);
     fs::remove(recipe);
