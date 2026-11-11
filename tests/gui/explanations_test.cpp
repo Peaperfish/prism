@@ -85,6 +85,8 @@ TEST(Explanations, TheBrushExplainsItselfWithItsKeyAndHowToLeave) {
     EXPECT_NE(e->summary.find("(B)"), std::string_view::npos);
     EXPECT_NE(e->detail.find("Esc"), std::string_view::npos);
     EXPECT_NE(e->detail.find("Space"), std::string_view::npos);
+    // W leaves the Brush only where Pick neutral can start, so the text says where.
+    EXPECT_NE(e->detail.find("W from White balance on"), std::string_view::npos);
 }
 
 TEST(Explanations, TheToneChipNamesEveryKeyOfTheBrush) {

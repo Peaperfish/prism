@@ -255,8 +255,8 @@ constexpr Explanation templates[] = {
      "them. On brings them back."},
     {"dodge_burn.brush", "Paint where to hold back or add light (B).",
      "While it is on, a drag on the photo paints a stroke with the strength set here; Space and a "
-     "drag moves the picture. Only while you view Dodge & burn or a later stage. Esc leaves; so do "
-     "B, I, T and W."},
+     "drag moves the picture. Only from Dodge & burn on. Esc leaves; so do B, I and T, and W from "
+     "White balance on."},
     {"dodge_burn.tone", "Dodge holds light back; burn gives more (X).",
      "Alt (Option) at the press paints that one stroke the other way. ] and [ make the brush "
      "bigger and smaller, Shift+[ and Shift+] its edge softer and harder. Hold M to see the "
