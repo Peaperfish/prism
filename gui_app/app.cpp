@@ -2881,24 +2881,45 @@ void App::draw_zoom_chip() {
 }
 
 void App::draw_splitter(float canvas_width, float width, float height, float available) {
-    ImGui::InvisibleButton("splitter", ImVec2(width, height));
+    // The gap itself only takes room and is painted in the canvas colour.
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    ImGui::Dummy(ImVec2(width, height));
     {
         const gui::Rgba& c = token_colours().canvas;
         ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
                                                   ImGui::ColorConvertFloat4ToU32(ImVec4(c.r, c.g, c.b, c.a)));
     }
-    if (ImGui::IsItemHovered() || ImGui::IsItemActive()) {
-        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+    // The grab area is centred on the panel's drawn edge (the gap's right end), so it reaches over
+    // the canvas and the panel both. A window of its own, above them, takes the hover and the press.
+    const gui::SplitterGrab grab = gui::splitter_grab(origin.x + width, width, ui_scale());
+    ImGui::SetNextWindowPos(ImVec2(grab.x, origin.y));
+    ImGui::SetNextWindowSize(ImVec2(grab.width, height));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    if (ImGui::Begin("##splitter_grab", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                         ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoSavedSettings |
+                         ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing |
+                         ImGuiWindowFlags_NoScrollWithMouse)) {
+        ImGui::InvisibleButton("splitter", ImVec2(grab.width, height));
+        const bool hit = gui::splitter_grab_hit(grab, ImGui::GetIO().MousePos.x);
+        if ((ImGui::IsItemHovered() && hit) || ImGui::IsItemActive()) {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+        }
+        if (ImGui::IsItemActive()) {
+            // Relative to the panel as it is: a press moves nothing, and panel_width_pixels clamps
+            // the width next frame.
+            const float current = available - canvas_width - width;
+            const float panel = gui::dragged_panel_pixels(current, ImGui::GetIO().MouseDelta.x);
+            prefs_.panel_width = gui::widen_panel_width(
+                gui::panel_points_from_pixels(panel, ui_scale()), ui_scale(), panel_text_min_);
+        }
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal) && !ImGui::IsItemActive()) {
+            ImGui::SetTooltip("Drag to resize the panel");
+        }
     }
-    if (ImGui::IsItemActive()) {
-        // The panel is what lies right of the mouse; panel_width_pixels clamps it next frame.
-        const float panel = available - (canvas_width + ImGui::GetIO().MouseDelta.x) - width;
-        prefs_.panel_width = gui::widen_panel_width(gui::panel_points_from_pixels(panel, ui_scale()),
-                                                    ui_scale(), panel_text_min_);
-    }
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal) && !ImGui::IsItemActive()) {
-        ImGui::SetTooltip("Drag to resize the panel");
-    }
+    ImGui::End();
+    ImGui::PopStyleVar(2);
 }
 
 void App::explain(std::string_view id, bool changed) {

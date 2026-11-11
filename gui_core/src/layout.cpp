@@ -40,6 +40,19 @@ int panel_points_from_pixels(float pixels, float scale) {
     return clamp_panel_width(static_cast<int>(std::lround(pixels / scale)));
 }
 
+SplitterGrab splitter_grab(float edge_x, float splitter, float scale) {
+    const float width = std::max(splitter, splitter_grab_min * scale);
+    return {edge_x - width / 2, width};
+}
+
+bool splitter_grab_hit(const SplitterGrab& grab, float mouse_x) {
+    return mouse_x >= grab.x && mouse_x < grab.x + grab.width;
+}
+
+float dragged_panel_pixels(float panel_pixels, float mouse_dx) {
+    return panel_pixels - mouse_dx;
+}
+
 std::string ellipsize_middle(std::string_view text, float max_width,
                              const std::function<float(std::string_view)>& measure) {
     if (measure(text) <= max_width) {

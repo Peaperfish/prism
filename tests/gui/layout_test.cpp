@@ -227,3 +227,57 @@ TEST(Layout, TheTextMinimumHoldsInWindowsAtLeastAsWideAsTheWindowMinimum) {
     // A text minimum that is small leaves the base width.
     EXPECT_FLOAT_EQ(window_minimum_width(240.0f, 10.0f, 1.0f, 640.0f), 640.0f);
 }
+
+// --- The panel's resize grab area ------------------------------------------------------------------
+
+namespace {
+using prism::gui::dragged_panel_pixels;
+using prism::gui::splitter_grab;
+using prism::gui::splitter_grab_hit;
+using prism::gui::SplitterGrab;
+
+constexpr float edge_x = 1000.0f;
+// The gap at 100% and 200% interface size: 14 mockup px * 16/13, then scaled.
+constexpr float gap_1x = 14.0f * 16.0f / 13.0f;
+}  // namespace
+
+TEST(HeadlessSplitterGrab, IsCentredOnTheDrawnEdgeAtEveryInterfaceSize) {
+    for (const float scale : {1.0f, 1.5f, 2.0f}) {
+        const float gap = gap_1x * scale;
+        const SplitterGrab grab = splitter_grab(edge_x, gap, scale);
+        EXPECT_FLOAT_EQ(grab.width, gap);  // as wide as the gap, which is over 8 points
+        EXPECT_FLOAT_EQ(grab.x + grab.width / 2, edge_x);
+    }
+}
+
+TEST(HeadlessSplitterGrab, IsNeverUnderEightPointsWide) {
+    EXPECT_FLOAT_EQ(splitter_grab(edge_x, 3.0f, 1.0f).width, 8.0f);
+    EXPECT_FLOAT_EQ(splitter_grab(edge_x, 3.0f, 2.0f).width, 16.0f);
+    const SplitterGrab grab = splitter_grab(edge_x, 3.0f, 1.0f);
+    EXPECT_FLOAT_EQ(grab.x, edge_x - 4.0f);
+}
+
+TEST(HeadlessSplitterGrab, HitsOnTheLineAndWithinHalfTheWidthEitherSideAndMissesOutside) {
+    for (const float scale : {1.0f, 2.0f}) {
+        const SplitterGrab grab = splitter_grab(edge_x, gap_1x * scale, scale);
+        const float half = grab.width / 2;
+        EXPECT_TRUE(splitter_grab_hit(grab, edge_x));
+        EXPECT_TRUE(splitter_grab_hit(grab, edge_x - half + 0.25f));  // just left, inside
+        EXPECT_TRUE(splitter_grab_hit(grab, edge_x + half - 0.25f));  // just right, inside
+        EXPECT_FALSE(splitter_grab_hit(grab, edge_x - half - 0.25f));  // just left, outside
+        EXPECT_FALSE(splitter_grab_hit(grab, edge_x + half + 0.25f));  // just right, outside
+    }
+}
+
+TEST(HeadlessSplitterGrab, APressDoesNotMoveThePanelAndADragFollowsTheMouse) {
+    for (const float scale : {1.0f, 1.5f, 2.0f}) {
+        for (const int points : {320, 360, 421}) {
+            const float pixels = static_cast<float>(points) * scale;
+            const float pressed = dragged_panel_pixels(pixels, 0.0f);
+            EXPECT_FLOAT_EQ(pressed, pixels);
+            EXPECT_EQ(panel_points_from_pixels(pressed, scale), points);
+        }
+    }
+    EXPECT_FLOAT_EQ(dragged_panel_pixels(400.0f, -30.0f), 430.0f);  // left widens the panel
+    EXPECT_FLOAT_EQ(dragged_panel_pixels(400.0f, 30.0f), 370.0f);
+}

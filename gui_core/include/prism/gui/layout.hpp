@@ -38,6 +38,24 @@ inline constexpr int canvas_width_min = 240;
 // The preferred panel width, in points, that a splitter dragged to `pixels` asks for.
 [[nodiscard]] int panel_points_from_pixels(float pixels, float scale);
 
+// The panel's resize grab area: a band centred on the panel's drawn edge (`edge_x`), as wide as the
+// gap between canvas and panel (`splitter`) but never under splitter_grab_min points at `scale`.
+inline constexpr float splitter_grab_min = 8.0f;
+struct SplitterGrab {
+    float x = 0;      // its left side
+    float width = 0;  // pixels
+
+    bool operator==(const SplitterGrab&) const = default;
+};
+[[nodiscard]] SplitterGrab splitter_grab(float edge_x, float splitter, float scale);
+
+// Whether a mouse at `mouse_x` is over the grab area: its left side counts, its right side not.
+[[nodiscard]] bool splitter_grab_hit(const SplitterGrab& grab, float mouse_x);
+
+// The panel's width in pixels while the grab area is dragged: `panel_pixels` is what it is now and
+// `mouse_dx` how far the mouse moved since the last frame, so a press (no movement) changes nothing.
+[[nodiscard]] float dragged_panel_pixels(float panel_pixels, float mouse_dx);
+
 // --- Comparing two stages in a split ---------------------------------------------------------------
 
 inline constexpr float split_fraction_min = 0.05f;
