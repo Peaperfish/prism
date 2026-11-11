@@ -61,8 +61,8 @@ constexpr StageInfo stages[] = {
      "Exposure: makes every part of the image brighter or darker by the same number of stops.",
      true},
     {StageId::dodge_burn, "dodge_burn", "Dodge & burn",
-     "Dodge & burn: brightens or darkens the parts of the image you paint over, by the number of "
-     "stops you choose.",
+     "Dodge & burn: makes the parts of the image you paint over lighter or darker, by the number "
+     "of stops you choose.",
      true, false},
     {StageId::white_balance, "white_balance", "White balance",
      "White balance: re-lights the photo as if the light you name, in Kelvin and tint, had lit it.",

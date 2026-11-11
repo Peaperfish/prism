@@ -50,8 +50,8 @@ enum class ProcessResult {
 
 // Runs the pipeline on `img` in place, in the README's order: exposure -> (dodge and burn) ->
 // white balance -> colour matrix -> saturation -> contrast -> tone curve. `threads` means the same
-// as for each
-// stage (0 = one per hardware thread), and the result is the same as calling those stages by hand.
+// as for each stage (0 = one per hardware thread), and the result is the same as calling those
+// stages by hand.
 //
 // `stop` is checked before each stage that would run (a stage itself is never interrupted). If a
 // stop was requested, process() returns cancelled at once: the stages that already ran are

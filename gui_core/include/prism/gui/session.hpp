@@ -182,8 +182,9 @@ private:
 // the library's fixed JPEG quality), on the calling thread. The source file is decoded again:
 // RAW at full size unless job.settings.raw_half_size, with its camera matrix, then reduced if
 // job.long_side asks for it. A chosen white balance is measured against the as-shot light that
-// decode reads from the file, the same one the session read when it opened it. `stop` is checked between decoding, reducing, each stage and saving; once it is triggered the export returns
-// ErrorKind::cancelled and writes nothing. on_stage reports each pipeline stage, for progress.
+// decode reads from the file, the same one the session read when it opened it. `stop` is checked between decoding,
+// reducing, each stage and saving; once it is triggered the export returns ErrorKind::cancelled
+// and writes nothing. on_stage reports each pipeline stage, for progress.
 // Refuses to overwrite the source file itself.
 [[nodiscard]] MaybeError export_image(const ExportJob& job, const std::filesystem::path& output,
                                       std::stop_token stop = {},

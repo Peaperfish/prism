@@ -19,7 +19,7 @@ struct ExportSize {
     };
     Mode mode = Mode::original;
     int long_side = 2048;  // pixels, at least 1; used when mode == long_side
-    int percent = 50;      // 1..99; used when mode == percent
+    int percent = 50;      // 1..100 (the sheet offers 1..99); when mode == percent
 
     bool operator==(const ExportSize&) const = default;
 };
