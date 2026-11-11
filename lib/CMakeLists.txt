@@ -5,6 +5,7 @@ add_library(prism_core STATIC
   dng_profile.cpp
   dodge_burn.cpp
   exif.cpp
+  frame.cpp
   heic.cpp
   histogram.cpp
   image.cpp
@@ -24,9 +25,12 @@ add_library(prism_core STATIC
 # pixel, and that the incremental API matches a fresh rasterisation exactly. That holds only if no
 # a * b + c is fused into one multiply-add, so contraction is off for this file on Clang too (GCC
 # already has it off everywhere via prism_warnings; MSVC does not contract by default). The dodge &
-# burn stage applies that field through fast_exp2, a polynomial, so it is compiled the same way.
+# burn stage applies that field through fast_exp2, a polynomial, so it is compiled the same way. The
+# frame (frame.cpp) promises that a turned picture is bit-identical whichever thread computed a
+# pixel, and maps positions with a * b + c in double, so it is too.
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-  set_source_files_properties(stroke_field.cpp dodge_burn.cpp PROPERTIES COMPILE_OPTIONS -ffp-contract=off)
+  set_source_files_properties(stroke_field.cpp dodge_burn.cpp frame.cpp
+                              PROPERTIES COMPILE_OPTIONS -ffp-contract=off)
 endif()
 
 # PUBLIC: anything linking prism_core also gets include/ on its include path, so it can

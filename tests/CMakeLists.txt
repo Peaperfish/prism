@@ -21,6 +21,7 @@ add_executable(prism_tests
   dng_profile_test.cpp
   dodge_burn_test.cpp
   exif_test.cpp
+  frame_test.cpp
   heic_test.cpp
   histogram_test.cpp
   image_test.cpp
