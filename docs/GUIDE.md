@@ -108,14 +108,15 @@ The **Light path** lists the stages the light goes through, from the file to the
 
 1. **Decode**: the file turned into linear light.
 2. **Exposure**
-3. **White balance**
-4. **Colour matrix**
-5. **Saturation**
-6. **Contrast**
-7. **Tone curve**
-8. **Output encode**: light turned into the 8-bit sRGB file.
+3. **Dodge & burn**: strokes you paint to hold back or add light in parts of the photo (see [Dodge and burn with the Brush](#dodge-and-burn-with-the-brush)).
+4. **White balance**
+5. **Colour matrix**
+6. **Saturation**
+7. **Contrast**
+8. **Tone curve**
+9. **Output encode**: light turned into the 8-bit sRGB file.
 
-(The section [How Prism thinks about light](#how-prism-thinks-about-light) explains why the order matters.) The stages are the controls: there are no separate sliders.
+(The section [How Prism thinks about light](#how-prism-thinks-about-light) explains why the order matters.) The stages are the controls: there are no separate sliders. Each photo opens at Decode, the first row.
 
 A thin rail runs down the left, with a dot for each stage. The **viewed stage**'s dot is filled with the accent colour and has a faint glow, and its row has a lighter wash behind it. The photo, the scopes and the Sample block show the light at that stage. Output encode is the final picture.
 
@@ -127,6 +128,7 @@ A thin rail runs down the left, with a dot for each stage. The **viewed stage**'
 |---|---|---|
 | Decode | none | what the file is: "RAW, camera colour", "RAW, your camera matrix", "JPEG, read as sRGB", "PNG, read as sRGB" or "HEIC, converted from its own colours" |
 | Exposure | `+1.00 stops` | a slider from −2 to +2 stops, and the **Test strip** button |
+| Dodge & burn | `None`, or the strokes: `2 dodges`, `1 burn`, `3 strokes` | the **Brush** button, the **Strength** slider and **Clear** (see [Dodge and burn with the Brush](#dodge-and-burn-with-the-brush)) |
 | White balance | `As shot`, or `Chosen` once you have chosen a light | "The light the photo was lit by" (or "Light not recorded, taken as 6500 K"), the **Pick neutral** button, and two sliders, each with its number beside it: **Kelvin** (`5810 K`) and **Tint** (`+34`) (see [White balance](#white-balance)) |
 | Colour matrix | the matrix: "Camera default" (RAW) or "None", the file's name, or "From recipe" | nothing else: the app gets a matrix only from a [recipe](#recipes) |
 | Saturation | `×1.00` (`black and white` at exactly 0) | a slider from `×0.00` to `×2.00` |
@@ -136,7 +138,7 @@ A thin rail runs down the left, with a dot for each stage. The **viewed stage**'
 
 The sliders of Exposure, Saturation and Contrast are centred on no change. Hover over a row for a one-sentence explanation; the Explain area says more. Point at the Colour matrix's value for the full path of its file.
 
-**Switches.** Exposure, White balance, Colour matrix, Saturation, Contrast and Tone curve each have a switch. Off, the photo shows what it looks like without that stage. The stage keeps its value, so switching it on again brings it back, and while it is off the row says what it will be: "+0.70 stops when on". The stage's slider and tabs are greyed out meanwhile. Each switch is one undo step. Decode and Output encode have none.
+**Switches.** Exposure, Dodge & burn, White balance, Colour matrix, Saturation, Contrast and Tone curve each have a switch. Off, the photo shows what it looks like without that stage. The stage keeps its value, so switching it on again brings it back, and while it is off the row says what it will be: "+0.70 stops when on". The stage's slider and tabs are greyed out meanwhile. Each switch is one undo step. Decode and Output encode have none.
 
 **The value line and dragging.** Drag a slider and the photo follows. A whole drag is one undo step. If a value is beyond what the slider can show (from a recipe, say), the row says **(beyond the slider)** (Contrast does not: its value already reads "Softer than grade 0" or "Harder than grade 5"), and the slider sits at its end until you move it. While a stage is off its slider sits at neutral, so nothing is beyond it.
 
@@ -195,6 +197,26 @@ A comma works as the decimal mark (`1,5`). The word is `stops` or `stop`, in any
 **Clip marks.** Under a row's controls, a line says what is out of range at that stage. Each mark is a dot, a share of pixels and a few words, for example "7.0% above white here". The dot's colour says what: orange for **above white**, blue for **below black**, violet for **outside sRGB** (colours too saturated for sRGB). A **hollow** dot means the values are out of range but a later stage may still bring them back. A **filled** dot means this stage cut them off and the detail is gone. Where the row is too narrow for the words, only the shares show. A row with nothing out of range shows nothing. Point at the marks for what each means. At Decode, highlights already at white in the file count as lost. Clip marks are not shown while the [test strip](#the-test-strip) is on.
 
 **Rows after the viewed stage.** A stage after the one you are viewing can't change what you see, so its row is dimmed (it still works), and pointing at it says "Not visible here: you're viewing after Exposure." With a comparison, a row is dimmed only when it is after both pictures.
+
+### Dodge and burn with the Brush
+
+In the darkroom, a dodging card under the enlarger holds light back from one part of the print, so that part comes out lighter; burning in gives a part more time, so it comes out darker. Prism's **Dodge & burn** stage does the same on the photo: you paint with the **Brush**, and each stroke moves the light under it by its strength, measured in stops, right after Exposure. It is local, so it works on the parts you paint and leaves the rest alone. Strokes that overlap add up: two dodges of 0.5 stop make +1.00 stops where they cross.
+
+**Turning the Brush on.** Press `B`, choose **View → Brush**, or press **Brush** on the Dodge & burn row. A ring follows the cursor over the photo. It is not available while you view Decode or Exposure, because the strokes' effect is not in the picture there: view Dodge & burn or any later stage. The button and menu item are greyed out, and a tooltip says why. Turning it on leaves Sample, Pick neutral and the test strip.
+
+**Painting.** Drag to paint a stroke; a click is a dot. A bar at the top of the photo shows two tones: **Dodge (lighter)** and **Burn (darker)**. Click one, or press `X`, to swap them. Hold `Option` (`Alt` on Windows and Linux) as you press to paint that one stroke in the other tone; the next stroke goes back to the base tone. The bar's second line says what the next stroke will do, for example "Dodge 0.5 stop — lighter, like holding back light" or "Burn 1.5 stops — darker, like more time under the enlarger".
+
+**Strength** is the slider on the same row, from 0.1 to 2 stops in steps of 0.1, starting at 0.5 stop. A stroke of 1 stop moves the light as much as doubling or halving the time. Right-click it for **Reset to 0.5 stop**. It belongs to the Brush, not to the photo: undo does not change it.
+
+**Size and edge.** `]` makes the Brush bigger and `[` smaller, each press by a factor of 1.2, from 0.5% to 25% of the photo's longer side (it starts at 5%). `Shift+[` makes the edge softer and `Shift+]` harder, by a tenth, from 0 (hard) to 1 (the whole radius fades); it starts at 0.5. The outer ring is the Brush's size. The inner ring is the part at full strength, and the light falls off between them. With a hard edge, or a very small brush, there is only one ring.
+
+**Seeing your strokes.** Hold `M` and the photo is tinted where you have painted: warm yellow where you dodged, violet where you burned, stronger as the stroke moves the light more, at full colour from 2 stops. It shows whichever stage you view, and whether Dodge & burn is on. With **Compare** on, the tint is over the right half only, the viewed stage.
+
+**Moving around.** Hold `Space` and drag to move the picture. Pinch or the wheel zoom as usual. A plain drag paints even when you are zoomed in, and double-clicking does not zoom, since each click is a dot.
+
+**Undo.** One stroke is one undo step (`Cmd+Z`; see [Undo and redo](#undo-and-redo)). `Esc` while you hold the button cancels that stroke and leaves no step. `Esc` otherwise leaves the Brush. So do `I`, `T` and `W`, viewing an earlier stage, and opening another photo. A stroke you are in the middle of when one of those happens is kept. The Dodge & burn switch turns all the strokes off and on without losing them.
+
+**What it doesn't do.** **Clear** on the row removes every stroke, as one undo step. Strokes are part of the photo's edit, and an export includes them, at any size, as long as the switch is on. They are not saved in a [recipe](#recipes): a recipe holds the other five stages, and the Save Recipe sheet says "Dodging and burning isn't included." Loading a recipe or choosing a look leaves your strokes as they are. They are lost when you open another photo or quit, and Prism asks first (see [Unexported edits](#unexported-edits)).
 
 ### Compare two stages
 
@@ -292,7 +314,7 @@ At the foot of the panel, a box says in plain words what the control under the m
 
 ### Undo and redo
 
-The **Undo** and **Redo** buttons in the panel's header, and **Edit → Undo** and **Redo**, do the same. Every change to a slider, a stage switch, a look or the tone curve is a step, and so is loading a recipe; Prism keeps up to 100. A whole slider drag is one step. Test strip, comparison and the stage you are viewing are views and are not part of undo.
+The **Undo** and **Redo** buttons in the panel's header, and **Edit → Undo** and **Redo**, do the same. Every change to a slider, a stage switch, a look or the tone curve is a step, and so is loading a recipe, painting a stroke and clearing the strokes; Prism keeps up to 100. A whole slider drag is one step. Test strip, comparison and the stage you are viewing are views and are not part of undo.
 
 ### Export
 
@@ -349,6 +371,8 @@ If you quit (`Cmd+Q` on macOS, `Ctrl+Q` on Windows and Linux, the close button o
 
 On macOS **Quit Without Saving** stands on its own on the left, and Cancel, Save Recipe… and Export… are on the right; on Windows and Linux the order is Export…, Save Recipe…, Quit Without Saving, Cancel. Export… is the default (`Enter`) on both.
 
+Strokes from the [Brush](#dodge-and-burn-with-the-brush) change this. No recipe keeps them and an export does not make them safe to lose, so while the photo has any, Prism asks before it quits or opens another photo, even straight after an export, and adds: "Dodging and burning isn't saved in recipes and is lost when the photo closes." The buttons are then **Export…**, **Quit Without Saving** (or **Open Without Saving**) and **Cancel**, with no **Save Recipe…**.
+
 Undoing back to an exported or saved state counts as having no edits. If an export is still running, Prism waits for it first. A quit while the recipe save sheet is open closes the sheet before asking.
 
 ## Keyboard shortcuts
@@ -376,16 +400,22 @@ On macOS the main key is `Cmd`; on Windows and Linux it is `Ctrl`. This is every
 | Zoom to fit | `F` | `F` |
 | Zoom to 100% of the preview | `1` | `1` |
 | Move the picture while held, with a drag | `Space` | `Space` |
-| Step back: close the Preferences, About, notices, Recipe not loaded or View recipe window if it has the focus; otherwise Sample mode, then the test strip, then the comparison, then the viewed stage | `Esc` | `Esc` |
+| Brush on or off (paint dodging and burning) | `B` | `B` |
+| Brush: swap Dodge and Burn | `X` | `X` |
+| Brush: paint one stroke in the other tone | `Option` held at the press | `Alt` held at the press |
+| Brush: bigger or smaller | `]` or `[` | `]` or `[` |
+| Brush: harder or softer edge | `Shift+]` or `Shift+[` | `Shift+]` or `Shift+[` |
+| Brush: show the strokes while held | `M` | `M` |
+| Step back: close the Preferences, About, notices, Recipe not loaded or View recipe window if it has the focus; otherwise the Brush (a stroke under way is cancelled first), then Pick mode, Sample mode, the test strip, then the comparison, then the viewed stage | `Esc` | `Esc` |
 | Quit | `Cmd+Q` | `Ctrl+Q` |
 
 Notes:
 
 - The keypad's `+`, `-` and `0` also work with `Cmd`/`Ctrl` for the interface size, and its `+` and `-` alone for the zoom.
-- Undo, Redo, `J`, `T`, `I`, `W` and the zoom keys do nothing while you are dragging a slider.
-- `J`, `T`, `I`, `W`, the zoom keys and `Space` give way to a text field that has the keyboard, so typing a value never triggers them.
+- Undo, Redo, `J`, `T`, `I`, `W`, `B` and the zoom keys do nothing while you are dragging a slider or painting a stroke.
+- `J`, `T`, `I`, `W`, `B`, the zoom keys and `Space` give way to a text field that has the keyboard, so typing a value never triggers them.
 - `Esc` is also Cancel in the "unsaved edits" window, in the recipe save sheet (inside a text field, the first `Esc` only leaves the field), in the Export sheet (also inside its number field), and in the "Saving…" window while a quit or open is waiting for the export.
-- In the menus: **File** has Open…, Export…, Load Recipe…, Save Recipe… and Quit (on Windows and Linux the menu shows `Ctrl+Q`; on macOS, Quit is in the **Prism** menu too). **Edit** has Undo, Redo and (on Windows and Linux) Preferences…. **View** has Bigger Interface, Smaller Interface, Interface Size: Auto, Test Strip, Sample Colour, Pick Neutral, Zoom In, Zoom Out, Zoom to Fit and 100% of Preview. **Help → About Prism** is on Windows and Linux; on macOS, About and Preferences are in the **Prism** menu (**Prism → About Prism**, **Prism → Preferences…**).
+- In the menus: **File** has Open…, Export…, Load Recipe…, Save Recipe… and Quit (on Windows and Linux the menu shows `Ctrl+Q`; on macOS, Quit is in the **Prism** menu too). **Edit** has Undo, Redo and (on Windows and Linux) Preferences…. **View** has Bigger Interface, Smaller Interface, Interface Size: Auto, Test Strip, Sample Colour, Pick Neutral, Brush, Zoom In, Zoom Out, Zoom to Fit and 100% of Preview. **Help → About Prism** is on Windows and Linux; on macOS, About and Preferences are in the **Prism** menu (**Prism → About Prism**, **Prism → Preferences…**).
 
 Mouse and trackpad: click a stage row to view it; right-click a slider, or a Tone curve tab, to reset it; Ctrl-click (Cmd-click) a slider to type a value; drag the divider in a comparison; click a band in the test strip; drag the panel's left edge to resize the panel; pinch, scroll or use the wheel over the photo to zoom and move it, drag it when zoomed in, and double-click it to go between fit and 100% (see [Zoom and pan](#zoom-and-pan)); in Sample mode, point at the photo to read a pixel and click to pin it (see [Read a pixel](#read-a-pixel)).
 
@@ -405,11 +435,12 @@ Prism works in linear light, with floating-point numbers, through every stage. O
 
 The stages always run in this order, whatever order you change them in:
 
-**Decode → Exposure → White balance → Colour matrix → Saturation → Contrast → Tone curve → Output encode**
+**Decode → Exposure → Dodge & burn → White balance → Colour matrix → Saturation → Contrast → Tone curve → Output encode**
 
 The order matters because the stages are not interchangeable:
 
 - **Exposure comes first** after Decode, while the numbers are still light. A stop of exposure then means exactly twice the light, and the stages after it can shape what that extra light looks like.
+- **Dodge & burn** comes right after Exposure, also in linear light, so a stroke of 1 stop is exactly twice the light, and the stages after it, which shape colour and tone, work on light you have already shaped.
 - **White balance** comes next, also in linear light, where a change of light is a simple mix of red, green and blue. It comes before the Colour matrix, so a grade is applied to a photo whose whites are already white.
 - **The Colour matrix** mixes red, green and blue in linear light, before saturation and tone. It is for calibrating camera colour or applying a grade.
 - **Saturation** moves each colour away from, or towards, the grey of the same luminance. A colour that would go below zero stops at the most saturated version sRGB can show, so hues do not shift.
