@@ -21,7 +21,7 @@ Mainstream photo editors often come with a subscription and a cloud catalog, hid
 1. **Free for personal use.** No subscription, no cloud, no catalog: open a file, edit it, export it. (See [Licences](#licences).)
 2. **It teaches as you go.** Every control should say in plain words what it does to the light, and you should be able to see each step happen. Since [0.2.0](https://github.com/Peaperfish/prism/milestone/1): every stage of the edit in view, colour scopes and a test strip. Since [0.3.0](https://github.com/Peaperfish/prism/milestone/3): zoom and pan, and a reader for the numbers of any pixel.
 3. **No black-box presets.** A look should be a readable recipe you can see and adjust. The plain-text [recipe format](docs/RECIPES.md) is defined, the app saves and loads recipes ([Recipes](docs/GUIDE.md#recipes)), the command line applies them, and the built-in looks are [recipes you can read](recipes/): the app shows each look's numbers and its file.
-4. **Physical controls.** You adjust light rather than apply effects. Exposure is already in stops; white balance in Kelvin, contrast as paper grades, and dodge and burn are planned for [0.5.0](https://github.com/Peaperfish/prism/milestone/4).
+4. **Physical controls.** You adjust light rather than apply effects. Exposure is already in stops; white balance in Kelvin, contrast as paper grades, and dodge and burn shipped in [0.5.0](https://github.com/Peaperfish/prism/milestone/4).
 
 ## Downloading and running Prism
 
@@ -39,10 +39,13 @@ Both include RAW support, and nothing needs installing beside them. The apps are
 - [x] Load and save PNG / JPEG (via [stb](https://github.com/nothings/stb))
 - [x] sRGB ↔ linear conversion
 - [x] Exposure adjustment (in stops)
+- [x] Dodge & burn with a brush, in stops (GUI)
+- [x] White balance in Kelvin and tint, with a neutral picker (GUI); `--kelvin` and `--tint` on the command line
 - [x] 3×3 colour matrix (e.g. camera → sRGB, or creative grades)
-- [x] Saturation and contrast (luminance-preserving, gamut-limited saturation; log-space S-curve contrast)
+- [x] Saturation and contrast (luminance-preserving, gamut-limited saturation; log-space S-curve contrast), with contrast shown as a paper grade from 0 to 5
 - [x] Tone curves (gamma, filmic)
 - [x] Histogram output (R, G, B and luma image, plus clipping summary)
+- [x] Export at a smaller size: the long side or a percentage (GUI Export sheet; `--long-side` on the command line)
 - [x] RAW support (via [LibRaw](https://www.libraw.org): .arw, .dng, .cr2, .cr3, .nef, .raf; optional)
 - [x] HEIC/HEIF photos (.heic, .heif; macOS only, decoded by Apple ImageIO)
 - [x] Multithreaded processing (standard library threads, no dependencies)
@@ -67,7 +70,7 @@ Every command and option, with defaults, more examples (a folder of files in a s
 
 ```
 load (8-bit sRGB) → linearise ─┐
-                               ├→ exposure → white balance → colour matrix → saturation → contrast → tone curve → encode sRGB → save
+                               ├→ exposure → dodge & burn (GUI only) → white balance → colour matrix → saturation → contrast → tone curve → encode sRGB → save
 load RAW (LibRaw, linear) ─────┘
 ```
 
@@ -113,7 +116,7 @@ On the α7R V test file (`--raw-half --exposure +1 --curve filmic`), `--saturati
 RAW files are recognised by their extension (`.arw`, `.dng`, `.cr2`, `.cr3`, `.nef`, `.raf`, any case) and decoded with LibRaw into the same linear-light float image a PNG or JPEG becomes, so every other option works unchanged. See `lib/raw.cpp` for each LibRaw setting and why it is needed. In short:
 
 - **Linear output.** No gamma curve (gamma 1/1) and no auto-brightening, in 16 bits per channel, converted to float in [0, 1]. The sensor's white level maps to exactly 1.0, so `--exposure` means the same thing for every shot.
-- **As-shot white balance.** The camera's own white balance multipliers are used; LibRaw never guesses.
+- **As-shot white balance.** The camera's own white balance multipliers are used, and LibRaw never guesses. That is the photo's starting light: the White balance stage in the [user guide](docs/GUIDE.md) can choose another, as Kelvin and tint.
 - **Linear sRGB primaries.** LibRaw converts camera RGB to sRGB with its matrix for the camera model. A DNG carries this matrix in the file. For ARW (and CR3, NEF and the other RAW formats) LibRaw uses its built-in table, derived from Adobe's colour data.
 - **Orientation.** The camera's orientation flag is applied, so portrait shots come out upright (and the width and height swap).
 - **Highlights are clipped** at the sensor's white level, so blown areas stay neutral white.
@@ -177,7 +180,7 @@ A DCP holds one camera profile. A DNG carries its main profile in IFD 0, and tha
 
 Not applied, and listed in the header when present: a DNG's `CameraCalibration1/2` (per-unit corrections) and `AnalogBalance`, and a third calibration (DNG 1.6), of which only the first two are used.
 
-**`--temperature <K>`** (default 6504, D65) is the white balance temperature, in kelvin, at which the two ForwardMatrices are interpolated. It should be the colour temperature of the light the photo was taken in: Prism's RAW path white-balances with the camera's as-shot multipliers, and `prism_profile` does not read them from the photo. Only profiles with two ForwardMatrices accept a value other than 6504. A profile with one calibration uses it at every temperature, and ColorMatrices are always white-balanced for D65 here, so interpolating them for another light would give a matrix white-balanced for the wrong one (white balance for other lights is a later step). In both cases `--temperature` fails with an error explaining why, instead of being ignored. Two calibrations with the same temperature, or a ForwardMatrix in only one of them, are refused: there is no rule for interpolating them.
+**`--temperature <K>`** (default 6504, D65) is the white balance temperature, in kelvin, at which the two ForwardMatrices are interpolated. It should be the colour temperature of the light the photo was taken in: Prism's RAW path white-balances with the camera's as-shot multipliers, and `prism_profile` does not read them from the photo. Only profiles with two ForwardMatrices accept a value other than 6504. A profile with one calibration uses it at every temperature, and ColorMatrices are always white-balanced for D65 here, so interpolating them for another light would give a matrix white-balanced for the wrong one. The White balance stage can choose another light, but it does not change these matrices. In both cases `--temperature` fails with an error explaining why, instead of being ignored. Two calibrations with the same temperature, or a ForwardMatrix in only one of them, are refused: there is no rule for interpolating them.
 
 **ProfileEmbedPolicy.** Profiles carry usage rules in this tag (DNG 1.7.1.0, p. 52): 0 = allow copying, 1 = embed if used, 2 = embed never, 3 = no restrictions. The header gives the value and its meaning, and `prism_profile` always writes the matrix. What the specification says, and what `prism_profile` adds:
 
@@ -204,7 +207,7 @@ Between the two outputs: mean CIE76 ΔE 5.7 (median 4.0, 95th percentile 16.7, m
 
 ## GUI
 
-A desktop app for macOS and Windows. `prism_gui` (`gui_app/`) is a window built with SDL3 and Dear ImGui; it is off by default and built with `-DPRISM_BUILD_GUI=ON` (see [Building the GUI](#building-the-gui)). The panel has the scopes, the Look menu and the light path, where each stage of the edit is a row with its own switch and slider. How to use it is in the [user guide](docs/GUIDE.md): opening a photo, the Look menu, the scopes, the light path, comparing stages, zoom and pan, reading a pixel, the test strip, the status bar, the Explain area, export, every keyboard shortcut and the preferences. Packaging is done: see [Downloading and running Prism](#downloading-and-running-prism). What is planned is in the [Roadmap](#roadmap).
+A desktop app for macOS and Windows. `prism_gui` (`gui_app/`) is a window built with SDL3 and Dear ImGui; it is off by default and built with `-DPRISM_BUILD_GUI=ON` (see [Building the GUI](#building-the-gui)). The panel has the scopes, the Look menu and the light path, where each stage of the edit is a row with its own switch and slider. How to use it is in the [user guide](docs/GUIDE.md): opening a photo, the Look menu, the scopes, the light path, white balance and the neutral picker, contrast as a paper grade, dodge and burn with the Brush, comparing stages, zoom and pan, reading a pixel, the test strip, the status bar, the Explain area, export, every keyboard shortcut and the preferences. Packaging is done: see [Downloading and running Prism](#downloading-and-running-prism). What is planned is in the [Roadmap](#roadmap).
 
 ### How the GUI measures things
 
@@ -297,9 +300,9 @@ v0.1.0 was a pre-release of the desktop app, and v0.2.0 is its first full releas
 
 [**0.5.0 – Darkroom**](https://github.com/Peaperfish/prism/milestone/4): physical controls.
 
-- [White balance in Kelvin and tint](https://github.com/Peaperfish/prism/issues/21), with a click-on-neutral picker
-- [Contrast as paper grades](https://github.com/Peaperfish/prism/issues/23)
-- [Dodge and burn](https://github.com/Peaperfish/prism/issues/22) with brushes (masks)
+- [White balance in Kelvin and tint](https://github.com/Peaperfish/prism/issues/21), with a click-on-neutral picker *(done)*
+- [Contrast as paper grades](https://github.com/Peaperfish/prism/issues/23) *(done)*
+- [Dodge and burn](https://github.com/Peaperfish/prism/issues/22) with brushes (masks) *(done)*
 
 [**0.6.0 – HDR**](https://github.com/Peaperfish/prism/milestone/6): HDR photos on HDR displays, and HDR files out.
 
