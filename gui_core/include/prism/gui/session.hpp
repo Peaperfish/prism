@@ -112,8 +112,8 @@ public:
     [[nodiscard]] std::shared_ptr<const Image> preview_base() const noexcept {
         return framed_base_;
     }
-    // The whole photo at the preview's size, before any frame: what framing shows and what the
-    // scopes read while framing. The same object as preview_base() when there is no frame.
+    // The whole photo at the preview's size, before any frame (for the framing view, #58). The
+    // same object as preview_base() when there is no frame.
     [[nodiscard]] std::shared_ptr<const Image> whole_base() const noexcept { return whole_base_; }
     // Where preview_base() sits on the photo: the fitted frame on whole_base()'s size, at scale 1,
     // or nothing when preview_base() is the whole photo. What PreviewOptions::framing, sample_trace
@@ -130,7 +130,8 @@ public:
     // is stored as none (normalised_frame). If the RAW camera matrix changed, the file is decoded
     // again for a new preview base, here on the calling thread (about a second for a 60 MP RAW
     // file); if that fails, the settings stay changed but the preview base does not. If the frame
-    // changed, the framed base is built again, also here.
+    // changed, the framed base is built again, also here, before the settings change: if it can't
+    // be made, nothing changes and the error says why.
     [[nodiscard]] MaybeError set_settings(const EditSettings& s);
     // Applies a recipe to the current settings (apply_recipe in recipe_settings.hpp) through
     // set_settings: one undo step, or none if it changes nothing. A recipe never changes the RAW
@@ -193,8 +194,9 @@ private:
     // Decodes the file again if the preview base was made with another RAW camera matrix, then
     // frames it (update_framed_base).
     MaybeError update_preview_base();
-    // Builds the framed base again if the whole base or the fitted frame changed since it was made.
-    MaybeError update_framed_base();
+    // Makes the framed base for `frame` on the whole base, unless it is already that. On failure
+    // (out of memory) nothing changes, and the base keeps the framing it was made with.
+    MaybeError update_framed_base(const std::optional<Frame>& frame);
 
     SessionOptions options_;
     std::filesystem::path path_;
@@ -214,15 +216,15 @@ private:
     ExportSize export_size_;
 };
 
-// Renders `job` at full resolution and saves it as PNG or JPEG (by the extension of `output`;
-// the library's fixed JPEG quality), on the calling thread. The source file is decoded again:
-// RAW at full size unless job.settings.raw_half_size, with its camera matrix, then framed and
-// reduced if job.long_side asks for it (frame_and_reduce), and the stages run on the result, with
-// the strokes on PixelGrid::whole without a frame (as in 0.5.0) and on the framed grid with one. A chosen white balance is measured against the as-shot light that
-// decode reads from the file, the same one the session read when it opened it. `stop` is checked between decoding,
-// reducing, each stage and saving; once it is triggered the export returns ErrorKind::cancelled
-// and writes nothing. on_stage reports each pipeline stage, for progress.
-// Refuses to overwrite the source file itself.
+// Renders `job` at full resolution and saves it as PNG or JPEG (by the extension of `output`; the
+// library's fixed JPEG quality), on the calling thread. The source file is decoded again: RAW at
+// full size unless job.settings.raw_half_size, with its camera matrix, then framed and reduced if
+// job.long_side asks for it (frame_and_reduce), and the stages run on the result, with the strokes
+// on PixelGrid::whole without a frame (as in 0.5.0) and on the framed grid with one. A chosen white
+// balance is measured against the as-shot light that decode reads from the file, the same one the
+// session read when it opened it. `stop` is checked between decoding, reducing, each stage and
+// saving; once it is triggered the export returns ErrorKind::cancelled and writes nothing. on_stage
+// reports each pipeline stage, for progress. Refuses to overwrite the source file itself.
 [[nodiscard]] MaybeError export_image(const ExportJob& job, const std::filesystem::path& output,
                                       std::stop_token stop = {},
                                       const StageCallback& on_stage = {});

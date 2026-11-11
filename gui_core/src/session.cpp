@@ -186,6 +186,17 @@ MaybeError Session::set_settings(const EditSettings& s) {
     }
     EditSettings stored = s;
     stored.frame = normalised_frame(s.frame);
+    const bool decodes = has_file() && kind_ == InputKind::raw &&
+                         camera_matrix_of(stored) != preview_camera_matrix_;
+    if (!decodes) {
+        // The framed base first: if it can't be made, the settings stay as they were, so the base
+        // and the settings never disagree.
+        if (MaybeError error = update_framed_base(stored.frame)) {
+            return error;
+        }
+        history_.set(stored);
+        return std::nullopt;
+    }
     history_.set(stored);
     return update_preview_base();
 }
@@ -218,7 +229,7 @@ MaybeError Session::redo() {
 MaybeError Session::update_preview_base() {
     const std::optional<Matrix3> wanted = camera_matrix_of(settings());
     if (!has_file() || kind_ != InputKind::raw || wanted == preview_camera_matrix_) {
-        return update_framed_base();
+        return update_framed_base(settings().frame);
     }
     RawOptions raw;
     raw.half_size = true;
@@ -227,27 +238,27 @@ MaybeError Session::update_preview_base() {
     if (Error* e = std::get_if<Error>(&decoded)) {
         // The old whole base stays, and is framed as the settings now say; the decode's error is
         // the one to report.
-        (void)update_framed_base();
+        (void)update_framed_base(settings().frame);
         return std::move(*e);
     }
     try {
         whole_base_ = std::make_shared<const Image>(downscale(
             std::get<Photo>(decoded).image, options_.preview_long_side, options_.threads));
     } catch (const std::bad_alloc&) {
-        (void)update_framed_base();
+        (void)update_framed_base(settings().frame);
         return Error{ErrorKind::out_of_memory, "Not enough memory to open this photo.", ""};
     }
     preview_camera_matrix_ = wanted;
-    return update_framed_base();
+    return update_framed_base(settings().frame);
 }
 
-MaybeError Session::update_framed_base() {
+MaybeError Session::update_framed_base(const std::optional<Frame>& frame) {
     if (!has_file()) {
         return std::nullopt;
     }
     std::optional<PictureFrame> wanted;
     try {
-        wanted = picture_frame_of(settings().frame, whole_base_->width, whole_base_->height);
+        wanted = picture_frame_of(frame, whole_base_->width, whole_base_->height);
     } catch (const std::invalid_argument& e) {
         // validate() let no invalid frame into the history, so this does not happen.
         return Error{ErrorKind::invalid_settings, "The frame isn't valid.", e.what()};
@@ -260,10 +271,7 @@ MaybeError Session::update_framed_base() {
                                     apply_frame(*whole_base_, wanted->fitted, options_.threads))
                               : whole_base_;
     } catch (const std::bad_alloc&) {
-        // Back to the whole photo, never a base that does not match its framing.
-        framed_base_ = whole_base_;
-        framed_from_ = whole_base_;
-        framing_.reset();
+        // Nothing changes: the base keeps the framing it was made with.
         return Error{ErrorKind::out_of_memory, "Not enough memory to frame this photo.", ""};
     }
     framed_from_ = whole_base_;
@@ -341,7 +349,10 @@ MaybeError export_image(const ExportJob& job, const fs::path& output, std::stop_
         framed = frame_and_reduce(std::move(std::get<Photo>(decoded).image), job.settings.frame,
                                   job.long_side, job.threads);
     } catch (const std::bad_alloc&) {
-        return Error{ErrorKind::out_of_memory, "Not enough memory to frame or shrink this photo.",
+        return Error{ErrorKind::out_of_memory,
+                     normalised_frame(job.settings.frame)
+                         ? "Not enough memory to frame or shrink this photo."
+                         : "Not enough memory to shrink this photo.",
                      ""};
     }
     if (stop.stop_requested()) {
