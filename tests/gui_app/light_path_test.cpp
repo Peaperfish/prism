@@ -1996,6 +1996,20 @@ TEST_F(MinimumWidthHeadless, TheEaselsWidestValuesAreDrawnWholeAtTheMinimumWidth
         EXPECT_TRUE(seen("Easel value", "Original \xC2\xB7 about 65535 \xC3\x97 65535")) << scale;
         EXPECT_TRUE(seen("Easel value", "Original \xC2\xB7 under 0.1\xC2\xB0 anticlockwise")) << scale;
     }
+    // Worth something only if it can fail: on a panel much narrower than the minimum, the widest
+    // values are reported as cut.
+    apply_style(gui::Theme::dark, 1.0f);
+    ImGui::NewFrame();
+    width_ = light_path_min_width() * 0.6f;
+    ImGui::EndFrame();
+    fits_seen_.clear();
+    prism::Frame f;
+    f.angle = -44.95f;
+    easel_value_ = gui::easel_value(f, {65535, 65535}, false);
+    run_case();
+    EXPECT_TRUE(std::any_of(fits_seen_.begin(), fits_seen_.end(), [](const TextFit& fit) {
+        return fit.what == "Easel value" && !fit.whole();
+    }));
 }
 
 }  // namespace
