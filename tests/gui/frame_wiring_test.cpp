@@ -21,6 +21,7 @@
 
 #include "prism/frame.hpp"
 #include "prism/gui/brush.hpp"
+#include "prism/gui/canvas_input.hpp"
 #include "prism/gui/clipping.hpp"
 #include "prism/gui/close_guard.hpp"
 #include "prism/gui/field_cache.hpp"
@@ -1000,6 +1001,64 @@ TEST(FramedPreview, ANewCameraMatrixFramesTheNewWholeBase) {
     EXPECT_NE(bits(*session.preview_base()), before);
     fs::remove(dng);
     fs::remove(half);
+}
+
+TEST(FramedPreview, UndoingOrRedoingAFrameChangeOfTheSameSizeClearsTheSamplePin) {
+    const Frame first{0.0f, 0.1f, 0.1f, 0.6f, 0.6f, prism::Aspect::free, false};
+    const Frame second{0.0f, 0.2f, 0.1f, 0.7f, 0.6f, prism::Aspect::free, false};
+    Opened o("in.png", first);
+    const int w = o.session.preview_base()->width;
+    const int h = o.session.preview_base()->height;
+    EditSettings s = o.session.settings();
+    s.frame = second;
+    ASSERT_EQ(o.session.set_settings(s), std::nullopt);
+    ASSERT_EQ(o.session.preview_base()->width, w);
+    ASSERT_EQ(o.session.preview_base()->height, h);
+
+    prism::gui::SampleMode sample;
+    sample.toggle();
+    sample.place({10, 10}, w, h, o.session.settings().frame);
+    sample.read({12, 14}, w, h, o.session.settings().frame);
+    ASSERT_TRUE(sample.pin().has_value());
+    ASSERT_TRUE(sample.last_read().has_value());
+
+    // Undoing a non-frame edit keeps the pin.
+    s.exposure_stops = 0.5f;
+    ASSERT_EQ(o.session.set_settings(s), std::nullopt);
+    {
+        const std::optional<Frame> before = o.session.settings().frame;
+        ASSERT_EQ(o.session.undo(), std::nullopt);
+        sample.frame_changed(before, o.session.settings().frame);
+        sample.base_changed(o.session.preview_base()->width, o.session.preview_base()->height,
+                            o.session.settings().frame);
+    }
+    EXPECT_EQ(sample.pin(), (prism::gui::SamplePin{10, 10}));
+    EXPECT_EQ(sample.last_read(), (prism::gui::SamplePin{12, 14}));
+
+    // Undoing the frame move (same w x h base, different photo pixels) clears the pin.
+    {
+        const std::optional<Frame> before = o.session.settings().frame;
+        ASSERT_EQ(o.session.undo(), std::nullopt);
+        ASSERT_EQ(o.session.preview_base()->width, w);
+        ASSERT_EQ(o.session.preview_base()->height, h);
+        sample.frame_changed(before, o.session.settings().frame);
+        sample.base_changed(o.session.preview_base()->width, o.session.preview_base()->height,
+                            o.session.settings().frame);
+    }
+    EXPECT_FALSE(sample.pin().has_value());
+    EXPECT_FALSE(sample.last_read().has_value());
+
+    // And redoing it after pinning again clears the new pin too.
+    sample.place({10, 10}, w, h, o.session.settings().frame);
+    ASSERT_TRUE(sample.pin().has_value());
+    {
+        const std::optional<Frame> before = o.session.settings().frame;
+        ASSERT_EQ(o.session.redo(), std::nullopt);
+        sample.frame_changed(before, o.session.settings().frame);
+        sample.base_changed(o.session.preview_base()->width, o.session.preview_base()->height,
+                            o.session.settings().frame);
+    }
+    EXPECT_FALSE(sample.pin().has_value());
 }
 
 // --- A canvas that is not at the frame's own size ----------------------------------------------

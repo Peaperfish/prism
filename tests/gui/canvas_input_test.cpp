@@ -495,6 +495,42 @@ TEST(SampleModeRules, TheLastReadStaysUntilAnotherPictureOrLeaving) {
     EXPECT_FALSE(mode.last_read());
 }
 
+TEST(SampleModeRules, AnyFrameChangeClearsThePinEvenAtTheSamePixelSize) {
+    const prism::Frame whole;
+    const prism::Frame left_crop{0.0f, 0.1f, 0.1f, 0.6f, 0.6f, prism::Aspect::free, false};
+    const prism::Frame right_crop{0.0f, 0.2f, 0.2f, 0.7f, 0.7f, prism::Aspect::free, false};
+    const prism::Frame turned{2.0f, 0.1f, 0.1f, 0.6f, 0.6f, prism::Aspect::free, false};
+
+    EXPECT_TRUE(sample_pin_survives_frame(std::nullopt, std::nullopt));
+    EXPECT_TRUE(sample_pin_survives_frame(std::nullopt, whole));
+    EXPECT_TRUE(sample_pin_survives_frame(whole, std::nullopt));
+    EXPECT_TRUE(sample_pin_survives_frame(left_crop, left_crop));
+    EXPECT_FALSE(sample_pin_survives_frame(std::nullopt, left_crop));
+    EXPECT_FALSE(sample_pin_survives_frame(left_crop, std::nullopt));
+    EXPECT_FALSE(sample_pin_survives_frame(left_crop, right_crop));
+    EXPECT_FALSE(sample_pin_survives_frame(left_crop, turned));
+
+    // Undo/redo between two crops of the same 20x15 pixel size puts a different part of the photo
+    // under pixel (3, 4), so both frame_changed and base_changed clear the pin and the last read.
+    SampleMode mode;
+    mode.toggle();
+    mode.place({3, 4}, 20, 15, right_crop);
+    mode.read({5, 6}, 20, 15, right_crop);
+    mode.base_changed(20, 15, right_crop);  // same size and frame (e.g. a new camera matrix)
+    EXPECT_EQ(mode.pin(), (SamplePin{3, 4}));
+    EXPECT_EQ(mode.last_read(), (SamplePin{5, 6}));
+
+    mode.frame_changed(right_crop, left_crop);
+    EXPECT_FALSE(mode.pin());
+    EXPECT_FALSE(mode.last_read());
+
+    mode.place({3, 4}, 20, 15, left_crop);
+    mode.read({5, 6}, 20, 15, left_crop);
+    mode.base_changed(20, 15, right_crop);
+    EXPECT_FALSE(mode.pin());
+    EXPECT_FALSE(mode.last_read());
+}
+
 // --- Pick mode ---------------------------------------------------------------------------------
 
 TEST(PickPress, PicksOnlyInPickModeWhereWhiteBalanceShowsOffTheStripAndControlsWithoutTheHand) {

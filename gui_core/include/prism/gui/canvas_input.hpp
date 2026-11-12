@@ -167,10 +167,18 @@ private:
     HandDrag drag_;
 };
 
+// Whether a sample pin (or the last pixel read) stays when the photo's frame changes from `before`
+// to `after`: only when the frame is the same (a whole-photo frame counts as none). Moving the
+// frame or turning the photo at the same pixel size puts different photo points under the same
+// pixel coordinates, so any frame change clears the pin (GUIDE.md).
+[[nodiscard]] bool sample_pin_survives_frame(const std::optional<Frame>& before,
+                                             const std::optional<Frame>& after) noexcept;
+
 // Whether Sample mode is on, its one pin, and the last pixel the cursor read, which stays on show
 // when the cursor leaves the picture, so that the rows can be pointed at. These are in image pixels,
 // so they stay on the same spot of the photo through zooming and panning. The stage and the settings
-// don't matter to them either: only another picture does. Leaving the mode clears them.
+// don't matter to them either: only another picture or a frame change does. Leaving the mode clears
+// them.
 class SampleMode {
 public:
     [[nodiscard]] bool on() const noexcept { return on_; }
@@ -180,19 +188,29 @@ public:
     void toggle() noexcept;  // I, or View > Sample Colour
     void leave() noexcept;   // Esc (EscapeAction::clear_sample)
 
-    // Pins `pixel` of a width x height base, replacing any pin. Nothing if the mode is off or the
-    // pixel is off the picture.
-    void place(SamplePin pixel, int width, int height) noexcept;
+    // Pins `pixel` of a width x height base (framed by `frame`), replacing any pin. Nothing if the
+    // mode is off or the pixel is off the picture.
+    void place(SamplePin pixel, int width, int height,
+               const std::optional<Frame>& frame = std::nullopt) noexcept;
 
-    // The cursor is over `pixel` of a width x height base. The same conditions as place().
-    void read(SamplePin pixel, int width, int height) noexcept;
+    // The cursor is over `pixel` of a width x height base (framed by `frame`). The same conditions
+    // as place().
+    void read(SamplePin pixel, int width, int height,
+              const std::optional<Frame>& frame = std::nullopt) noexcept;
 
     // A file was opened: the pin and the last read go, even if the new picture has the same size.
     void opened() noexcept;
 
-    // The base is now width x height. The pin and the last read go if that isn't what they were on;
-    // they stay through a re-decode of the same size (a new camera matrix).
-    void base_changed(int width, int height) noexcept;
+    // The photo's frame changed from `before` to `after` (on the easel, or by undo/redo): the pin
+    // and the last read go unless sample_pin_survives_frame(before, after).
+    void frame_changed(const std::optional<Frame>& before,
+                       const std::optional<Frame>& after) noexcept;
+
+    // The base is now width x height (framed by `frame`). The pin and the last read go if the size
+    // or the frame isn't what they were on; they stay through a re-decode of the same size and
+    // frame (a new camera matrix).
+    void base_changed(int width, int height,
+                      const std::optional<Frame>& frame = std::nullopt) noexcept;
 
 private:
     bool on_ = false;
@@ -200,6 +218,7 @@ private:
     std::optional<SamplePin> last_read_;
     int width_ = 0;
     int height_ = 0;
+    std::optional<Frame> frame_;
 };
 
 // --- Pick mode (the white balance picker, #21) -------------------------------------------------

@@ -1057,8 +1057,10 @@ void App::undo() {
         return;
     }
     if (session_.history().can_undo()) {
+        const std::optional<prism::Frame> before = session_.settings().frame;
         report(session_.undo());
         framing_.follow(session_.settings().frame);  // the draft follows the frame undone
+        sample_.frame_changed(before, session_.settings().frame);
     }
 }
 
@@ -1067,8 +1069,10 @@ void App::redo() {
         return;
     }
     if (session_.history().can_redo()) {
+        const std::optional<prism::Frame> before = session_.settings().frame;
         report(session_.redo());
         framing_.follow(session_.settings().frame);
+        sample_.frame_changed(before, session_.settings().frame);
     }
 }
 
@@ -1427,9 +1431,12 @@ void App::handle_shortcuts() {
             case gui::FramingKeyAction::cancel_gesture:
                 (void)framing_.cancel();  // the draft goes back; no undo step
                 break;
-            case gui::FramingKeyAction::turn_aspect:
+            case gui::FramingKeyAction::turn_aspect: {
+                const std::optional<prism::Frame> before = session_.settings().frame;
                 report(framing_.flip_aspect(session_));
+                sample_.frame_changed(before, session_.settings().frame);
                 break;
+            }
             case gui::FramingKeyAction::none:
                 break;
         }
@@ -1933,7 +1940,8 @@ void App::update_hand_drag() {
         const std::shared_ptr<const Image> base = session_.preview_base();
         const std::optional<gui::ViewPixel> pixel = gui::view_pixel_at(view_, view_geometry_, cursor);
         if (base && pixel && base->width == texture_.width() && base->height == texture_.height()) {
-            sample_.place({pixel->x, pixel->y}, base->width, base->height);
+            sample_.place({pixel->x, pixel->y}, base->width, base->height,
+                          session_.settings().frame);
         }
     }
     if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && pick_click_.release(cursor)) {
@@ -1981,7 +1989,9 @@ void App::leave_framing() {
     if (!framing_.on()) {
         return;
     }
+    const std::optional<prism::Frame> before = session_.settings().frame;
     report(framing_.leave(session_));  // a drag under way is committed: one undo step
+    sample_.frame_changed(before, session_.settings().frame);
     hand_drag_.release();
     view_ = {};  // the framed picture, fitted
 }
@@ -2110,7 +2120,9 @@ void App::update_framing_pointer() {
     // button let go outside the window) ends the gesture the same way.
     if (pointer_gesture() && (ImGui::IsMouseReleased(ImGuiMouseButton_Left) ||
                               !ImGui::IsMouseDown(ImGuiMouseButton_Left))) {
+        const std::optional<prism::Frame> before = session_.settings().frame;
         report(framing_.release(point, session_));
+        sample_.frame_changed(before, session_.settings().frame);
     }
 
     // The cursor says what a press would take hold of.
@@ -2154,11 +2166,31 @@ void App::draw_framing_bar(float width) {
     FramingBarCallbacks cb;
     cb.begin_turn = [this] { framing_.begin_turn(); };
     cb.turn_to = [this](float angle) { framing_.turn_to(angle); };
-    cb.end_turn = [this] { report(framing_.commit(session_)); };
-    cb.set_angle = [this](float angle) { report(framing_.set_angle(angle, session_)); };
-    cb.set_aspect = [this](prism::Aspect aspect) { report(framing_.set_aspect(aspect, session_)); };
-    cb.turn_aspect = [this] { report(framing_.flip_aspect(session_)); };
-    cb.reset = [this] { report(framing_.reset(session_)); };
+    cb.end_turn = [this] {
+        const std::optional<prism::Frame> before = session_.settings().frame;
+        report(framing_.commit(session_));
+        sample_.frame_changed(before, session_.settings().frame);
+    };
+    cb.set_angle = [this](float angle) {
+        const std::optional<prism::Frame> before = session_.settings().frame;
+        report(framing_.set_angle(angle, session_));
+        sample_.frame_changed(before, session_.settings().frame);
+    };
+    cb.set_aspect = [this](prism::Aspect aspect) {
+        const std::optional<prism::Frame> before = session_.settings().frame;
+        report(framing_.set_aspect(aspect, session_));
+        sample_.frame_changed(before, session_.settings().frame);
+    };
+    cb.turn_aspect = [this] {
+        const std::optional<prism::Frame> before = session_.settings().frame;
+        report(framing_.flip_aspect(session_));
+        sample_.frame_changed(before, session_.settings().frame);
+    };
+    cb.reset = [this] {
+        const std::optional<prism::Frame> before = session_.settings().frame;
+        report(framing_.reset(session_));
+        sample_.frame_changed(before, session_.settings().frame);
+    };
     cb.done = [this] { leave_framing(); };
     cb.describe = [this](std::string_view id) { describe(id); };
     cb.hover = [this](std::string_view id) { explain_hover_ = std::string(id); };
@@ -2417,7 +2449,7 @@ void App::update_sample_cursor() {
     if (const std::optional<gui::ViewPixel> pixel =
             gui::view_pixel_at(view_, view_geometry_, {mouse.x, mouse.y})) {
         sample_hover_ = gui::SamplePin{pixel->x, pixel->y};
-        sample_.read(*sample_hover_, base->width, base->height);
+        sample_.read(*sample_hover_, base->width, base->height, session_.settings().frame);
     }
 }
 
@@ -2429,7 +2461,7 @@ void App::update_sample_traces() {
     if (!base) {
         return;
     }
-    sample_.base_changed(base->width, base->height);
+    sample_.base_changed(base->width, base->height, session_.settings().frame);
     if (base->width != texture_.width() || base->height != texture_.height()) {
         return;  // the picture on screen isn't of this base yet: its pixels mean something else
     }

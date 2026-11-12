@@ -155,6 +155,11 @@ bool SampleClick::release(ViewPoint at) noexcept {
     return click;
 }
 
+bool sample_pin_survives_frame(const std::optional<Frame>& before,
+                               const std::optional<Frame>& after) noexcept {
+    return normalised_frame(before) == normalised_frame(after);
+}
+
 void SampleMode::toggle() noexcept {
     if (on_) {
         leave();
@@ -167,33 +172,48 @@ void SampleMode::leave() noexcept {
     on_ = false;
     pin_.reset();
     last_read_.reset();
+    frame_.reset();
 }
 
-void SampleMode::place(SamplePin pixel, int width, int height) noexcept {
+void SampleMode::place(SamplePin pixel, int width, int height,
+                       const std::optional<Frame>& frame) noexcept {
     if (!on_ || pixel.x < 0 || pixel.y < 0 || pixel.x >= width || pixel.y >= height) {
         return;
     }
     pin_ = pixel;
     width_ = width;
     height_ = height;
+    frame_ = normalised_frame(frame);
 }
 
-void SampleMode::read(SamplePin pixel, int width, int height) noexcept {
+void SampleMode::read(SamplePin pixel, int width, int height,
+                      const std::optional<Frame>& frame) noexcept {
     if (!on_ || pixel.x < 0 || pixel.y < 0 || pixel.x >= width || pixel.y >= height) {
         return;
     }
     last_read_ = pixel;
     width_ = width;
     height_ = height;
+    frame_ = normalised_frame(frame);
 }
 
 void SampleMode::opened() noexcept {
     pin_.reset();
     last_read_.reset();
+    frame_.reset();
 }
 
-void SampleMode::base_changed(int width, int height) noexcept {
-    if (width != width_ || height != height_) {
+void SampleMode::frame_changed(const std::optional<Frame>& before,
+                               const std::optional<Frame>& after) noexcept {
+    if (!sample_pin_survives_frame(before, after)) {
+        pin_.reset();
+        last_read_.reset();
+        frame_ = normalised_frame(after);
+    }
+}
+
+void SampleMode::base_changed(int width, int height, const std::optional<Frame>& frame) noexcept {
+    if (width != width_ || height != height_ || !sample_pin_survives_frame(frame_, frame)) {
         pin_.reset();
         last_read_.reset();
     }
