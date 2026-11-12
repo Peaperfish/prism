@@ -115,7 +115,7 @@ So a recipe with only `[saturation]` changes the saturation and nothing else. Wi
 
 On the command line (`prism --recipe <file>`), each photo starts with no adjustments, so a stage left out of the recipe does nothing unless you also give a command-line flag for that stage. See [Recipes and batches](CLI.md#recipes-and-batches) in the command-line reference.
 
-A recipe never holds the photo it was made on, how you were viewing it, or the RAW decoding options (half size and the camera matrix), so applying one never makes Prism decode the file again.
+A recipe never holds the photo it was made on, the frame on the easel, the brush strokes, how you were viewing it, or the RAW decoding options (half size and the camera matrix), so applying one leaves your frame and strokes as they are and never makes Prism decode the file again.
 
 ## The built-in looks
 

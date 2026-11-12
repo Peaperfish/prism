@@ -71,7 +71,7 @@ Every command and option, with defaults, more examples (a folder of files in a s
 
 ```
 load (8-bit sRGB) → linearise ─┐
-                               ├→ exposure → dodge & burn (GUI only) → white balance → colour matrix → saturation → contrast → tone curve → encode sRGB → save
+                               ├→ frame (easel; --rotate/--crop/--aspect) → reduce (--long-side) → exposure → dodge & burn (GUI only) → white balance → colour matrix → saturation → contrast → tone curve → encode sRGB → save
 load RAW (LibRaw, linear) ─────┘
 ```
 
