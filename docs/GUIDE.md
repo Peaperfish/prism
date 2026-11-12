@@ -259,7 +259,7 @@ To straighten along something in the picture that should be level or upright (a 
 
 **Reset, keeping the frame, and undo.** **Reset** on the framing bar sets the angle back to `0°` (`upright`) and opens the blades to the largest centred frame of the current aspect lock (the whole photo for **Original** and **Free**).
 
-Every way out of framing keeps the frame: pressing `Return`, clicking **Done (Return)** on the framing bar (shortened to **Done** on a narrow canvas), pressing `C` again, pressing `Esc` when you aren't dragging, or switching to another tool (`I`, `W`, `B`, `T` or **Compare**). Viewing another stage in the Light path, or using Undo or Redo, leaves framing on.
+Every way out of framing keeps the frame: pressing `Return`, clicking **Done (Return)** on the framing bar (shortened to **Done** on a narrow canvas), pressing `C` again, pressing `Esc` when you aren't dragging, or switching to another tool (`I` or **Compare**; `T`, `B` or `W` where that tool can start — Exposure or a later stage in view for `T`, Dodge & burn or later for `B`, White balance or later for `W`; at an earlier viewed stage the key does nothing and framing stays on). Viewing another stage in the Light path, or using Undo or Redo, leaves framing on.
 
 Each handle drag, move inside the frame, horizon line, Straighten slider drag, typed angle, aspect choice, `X` turn and **Reset** is one undo step (if it changed the frame). Pressing `Esc` in the middle of a drag (a handle, an inside move, a horizon line or the Straighten slider) cancels only that drag, puts the frame back as it was before you pressed, leaves no undo step, and keeps framing on.
 
