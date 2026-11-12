@@ -511,6 +511,23 @@ TEST(RecipeSheetStrokes, SaysDodgingAndBurningIsNotIncludedOnlyWhenThereAreStrok
     EXPECT_EQ(recipe_sheet_strokes_note(s), "");
 }
 
+TEST(RecipeSheetStrokes, SaysFramingIsNotIncludedWithAFrame) {
+    // #58 §6's words with both; each alone as the close prompt says it.
+    EditSettings s;
+    prism::Frame frame;
+    frame.left = 0.2f;
+    s.frame = frame;
+    EXPECT_EQ(recipe_sheet_strokes_note(s), "Framing isn't included.");
+    auto field = std::make_shared<StrokeField>();
+    field->aspect = 1.5f;
+    field->strokes.push_back(
+        std::make_shared<const FieldStroke>(FieldStroke{{{0.5f, 0.5f}}, 0.1f, 0.5f, 0.5f}));
+    s.strokes = Strokes(std::move(field));
+    EXPECT_EQ(recipe_sheet_strokes_note(s), "Framing and dodging and burning aren't included.");
+    s.frame.reset();
+    EXPECT_EQ(recipe_sheet_strokes_note(s), "Dodging and burning isn't included.");
+}
+
 TEST(RecipeLine, AFrameOrStrokesAfterTheLoadDoNotModifyIt) {
     // A recipe holds neither (#58), so framing or painting after loading one leaves its name as it
     // is; an edit of something it holds still reads modified.

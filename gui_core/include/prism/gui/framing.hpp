@@ -430,7 +430,9 @@ struct CanvasMeasure {
 // unknown word, no number).
 [[nodiscard]] std::optional<float> typed_angle(std::string_view text);
 // What the field holds when it opens: the angle to a hundredth with its direction, "1.25°
-// clockwise", "0.5° anticlockwise", or "0°" upright. It reads back as the same angle.
+// clockwise", "0.5° anticlockwise", or "0°" upright. It reads back as the angle to a hundredth (an
+// angle drawn along a horizon can have more digits): the field takes Enter on this text unchanged
+// as no edit.
 [[nodiscard]] std::string typed_angle_text(float angle);
 
 // #58's teaching words, for the Easel line, the Straighten slider, the resampling note and the

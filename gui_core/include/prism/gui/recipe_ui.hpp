@@ -168,9 +168,13 @@ struct DropAction {
 
 // --- Saving a recipe with strokes ----------------------------------------------------------------
 
-// The line the Save Recipe sheet adds when the photo has Dodge & burn strokes, which no recipe
-// keeps; empty without any.
+// The line the Save Recipe sheet adds when the photo has Dodge & burn strokes or a frame, which no
+// recipe keeps (#58 §6): "Framing and dodging and burning aren't included." with both, each alone
+// as the close prompt says it; empty with neither.
 inline constexpr std::string_view recipe_strokes_note = "Dodging and burning isn't included.";
+inline constexpr std::string_view recipe_frame_note = "Framing isn't included.";
+inline constexpr std::string_view recipe_frame_strokes_note =
+    "Framing and dodging and burning aren't included.";
 [[nodiscard]] std::string_view recipe_sheet_strokes_note(const EditSettings& settings) noexcept;
 
 // --- When a recipe can't be loaded ---------------------------------------------------------------
