@@ -25,13 +25,13 @@ jobs:
           # The one job with RAW support. GCC, because LibRaw's headers ask for OpenMP, which
           # GCC has built in (Clang on Linux would also need libomp).
           - name: Linux GCC + LibRaw
-            os: ubuntu-latest
+            os: ubuntu-24.04
             cc: gcc
             cxx: g++
             build_type: Release
             libraw: 'ON'
           - name: Linux Clang
-            os: ubuntu-latest
+            os: ubuntu-24.04
             cc: clang
             cxx: clang++
             build_type: Release
@@ -44,7 +44,7 @@ jobs:
             libraw: 'OFF'
           # ThreadSanitizer: reports any data race in the multithreaded stages (see README).
           - name: Linux Clang ThreadSanitizer
-            os: ubuntu-latest
+            os: ubuntu-24.04
             cc: clang
             cxx: clang++
             build_type: Debug
@@ -53,7 +53,7 @@ jobs:
           # AddressSanitizer + UndefinedBehaviorSanitizer: out-of-bounds access, use-after-free,
           # leaks and undefined behaviour (see README).
           - name: Linux Clang ASan + UBSan
-            os: ubuntu-latest
+            os: ubuntu-24.04
             cc: clang
             cxx: clang++
             build_type: Debug
@@ -164,7 +164,7 @@ jobs:
       matrix:
         include:
           - name: Linux
-            os: ubuntu-latest
+            os: ubuntu-24.04
           - name: macOS
             os: macos-latest
           - name: Windows
