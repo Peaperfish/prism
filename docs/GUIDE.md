@@ -100,7 +100,7 @@ The plot is dark in both themes, and every scope is the same height, so nothing 
 
 **The readout line.** Under the plot, the left end says what share of pixels are below black (a blue dot) and the right end what share are above white (an orange dot), for example "0.1% below black" and "0.0% above white". A pixel counts as **below black** when it has no light left (it is black or darker because a channel is below 0), and as **above white** when any of its channels is above 1, at the stage you are viewing. A pixel that still has light but a channel below 0 is a colour outside sRGB: it is not in "below black", and the tooltip gives its share in its own line. Numbers round to a tenth of a percent, with "<0.1%" for less. The numbers are the same for every scope, and match the histogram. Point at the line for the tooltip: it holds the sentence that says where clipping starts and where it costs detail, for example "Highlights first clip at Exposure (2.1% of pixels); still recoverable until Output encode." or "Nothing clips." Point at either end for the share of red, green and blue on their own (counted by the same rules), with a reminder that `J` also marks pixels an earlier stage cut off, so it can show marks while the readout reads 0.0%.
 
-**Marking clipping on the photo.** The action at the right of the Scopes header, which ends in `(J)` and reads Show or Hide, or the `J` key, marks those pixels on the preview for the stage you are viewing: orange-red for brighter than white, blue for no light left, and violet diagonal stripes (about 4 preview pixels wide, so the colour underneath stays visible, and wider on screen as you zoom in) for too saturated for sRGB. A pixel that an earlier stage already cut off stays marked in later stages. It is off by default, and Prism remembers the setting. While you view an earlier stage or a test strip band, the title says which, for example "Scopes (Exposure)" or "Scopes (−½ stop band)".
+**Marking clipping on the photo.** The action at the right of the Scopes header, which ends in `(J)` and reads Show or Hide, or the `J` key, marks those pixels on the preview for the stage you are viewing: orange-red for brighter than white, blue for no light left, and violet diagonal stripes (about 4 preview pixels wide, so the colour underneath stays visible, and wider on screen as you zoom in) for too saturated for sRGB. A pixel that an earlier stage already cut off stays marked in later stages. It is off by default, and Prism remembers the setting. While you view an earlier stage or a test strip band, the title says which, for example "Scopes (Exposure)" or "Scopes (−½ stop band)"; while you are framing on the easel, the scopes measure the whole photo and the title says so ("Scopes (whole photo, while framing)").
 
 ### The Light path
 
@@ -116,7 +116,7 @@ The **Light path** lists the stages the light goes through, from the file to the
 8. **Tone curve**
 9. **Output encode**: light turned into the 8-bit sRGB file.
 
-(The section [How Prism thinks about light](#how-prism-thinks-about-light) explains why the order matters.) The stages are the controls: there are no separate sliders. Each photo opens at Decode, the first row. A RAW looks dark and flat there, since nothing has been done to it yet, and a note at the top of the photo says so: "Showing Decode — the file's light before any edit. Pick a later stage to see more." The note goes when you view a later stage, and while Compare is on.
+(The section [How Prism thinks about light](#how-prism-thinks-about-light) explains why the order matters.) Above Decode sits the **Easel** line, with its **Frame** button, which frames and straightens the print before the stages run: it has no dot on the rail, no switch and no clip marks, because it moves no light (see [Frame and straighten on the easel](#frame-and-straighten-on-the-easel)). The stages are the controls: there are no separate sliders. Each photo opens at Decode, the first row. A RAW looks dark and flat there, since nothing has been done to it yet, and a note at the top of the photo says so: "Showing Decode — the file's light before any edit. Pick a later stage to see more." The note goes when you view a later stage, and while Compare is on.
 
 A thin rail runs down the left, with a dot for each stage. The **viewed stage**'s dot is filled with the accent colour and has a faint glow, and its row has a lighter wash behind it. The photo, the scopes and the Sample block show the light at that stage. Output encode is the final picture.
 
@@ -156,7 +156,7 @@ Move either slider and the row reads **Chosen** instead, and the numbers are you
 
 **Picking a neutral.** If something in the photo should be grey or white (a grey card, a white wall, a concrete pavement), let Prism find the light from it. Press `W`, choose **View → Pick Neutral**, or press the small **Pick neutral** button on the White balance row (it looks pressed while the mode is on), then click that spot. Prism averages the 5 by 5 pixels around the click (fewer at the picture's edge) and sets Kelvin and Tint so that colour comes out grey: the row then reads **Chosen**, with `5180 K` and `+4` beside the sliders, the stage is switched on, and a note over the photo says `Neutral here: 5180 K, tint +4`. A small square follows the cursor to show the patch that would be averaged. Each click is one undo step, and you can click again without leaving the mode: it always looks at the photo as decoded, before any white balance, so picking the same spot twice gives the same answer. Kelvin and Tint are rounded the way the sliders round, and a light beyond the sliders is set to the nearest end and the note adds "(limited to the slider's range)".
 
-Prism refuses, and changes nothing, when the spot cannot tell it the light: **"Too dark to judge; click a lighter grey"** when any colour of the patch averages below 0.5% of white, and **"Clipped; click a grey that isn't blown out"** when any pixel in the patch is at white in the file or above it, since a clipped pixel has lost its colour. Dragging still moves the picture (and `Space` still holds the hand); a double-click still zooms; a click on a control does not pick. The picker needs White balance in view, so it is greyed out while you are viewing Decode, Exposure or Dodge & burn (a tooltip says why), and turning it on leaves Sample mode and the test strip. `Esc`, `W` again, `I` or `T` leave it, and so does opening another photo.
+Prism refuses, and changes nothing, when the spot cannot tell it the light: **"Too dark to judge; click a lighter grey"** when any colour of the patch averages below 0.5% of white, and **"Clipped; click a grey that isn't blown out"** when any pixel in the patch is at white in the file or above it, since a clipped pixel has lost its colour. Dragging still moves the picture (and `Space` still holds the hand); a double-click still zooms; a click on a control does not pick. The picker needs White balance in view, so it is greyed out while you are viewing Decode, Exposure or Dodge & burn (a tooltip says why), and turning it on leaves framing on the easel, the Brush, Sample mode and the test strip. `Esc`, `W` again, `C`, `B`, `I` or `T` leave it, and so does opening another photo.
 
 <a id="contrast-as-a-paper-grade"></a>
 **Contrast as a paper grade.** Contrast is shown the way darkroom printers set it, as a paper grade from 0 (softest) to 5 (hardest), with 2 as normal. Each whole grade is the contrast of a real paper through one of its filters: the ISO range *R* of Ilford Multigrade RC Deluxe (current), from Ilford's MULTIGRADE RC papers technical information (ISO 6846, filters 0 to 5). A paper with a longer range of exposure is softer, so a grade's multiplier is 90 ÷ *R*, which makes grade 2 exactly ×1.00:
@@ -202,7 +202,7 @@ A comma works as the decimal mark (`1,5`). The word is `stops` or `stop`, in any
 
 In the darkroom, a dodging card under the enlarger holds light back from one part of the print, so that part comes out lighter; burning in gives a part more time, so it comes out darker. Prism's **Dodge & burn** stage does the same on the photo: you paint with the **Brush**, and each stroke moves the light under it by its strength, measured in stops, right after Exposure. It is local, so it works on the parts you paint and leaves the rest alone. Strokes that overlap add up: two dodges of 0.5 stop make +1.00 stops where they cross.
 
-**Turning the Brush on.** Press `B`, choose **View → Brush**, or press **Brush** on the Dodge & burn row. A ring follows the cursor over the photo. It is not available while you view Decode or Exposure, because the strokes' effect is not in the picture there: view Dodge & burn or any later stage. The button and menu item are greyed out, and a tooltip says why. Turning it on leaves Sample, Pick neutral and the test strip. If the Dodge & burn switch is off, your first stroke switches it on, in the same undo step, so what you paint shows.
+**Turning the Brush on.** Press `B`, choose **View → Brush**, or press **Brush** on the Dodge & burn row. A ring follows the cursor over the photo. It is not available while you view Decode or Exposure, because the strokes' effect is not in the picture there: view Dodge & burn or any later stage. The button and menu item are greyed out, and a tooltip says why. Turning it on leaves framing on the easel, Sample, Pick neutral and the test strip. If the Dodge & burn switch is off, your first stroke switches it on, in the same undo step, so what you paint shows.
 
 **Painting.** Drag to paint a stroke; a click is a dot. A bar at the top of the photo shows two tones: **Dodge (lighter)** and **Burn (darker)**. Click one, or press `X`, to swap them. Hold `Option` on macOS, `Alt` on Windows and Linux, as you press to paint that one stroke in the other tone; the next stroke goes back to the base tone. The bar's second line says what the next stroke will do, for example "Dodge 0.5 stop — lighter, like holding back light" or "Burn 1.5 stops — darker, like more time under the enlarger".
 
@@ -214,9 +214,65 @@ In the darkroom, a dodging card under the enlarger holds light back from one par
 
 **Moving around.** Hold `Space` and drag to move the picture. Pinch or the wheel zoom as usual. A plain drag paints even when you are zoomed in, and double-clicking does not zoom, since each click is a dot.
 
-**Undo.** One stroke is one undo step (`Cmd+Z` on macOS, `Ctrl+Z` on Windows and Linux; see [Undo and redo](#undo-and-redo)). `Esc` while you hold the button cancels that stroke and leaves no step. `Esc` otherwise leaves the Brush. So do `I` and `T`; `W`, where Pick neutral can start (White balance or a later stage in view, so not while you view Dodge & burn, where `W` does nothing and the Brush stays on); viewing Decode or Exposure; and opening another photo. The Dodge & burn switch turns all the strokes off and on without losing them.
+**Undo.** One stroke is one undo step (`Cmd+Z` on macOS, `Ctrl+Z` on Windows and Linux; see [Undo and redo](#undo-and-redo)). `Esc` while you hold the button cancels that stroke and leaves no step. `Esc` otherwise leaves the Brush. So do `C`, `I` and `T`; `W`, where Pick neutral can start (White balance or a later stage in view, so not while you view Dodge & burn, where `W` does nothing and the Brush stays on); viewing Decode or Exposure; and opening another photo. The Dodge & burn switch turns all the strokes off and on without losing them.
 
-**What it doesn't do.** **Clear** on the row removes every stroke, as one undo step. Strokes are part of the photo's edit, and an export includes them, at any size, as long as the switch is on. They are not saved in a [recipe](#recipes): a recipe holds Exposure, Colour matrix, Saturation, Contrast and the Tone curve, and White balance if you chose one, and the Save Recipe sheet says "Dodging and burning isn't included." Loading a recipe or choosing a look leaves your strokes as they are. They are lost when you open another photo or quit, and Prism asks first (see [Unexported edits](#unexported-edits)).
+**What it doesn't do.** **Clear** on the row removes every stroke, as one undo step. Strokes are part of the photo's edit, and an export includes them, at any size, as long as the switch is on. They are not saved in a [recipe](#recipes): a recipe holds Exposure, Colour matrix, Saturation, Contrast and the Tone curve, and White balance if you chose one, and the Save Recipe sheet says "Dodging and burning isn't included." (or "Framing and dodging and burning aren't included." when the photo is also framed). Loading a recipe or choosing a look leaves your strokes as they are. They are lost when you open another photo or quit, and Prism asks first (see [Unexported edits](#unexported-edits)).
+
+### Frame and straighten on the easel
+
+In the darkroom, the easel holds the printing paper under the enlarger, and its four metal blades set the edges of the print. Prism's **Easel** does the same: it frames and straightens the photo, and every stage after it sees only the framed print.
+
+**Opening the easel.** Press `C`, choose **View → Frame**, or click the **Easel** line (or its **Frame** button) at the top of the Light path, above Decode. It works at any viewed stage, Decode included. Without a frame the Easel line reads **Whole photo**; with one it shows the shape and the pixel size when upright, or the shape and the turn when straightened, for example `Free · 5120 × 3413` or `4:5 · 1.2° clockwise` (for a RAW file whose exact sensor size is not yet known, the size starts with `about `). While framing is on, the canvas shows the whole photo again, with a 60% canvas-grey veil over what is cut away outside the blades, and a bar at the top of the canvas holds the framing controls. A live line on the bar gives the frame's full-resolution size, its share of the photo's area and the turn, for example `Frame 5120 × 3413 of 6000 × 4000 (73% of the photo), turned 1.2° clockwise.`
+
+**Blades, handles and moving.** The frame has eight handles: four at the corners and four in the middle of the edges.
+
+- **Corner handle:** drags that corner while the opposite corner stays put. When an aspect ratio is locked, the frame keeps that shape.
+- **Edge handle:** moves that one blade on its own. Moving an edge handle drops the aspect lock to **Free**, because moving one edge changes the shape.
+- **Inside the frame:** drag anywhere inside the blades to slide the whole frame over the photo without changing its size or shape.
+
+A press without moving changes nothing and keeps the aspect lock. Neither blade can make the frame smaller than 1% of the photo's shorter side (and at least 1 pixel).
+
+**Aspect lock and turning (`X`).** The **Aspect** menu on the framing bar chooses the shape of the blades:
+
+- **Original — the photo's own shape** (the default)
+- **Free — any shape**
+- **1:1 — a square**
+- **4:5 — an 8×10 inch sheet**
+- **5:7 — a 5×7 inch sheet**
+- **3:2 — a 35 mm negative**
+- **16:9 — a widescreen picture**
+
+Each shape follows the photo's orientation: `4:5` is wider than tall (5:4) on a landscape photo, and taller than wide (4:5) on a portrait photo. Press `X`, or click the **⇄ X** button beside the menu, to turn the shape between landscape and portrait around the frame's centre. Moving an edge handle drops the menu to **Free**; dragging a corner or inside the frame keeps the lock. If you choose a lock on the uncropped photo, Prism remembers it while that photo stays open.
+
+**Straightening.** The **Straighten** slider on the framing bar turns the photo from `−45°` to `+45°` in steps of `0.1°`. The blades stay square on the screen while the picture turns under them, about the frame's centre. Positive angles turn the photo clockwise on screen, and the readout beside the slider always names the direction in words: `1.2° clockwise`, `0.5° anticlockwise`, `under 0.1° clockwise` (for a smaller non-zero angle), or `upright` at `0°`. Right-click the slider for **Reset to 0°**.
+
+To straighten along something in the picture that should be level or upright (a horizon, the edge of a building, a door frame), hold `Option` on macOS, `Alt` on Windows and Linux, and drag a line along it on the photo. Letting go turns the photo so that a line within 45° of horizontal becomes level, and a steeper line becomes upright (up to ±45°).
+
+**Typing an angle.** Ctrl-click (Cmd-click on a Mac) the **Straighten** slider to type an angle. You can type a signed number of degrees (`1.25`, `+1.25`, `-0.5`, `−0.5` or `1.25°`, with a dot or a comma for the decimal mark), or an unsigned number followed by `clockwise` or `anticlockwise` (`1.25° clockwise`, `0.5 anticlockwise`, in any case). A sign together with a direction word is refused, and a number past ±45° stops at 45°. `Enter` confirms and `Esc` cancels.
+
+**Why the corners never show.** Whenever you turn the photo, move a blade or change the aspect ratio, Prism closes the blades in just enough (keeping their shape) that no corner of the frame runs past the edge of the turned photo. When that makes the frame smaller or moves it from what you asked for, a note at the foot of the canvas says: `The blades closed in so no corner runs past the photo's edge.` During a single drag of the Straighten slider, every step starts from the frame as it was when you pressed, so turning to 3° and back to 1° in one drag gives back the 1° frame. At `0°` the framed pixels are copied directly with no resampling; when the photo is turned, Prism resamples in linear light (Catmull-Rom over the 4×4 neighbours, clamped to the 2×2 nearest pixels so turning never overshoots or clips).
+
+**Guides.** Guides appear inside the frame only while you are dragging, and disappear as soon as you let go:
+
+- **Rule of thirds** (two vertical and two horizontal lines) while you drag a corner, an edge or inside the frame.
+- **8×8 grid** (seven vertical and seven horizontal lines) while you drag the Straighten slider or `Option`-drag (`Alt`-drag) a horizon line, so you can line edges up across the picture.
+
+**Reset, keeping the frame, and undo.** **Reset** on the framing bar sets the angle back to `0°` (`upright`) and opens the blades to the largest centred frame of the current aspect lock (the whole photo for **Original** and **Free**).
+
+Every way out of framing keeps the frame: pressing `Return`, clicking **Done (Return)** on the framing bar (shortened to **Done** on a narrow canvas), pressing `C` again, pressing `Esc` when you aren't dragging, or switching to another tool (`I`, `W`, `B`, `T` or **Compare**). Viewing another stage in the Light path, or using Undo or Redo, leaves framing on.
+
+Each handle drag, move inside the frame, horizon line, Straighten slider drag, typed angle, aspect choice, `X` turn and **Reset** is one undo step (if it changed the frame). Pressing `Esc` in the middle of a drag (a handle, an inside move, a horizon line or the Straighten slider) cancels only that drag, puts the frame back as it was before you pressed, leaves no undo step, and keeps framing on.
+
+**What sees the frame.** Once you leave the easel, every stage from Decode to Output encode, the scopes and histogram, the clipping numbers and `J` marks, Sample colour, Pick neutral, the test strip and Compare all work on the framed photo alone, so a bright sky you cropped out no longer pulls the histogram or the clipping counts. While you are inside framing mode, the canvas shows the whole photo, so the scopes measure the whole photo too (`Scopes (whole photo, while framing)`). Because the preview is at most 2560 pixels on its longer side before framing, a tight crop has fewer preview pixels; pointing at the zoom chip or reading a pixel in Sample mode reports the frame's size instead of the whole file's (for example, `Preview 1800 px, frame 5120 px on the long side: each preview pixel stands for about 2.8 frame pixels across, so a tight frame looks softer here than it exports`). Export always frames the full-resolution decode first.
+
+**Strokes stay on the subject.** Brush strokes from [Dodge & burn](#dodge-and-burn-with-the-brush) are kept in the whole photo's coordinates, not the frame's. If you paint on a face and later crop or straighten the photo, the strokes stay on the face; strokes that end up outside the blades are kept and come back if you open the frame out again.
+
+**The easel is not a stage, and recipes don't hold a frame.** The Easel sits above the stage list in the Light path because framing chooses which part of the negative reaches the paper — it does not change the light of any pixel. Framing a photo is a per-photo composition choice, like brush strokes:
+
+- It is not saved in a [recipe](#recipes). Framing after you load a recipe does not mark the recipe **(modified)**, and loading a recipe or choosing a look leaves your frame as it is.
+- When the photo has a frame, the Save Recipe sheet says "Framing isn't included." (or "Framing and dodging and burning aren't included." if the photo also has brush strokes).
+- When you close the photo or open another, Prism asks before losing the frame, even straight after an export (see [Unexported edits](#unexported-edits)).
+- On the command line, `--rotate`, `--crop` and `--aspect` frame an export and combine with `--recipe` (see [CLI.md](CLI.md#--rotate-degrees)).
 
 ### Compare two stages
 
@@ -282,7 +338,7 @@ Point at a row and the Explain area says what it means.
 - **On the picture**, the pin is a small crosshair, or an outline of the pixel's square above 200%, and the pixel under the cursor has a fainter outline. If you zoom or move the pin off the canvas, its values say "(off screen)".
 - **Dragging and double-clicking** still move and zoom the picture. A drag doesn't pin, but a double-click's first click does move the pin.
 
-The pin is in the photo's pixels, so it stays put through zooming, moving, changing stage and re-decoding with a new camera matrix. Opening another photo clears it. Sample mode is only a view: it is not saved, it can't be undone, and it does not affect export.
+The pin is in the photo's pixels, so it stays put through zooming, moving, changing stage and re-decoding with a new camera matrix. Changing the frame on the easel or opening another photo clears it. Sample mode is only a view: it is not saved, it can't be undone, and it does not affect export.
 
 ### The test strip
 
@@ -314,7 +370,7 @@ At the foot of the panel, a box says in plain words what the control under the m
 
 ### Undo and redo
 
-The **Undo** and **Redo** buttons in the panel's header, and **Edit → Undo** and **Redo**, do the same. Every change to a slider, a stage switch, a look or the tone curve is a step, and so is loading a recipe, painting a stroke and clearing the strokes; Prism keeps up to 100. A whole slider drag is one step. Test strip, comparison and the stage you are viewing are views and are not part of undo.
+The **Undo** and **Redo** buttons in the panel's header, and **Edit → Undo** and **Redo**, do the same. Every change to a slider, a stage switch, a look or the tone curve is a step, and so is loading a recipe, painting a stroke, clearing the strokes, and each framing change on the easel; Prism keeps up to 100. A whole slider drag or blade drag is one step. Test strip, comparison and the stage you are viewing are views and are not part of undo.
 
 ### Export
 
@@ -322,13 +378,13 @@ The **Undo** and **Redo** buttons in the panel's header, and **Edit → Undo** a
 
 **The Export sheet** has a **Size** control with three choices:
 
-- **Original** (the default) saves the photo at its own size. The sheet says what that is: "Full size, 6000 × 4000".
+- **Original** (the default) saves the photo at its own size (or the frame's size, when the photo is framed). The sheet says what that is: "Full size, 6000 × 4000", or with a frame, "Full size of the frame, 5120 × 3413".
 - **Long side** saves it with its longer side that many pixels (1 or more), keeping the shape: 2048 gives 2048 × 1365 for a 6000 × 4000 photo, and 1365 × 2048 for the same photo held upright.
-- **Percent** saves it at that share of the photo's own size, from 1 to 99. 50% of a 6000 × 4000 photo is 3000 × 2000. The percentage is of the photo's size, not of the preview, and for a RAW file it is of the camera's full sensor size, even when half-size decoding is on.
+- **Percent** saves it at that share of the photo's own size (or of the frame's size, when framed), from 1 to 99. 50% of a 6000 × 4000 photo is 3000 × 2000. The percentage is of the full size, not of the preview, and for a RAW file it is of the camera's full sensor size, even when half-size decoding is on.
 
-A line under the number says what will be written, for example "Exports at 2048 × 1365". Prism never enlarges: if the size you ask for is not smaller than the photo, the line says "Not smaller than the photo: exports at full size, 6000 × 4000" and the photo is saved as it is. For a RAW file the sizes shown are those that will be written: the full sensor size, or, if the half-size RAW option is on, the half-size decode, whatever size you ask for. A typed number outside the range is moved to the nearest valid one when you leave the field (0 becomes 1; a percentage of 150 becomes 99). The photo is reduced by averaging the light in each area, before the edit stages run.
+A line under the number says what will be written, for example "Exports at 2048 × 1365". Prism never enlarges: if the size you ask for is not smaller than the photo (or the frame), the line says "Not smaller than the photo: exports at full size, 6000 × 4000" (or "Not smaller than the frame: exports at full size, 5120 × 3413") and the photo is saved as it is. For a RAW file the sizes shown are those that will be written: the full sensor size, or, if the half-size RAW option is on, the half-size decode, whatever size you ask for. A typed number outside the range is moved to the nearest valid one when you leave the field (0 becomes 1; a percentage of 150 becomes 99). The photo is framed at full resolution first, then reduced by averaging the light in each area, before the edit stages run.
 
-`Enter` is **Save As…** and `Esc` or **Cancel** closes the sheet and changes nothing. Prism remembers your choice, also the next time you start it, so the sheet opens on it. While the sheet is open, the other keys (`I`, `T`, `W`, `J`, zoom, undo) do nothing.
+`Enter` is **Save As…** and `Esc` or **Cancel** closes the sheet and changes nothing. Prism remembers your choice, also the next time you start it, so the sheet opens on it. While the sheet is open, the other keys (`C`, `I`, `T`, `W`, `B`, `J`, zoom, undo) do nothing.
 
 - The file name is suggested as the photo's name plus `_prism` next to the original (`IMG_0001.jpg` becomes `IMG_0001_prism.jpg`). An export that is reduced says so with the longer side added: `IMG_0001_prism_2048.jpg`; one that is not reduced has no number. A PNG source suggests PNG; anything else, including RAW, suggests JPEG.
 - If you type a name without `.png`, `.jpg` or `.jpeg`, the extension is added.
@@ -345,7 +401,7 @@ A **recipe** is a small text file, ending in `.prism`, that writes down an edit:
 - **Name**, filled in for you: the recipe you loaded (with "(modified)" once you have changed something), or the look you picked, or empty with the hint "Name this look". The suggested file name is made from it.
 - **Description** (optional): one line on what the recipe is for, filled in from the recipe you loaded or the look you picked. If you keep both for a built-in look, the file you save is that look's file plus a `[matrix]` section.
 
-The sheet says what is saved: all five stages, and the white balance you chose if you chose one. A photo left **As shot** saves no white balance, because as shot is that photo's own light and not a number to carry to another photo; such a recipe is the same file older versions of Prism wrote, and they can still read it. The photo and the RAW decoding options (half size, camera matrix) are not in a recipe. `Esc` cancels; while you are typing in a field, the first `Esc` only leaves the field. **Save…** then opens the system's save dialog. It starts in the folder you last saved or loaded a recipe in (Prism remembers it in your [preferences](#preferences)), or next to the photo the first time. If you type a name without `.prism`, it is added. A banner says "Saved recipe *name*.prism." when it is written.
+The sheet says what is saved: all five stages, and the white balance you chose if you chose one. A photo left **As shot** saves no white balance, because as shot is that photo's own light and not a number to carry to another photo; such a recipe is the same file older versions of Prism wrote, and they can still read it. The photo, the RAW decoding options (half size, camera matrix), the frame on the easel and any brush strokes are not in a recipe; when the photo has a frame or strokes, the sheet adds "Framing isn't included.", "Dodging and burning isn't included." or "Framing and dodging and burning aren't included." `Esc` cancels; while you are typing in a field, the first `Esc` only leaves the field. **Save…** then opens the system's save dialog. It starts in the folder you last saved or loaded a recipe in (Prism remembers it in your [preferences](#preferences)), or next to the photo the first time. If you type a name without `.prism`, it is added. A banner says "Saved recipe *name*.prism." when it is written.
 
 **Loading.** **File → Load Recipe…** (`Cmd+Shift+O` or `Ctrl+Shift+O`), or **Load recipe…** in the Look menu, applies a recipe to the open photo:
 
@@ -371,7 +427,7 @@ If you quit (`Cmd+Q` on macOS, `Ctrl+Q` on Windows and Linux, the close button o
 
 On macOS **Quit Without Saving** stands on its own on the left, and Cancel, Save Recipe… and Export… are on the right; on Windows and Linux the order is Export…, Save Recipe…, Quit Without Saving, Cancel. Export… is the default (`Enter`) on both.
 
-Strokes from the [Brush](#dodge-and-burn-with-the-brush) change this. No recipe keeps them and an export does not make them safe to lose, so while the photo has any, Prism asks before it quits or opens another photo, even straight after an export, and adds: "Dodging and burning isn't saved in recipes and is lost when the photo closes." The buttons are then **Export…**, **Quit Without Saving** (or **Open Without Saving**) and **Cancel**, with no **Save Recipe…**.
+A frame on the [easel](#frame-and-straighten-on-the-easel) and strokes from the [Brush](#dodge-and-burn-with-the-brush) change this. No recipe keeps them and an export does not make them safe to lose, so while the photo has either, Prism asks before it quits or opens another photo, even straight after an export, and adds: "Framing isn't saved in recipes and is lost when the photo closes.", "Dodging and burning isn't saved in recipes and is lost when the photo closes." or "Framing and dodging and burning aren't saved in recipes and are lost when the photo closes." The buttons are then **Export…**, **Quit Without Saving** (or **Open Without Saving**) and **Cancel**, with no **Save Recipe…**.
 
 Undoing back to an exported or saved state counts as having no edits. If an export is still running, Prism waits for it first. A quit while the recipe save sheet is open closes the sheet before asking.
 
@@ -400,24 +456,28 @@ On macOS the main key is `Cmd`; on Windows and Linux it is `Ctrl`. This is every
 | Zoom to fit | `F` | `F` |
 | Zoom to 100% of the preview | `1` | `1` |
 | Move the picture while held, with a drag | `Space` | `Space` |
+| Frame on the easel on or off | `C` | `C` |
+| Framing: finish and keep the frame | `Return` | `Return` |
+| Framing: turn the aspect ratio between landscape and portrait | `X` | `X` |
+| Framing: drag a horizon line to level or make upright | `Option` and drag | `Alt` and drag |
 | Brush on or off (paint dodging and burning) | `B` | `B` |
 | Brush: swap Dodge and Burn | `X` | `X` |
 | Brush: paint one stroke in the other tone | `Option` held at the press | `Alt` held at the press |
 | Brush: bigger or smaller | `]` or `[` | `]` or `[` |
 | Brush: harder or softer edge | `Shift+]` or `Shift+[` | `Shift+]` or `Shift+[` |
 | Brush: show the strokes while held | `M` | `M` |
-| Step back: close the Preferences, About, notices, Recipe not loaded or View recipe window if it has the focus; otherwise the Brush (a stroke under way is cancelled first), then Pick mode, Sample mode, the test strip, then the comparison, then the viewed stage | `Esc` | `Esc` |
+| Step back: close the Preferences, About, notices, Recipe not loaded or View recipe window if it has the focus; otherwise framing on the easel (a drag under way is cancelled first; otherwise leaves framing and keeps the frame), then the Brush (a stroke under way is cancelled first), then Pick mode, Sample mode, the test strip, then the comparison, then the viewed stage | `Esc` | `Esc` |
 | Quit | `Cmd+Q` | `Ctrl+Q` |
 
 Notes:
 
-- The keypad's `+`, `-` and `0` also work with `Cmd`/`Ctrl` for the interface size, and its `+` and `-` alone for the zoom.
-- Undo, Redo, `J`, `T`, `I`, `W`, `B` and the zoom keys do nothing while you are dragging a slider or painting a stroke.
-- `J`, `T`, `I`, `W`, `B`, the zoom keys and `Space` give way to a text field that has the keyboard, so typing a value never triggers them.
+- The keypad's `+`, `-` and `0` also work with `Cmd`/`Ctrl` for the interface size, its `+` and `-` alone for the zoom, and its `Enter` for finishing framing.
+- Undo, Redo, `C`, `J`, `T`, `I`, `W`, `B` and the zoom keys do nothing while you are dragging a slider, dragging on the easel or painting a stroke.
+- `C`, `J`, `T`, `I`, `W`, `B`, `X`, `Return`, the zoom keys and `Space` give way to a text field that has the keyboard, so typing a value never triggers them.
 - `Esc` is also Cancel in the "unsaved edits" window, in the recipe save sheet (inside a text field, the first `Esc` only leaves the field), in the Export sheet (also inside its number field), and in the "Saving…" window while a quit or open is waiting for the export.
-- In the menus: **File** has Open…, Export…, Load Recipe…, Save Recipe… and Quit (on Windows and Linux the menu shows `Ctrl+Q`; on macOS, Quit is in the **Prism** menu too). **Edit** has Undo, Redo and (on Windows and Linux) Preferences…. **View** has Bigger Interface, Smaller Interface, Interface Size: Auto, Test Strip, Sample Colour, Pick Neutral, Brush, Zoom In, Zoom Out, Zoom to Fit and 100% of Preview. **Help → About Prism** is on Windows and Linux; on macOS, About and Preferences are in the **Prism** menu (**Prism → About Prism**, **Prism → Preferences…**).
+- In the menus: **File** has Open…, Export…, Load Recipe…, Save Recipe… and Quit (on Windows and Linux the menu shows `Ctrl+Q`; on macOS, Quit is in the **Prism** menu too). **Edit** has Undo, Redo and (on Windows and Linux) Preferences…. **View** has Bigger Interface, Smaller Interface, Interface Size: Auto, Test Strip, Sample Colour, Pick Neutral, Brush, Frame, Zoom In, Zoom Out, Zoom to Fit and 100% of Preview. **Help → About Prism** is on Windows and Linux; on macOS, About and Preferences are in the **Prism** menu (**Prism → About Prism**, **Prism → Preferences…**).
 
-Mouse and trackpad: click a stage row to view it; right-click a slider, or a Tone curve tab, to reset it; Ctrl-click (Cmd-click) a slider to type a value; drag the divider in a comparison; click a band in the test strip; drag the panel's left edge to resize the panel; pinch, scroll or use the wheel over the photo to zoom and move it, drag it when zoomed in, and double-click it to go between fit and 100% (see [Zoom and pan](#zoom-and-pan)); in Sample mode, point at the photo to read a pixel and click to pin it (see [Read a pixel](#read-a-pixel)).
+Mouse and trackpad: click the Easel line to frame and straighten, drag the blades' handles or inside the frame, and `Option`-drag (`Alt`-drag) along a horizon to level it (see [Frame and straighten on the easel](#frame-and-straighten-on-the-easel)); click a stage row to view it; right-click a slider, or a Tone curve tab, to reset it; Ctrl-click (Cmd-click) a slider to type a value; drag the divider in a comparison; click a band in the test strip; drag the panel's left edge to resize the panel; pinch, scroll or use the wheel over the photo to zoom and move it, drag it when zoomed in, and double-click it to go between fit and 100% (see [Zoom and pan](#zoom-and-pan)); in Sample mode, point at the photo to read a pixel and click to pin it (see [Read a pixel](#read-a-pixel)).
 
 ## How Prism thinks about light
 
@@ -437,7 +497,9 @@ The stages always run in this order, whatever order you change them in:
 
 **Decode → Exposure → Dodge & burn → White balance → Colour matrix → Saturation → Contrast → Tone curve → Output encode**
 
-The order matters because the stages are not interchangeable:
+**The easel is not a stage.** The [Easel](#frame-and-straighten-on-the-easel) sits above Decode, outside the stage list, with no dot on the rail, no on/off switch and no clip marks. In the darkroom, the easel's four blades frame the sheet of paper under the enlarger: they decide which part of the negative reaches the print, and move no light of their own. So Prism frames and straightens the decoded photo first, and every stage from Decode to Output encode (along with the scopes, clipping counts, Sample, Pick neutral, the test strip and Compare) sees only the framed print. Because framing is a composition for this one photo rather than a way of handling light, it is not in a [recipe](#recipes) and does not mark a loaded recipe **(modified)**.
+
+The order of the stages matters because they are not interchangeable:
 
 - **Exposure comes first** after Decode, while the numbers are still light. A stop of exposure then means exactly twice the light, and the stages after it can shape what that extra light looks like.
 - **Dodge & burn** comes right after Exposure, also in linear light, so a stroke of 1 stop is exactly twice the light, and the stages after it, which shape colour and tone, work on light you have already shaped.
