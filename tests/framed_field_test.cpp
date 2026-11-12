@@ -51,13 +51,13 @@ float at(const std::vector<float>& field, const PixelGrid& g, int i, int j) {
 }
 
 // Index of the first value whose bits differ, or -1.
-long first_bit_difference(const std::vector<float>& a, const std::vector<float>& b) {
+long long first_bit_difference(const std::vector<float>& a, const std::vector<float>& b) {
     if (a.size() != b.size()) {
         return 0;
     }
     for (std::size_t i = 0; i < a.size(); ++i) {
         if (std::bit_cast<std::uint32_t>(a[i]) != std::bit_cast<std::uint32_t>(b[i])) {
-            return static_cast<long>(i);
+            return static_cast<long long>(i);
         }
     }
     return -1;

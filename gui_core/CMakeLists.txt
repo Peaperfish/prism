@@ -35,10 +35,10 @@ add_library(prism_gui_core STATIC
   src/clipping.cpp
   src/close_guard.cpp
   src/explanations.cpp
-  src/field_cache.cpp
-  src/framing.cpp
   src/export_size.cpp
+  src/field_cache.cpp
   src/file_types.cpp
+  src/framing.cpp
   src/histogram.cpp
   src/histogram_paint.cpp
   src/history.cpp

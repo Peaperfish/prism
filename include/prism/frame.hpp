@@ -3,7 +3,6 @@
 #include <array>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "prism/image.hpp"
