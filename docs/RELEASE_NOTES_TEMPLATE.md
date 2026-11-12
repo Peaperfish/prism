@@ -17,6 +17,8 @@ Prism's desktop app, for macOS and Windows.
 - White balance in Kelvin and tint, with a neutral picker that sets the light from a grey in the
   photo.
 - Contrast shown as a paper grade, from 0 to 5.
+- Crop and straighten on the easel: blades set the frame, a shape lock keeps its aspect, and a
+  straighten slider or a line along the photo levels it.
 - Recipes: save an edit as a small, readable text file (`.prism`) and load it on any photo. The
   built-in looks are recipes too, and the app shows their numbers and their file.
 - Export at a smaller size: the original, a long side in pixels or a percentage.
@@ -31,7 +33,7 @@ Prism's desktop app, for macOS and Windows.
 - Preferences for the theme, the interface size and the panel width.
 - The command-line tool `prism` is included in both downloads. It edits one photo or a whole
   shoot at once with `--recipe` and `--out-dir`, sets white balance with `--kelvin` and `--tint`,
-  and sizes the output with `--long-side`.
+  sizes the output with `--long-side`, and frames it with `--rotate`, `--crop` and `--aspect`.
 
 ## Downloads
 
