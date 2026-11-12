@@ -44,7 +44,10 @@ namespace prism {
 // On a W x H decode the frame covers straightened pixels [x0, x1) x [y0, y1), with
 //   x0 = round(left * W), x1 = round(right * W), y0 = round(top * H), y1 = round(bottom * H)
 // (halves up), so the framed image is (x1 - x0) x (y1 - y0) pixels and each edge is within half a
-// pixel of where the fractions put it, on any decode. A frame narrower than half a pixel would
+// pixel of where the fractions put it, on any decode. Because the edges are rounded to the nearest
+// pixel independently, a corner of the rounded pixel box [x0, x1] x [y0, y1] can reach up to
+// ~0.7 px past the turned photo, while every pixel centre (i + 0.5, j + 0.5) (where apply_frame
+// samples) stays inside. A frame narrower than half a pixel would
 // round to nothing; it is then widened to one pixel: x1 = x0 + 1, or x0 = x1 - 1 at the right edge
 // (the same for y). So a valid frame never has an empty framed image, on any image of at least
 // 1 x 1 pixel.
