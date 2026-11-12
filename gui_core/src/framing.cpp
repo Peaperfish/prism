@@ -9,6 +9,7 @@
 
 #include "prism/gui/export_size.hpp"
 #include "prism/gui/settings.hpp"
+#include "prism/gui/typed_value.hpp"
 #include "prism/ranges.hpp"
 
 namespace prism::gui {
@@ -159,6 +160,45 @@ FramingView framing_view(float angle, int photo_width, int photo_height, double 
     view.photo_height = photo_height;
     view.scale = std::min(room_w / box_w, room_h / box_h);
     view.centre = {canvas_width / 2.0, canvas_height / 2.0};
+    return view;
+}
+
+PixelSize framing_box_size(float angle, int photo_width, int photo_height) noexcept {
+    const Turn t = turn_of(angle);
+    const double w = std::max(photo_width, 1);
+    const double h = std::max(photo_height, 1);
+    // A hair under a whole pixel stays that pixel: an upright photo's box is the photo exactly.
+    const auto up = [](double v) {
+        return std::max(1, static_cast<int>(std::ceil(v - 1e-6)));
+    };
+    return {up(std::abs(t.c) * w + std::abs(t.s) * h), up(std::abs(t.s) * w + std::abs(t.c) * h)};
+}
+
+ViewGeometry framing_geometry(const ViewGeometry& canvas, float angle, int photo_width,
+                              int photo_height, float margin) noexcept {
+    ViewGeometry g = canvas;
+    const float inset_x = std::min(margin, std::max(0.0f, (canvas.width - 1.0f) / 2.0f));
+    const float inset_y = std::min(margin, std::max(0.0f, (canvas.height - 1.0f) / 2.0f));
+    g.x += inset_x;
+    g.y += inset_y;
+    g.width = std::max(1.0f, canvas.width - 2.0f * inset_x);
+    g.height = std::max(1.0f, canvas.height - 2.0f * inset_y);
+    const PixelSize box = framing_box_size(angle, photo_width, photo_height);
+    g.image_width = box.width;
+    g.image_height = box.height;
+    return g;
+}
+
+FramingView framing_view_placed(float angle, int photo_width, int photo_height,
+                                const ViewState& s, const ViewGeometry& g) noexcept {
+    const ViewPlacement placed = view_placement(s, g);
+    FramingView view;
+    view.angle = angle;
+    view.photo_width = photo_width;
+    view.photo_height = photo_height;
+    view.scale = g.image_width > 0 ? static_cast<double>(placed.shown.x) / g.image_width : 0.0;
+    view.centre = {static_cast<double>(placed.at.x) + placed.shown.x / 2.0,
+                   static_cast<double>(placed.at.y) + placed.shown.y / 2.0};
     return view;
 }
 
@@ -759,7 +799,7 @@ std::vector<CanvasLine> framing_guide_lines(const CanvasRect& frame, FramingGuid
 // --- Keys and the other tools --------------------------------------------------------------------
 
 FramingKeyAction framing_key(FramingKey key, const FramingKeyContext& c) noexcept {
-    if (shortcuts_blocked(c.sheets) || c.text_editing || c.stroking) {
+    if (shortcuts_blocked(c.sheets) || c.text_editing || c.stroking || c.popup_open) {
         return FramingKeyAction::none;
     }
     switch (key) {
@@ -783,6 +823,33 @@ CanvasTools tools_when_framing(CanvasTools /*tools*/) noexcept {
     return CanvasTools{};
 }
 
+FramingEntry framing_entry(CanvasTools tools, std::optional<StageId> /*compare*/) noexcept {
+    return {tools_when_framing(tools), std::nullopt};
+}
+
+bool framing_leaves(bool framing, FramingEvent event) noexcept {
+    if (!framing) {
+        return false;
+    }
+    switch (event) {
+        case FramingEvent::tool_chosen:
+        case FramingEvent::compare_chosen:
+        case FramingEvent::photo_opened: return true;
+        case FramingEvent::stage_viewed:
+        case FramingEvent::undo_redo: return false;
+    }
+    return false;
+}
+
+bool render_drawable(bool framing, PixelSize render, PixelSize whole, PixelSize framed) noexcept {
+    const bool is_whole = render.width == whole.width && render.height == whole.height;
+    if (framing) {
+        return is_whole;
+    }
+    const bool picture_framed = framed.width != whole.width || framed.height != whole.height;
+    return !(picture_framed && is_whole);
+}
+
 // --- Scopes --------------------------------------------------------------------------------------
 
 ScopeSource scope_source(bool framing) noexcept {
@@ -791,6 +858,28 @@ ScopeSource scope_source(bool framing) noexcept {
 
 std::string_view scope_source_detail(ScopeSource source) noexcept {
     return source == ScopeSource::whole_base ? "whole photo, while framing" : "";
+}
+
+std::string scopes_title_detail(std::string_view stage_name, std::string_view band_title,
+                                ScopeSource source) {
+    std::string detail;
+    for (const std::string_view part : {stage_name, band_title, scope_source_detail(source)}) {
+        if (part.empty()) {
+            continue;
+        }
+        if (!detail.empty()) {
+            detail += ", ";
+        }
+        detail += part;
+    }
+    return detail;
+}
+
+CanvasMeasure canvas_measure(const Session& session, bool framing) {
+    if (framing || !session.preview_framing()) {
+        return {std::max(session.file_width(), session.file_height()), false};
+    }
+    return {session.framed_file_long_side(), true};
 }
 
 // --- Explanations --------------------------------------------------------------------------------
@@ -854,6 +943,88 @@ std::string_view framing_aspect_menu_text(Aspect aspect) noexcept {
         case Aspect::sixteen_nine: return "16:9 — a widescreen picture";
     }
     return "";
+}
+
+std::string easel_value(const std::optional<Frame>& frame, PixelSize framed, bool exact) {
+    if (!frame) {
+        return "Whole photo";
+    }
+    const std::string shape(framing_aspect_name(frame->aspect));
+    if (frame->angle != 0.0f) {
+        return shape + " · " + framing_turn_words(frame->angle);
+    }
+    return shape + " · " + std::string(size_estimate_prefix(exact)) + times(framed);
+}
+
+namespace {
+
+bool ends_with_word(std::string_view text, std::string_view word, std::string_view& rest) {
+    if (text.size() < word.size()) {
+        return false;
+    }
+    const std::string_view tail = text.substr(text.size() - word.size());
+    for (std::size_t i = 0; i < word.size(); ++i) {
+        const char a = tail[i];
+        const char lower = a >= 'A' && a <= 'Z' ? static_cast<char>(a - 'A' + 'a') : a;
+        if (lower != word[i]) {
+            return false;
+        }
+    }
+    rest = text.substr(0, text.size() - word.size());
+    // The word stands alone: a space or the degree sign before it, or nothing.
+    return rest.empty() || rest.back() == ' ' || rest.ends_with("°");
+}
+
+}  // namespace
+
+std::optional<float> typed_angle(std::string_view text) {
+    while (!text.empty() && text.back() == ' ') {
+        text.remove_suffix(1);
+    }
+    float sign = 1.0f;
+    std::string_view number = text;
+    std::string_view rest;
+    bool worded = false;
+    if (ends_with_word(text, "anticlockwise", rest)) {
+        sign = -1.0f;
+        number = rest;
+        worded = true;
+    } else if (ends_with_word(text, "clockwise", rest)) {
+        number = rest;
+        worded = true;
+    }
+    if (worded) {
+        // A sign and a word would say the direction twice, perhaps two ways: not taken.
+        std::string_view start = number;
+        while (!start.empty() && start.front() == ' ') {
+            start.remove_prefix(1);
+        }
+        if (start.starts_with("-") || start.starts_with("+") || start.starts_with("−")) {
+            return std::nullopt;
+        }
+    }
+    static constexpr std::string_view units[] = {"°"};
+    const std::optional<float> value = parse_typed_number(number, units);
+    if (!value || !std::isfinite(*value)) {
+        return std::nullopt;
+    }
+    return std::clamp(sign * *value, -45.0f, 45.0f);
+}
+
+std::string typed_angle_text(float angle) {
+    const long hundredths = std::lround(std::abs(static_cast<double>(angle)) * 100.0);
+    if (hundredths == 0) {
+        return "0°";
+    }
+    std::string number = std::to_string(hundredths / 100);
+    const long rest = hundredths % 100;
+    if (rest != 0) {
+        number += "." + std::to_string(rest / 10);
+        if (rest % 10 != 0) {
+            number += std::to_string(rest % 10);
+        }
+    }
+    return number + "° " + (angle > 0.0f ? "clockwise" : "anticlockwise");
 }
 
 std::string_view framing_fit_note(bool fitted) noexcept {

@@ -790,3 +790,247 @@ TEST(FramingWords, EveryMenuEntryAndBothHintsAndTheTurnAlone) {
     EXPECT_EQ(prism::gui::framing_turn_words(-0.5f), "0.5° anticlockwise");
     EXPECT_EQ(prism::gui::framing_turn_words(0.0f), "upright");
 }
+
+// --- What the app decides (session 6) -------------------------------------------------------------
+
+TEST(EaselValue, WholePhotoWithoutAFrameWhateverTheLock) {
+    // A whole-photo frame is stored as none, whatever lock was chosen on it (Session::frame_lock).
+    EXPECT_EQ(prism::gui::easel_value(std::nullopt, {6000, 4000}), "Whole photo");
+    EXPECT_EQ(prism::gui::easel_value(std::nullopt, {6000, 4000}, false), "Whole photo");
+}
+
+TEST(EaselValue, ALockOnlyShowsTheShapeAndTheFramesSize) {
+    const Frame f = frame_of(0.0f, 0.2f, 0.0f, 0.8f, 1.0f, Aspect::four_five);
+    EXPECT_EQ(prism::gui::easel_value(f, {3200, 4000}), "4:5 · 3200 × 4000");
+    // A RAW file's size is only an estimate: so is the frame's.
+    EXPECT_EQ(prism::gui::easel_value(f, {3200, 4000}, false), "4:5 · about 3200 × 4000");
+    const Frame free = frame_of(0.0f, 0.1f, 0.1f, 0.9f, 0.95f, Aspect::free);
+    EXPECT_EQ(prism::gui::easel_value(free, {5120, 3413}), "Free · 5120 × 3413");
+}
+
+TEST(EaselValue, ATurnOnlyShowsTheShapeAndTheTurnInWords) {
+    EXPECT_EQ(prism::gui::easel_value(frame_of(1.2f, 0.05f, 0.05f, 0.95f, 0.95f, Aspect::original),
+                                      {5400, 3600}),
+              "Original · 1.2° clockwise");
+    EXPECT_EQ(prism::gui::easel_value(frame_of(-0.5f, 0.05f, 0.05f, 0.95f, 0.95f, Aspect::original),
+                                      {5400, 3600}),
+              "Original · 0.5° anticlockwise");
+    EXPECT_EQ(prism::gui::easel_value(frame_of(-0.04f, 0.0f, 0.0f, 1.0f, 1.0f, Aspect::original),
+                                      {5990, 3990}),
+              "Original · under 0.1° anticlockwise");
+}
+
+TEST(EaselValue, BothShowTheShapeAndTheTurn) {
+    // #58's own example.
+    EXPECT_EQ(prism::gui::easel_value(frame_of(1.2f, 0.2f, 0.05f, 0.8f, 0.95f, Aspect::four_five),
+                                      {2880, 3600}, false),
+              "4:5 · 1.2° clockwise");
+}
+
+TEST(FramingEntry, EnteringTurnsEveryToolOffAndClearsTheComparison) {
+    using prism::gui::CanvasTools;
+    using prism::gui::StageId;
+    for (const CanvasTools tools : {CanvasTools{true, false, false, false},
+                                    CanvasTools{false, true, false, false},
+                                    CanvasTools{false, false, true, false},
+                                    CanvasTools{false, false, false, true}}) {
+        const prism::gui::FramingEntry entry =
+            prism::gui::framing_entry(tools, StageId::exposure);
+        EXPECT_EQ(entry.tools, CanvasTools{});
+        EXPECT_FALSE(entry.compare.has_value());
+    }
+    EXPECT_FALSE(prism::gui::framing_entry({}, StageId::decode).compare.has_value());
+}
+
+TEST(FramingEntry, ToolsComparisonsAndANewPhotoLeaveFramingViewingAndUndoDoNot) {
+    using prism::gui::FramingEvent;
+    using prism::gui::framing_leaves;
+    EXPECT_TRUE(framing_leaves(true, FramingEvent::tool_chosen));
+    EXPECT_TRUE(framing_leaves(true, FramingEvent::compare_chosen));
+    EXPECT_TRUE(framing_leaves(true, FramingEvent::photo_opened));
+    EXPECT_FALSE(framing_leaves(true, FramingEvent::stage_viewed));  // any stage, Decode included
+    EXPECT_FALSE(framing_leaves(true, FramingEvent::undo_redo));
+    for (const FramingEvent e : {FramingEvent::tool_chosen, FramingEvent::compare_chosen,
+                                 FramingEvent::photo_opened, FramingEvent::stage_viewed,
+                                 FramingEvent::undo_redo}) {
+        EXPECT_FALSE(framing_leaves(false, e));
+    }
+}
+
+TEST(FramingKeys, NothingWhileAMenuOrListIsOpen) {
+    using prism::gui::framing_key;
+    using prism::gui::FramingKey;
+    using prism::gui::FramingKeyAction;
+    prism::gui::FramingKeyContext c;
+    c.has_file = true;
+    c.framing = true;
+    // Return picks in the aspect menu and Esc closes it: neither may leave framing then.
+    ASSERT_EQ(framing_key(FramingKey::return_key, c), FramingKeyAction::leave_framing);
+    c.popup_open = true;
+    for (const FramingKey key :
+         {FramingKey::c, FramingKey::return_key, FramingKey::escape, FramingKey::x}) {
+        EXPECT_EQ(framing_key(key, c), FramingKeyAction::none);
+    }
+}
+
+TEST(FramingFollow, UndoAndRedoMoveTheDraftWithTheSettings) {
+    Opened o;
+    FramingState f;
+    ASSERT_TRUE(f.begin(o.session));
+    ASSERT_EQ(drag(f, o.session, FrameHandle::left, 40.0, 0.0), std::nullopt);
+    const Frame first = f.draft();
+    ASSERT_EQ(f.set_angle(2.0f, o.session), std::nullopt);
+    const Frame second = f.draft();
+    ASSERT_EQ(o.session.undo(), std::nullopt);
+    f.follow(o.session.settings().frame);
+    EXPECT_TRUE(same_bits(f.draft(), first));
+    ASSERT_EQ(o.session.redo(), std::nullopt);
+    f.follow(o.session.settings().frame);
+    EXPECT_TRUE(same_bits(f.draft(), second));
+    // Undone to no frame at all: the whole photo, keeping the draft's lock.
+    ASSERT_EQ(o.session.undo(), std::nullopt);
+    ASSERT_EQ(o.session.undo(), std::nullopt);
+    ASSERT_FALSE(o.session.settings().frame.has_value());
+    f.follow(o.session.settings().frame);
+    EXPECT_EQ(f.draft().left, 0.0f);
+    EXPECT_EQ(f.draft().right, 1.0f);
+    EXPECT_EQ(f.draft().angle, 0.0f);
+}
+
+TEST(FramingFollow, DuringAGestureTheDraftStaysTheGesturesAndTheReleaseCommitsIt) {
+    // framing.hpp: follow() does nothing while a gesture is under way, so the drag keeps working
+    // from its own start, and its release commits what it made.
+    Opened o;
+    FramingState f;
+    ASSERT_TRUE(f.begin(o.session));
+    ASSERT_EQ(f.set_angle(3.0f, o.session), std::nullopt);
+    const FramingView view = view_of(f.draft());
+    const CanvasPoint at = handle_point(view, f.draft(), FrameHandle::right);
+    ASSERT_TRUE(f.press(at, false, view, 6.0));
+    f.move(offset(at, -50.0, 0.0));
+    const Frame dragged = f.draft();
+    ASSERT_LT(dragged.right, 0.99f);
+    // The settings change from outside mid-drag (an undo the app would not send, a redo, a load).
+    ASSERT_EQ(o.session.undo(), std::nullopt);
+    ASSERT_FALSE(o.session.settings().frame.has_value());
+    f.follow(o.session.settings().frame);
+    EXPECT_TRUE(same_bits(f.draft(), dragged));
+    EXPECT_EQ(f.gesture(), prism::gui::FramingGesture::handle);
+    ASSERT_EQ(f.release(offset(at, -50.0, 0.0), o.session), std::nullopt);
+    ASSERT_TRUE(o.session.settings().frame.has_value());
+    EXPECT_TRUE(same_bits(*o.session.settings().frame, dragged));
+    // The slider's turn is a gesture too.
+    f.begin_turn();
+    f.turn_to(-4.0f);
+    const Frame turning = f.draft();
+    f.follow(std::nullopt);
+    EXPECT_TRUE(same_bits(f.draft(), turning));
+}
+
+TEST(FramingScopes, TheTitleSaysWholePhotoWhileFraming) {
+    using prism::gui::ScopeSource;
+    using prism::gui::scopes_title_detail;
+    EXPECT_EQ(scopes_title_detail("", "", ScopeSource::whole_base), "whole photo, while framing");
+    EXPECT_EQ(scopes_title_detail("Exposure", "", ScopeSource::whole_base),
+              "Exposure, whole photo, while framing");
+    EXPECT_EQ(scopes_title_detail("Exposure", "", prism::gui::scope_source(false)), "Exposure");
+    EXPECT_EQ(scopes_title_detail("", "", ScopeSource::framed_base), "");
+    EXPECT_EQ(scopes_title_detail("Contrast", "Band 2 of 5", ScopeSource::framed_base),
+              "Contrast, Band 2 of 5");
+}
+
+TEST(FramingMeasure, TheZoomAndSampleMeasureTheFrameOutsideFramingAndThePhotoWhileFraming) {
+    Opened o;
+    // No frame: the file's long side, not a frame's.
+    EXPECT_EQ(prism::gui::canvas_measure(o.session, false).file_long_side, photo_w);
+    EXPECT_FALSE(prism::gui::canvas_measure(o.session, false).framed);
+    FramingState f;
+    ASSERT_TRUE(f.begin(o.session));
+    ASSERT_EQ(drag(f, o.session, FrameHandle::left, 120.0, 0.0), std::nullopt);
+    ASSERT_TRUE(o.session.preview_framing().has_value());
+    const prism::gui::CanvasMeasure framed = prism::gui::canvas_measure(o.session, false);
+    EXPECT_TRUE(framed.framed);
+    EXPECT_EQ(framed.file_long_side, o.session.framed_file_long_side());
+    EXPECT_LT(framed.file_long_side, photo_w);
+    // While framing the canvas shows the whole photo: the file's own long side.
+    const prism::gui::CanvasMeasure whole = prism::gui::canvas_measure(o.session, true);
+    EXPECT_FALSE(whole.framed);
+    EXPECT_EQ(whole.file_long_side, photo_w);
+}
+
+TEST(FramingCanvas, OnlyTheRightRenderIsDrawn) {
+    using prism::gui::render_drawable;
+    const PixelSize whole{2560, 1707};
+    const PixelSize framed{1800, 1200};
+    // Framing: the whole photo's render only.
+    EXPECT_TRUE(render_drawable(true, whole, whole, framed));
+    EXPECT_FALSE(render_drawable(true, framed, whole, framed));
+    // Not framing: the framed render, but not the whole one left from framing.
+    EXPECT_TRUE(render_drawable(false, framed, whole, framed));
+    EXPECT_FALSE(render_drawable(false, whole, whole, framed));
+    // No frame: the whole photo is the picture.
+    EXPECT_TRUE(render_drawable(false, whole, whole, whole));
+}
+
+TEST(FramingCanvas, TheZoomableViewFitsLikeFramingViewAndZoomsInPhotoPixels) {
+    const prism::gui::ViewGeometry canvas{100.0f, 50.0f, 900.0f, 700.0f, 2.0f, 1, 1};
+    for (const float angle : {0.0f, 3.0f, -12.5f, 45.0f}) {
+        const prism::gui::ViewGeometry g =
+            prism::gui::framing_geometry(canvas, angle, photo_w, photo_h, 20.0f);
+        EXPECT_EQ(g.x, 120.0f);
+        EXPECT_EQ(g.y, 70.0f);
+        EXPECT_EQ(g.width, 860.0f);
+        EXPECT_EQ(g.height, 660.0f);
+        const PixelSize box = prism::gui::framing_box_size(angle, photo_w, photo_h);
+        EXPECT_EQ(g.image_width, box.width);
+        EXPECT_EQ(g.image_height, box.height);
+        // At fit: framing_view's placement of the same photo, to within a pixel's rounding.
+        const FramingView fit = prism::gui::framing_view_placed(angle, photo_w, photo_h, {}, g);
+        const FramingView reference =
+            prism::gui::framing_view(angle, photo_w, photo_h, 900.0, 700.0, 20.0);
+        EXPECT_NEAR(fit.scale, reference.scale, reference.scale * 0.01) << angle;
+        EXPECT_NEAR(fit.centre.x, reference.centre.x + 100.0, 1.0) << angle;
+        EXPECT_NEAR(fit.centre.y, reference.centre.y + 50.0, 1.0) << angle;
+        EXPECT_EQ(fit.angle, angle);
+        // At 100%: one photo pixel on one device pixel, half a screen unit at density 2.
+        prism::gui::ViewState actual;
+        actual.fit = false;
+        actual.zoom = 1.0f;
+        actual.centre_x = static_cast<float>(box.width) / 2.0f;
+        actual.centre_y = static_cast<float>(box.height) / 2.0f;
+        const FramingView zoomed =
+            prism::gui::framing_view_placed(angle, photo_w, photo_h, actual, g);
+        if (prism::gui::view_fit_zoom(g) < 1.0f) {
+            EXPECT_NEAR(zoomed.scale, 0.5, 1e-6) << angle;
+        }
+    }
+    // Upright, the box is the photo exactly.
+    EXPECT_EQ(prism::gui::framing_box_size(0.0f, photo_w, photo_h), (PixelSize{photo_w, photo_h}));
+}
+
+TEST(FramingTyped, AnAngleTypedWithASignOrInWords) {
+    using prism::gui::typed_angle;
+    EXPECT_EQ(typed_angle("1.2"), 1.2f);
+    EXPECT_EQ(typed_angle("1.2°"), 1.2f);
+    EXPECT_EQ(typed_angle("-1.2"), -1.2f);
+    EXPECT_EQ(typed_angle("\xE2\x88\x92" "2"), -2.0f);  // the minus sign
+    EXPECT_EQ(typed_angle("1.2° clockwise"), 1.2f);
+    EXPECT_EQ(typed_angle("1.2° anticlockwise"), -1.2f);
+    EXPECT_EQ(typed_angle("0,5 Anticlockwise "), -0.5f);
+    EXPECT_EQ(typed_angle("90"), 45.0f);  // clamped to the slider's range
+    EXPECT_EQ(typed_angle("-90 "), -45.0f);
+    EXPECT_FALSE(typed_angle("-1.2 clockwise").has_value());  // the direction twice
+    EXPECT_FALSE(typed_angle("1.2 widdershins").has_value());
+    EXPECT_FALSE(typed_angle("").has_value());
+    EXPECT_FALSE(typed_angle("clockwise").has_value());
+    EXPECT_FALSE(typed_angle("1.2anticlockwise").has_value());
+    // The field's text reads back as the same angle.
+    for (const float angle : {0.0f, 1.25f, -0.5f, 44.9f, -3.0f}) {
+        const std::string text = prism::gui::typed_angle_text(angle);
+        ASSERT_TRUE(typed_angle(text).has_value()) << text;
+        EXPECT_NEAR(*typed_angle(text), angle, 1e-6) << text;
+    }
+    EXPECT_EQ(prism::gui::typed_angle_text(0.0f), "0°");
+    EXPECT_EQ(prism::gui::typed_angle_text(1.25f), "1.25° clockwise");
+    EXPECT_EQ(prism::gui::typed_angle_text(-0.5f), "0.5° anticlockwise");
+}

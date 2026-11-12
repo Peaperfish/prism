@@ -68,11 +68,14 @@ struct ExportPlan {
 // "Exports at 2048 x 1365" when reduced, "Not smaller than the photo: exports at full size, W x H"
 // when a size was asked for that does not reduce it, "Exports at full size, W x H" for Original.
 // With `exact` false the size reads "about W x H" (size_estimate_prefix), as it comes from an estimate.
+// With `framed` (the photo has a frame, and the sizes are the frame's) it is "Not smaller than the
+// frame: ..." (#58 §7).
 [[nodiscard]] std::string export_result_text(const ExportSize& size, const ExportPlan& plan,
-                                             bool exact = true);
+                                             bool exact = true, bool framed = false);
 
 // The sheet's value row for Original: "Full size, W x H" with the file's size ("Full size, about
-// W x H" while `exact` is false).
-[[nodiscard]] std::string export_original_text(PixelSize file, bool exact = true);
+// W x H" while `exact` is false), and with `framed` "Full size of the frame, W x H" (#58 §7).
+[[nodiscard]] std::string export_original_text(PixelSize file, bool exact = true,
+                                               bool framed = false);
 
 }  // namespace prism::gui

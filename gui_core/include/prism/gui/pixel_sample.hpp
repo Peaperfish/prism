@@ -103,6 +103,9 @@ struct SampleStats {
 struct SampleScale {
     int preview_long_side = 0;  // 0 if no photo
     int file_long_side = 0;
+    // The preview is the framed picture and file_long_side the frame's in the file: a preview
+    // pixel then averages "frame pixels" (canvas_measure).
+    bool framed = false;
 };
 
 // The readout, in the words a photographer uses, a row at a time so that a window can show each on

@@ -9,6 +9,8 @@
 #include "prism/frame.hpp"
 #include "prism/gui/canvas_input.hpp"
 #include "prism/gui/session.hpp"
+#include "prism/gui/settings.hpp"
+#include "prism/gui/view_transform.hpp"
 #include "prism/resize.hpp"
 
 namespace prism::gui {
@@ -87,6 +89,24 @@ struct FramingView {
 
 // `frame`'s rectangle on the canvas (upright: the view turns with the frame's angle).
 [[nodiscard]] CanvasRect frame_rect(const FramingView& view, const Frame& frame) noexcept;
+
+// The zoomable view while framing. The canvas's own zoom and pan (view_transform.hpp, so the wheel,
+// pinch, Space and the zoom keys work as ever, #58) act on the turned photo's bounding box: a
+// picture of framing_box_size, centred on the photo's centre, in a canvas `margin` units inside
+// `canvas` on every side so the handles at the photo's edge stay on it. Points from these are in the
+// canvas's screen units, with ViewGeometry's origin.
+//
+// The bounding box of the photo turned by `angle`, in photo pixels, rounded up (at least 1 x 1).
+[[nodiscard]] PixelSize framing_box_size(float angle, int photo_width, int photo_height) noexcept;
+// `canvas` (the canvas as it is) made into the geometry the view works on while framing: inset by
+// `margin` (never below one unit across), with framing_box_size as its picture.
+[[nodiscard]] ViewGeometry framing_geometry(const ViewGeometry& canvas, float angle,
+                                            int photo_width, int photo_height, float margin) noexcept;
+// The framing view for view state `s` on `g` (framing_geometry): the box placed as view_placement
+// places a picture, the photo's centre at the box's centre. At fit, framing_view of the inset canvas
+// to within a pixel's rounding.
+[[nodiscard]] FramingView framing_view_placed(float angle, int photo_width, int photo_height,
+                                              const ViewState& s, const ViewGeometry& g) noexcept;
 
 // --- Handles and drags ---------------------------------------------------------------------------
 
@@ -294,10 +314,12 @@ struct FramingKeyContext {
     OpenSheets sheets;          // a modal sheet keeps its own keys (#54)
     bool text_editing = false;  // a text field has the keyboard
     bool stroking = false;      // a brush stroke is under way
+    bool popup_open = false;    // a menu or a list (the aspect menu) is open: its keys are its own
 };
 
 // What `key` does: nothing behind a modal sheet (Return keeps its meaning there), while a text
-// field has the keyboard, or during a brush stroke. C enters framing with a photo open and leaves
+// field has the keyboard, during a brush stroke, or while a menu or list is open (Return picks in
+// it, Esc closes it). C enters framing with a photo open and leaves
 // it when on; Return leaves; Esc cancels a framing gesture under way (Esc otherwise goes to
 // escape_action, where leaving framing comes first); X turns the aspect while framing.
 [[nodiscard]] FramingKeyAction framing_key(FramingKey key, const FramingKeyContext& c) noexcept;
@@ -305,6 +327,36 @@ struct FramingKeyContext {
 // The canvas tools when framing begins: all off (Brush, Sample, Pick and the test strip, #58). The
 // caller also drops the comparison, which is not one of these.
 [[nodiscard]] CanvasTools tools_when_framing(CanvasTools tools) noexcept;
+
+// What entering framing does to the canvas's tools and the comparison (#58): every tool off
+// (tools_when_framing) and no compare stage.
+struct FramingEntry {
+    CanvasTools tools;
+    std::optional<StageId> compare;
+};
+[[nodiscard]] FramingEntry framing_entry(CanvasTools tools,
+                                         std::optional<StageId> compare) noexcept;
+
+// What may happen while framing, and whether it ends framing first (keeping the frame).
+enum class FramingEvent {
+    tool_chosen,     // I, W, B or T, a menu item or a row's button for a canvas tool
+    compare_chosen,  // a compare stage was chosen on the Light path
+    photo_opened,    // another photo (or the same again) was opened
+    stage_viewed,    // another stage is viewed: framing works at any stage, Decode included
+    undo_redo,       // the settings changed from History: the draft follows (FramingState::follow)
+};
+// True when `event` leaves framing: a tool or a comparison needs the framed picture on screen (the
+// tools exclude each other the same way, canvas_input.hpp), and a new photo has no draft. Viewing
+// another stage and undo or redo keep framing on. False while framing is off.
+[[nodiscard]] bool framing_leaves(bool framing, FramingEvent event) noexcept;
+
+// Whether the render on hand (`render`, the texture's size) may be drawn on the canvas: while
+// framing only the whole photo's (the size of the whole base, `whole`), and otherwise anything but
+// a whole-photo render left over from framing while the picture is framed (`framed`, the preview
+// base, differs from `whole`): drawn as the picture it would show the whole photo until the framed
+// render arrives a moment later. The canvas stays empty, with "Rendering…", meanwhile.
+[[nodiscard]] bool render_drawable(bool framing, PixelSize render, PixelSize whole,
+                                   PixelSize framed) noexcept;
 
 // --- Scopes --------------------------------------------------------------------------------------
 
@@ -318,6 +370,22 @@ enum class ScopeSource {
 
 // The words in the scopes' title for that: "whole photo, while framing", or nothing.
 [[nodiscard]] std::string_view scope_source_detail(ScopeSource source) noexcept;
+
+// The Scopes title's words in brackets: the viewed stage's name (none at the final picture), a test
+// strip band's title, and while framing scope_source_detail, joined by ", ": "Exposure, whole photo,
+// while framing". Empty when there is nothing to say.
+[[nodiscard]] std::string scopes_title_detail(std::string_view stage_name,
+                                              std::string_view band_title, ScopeSource source);
+
+// The picture the canvas shows against the file, for the zoom chip's and Sample's lines: the
+// longest side the picture stands for in the file, and whether that is the frame's (preview_base
+// framed, outside framing) or the whole photo's (no frame, or while framing, when the canvas shows
+// the whole photo).
+struct CanvasMeasure {
+    int file_long_side = 0;
+    bool framed = false;
+};
+[[nodiscard]] CanvasMeasure canvas_measure(const Session& session, bool framing);
 
 // --- Explanations --------------------------------------------------------------------------------
 
@@ -348,6 +416,22 @@ enum class ScopeSource {
 
 // Said when fitting changed what was dragged (FrameEdit::fitted), otherwise empty.
 [[nodiscard]] std::string_view framing_fit_note(bool fitted) noexcept;
+
+// The Easel line's value (#58): "Whole photo" without a frame; otherwise the shape's name, then
+// the turn in words when the frame is turned ("4:5 · 1.2° clockwise") or, upright, its size in the
+// file ("Free · 5120 × 3413", "about …" while the size is an estimate). `framed` is the frame's
+// size in the file (Session::framed_file_size).
+[[nodiscard]] std::string easel_value(const std::optional<Frame>& frame, PixelSize framed,
+                                      bool exact = true);
+
+// The Straighten slider's typed angle: a number of degrees with an optional sign ("-", "+" or "−")
+// and "°", or without a sign followed by "clockwise" or "anticlockwise" ("1.2° anticlockwise"), the
+// words in any case; clamped to -45..45. Nothing for anything else (a sign with a word, an
+// unknown word, no number).
+[[nodiscard]] std::optional<float> typed_angle(std::string_view text);
+// What the field holds when it opens: the angle to a hundredth with its direction, "1.25°
+// clockwise", "0.5° anticlockwise", or "0°" upright. It reads back as the same angle.
+[[nodiscard]] std::string typed_angle_text(float angle);
 
 // #58's teaching words, for the Easel line, the Straighten slider, the resampling note and the
 // framing bar's second line.

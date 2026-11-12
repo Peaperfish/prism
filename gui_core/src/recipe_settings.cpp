@@ -118,4 +118,8 @@ Recipe recipe_from(const EditSettings& s) {
     return r;
 }
 
+bool same_recipe(const EditSettings& a, const EditSettings& b) {
+    return recipe_from(a) == recipe_from(b);
+}
+
 }  // namespace prism::gui

@@ -511,5 +511,42 @@ TEST(RecipeSheetStrokes, SaysDodgingAndBurningIsNotIncludedOnlyWhenThereAreStrok
     EXPECT_EQ(recipe_sheet_strokes_note(s), "");
 }
 
+TEST(RecipeLine, AFrameOrStrokesAfterTheLoadDoNotModifyIt) {
+    // A recipe holds neither (#58), so framing or painting after loading one leaves its name as it
+    // is; an edit of something it holds still reads modified.
+    History history(EditSettings{});
+    const LoadedRecipe loaded = load_into(history, partial_recipe(), "grade.prism");
+    EditSettings framed = history.current();
+    prism::Frame frame;
+    frame.angle = 1.2f;
+    frame.left = 0.1f;
+    frame.right = 0.9f;
+    framed.frame = frame;
+    history.set(framed);
+    EXPECT_EQ(recipe_line(loaded, history.current()), "Grade");
+    EditSettings painted = history.current();
+    auto field = std::make_shared<prism::StrokeField>();
+    field->aspect = 1.5f;
+    field->strokes.push_back(std::make_shared<const prism::FieldStroke>(
+        prism::FieldStroke{{{0.5f, 0.5f}}, 0.05f, 0.5f, -0.5f}));
+    painted.strokes = Strokes(std::move(field));
+    history.set(painted);
+    EXPECT_EQ(recipe_line(loaded, history.current()), "Grade");
+    EditSettings edited = history.current();
+    edited.exposure_stops = 0.3f;
+    history.set(edited);
+    EXPECT_EQ(recipe_line(loaded, history.current()), "Grade (modified)");
+    // Undone past the load, a frame that stays is still "before": nothing is shown.
+    EditSettings before_with_frame = loaded.before;
+    before_with_frame.frame = frame;
+    EXPECT_EQ(recipe_line(loaded, before_with_frame), std::nullopt);
+    // The RecipeTracker's line (the Look menu's) is the same.
+    RecipeTracker tracker;
+    tracker.loaded(loaded);
+    EXPECT_EQ(tracker.line(framed), "Grade");
+    EXPECT_TRUE(same_recipe(framed, loaded.after));
+    EXPECT_FALSE(same_recipe(edited, loaded.after));
+}
+
 }  // namespace
 }  // namespace prism::gui

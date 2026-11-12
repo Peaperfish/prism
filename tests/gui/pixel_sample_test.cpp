@@ -918,4 +918,16 @@ TEST(SampleCache, ClearForgetsTheTraceAndTheBase) {
     EXPECT_EQ(cache.computes(), 1u);  // it counts for ever
 }
 
+TEST(SampleReadout, AFramedPreviewAveragesFramePixels) {
+    // With a frame the preview's pixels stand for the frame's in the file, not the whole file's.
+    const PixelTrace flower = trace_of(one_pixel(0.9f, 0.4f, 0.05f), orange_matrix(), 0, 0);
+    const SampleRows rows = sample_rows(flower, StageId::matrix, {1600, 5980, true});
+    EXPECT_EQ(rows.average,
+              "One preview pixel averages about 3.7\xC3\x97" "3.7 frame pixels, so a small clipped "
+              "highlight can hide in it.");
+    EXPECT_EQ(sample_rows(flower, StageId::matrix, {1600, 5980, false}).average,
+              "One preview pixel averages about 3.7\xC3\x97" "3.7 file pixels, so a small clipped "
+              "highlight can hide in it.");
+}
+
 }  // namespace prism::gui

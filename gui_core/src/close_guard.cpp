@@ -4,6 +4,18 @@
 
 namespace prism::gui {
 
+namespace {
+
+bool same_but_frame_and_strokes(EditSettings a, EditSettings b) {
+    a.frame.reset();
+    b.frame.reset();
+    a.strokes = {};
+    b.strokes = {};
+    return a == b;
+}
+
+}  // namespace
+
 void SavedBaseline::opened(const EditSettings& settings) {
     opened_ = settings;
     exported_.reset();
@@ -25,7 +37,11 @@ bool SavedBaseline::dirty(const EditSettings& current) const {
     if (!exported_ && !recipe_) {
         return !(current == opened_);
     }
-    return !(exported_ && current == *exported_) && !(recipe_ && current == *recipe_);
+    // An export keeps everything, the frame and the strokes too. A recipe never holds those two,
+    // so they don't make it unsaved: CloseState asks about them on their own (has_frame,
+    // has_strokes), whatever was saved.
+    return !(exported_ && current == *exported_) &&
+           !(recipe_ && same_but_frame_and_strokes(current, *recipe_));
 }
 
 CloseStep close_requested(const CloseState& state) noexcept {

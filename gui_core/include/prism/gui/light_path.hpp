@@ -31,6 +31,9 @@ inline constexpr std::string_view clear_strokes = "Clear";
 inline constexpr std::string_view strength = "Strength";  // the label before the Strength slider
 // The widest Strength reads "2.0 stops" (brush_strength_text); the controls line measures it.
 inline constexpr std::string_view widest_strength = "2.0 stops";
+// The Easel line at the top of the path (#58): its name and its button.
+inline constexpr std::string_view easel = "Easel";
+inline constexpr std::string_view frame_button = "Frame";
 }  // namespace light_path_text
 
 // --- Clip marks ----------------------------------------------------------------------------------

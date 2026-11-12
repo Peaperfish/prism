@@ -63,7 +63,8 @@ std::string_view size_estimate_prefix(bool exact) noexcept {
     return exact ? "" : "about ";
 }
 
-std::string export_result_text(const ExportSize& size, const ExportPlan& plan, bool exact) {
+std::string export_result_text(const ExportSize& size, const ExportPlan& plan, bool exact,
+                               bool framed) {
     const std::string at = std::string(size_estimate_prefix(exact)) + times(plan.size);
     if (plan.reduced()) {
         return "Exports at " + at;
@@ -71,11 +72,13 @@ std::string export_result_text(const ExportSize& size, const ExportPlan& plan, b
     if (size.mode == ExportSize::Mode::original) {
         return "Exports at full size, " + at;
     }
-    return "Not smaller than the photo: exports at full size, " + at;
+    return std::string(framed ? "Not smaller than the frame" : "Not smaller than the photo") +
+           ": exports at full size, " + at;
 }
 
-std::string export_original_text(PixelSize file, bool exact) {
-    return "Full size, " + std::string(size_estimate_prefix(exact)) + times(file);
+std::string export_original_text(PixelSize file, bool exact, bool framed) {
+    return std::string(framed ? "Full size of the frame, " : "Full size, ") +
+           std::string(size_estimate_prefix(exact)) + times(file);
 }
 
 }  // namespace prism::gui

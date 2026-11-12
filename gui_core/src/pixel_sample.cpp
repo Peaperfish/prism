@@ -339,7 +339,8 @@ std::string average_text(const SampleScale& scale) {
         return {};
     }
     return "One preview pixel averages about " + number + "×" + number +
-           " file pixels, so a small clipped highlight can hide in it.";
+           (scale.framed ? " frame pixels" : " file pixels") +
+           ", so a small clipped highlight can hide in it.";
 }
 
 }  // namespace

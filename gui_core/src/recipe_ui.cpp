@@ -4,6 +4,7 @@
 #include <utility>
 
 #include "prism/gui/file_types.hpp"
+#include "prism/gui/recipe_settings.hpp"
 #include "prism/utf8_path.hpp"
 
 namespace prism::gui {
@@ -121,10 +122,11 @@ std::string modified_name(std::string_view name) {
 }
 
 std::optional<std::string> recipe_line(const LoadedRecipe& loaded, const EditSettings& current) {
-    if (current == loaded.after) {
+    // Only what a recipe holds: a stroke or a frame made afterwards doesn't modify it (#58).
+    if (same_recipe(current, loaded.after)) {
         return loaded.name;
     }
-    if (current == loaded.before) {
+    if (same_recipe(current, loaded.before)) {
         return std::nullopt;
     }
     return modified_name(loaded.name);

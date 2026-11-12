@@ -28,4 +28,9 @@ void apply_recipe(EditSettings& s, const Recipe& recipe);
 // for the chosen shape (the other one is not saved); the matrix's `from` is its file's name.
 [[nodiscard]] Recipe recipe_from(const EditSettings& s);
 
+// True if `a` and `b` are the same in everything a recipe holds: recipe_from(a) == recipe_from(b).
+// The strokes, the frame and the RAW options don't count, so painting, framing or switching
+// half-size decoding after a recipe was loaded or saved leaves it unmodified (#58).
+[[nodiscard]] bool same_recipe(const EditSettings& a, const EditSettings& b);
+
 }  // namespace prism::gui

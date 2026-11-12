@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "prism/gui/export_size.hpp"
+#include "prism/gui/framing.hpp"
 #include "prism/gui/paper_grade.hpp"
 #include "prism/gui/pixel_sample.hpp"
 #include "prism/gui/stage_controls.hpp"
@@ -267,6 +268,31 @@ constexpr Explanation templates[] = {
     {"dodge_burn.clear", "Take every stroke off the photo.",
      "Removes all the dodging and burning in one undo step. Greyed out when there is none."},
 
+    // --- The easel (#58) ------------------------------------------------------------------------
+    {"easel", "Easel: frames and straightens the print (C).",
+     "It moves no light, so every stage sees only the framed part. Click the line or press C to "
+     "frame; Return, Done, C or Esc leaves and keeps the frame. Not saved in recipes.",
+     LiveKind::frame},
+    {"framing.straighten", "Turns the picture under the blades, −45° to +45°.",
+     "Turns the easel under the enlarger: the picture turns about the frame's centre, and the "
+     "blades close in so no corner runs past the photo's edge.",
+     LiveKind::frame},
+    {"framing.angle", "How far the picture is turned, in words.",
+     "Turning makes each pixel from the 16 around it, in linear light; at 0° no pixel moves. "
+     "Ctrl-click the slider (Cmd-click on Mac) to type one, such as 1.2° anticlockwise."},
+    {"framing.aspect", "The shape the blades keep.",
+     "Corners keep the shape; dragging an edge makes it Free. Each shape follows the photo's "
+     "orientation, and X turns it between landscape and portrait."},
+    {"framing.turn_aspect", "Turns the shape between landscape and portrait (X).",
+     "4:5 becomes 5:4 about the frame's centre, as far as the photo allows."},
+    {"framing.reset", "Upright again, with the largest frame of the shape.",
+     "Back to 0°, and the blades open as far as the chosen shape allows: the whole photo for "
+     "Original and Free. One undo step."},
+    {"framing.done", "Leaves the easel and keeps the frame (Return).",
+     "The framed picture is rendered once, and every stage, the scopes and Sample see only it. "
+     "Esc during a drag cancels just that drag.",
+     LiveKind::frame},
+
     // --- Preferences -------------------------------------------------------------------------
     {"pref.theme", "Light, dark, or follow the system.",
      "The photo canvas stays neutral grey in both so your eyes judge the photo, not the frame."},
@@ -283,7 +309,7 @@ constexpr Explanation templates[] = {
 
 // Ids that have no enum of their own: the controls the window shows beyond the stages, the curve
 // kinds, the scopes and the presets.
-constexpr std::array<std::string_view, 42> other_ids{
+constexpr std::array<std::string_view, 49> other_ids{
     explain::look,         explain::look_reset,   explain::look_view_recipe,
     explain::recipe_load,  explain::recipe_save,
     explain::recipe_loaded, explain::recipe_name, explain::recipe_description,
@@ -298,6 +324,9 @@ constexpr std::array<std::string_view, 42> other_ids{
     explain::pick,
     explain::dodge_burn_switch, explain::dodge_burn_brush, explain::dodge_burn_tone,
     explain::dodge_burn_strength, explain::dodge_burn_clear,
+    explain::easel,        explain::framing_straighten, explain::framing_angle,
+    explain::framing_aspect, explain::framing_turn_aspect, explain::framing_reset,
+    explain::framing_done,
     explain::pref_theme,   explain::pref_size,    explain::pref_panel,  explain::pref_explain,
 };
 
@@ -635,23 +664,40 @@ std::string live_line(std::string_view id, const EditSettings& s, const LiveCont
             }
             const std::string preview = std::to_string(context.preview_long_side);
             const std::string file = std::to_string(context.file_long_side);
+            // With a frame the preview is the framed picture, so it is measured against the frame
+            // in the file, not the whole file.
+            const std::string what = context.measures_frame ? "frame" : "file";
             if (context.preview_long_side >= context.file_long_side && context.file_size_exact) {
-                return "Preview and file are both " + file +
-                       " px on the long side: each preview pixel is one file pixel";
+                return "Preview and " + what + " are both " + file +
+                       " px on the long side: each preview pixel is one " + what + " pixel";
             }
             const double across =
                 file_pixels_across(context.preview_long_side, context.file_long_side);
-            return "Preview " + preview + " px, file " +
+            return "Preview " + preview + " px, " + what + " " +
                    std::string(size_estimate_prefix(context.file_size_exact)) + file +
                    " px on the long side: each preview pixel stands for about " +
-                   printf_string("%.1f", across) + " file pixels across";
+                   printf_string("%.1f", across) + " " + what + " pixels across" +
+                   (context.measures_frame ? ", so a tight frame looks softer here than it exports"
+                                           : "");
         }
         case LiveKind::sample:
             if (context.sample == nullptr) {
                 return {};
             }
             return describe_sample(*context.sample, context.viewed, context.compare,
-                                   {context.preview_long_side, context.file_long_side});
+                                   {context.preview_long_side, context.file_long_side,
+                                    context.measures_frame});
+        case LiveKind::frame: {
+            if (context.file_width <= 0 || context.file_height <= 0) {
+                return {};
+            }
+            const PixelSize file{context.file_width, context.file_height};
+            if (!s.frame) {
+                return "The whole photo, upright: no frame.";
+            }
+            return framing_live_line(framed_export_size(s.frame, file), file, s.frame->angle,
+                                     context.file_size_exact);
+        }
     }
     return {};
 }

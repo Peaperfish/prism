@@ -345,5 +345,40 @@ TEST(CloseGuardStrokes, ThePromptSaysTheyAreLostAndOffersNoRecipe) {
     }
 }
 
+TEST(SavedBaseline, AFrameAfterARecipeSaveIsNotUnsavedButTheCloseStillAsks) {
+    // No recipe holds a frame, so saving one can't save it: the frame isn't "unsaved edits"
+    // against the recipe, and the close prompt asks about it on its own (has_frame), as it does for
+    // strokes (#58).
+    EditSettings s;
+    s.exposure_stops = 0.5f;
+    SavedBaseline b;
+    b.opened(EditSettings{});
+    b.recipe_saved(s, "s.prism");
+    EditSettings framed = s;
+    prism::Frame frame;
+    frame.left = 0.2f;
+    framed.frame = frame;
+    EXPECT_FALSE(b.dirty(framed));
+    CloseState state;
+    state.has_file = true;
+    state.dirty = b.dirty(framed);
+    state.has_frame = framed.frame.has_value();
+    EXPECT_EQ(close_requested(state), CloseStep::ask);
+    const PromptText text = prompt_text(Pending::quit, false, state.has_frame);
+    EXPECT_EQ(text.strokes_note, "Framing isn't saved in recipes and is lost when the photo closes.");
+    // An edit the recipe holds is still unsaved.
+    EditSettings edited = framed;
+    edited.exposure_stops = 1.0f;
+    EXPECT_TRUE(b.dirty(edited));
+    // An export keeps the frame: changing it after one (with no recipe saved) is unsaved.
+    SavedBaseline exported;
+    exported.opened(EditSettings{});
+    exported.exported(framed, "out.jpg");
+    EditSettings moved = framed;
+    moved.frame->left = 0.3f;
+    EXPECT_TRUE(exported.dirty(moved));
+    EXPECT_FALSE(exported.dirty(framed));
+}
+
 }  // namespace
 }  // namespace prism::gui

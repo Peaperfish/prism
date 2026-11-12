@@ -47,6 +47,7 @@ enum class LiveKind {
     recipe,       // which stages the loaded recipe sets (needs the loaded recipe)
     preview_size, // the preview's size against the file's (needs both)
     sample,       // the sampled pixel's readout (needs the trace)
+    frame,        // the frame against the photo and its turn (needs the file's size)
 };
 
 struct PixelTrace;
@@ -130,6 +131,13 @@ inline constexpr std::string_view dodge_burn_brush = "dodge_burn.brush";
 inline constexpr std::string_view dodge_burn_tone = "dodge_burn.tone";  // the canvas's tone chip
 inline constexpr std::string_view dodge_burn_strength = "dodge_burn.strength";
 inline constexpr std::string_view dodge_burn_clear = "dodge_burn.clear";
+inline constexpr std::string_view easel = "easel";
+inline constexpr std::string_view framing_straighten = "framing.straighten";
+inline constexpr std::string_view framing_angle = "framing.angle";
+inline constexpr std::string_view framing_aspect = "framing.aspect";
+inline constexpr std::string_view framing_turn_aspect = "framing.turn_aspect";
+inline constexpr std::string_view framing_reset = "framing.reset";
+inline constexpr std::string_view framing_done = "framing.done";
 inline constexpr std::string_view pref_theme = "pref.theme";
 inline constexpr std::string_view pref_size = "pref.size";
 inline constexpr std::string_view pref_panel = "pref.panel";
@@ -155,6 +163,11 @@ struct LiveContext {
     int preview_long_side = 0;             // the preview's longer side, in pixels; 0 if no photo
     int file_long_side = 0;                // the file's (see Session::file_width)
     bool file_size_exact = true;           // false: file_long_side is an estimate
+    // The preview is the framed picture, and file_long_side the frame's in the file (canvas_measure):
+    // the zoom's and Sample's lines then speak of the frame's pixels, not the file's.
+    bool measures_frame = false;
+    int file_width = 0;   // the file's whole size (Session::file_width), for the frame's live line
+    int file_height = 0;
     const PixelTrace* sample = nullptr;    // the pixel the sampler is reading, if any
     std::optional<Chromaticity> as_shot_white;  // the photo's as-shot light, if the file has one
 };
@@ -169,6 +182,11 @@ struct LiveContext {
 //   curve.gamma at 2.2:        "gamma 2.2: 18% grey becomes 46%"
 //   view.zoom on a 61 MP RAW:  "Preview 2560 px, file 9566 px on the long side: each preview pixel
 //                               stands for about 3.7 file pixels across"
+//   view.zoom, framed:         "Preview 1600 px, frame 5980 px on the long side: each preview pixel
+//                               stands for about 3.7 frame pixels across, so a tight frame looks
+//                               softer here than it exports"
+//   easel with a frame:        "Frame 5120 × 3413 of 6000 × 4000 (73% of the photo), turned 1.2°
+//                               clockwise."
 // Empty for an unknown id and for entries without one.
 [[nodiscard]] std::string live_line(std::string_view id, const EditSettings& settings,
                                     const LiveContext& context = {});

@@ -200,7 +200,8 @@ TEST(FramedEstimatedExportSize, TheSheetMeasuresTheFrameOnTheEstimate) {
     ASSERT_LT(framed.width, 6000);
     const std::string times =
         std::to_string(framed.width) + " \xC3\x97 " + std::to_string(framed.height);
-    EXPECT_EQ(export_original_text(framed, false), "Full size, about " + times);
+    // The sheet says whose size it is: the frame's (#58 §7).
+    EXPECT_EQ(export_original_text(framed, false, true), "Full size of the frame, about " + times);
 
     ExportSize half;
     half.mode = ExportSize::Mode::percent;
@@ -211,7 +212,7 @@ TEST(FramedEstimatedExportSize, TheSheetMeasuresTheFrameOnTheEstimate) {
               prism::long_side_for_percent(framed.width, framed.height, 50));
     const PixelSize reduced =
         prism::downscaled_size(framed.width, framed.height, *plan.long_side);
-    EXPECT_EQ(export_result_text(half, plan, false),
+    EXPECT_EQ(export_result_text(half, plan, false, true),
               "Exports at about " + std::to_string(reduced.width) + " \xC3\x97 " +
                   std::to_string(reduced.height));
 
@@ -224,4 +225,36 @@ TEST(FramedEstimatedExportSize, TheSheetMeasuresTheFrameOnTheEstimate) {
     EXPECT_EQ(prism::gui::framed_export_size(prism::Frame{}, file), file);
     // No size yet (no photo open): nothing to frame.
     EXPECT_EQ(prism::gui::framed_export_size(frame, PixelSize{0, 0}), (PixelSize{0, 0}));
+}
+
+// #58 §7's words for a framed photo, exactly, in all three modes, on an exact size and on a
+// RAW file's estimate.
+TEST(FramedExportSize, TheSheetsWordsForAFrame) {
+    const PixelSize frame{5120, 3413};
+    EXPECT_EQ(export_original_text(frame, true, true), "Full size of the frame, 5120 \xC3\x97 3413");
+    EXPECT_EQ(export_original_text(frame, false, true),
+              "Full size of the frame, about 5120 \xC3\x97 3413");
+    EXPECT_EQ(export_result_text(ExportSize{}, plan_export(ExportSize{}, frame, frame), true, true),
+              "Exports at full size, 5120 \xC3\x97 3413");
+    ExportSize side;
+    side.mode = ExportSize::Mode::long_side;
+    side.long_side = 2048;
+    EXPECT_EQ(export_result_text(side, plan_export(side, frame, frame), true, true),
+              "Exports at 2048 \xC3\x97 1365");
+    EXPECT_EQ(export_result_text(side, plan_export(side, frame, frame), false, true),
+              "Exports at about 2048 \xC3\x97 1365");
+    side.long_side = 9000;
+    EXPECT_EQ(export_result_text(side, plan_export(side, frame, frame), true, true),
+              "Not smaller than the frame: exports at full size, 5120 \xC3\x97 3413");
+    EXPECT_EQ(export_result_text(side, plan_export(side, frame, frame), false, true),
+              "Not smaller than the frame: exports at full size, about 5120 \xC3\x97 3413");
+    ExportSize percent;
+    percent.mode = ExportSize::Mode::percent;
+    percent.percent = 99;
+    EXPECT_EQ(export_result_text(percent, plan_export(percent, {10, 5}, {10, 5}), true, true),
+              "Not smaller than the frame: exports at full size, 10 \xC3\x97 5");
+    // Without a frame, the photo's words as before.
+    EXPECT_EQ(export_original_text(frame), "Full size, 5120 \xC3\x97 3413");
+    EXPECT_EQ(export_result_text(side, plan_export(side, frame, frame)),
+              "Not smaller than the photo: exports at full size, 5120 \xC3\x97 3413");
 }

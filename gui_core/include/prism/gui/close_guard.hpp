@@ -40,8 +40,9 @@ public:
     // A recipe of `settings` was written to `file`.
     void recipe_saved(const EditSettings& settings, std::string file);
 
-    // Clean if `current` equals the last export or the last recipe save, or, while nothing has
-    // been saved, the settings at open. Each kind keeps its own state, so an export that
+    // Clean if `current` equals the last export, or the last recipe save but for the frame and the
+    // strokes (no recipe holds them; CloseState asks about them on their own), or, while nothing
+    // has been saved, the settings at open. Each kind keeps its own state, so an export that
     // finishes after a recipe was saved leaves both clean.
     [[nodiscard]] bool dirty(const EditSettings& current) const;
     // The save that happened last, of either kind; nothing since the photo was opened.

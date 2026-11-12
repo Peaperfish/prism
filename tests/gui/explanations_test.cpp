@@ -634,6 +634,8 @@ TEST(LiveLines, LiveLinesHaveNoPlaceholdersAndUseTheTimesSign) {
     context.recipe = &loaded;
     context.preview_long_side = 2560;
     context.file_long_side = 9566;
+    context.file_width = 9566;
+    context.file_height = 6374;
     Image pixel;
     pixel.width = 1;
     pixel.height = 1;
@@ -885,6 +887,47 @@ TEST(Explanations, DodgeAndBurnExplainsTheRowItsSwitchBrushStrengthAndClear) {
     const std::string_view row = explanation_for(explain_id(StageId::dodge_burn))->detail;
     EXPECT_NE(row.find("enlarger"), std::string_view::npos);
     EXPECT_NE(row.find("stops"), std::string_view::npos);
+}
+
+TEST(LiveLines, AFramedPreviewIsMeasuredAgainstTheFrame) {
+    // With a frame the preview is the framed picture: its pixels stand for the frame's, and a tight
+    // frame previews softer than it exports (#58, open question 2).
+    LiveContext context;
+    context.preview_long_side = 1600;
+    context.file_long_side = 5980;
+    context.measures_frame = true;
+    EXPECT_EQ(live_line(explain::view_zoom, EditSettings{}, context),
+              "Preview 1600 px, frame 5980 px on the long side: each preview pixel stands for about "
+              "3.7 frame pixels across, so a tight frame looks softer here than it exports");
+    context.file_size_exact = false;
+    EXPECT_EQ(live_line(explain::view_zoom, EditSettings{}, context),
+              "Preview 1600 px, frame about 5980 px on the long side: each preview pixel stands for "
+              "about 3.7 frame pixels across, so a tight frame looks softer here than it exports");
+    context.file_size_exact = true;
+    context.file_long_side = 1600;
+    EXPECT_EQ(live_line(explain::view_zoom, EditSettings{}, context),
+              "Preview and frame are both 1600 px on the long side: each preview pixel is one frame "
+              "pixel");
+}
+
+TEST(LiveLines, TheEaselSaysTheFrameAgainstThePhoto) {
+    LiveContext context;
+    context.file_width = 6000;
+    context.file_height = 4000;
+    EditSettings s;
+    EXPECT_EQ(live_line(explain::easel, s, context), "The whole photo, upright: no frame.");
+    prism::Frame frame;
+    frame.left = 0.25f;
+    frame.right = 0.75f;
+    s.frame = frame;
+    EXPECT_EQ(live_line(explain::easel, s, context),
+              "Frame 3000 \xC3\x97 4000 of 6000 \xC3\x97 4000 (50% of the photo), upright.");
+    context.file_size_exact = false;
+    EXPECT_EQ(live_line(explain::framing_done, s, context),
+              "Frame about 3000 \xC3\x97 4000 of about 6000 \xC3\x97 4000 (50% of the photo), "
+              "upright.");
+    // No photo: nothing to say.
+    EXPECT_EQ(live_line(explain::easel, s, LiveContext{}), "");
 }
 
 }  // namespace
