@@ -209,13 +209,14 @@ TEST(Frame, PreviewAndFullSizeFrameTheSamePartWithinOnePixel) {
 // --- Threads -------------------------------------------------------------------------------------
 
 TEST(Frame, OneAndEightThreadsAreBitIdentical) {
-    constexpr int W = 1501;
-    constexpr int H = 701;  // 1,052,201 pixels: just over parallel_min_pixels
+    constexpr int W = 2400;
+    constexpr int H = 1400;
     const Image img = patterned(W, H);
-    // The whole photo, not fitted, so the framed image is 1501 x 701 at every angle and really is
+    // The whole photo, not fitted, so the framed image is 2400 x 1400 at every angle and really is
     // split across threads (apply_frame decides by the framed image's size).
-    ASSERT_GE(static_cast<std::size_t>(W) * H, prism::parallel_min_pixels);
-    ASSERT_EQ(prism::threads_for_pixels(static_cast<std::size_t>(W) * H, 8), 8);
+    const std::size_t whole_pixels = static_cast<std::size_t>(W) * static_cast<std::size_t>(H);
+    ASSERT_GE(whole_pixels, prism::parallel_min_pixels * 3 / 2);
+    ASSERT_EQ(prism::threads_for_pixels(whole_pixels, 8), 8);
     for (const float angle : {-45.0f, -17.3f, -0.1f, 0.1f, 2.5f, 33.3f, 45.0f}) {
         const Frame f = frame_of(angle, 0, 0, 1, 1);
         const Image one = prism::apply_frame(img, f, 1);
@@ -224,10 +225,17 @@ TEST(Frame, OneAndEightThreadsAreBitIdentical) {
         ASSERT_EQ(one.height, H);
         EXPECT_EQ(first_bit_difference(one, eight), -1) << "angle " << angle;
     }
-    // A fitted frame (smaller, an offset box) for good measure.
+    // A fitted frame (smaller, an offset box), still well above 1.5x parallel_min_pixels after
+    // fitting so apply_frame runs multi-threaded on it too.
     Frame f = frame_of(7.0f, 0.1f, 0.05f, 0.95f, 0.9f);
     f = prism::fit_frame(f, W, H);
-    EXPECT_EQ(first_bit_difference(prism::apply_frame(img, f, 1), prism::apply_frame(img, f, 8)), -1);
+    const Image fitted_one = prism::apply_frame(img, f, 1);
+    const Image fitted_eight = prism::apply_frame(img, f, 8);
+    const std::size_t fitted_pixels =
+        static_cast<std::size_t>(fitted_one.width) * static_cast<std::size_t>(fitted_one.height);
+    ASSERT_GE(fitted_pixels, prism::parallel_min_pixels * 3 / 2);
+    ASSERT_EQ(prism::threads_for_pixels(fitted_pixels, 8), 8);
+    EXPECT_EQ(first_bit_difference(fitted_one, fitted_eight), -1);
 }
 
 // --- Values --------------------------------------------------------------------------------------
@@ -878,16 +886,26 @@ TEST(Frame, FrameAndReduceFramesFirstThenReduces) {
 }
 
 TEST(Frame, FrameAndReduceOneAndEightThreadsAreBitIdentical) {
-    constexpr int W = 1501;
-    constexpr int H = 701;
+    constexpr int W = 2400;
+    constexpr int H = 1600;
     const Image img = patterned(W, H);
     const Frame f = frame_of(-4.0f, 0.02f, 0.03f, 0.97f, 0.98f);
-    for (const std::optional<int> side : {std::optional<int>{}, std::optional<int>{700}}) {
+    for (const std::optional<int> side : {std::optional<int>{}, std::optional<int>{1600}}) {
         const prism::FramedExport one = prism::frame_and_reduce(img, f, side, 1);
         const prism::FramedExport eight = prism::frame_and_reduce(img, f, side, 8);
         ASSERT_TRUE(one.frame.fitted.has_value());
         ASSERT_EQ(one.image.width, eight.image.width);
         ASSERT_EQ(one.image.height, eight.image.height);
+        const std::size_t out_pixels =
+            static_cast<std::size_t>(one.image.width) * static_cast<std::size_t>(one.image.height);
+        ASSERT_GE(out_pixels, prism::parallel_min_pixels * 3 / 2);
+        ASSERT_EQ(prism::threads_for_pixels(out_pixels, 8), 8);
+        ASSERT_EQ(eight.frame_threads, 8);
+        if (side) {
+            ASSERT_TRUE(one.reduced);
+            ASSERT_TRUE(eight.reduced);
+            ASSERT_EQ(eight.reduce_threads, 8);
+        }
         EXPECT_EQ(first_bit_difference(one.image, eight.image), -1);
     }
 }

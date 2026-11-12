@@ -293,15 +293,17 @@ TEST(FramedField, ReducedTurnedGridPutsPixelsAtHalfPlusIndexTimesScale) {
 
 // --- 7: threads.
 
-// Dodge & burn on a 1501 x 701 framed image, turned -30 degrees and reduced: 1 and 8 threads give
+// Dodge & burn on a 1601 x 1001 framed image, turned -30 degrees and reduced: 1 and 8 threads give
 // the same bits, and both equal the field rasterised in one go and handed to the stage. 8 threads
 // split the rows into 8 chunks, each rasterised 64 rows at a time from its own start.
 TEST(FramedField, OneAndEightThreadsAreBitIdenticalOnATurnedGrid) {
-    constexpr int W = 3000;
-    constexpr int H = 2000;
-    constexpr int GW = 1501;
-    constexpr int GH = 701;
-    ASSERT_EQ(prism::threads_for_pixels(static_cast<std::size_t>(GW) * GH, 8), 8);
+    constexpr int W = 4500;
+    constexpr int H = 3000;
+    constexpr int GW = 1601;
+    constexpr int GH = 1001;
+    const std::size_t grid_pixels = static_cast<std::size_t>(GW) * static_cast<std::size_t>(GH);
+    ASSERT_GE(grid_pixels, prism::parallel_min_pixels * 3 / 2);
+    ASSERT_EQ(prism::threads_for_pixels(grid_pixels, 8), 8);
     Frame frame = turned(-30.0f);
     frame.left = 0.05f;
     frame.right = 0.95f;
@@ -309,7 +311,10 @@ TEST(FramedField, OneAndEightThreadsAreBitIdenticalOnATurnedGrid) {
     frame.bottom = 0.8f;
     frame = prism::fit_frame(frame, W, H);
     const prism::PixelSize size = prism::framed_size(frame, W, H);
+    ASSERT_GE(static_cast<std::size_t>(size.width) * static_cast<std::size_t>(size.height),
+              prism::parallel_min_pixels * 3 / 2);
     const float scale = static_cast<float>(size.width) / GW;
+    ASSERT_GT(scale, 1.0f);
     const PixelGrid g = PixelGrid::framed(frame, W, H, scale, GW, GH);
     prism::LocalExposure local;
     local.field = sample_field(prism::aspect_of(W, H));
