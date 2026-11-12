@@ -571,7 +571,7 @@ TEST_F(CliBatch, LongSideNamesEveryOutputWithTheSizeAndShrinksWhatIsLarger) {
     // The note is only for the photo that was not larger, and goes with its own name.
     const std::string output = r.output;
     EXPECT_TRUE(contains(output, "note: " + tiny.string() +
-                                     " is 6x4, not larger than --long-side 20; kept its size\n"))
+                                     " is 6 × 4, not larger than --long-side 20; kept its size\n"))
         << output;
     EXPECT_EQ(output.find("note:"), output.rfind("note:")) << "one note only: " << output;
     EXPECT_TRUE(contains(output, "3 of 3 photos written.\n")) << output;

@@ -452,7 +452,7 @@ TEST(Cli, LongSideNotSmallerKeepsTheSizeAndSaysSo) {
         const RunResult r = run_prism(quoted(input) + " -o " + quoted(output) + " --exposure 1" +
                                       " --long-side " + std::to_string(side));
         ASSERT_EQ(r.exit_code, 0) << r.output;
-        const std::string expected_note = "note: " + input.string() + " is 8x6, not larger than " +
+        const std::string expected_note = "note: " + input.string() + " is 8 × 6, not larger than " +
                                           "--long-side " + std::to_string(side) +
                                           "; kept its size\n";
         EXPECT_TRUE(contains(plain(r.output), expected_note)) << r.output;
@@ -658,7 +658,7 @@ TEST(CliWhiteBalance, BadValuesAreUsageErrors) {
     for (const char* bad : {"101", "-101", "abc", "", "inf"}) {
         const RunResult r = run_prism(base + "--tint \"" + bad + "\"");
         EXPECT_EQ(r.exit_code, 2) << "--tint '" << bad << "': " << r.output;
-        EXPECT_TRUE(contains(r.output, "--tint needs a number from -100 to 100")) << r.output;
+        EXPECT_TRUE(contains(r.output, "--tint needs a number from −100 to 100")) << r.output;
     }
     for (const char* flag : {"--kelvin", "--tint"}) {
         const RunResult r = run_prism(base + flag);
@@ -702,6 +702,7 @@ TEST(CliWhiteBalance, HelpDescribesTheFlags) {
     EXPECT_EQ(r.exit_code, 0) << r.output;
     EXPECT_TRUE(contains(r.output, "--kelvin <K>")) << r.output;
     EXPECT_TRUE(contains(r.output, "--tint <n>")) << r.output;
+    EXPECT_TRUE(contains(r.output, "−100 to 100")) << r.output;
 }
 
 // Runs only with PRISM_TEST_RAW set; see raw_test.cpp. A RAW file's edit is relative to its own
@@ -853,7 +854,7 @@ TEST(CliFrame, TheFrameComesBeforeTheReductionAndLongSideMeasuresTheFramedPhoto)
     ASSERT_EQ(kept.run.exit_code, 0) << kept.run.output;
     EXPECT_EQ(kept.image.width, 72);
     EXPECT_EQ(kept.image.height, 48);
-    EXPECT_TRUE(contains(kept.run.output, "is 72x48, not larger than --long-side 80; kept its size"))
+    EXPECT_TRUE(contains(kept.run.output, "is 72 × 48, not larger than --long-side 80; kept its size"))
         << kept.run.output;
     // Original is the framed size too, and --time puts "frame" between load and "resize".
     const FramedRun timed = run_framed(input, "--crop 0.1,0.1,0.9,0.9 --long-side 36 --time");
@@ -945,12 +946,12 @@ TEST(CliFrame, BadValuesAreUsageErrorsWithAClearMessage) {
         const char* message;
     } cases[] = {
         // --rotate: a number from -45 to 45.
-        {"--rotate 46", "error: --rotate needs a number from -45 to 45, got '46'\n"},
-        {"--rotate -45.5", "error: --rotate needs a number from -45 to 45, got '-45.5'\n"},
-        {"--rotate abc", "error: --rotate needs a number from -45 to 45, got 'abc'\n"},
-        {"--rotate \"\"", "error: --rotate needs a number from -45 to 45, got ''\n"},
-        {"--rotate nan", "error: --rotate needs a number from -45 to 45, got 'nan'\n"},
-        {"--rotate 1.5x", "error: --rotate needs a number from -45 to 45, got '1.5x'\n"},
+        {"--rotate 46", "error: --rotate needs a number from −45 to 45, got '46'\n"},
+        {"--rotate -45.5", "error: --rotate needs a number from −45 to 45, got '-45.5'\n"},
+        {"--rotate abc", "error: --rotate needs a number from −45 to 45, got 'abc'\n"},
+        {"--rotate \"\"", "error: --rotate needs a number from −45 to 45, got ''\n"},
+        {"--rotate nan", "error: --rotate needs a number from −45 to 45, got 'nan'\n"},
+        {"--rotate 1.5x", "error: --rotate needs a number from −45 to 45, got '1.5x'\n"},
         // --crop: four numbers.
         {"--crop 1,2",
          "error: --crop needs four numbers from 0 to 1, left,top,right,bottom, got '1,2'\n"},
@@ -1112,7 +1113,9 @@ TEST(CliFrame, HelpDescribesTheFrameFlags) {
     const RunResult r = run_prism("--help");
     EXPECT_EQ(r.exit_code, 0) << r.output;
     const std::string help = plain(r.output);
+    EXPECT_TRUE(contains(help, " — command-line photo tool\n")) << help;
     EXPECT_TRUE(contains(help, "--rotate <degrees>")) << help;
+    EXPECT_TRUE(contains(help, "−45°\n                      to 45°")) << help;
     EXPECT_TRUE(contains(help, "--crop <l,t,r,b>")) << help;
     EXPECT_TRUE(contains(help, "--aspect <shape>")) << help;
     EXPECT_TRUE(contains(help,
@@ -1121,4 +1124,7 @@ TEST(CliFrame, HelpDescribesTheFrameFlags) {
                          "4:5 is tall and 5:4 wide on any photo"))
         << help;
     EXPECT_TRUE(contains(help, "\n  Frames are not part of a recipe")) << help;
+    EXPECT_TRUE(contains(help, "with this 3×3")) << help;
+    EXPECT_TRUE(contains(help, "apply a 3×3 colour matrix")) << help;
+    EXPECT_TRUE(contains(help, "stops of light to add (positive) or take away (negative)")) << help;
 }

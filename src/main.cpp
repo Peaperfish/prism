@@ -36,7 +36,7 @@
 namespace {
 
 void print_usage(const char* program) {
-    std::cerr << "prism " << prism::version() << " - command-line photo tool\n"
+    std::cerr << "prism " << prism::version() << " — command-line photo tool\n"
               << "\n"
               << "Usage: " << program
               << " <input>... [-o <output> | --out-dir <dir>] [--histogram <file>] [options]\n"
@@ -52,8 +52,8 @@ void print_usage(const char* program) {
               << "  --format jpg|png    what --out-dir writes: JPEG (the default) or PNG\n"
               << "\n"
               << "Frame (applied first of all, right after loading, before --long-side):\n"
-              << "  --rotate <degrees>  straighten the photo by turning it about its centre, -45 to\n"
-              << "                      45: positive turns the picture clockwise. The frame is\n"
+              << "  --rotate <degrees>  straighten the photo by turning it about its centre, −45°\n"
+              << "                      to 45°: positive turns the picture clockwise. The frame is\n"
               << "                      made smaller as needed so no corner shows (a note says so)\n"
               << "  --crop <l,t,r,b>    keep this part of the photo: left, top, right and bottom\n"
               << "                      edges as fractions from 0 to 1 of the photo's width and\n"
@@ -75,21 +75,21 @@ void print_usage(const char* program) {
               << "\n"
               << "RAW input:\n"
               << "  --raw-half                  decode at half size (much faster; for previews)\n"
-              << "  --raw-camera-matrix <file>  convert camera RGB to linear sRGB with this 3x3\n"
+              << "  --raw-camera-matrix <file>  convert camera RGB to linear sRGB with this 3×3\n"
               << "                              matrix instead of LibRaw's built-in one\n"
               << "\n"
               << "Options (always applied in this order, whatever order you type them):\n"
               << "  --recipe <file>     apply a recipe (.prism file); each option below that you\n"
               << "                      also give replaces that stage of the recipe\n"
-              << "  --exposure <stops>  brighten (+) or darken (-) by this many stops\n"
+              << "  --exposure <stops>  stops of light to add (positive) or take away (negative)\n"
               << "  --kelvin <K>        the light the photo was lit by, 2000 to 15000: higher is\n"
               << "                      warmer. For RAW the edit is relative to the camera's as-shot\n"
               << "                      light; for other photos 6500 changes nothing\n"
-              << "  --tint <n>          green-magenta tint of that light, -100 to 100: positive (a\n"
+              << "  --tint <n>          green-magenta tint of that light, −100 to 100: positive (a\n"
               << "                      greener light) is more magenta; for photos without an as-shot\n"
               << "                      light 0 changes nothing. Either of --kelvin and --tint alone\n"
               << "                      keeps the other as shot\n"
-              << "  --matrix <file>     apply a 3x3 colour matrix (9 numbers, row-major)\n"
+              << "  --matrix <file>     apply a 3×3 colour matrix (9 numbers, row-major)\n"
               << "  --saturation <s>    scale colourfulness around each pixel's luminance\n"
               << "                      (1 = unchanged, 0 = greyscale; 0 to 10)\n"
               << "  --contrast <c>      S-curve around middle grey, in stops (1 = unchanged;\n"
@@ -168,9 +168,18 @@ float parse_ranged(const std::string& text, std::string_view flag, double min, d
     const double value = std::strtod(text.c_str(), &end);
     if (text.empty() || end != text.c_str() + text.size() || errno == ERANGE ||
         !std::isfinite(value) || value < min || value > max) {
+        const auto bound = [](double v) {
+            std::ostringstream s;
+            if (v < 0) {
+                s << "−" << -v;
+            } else {
+                s << v;
+            }
+            return s.str();
+        };
         std::ostringstream message;
-        message << flag << " needs a number from " << min << " to " << max << ", got '" << text
-                << "'";
+        message << flag << " needs a number from " << bound(min) << " to " << bound(max)
+                << ", got '" << text << "'";
         throw UsageError(message.str());
     }
     return static_cast<float>(value);
@@ -619,7 +628,7 @@ void run_one(const std::string& input, const std::optional<std::string>& output,
         if (framed.reduced) {
             timer.add("resize", framed.reduce_ms, framed.reduce_threads);
         } else {
-            std::cerr << "note: " << input << " is " << framed.frame.size.width << 'x'
+            std::cerr << "note: " << input << " is " << framed.frame.size.width << " × "
                       << framed.frame.size.height << ", not larger than --long-side " << *long_side
                       << "; kept its size\n";
         }

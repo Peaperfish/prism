@@ -179,7 +179,7 @@ Only the display is new. What Prism stores, and what the engine uses, is still t
 | Row | You can type | Meaning |
 |---|---|---|
 | Exposure | `1.5`, `+1.5` or `1.5 stops` | +1.50 stops |
-| Exposure | `-0.5`, `−0.5` (with a true minus sign) or `-0.5 stops` | -0.50 stops |
+| Exposure | `-0.5`, `−0.5` (with a true minus sign) or `-0.5 stops` | −0.50 stops |
 | Exposure | `1 stop` | +1.00 stops |
 | White balance, Kelvin | `5200`, `5200 K`, `5200K` or `5 200` | 5200 K (to the nearest 10 K) |
 | White balance, Tint | `10`, `+10`, `-10` or `−10` | tint +10, or −10 |

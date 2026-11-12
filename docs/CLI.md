@@ -44,7 +44,7 @@ Apply the edit in a recipe file (`.prism`, described in [RECIPES.md](RECIPES.md)
 
 ### `--exposure <stops>`
 
-Brighten (`+`) or darken (`-`) by this many stops. Every value is multiplied by 2 to the power of the stops, in linear light: `+1` doubles the light, `-1` halves it, `+0.5` is about 1.4×. Any finite number is accepted. Default: not applied.
+Add (positive) or take away (negative) this many stops of light. Every value is multiplied by 2 to the power of the stops, in linear light: `+1` doubles the light, `-1` halves it, `+0.5` is about 1.4×. Any finite number is accepted. Default: not applied.
 
 ### `--kelvin <K>`
 
@@ -60,7 +60,7 @@ Apply a 3×3 colour matrix, in linear light, after exposure. The file holds 9 nu
 
 ### `--saturation <s>`
 
-Scale each pixel's colourfulness around its own luminance. `1` leaves the image as it is, `0` makes it greyscale, `2` doubles the distance from grey. Brightness and hue are kept, and a colour that would go below zero stops at the most saturated colour sRGB can show. Accepts 0 to 10. The maths is in the README: [Saturation and contrast](../README.md#saturation-and-contrast). Default: not applied (same as 1).
+Scale each pixel's colourfulness around its own luminance. `1` leaves the image as it is, `0` makes it greyscale, `2` doubles the distance from grey. Luminance (each pixel's share of white's light) and hue are kept, and a colour that would go below zero stops at the most saturated colour sRGB can show. Accepts 0 to 10. The maths is in the README: [Saturation and contrast](../README.md#saturation-and-contrast). Default: not applied (same as 1).
 
 ### `--contrast <c>`
 
@@ -93,7 +93,7 @@ The file format follows the extension (`.png`, `.jpg`, `.jpeg`). The histogram i
 Straighten the photo by turning it about its centre, by a decimal number from −45 to 45 degrees (`0`, `1.2`, `-0.8`, `+1.5`). Positive turns the picture clockwise on screen; negative turns it anticlockwise. A value outside −45 to 45, or text that is not a finite number, is a usage error (exit code 2):
 
 ```
-error: --rotate needs a number from -45 to 45, got '46'
+error: --rotate needs a number from −45 to 45, got '46'
 ```
 
 Turning the photo closes the blades in as needed (keeping the shape) so that no corner of the frame runs past the photo's edge. When fitting makes the frame smaller than what you asked for, `prism` prints a note on stderr with the final pixel size, as for a 6000 × 4000 photo turned by `1.2` degrees:
@@ -151,7 +151,7 @@ The reduction happens right after decoding and before exposure, with the same ar
 Smaller only: Prism never enlarges. A photo whose longer side is not larger than `<pixels>` keeps its size, and `prism` says so on stderr, as in:
 
 ```
-note: IMG_0042.jpg is 1600x1067, not larger than --long-side 2048; kept its size
+note: IMG_0042.jpg is 1600 × 1067, not larger than --long-side 2048; kept its size
 ```
 
 The note is not an error: the photo is still written and the exit code is unaffected. The name suffix described under `--out-dir` is added for every input of a batch, noted or not. A name you give yourself with `-o` is used as it is. Default: not applied.

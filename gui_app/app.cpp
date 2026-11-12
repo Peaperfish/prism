@@ -380,7 +380,7 @@ void App::open_now(const fs::path& path) {
     sample_pin_trace_.clear();
     sample_hover_trace_.clear();
     explain_last_.clear();
-    SDL_SetWindowTitle(window_, ("Prism - " + file_name(path)).c_str());
+    SDL_SetWindowTitle(window_, ("Prism — " + file_name(path)).c_str());
 }
 
 void App::show_open_dialog() {
