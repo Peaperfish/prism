@@ -17,6 +17,7 @@
 #include "imgui_internal.h"
 #include "light_path.hpp"
 #include "prism/gui/explanations.hpp"
+#include "prism/gui/framing.hpp"
 #include "prism/gui/layout.hpp"
 #include "prism/gui/light_path.hpp"
 #include "prism/gui/paper_grade.hpp"
@@ -96,6 +97,7 @@ protected:
         cb.toggle_brush = [this] { ++brush_toggles_; };
         cb.brush_strength = [this](float v) { strength_calls_.push_back(v); };
         cb.clear_strokes = [this] { ++clears_; };
+        cb.toggle_framing = [this] { ++framing_toggles_; };
         cb.set_compare = [this](std::optional<gui::StageId> s) { compares_.push_back(s); };
         cb.swap_compare = [this] { ++swaps_; };
         const auto note = [this](std::string_view id) {
@@ -148,6 +150,10 @@ protected:
         data.brush_on = brush_on_;
         data.brush_available = brush_available_;
         data.brush_hint = "The brush hint.";
+        data.easel_value = easel_value_;
+        data.framing = framing_;
+        data.easel_available = easel_available_;
+        data.easel_rect = &easel_;
         const std::vector<LightPathRowRect> rects = draw_light_path(data, callbacks());
         bottom_ = ImGui::GetCursorScreenPos().y;
         ImGui::End();
@@ -346,6 +352,11 @@ protected:
     int brush_toggles_ = 0;
     std::vector<float> strength_calls_;
     int clears_ = 0;
+    std::string easel_value_ = "Whole photo";
+    bool framing_ = false;
+    bool easel_available_ = true;
+    int framing_toggles_ = 0;
+    LightPathData::Rect easel_{};
 
     struct SliderCall {
         gui::SimpleControl control;
@@ -853,7 +864,7 @@ TEST_F(LightPathHeadless, TheCompareActionOpensAPopupThatChooses) {
     viewed_ = gui::StageId::contrast;
     // The action is at the header's right end: find it from the first row, above it.
     std::vector<LightPathRowRect> rects = frame();
-    const ImVec2 action(rects.front().max.x - 12.0f, rects.front().min.y - 12.0f);
+    const ImVec2 action(rects.front().max.x - 12.0f, easel_.min.y - 12.0f);
     click_at(action);
     EXPECT_TRUE(viewed_calls_.empty());
     ImGuiWindow* popup = nullptr;
@@ -875,7 +886,7 @@ TEST_F(LightPathHeadless, TheCompareActionOpensAPopupThatChooses) {
 TEST_F(LightPathHeadless, SwapSidesIsOfferedOnlyWhileComparing) {
     viewed_ = gui::StageId::contrast;
     std::vector<LightPathRowRect> rects = frame();
-    const ImVec2 action(rects.front().max.x - 12.0f, rects.front().min.y - 12.0f);
+    const ImVec2 action(rects.front().max.x - 12.0f, easel_.min.y - 12.0f);
     const auto press_swap = [&] {
         click_at(action);
         frame();
@@ -917,7 +928,7 @@ TEST_F(LightPathHeadless, DodgeAndBurnHasARowAfterExposureAndAnEntryInTheCompare
         ASSERT_GE(rects.size(), 3u);
         EXPECT_EQ(rects[1].stage, gui::StageId::exposure);
         EXPECT_EQ(rects[2].stage, gui::StageId::dodge_burn);
-        const ImVec2 action(rects.front().max.x - 12.0f, rects.front().min.y - 12.0f);
+        const ImVec2 action(rects.front().max.x - 12.0f, easel_.min.y - 12.0f);
         click_at(action);
         frame();
         // The header's Compare action, then every entry of the popup (Off and a stage each)
@@ -1871,6 +1882,119 @@ TEST_F(MinimumWidthHeadless, TheWhiteBalanceValuesLineUpWhateverTheyRead) {
     }
     for (const float room : tint_rooms) {
         EXPECT_EQ(room, kelvin_rooms[0]);
+    }
+}
+
+// --- The Easel line (#58) ------------------------------------------------------------------------
+
+// The Light path panel, looked at for its Easel line.
+class EaselLineHeadless : public LightPathHeadless {};
+
+TEST_F(EaselLineHeadless, TheLineIsBetweenTheHeaderAndTheFirstRowAndAlwaysTheSameHeight) {
+    const std::vector<LightPathRowRect> first = frame();
+    EXPECT_FLOAT_EQ(easel_.max.y - easel_.min.y, easel_line_height());
+    EXPECT_FLOAT_EQ(easel_.max.y, first.front().min.y);
+    EXPECT_EQ(first.front().stage, gui::StageId::decode);  // not a stage: Decode is still first
+    const LightPathData::Rect line = easel_;
+    // Whatever it says, framing or not, with a photo or without: nothing moves.
+    for (const char* value : {"4:5 \xC2\xB7 1.2\xC2\xB0 clockwise", "Free \xC2\xB7 about 5120 \xC3\x97 3413",
+                              "Whole photo"}) {
+        for (const bool framing : {false, true}) {
+            for (const bool available : {true, false}) {
+                easel_value_ = value;
+                framing_ = framing;
+                easel_available_ = available;
+                frame();
+                const std::vector<LightPathRowRect> rects = frame();
+                EXPECT_FLOAT_EQ(easel_.min.y, line.min.y);
+                EXPECT_FLOAT_EQ(easel_.max.y, line.max.y);
+                ASSERT_EQ(rects.size(), first.size());
+                for (std::size_t r = 0; r < rects.size(); ++r) {
+                    EXPECT_FLOAT_EQ(rects[r].min.y, first[r].min.y) << value;
+                    EXPECT_FLOAT_EQ(rects[r].max.y, first[r].max.y) << value;
+                }
+            }
+        }
+    }
+}
+
+TEST_F(EaselLineHeadless, APressOnTheLineOrItsButtonTogglesFramingAndViewsNoStage) {
+    frame();
+    const float middle_y = (easel_.min.y + easel_.max.y) * 0.5f;
+    // On its name.
+    click_at(ImVec2(easel_.min.x + std::round(mock(27.0f)) + 4.0f, middle_y));
+    EXPECT_EQ(framing_toggles_, 1);
+    // On the Frame button at its right end.
+    click_at(ImVec2(easel_.max.x - std::round(mock(8.0f)) - 6.0f, middle_y));
+    EXPECT_EQ(framing_toggles_, 2);
+    // Its empty middle.
+    click_at(ImVec2((easel_.min.x + easel_.max.x) * 0.5f, middle_y));
+    EXPECT_EQ(framing_toggles_, 3);
+    EXPECT_TRUE(viewed_calls_.empty());
+    EXPECT_TRUE(compares_.empty());
+    EXPECT_TRUE(switches_.empty());
+}
+
+TEST_F(EaselLineHeadless, WithoutAPhotoAPressDoesNothing) {
+    easel_available_ = false;
+    frame();
+    const float middle_y = (easel_.min.y + easel_.max.y) * 0.5f;
+    click_at(ImVec2((easel_.min.x + easel_.max.x) * 0.5f, middle_y));
+    click_at(ImVec2(easel_.max.x - std::round(mock(8.0f)) - 6.0f, middle_y));
+    EXPECT_EQ(framing_toggles_, 0);
+    EXPECT_TRUE(viewed_calls_.empty());
+}
+
+TEST_F(EaselLineHeadless, ItExplainsItselfAndIsNotInTheComparePopup) {
+    frame();
+    EXPECT_EQ(ids_.count(std::string(gui::explain::easel)), 1u);
+    ASSERT_NE(gui::explanation_for(gui::explain::easel), nullptr);
+    // The Compare popup lists Off, the stages and Swap sides: no Easel.
+    viewed_ = gui::StageId::contrast;
+    std::vector<LightPathRowRect> rects = frame();
+    click_at(ImVec2(rects.front().max.x - 12.0f, easel_.min.y - 12.0f));
+    frame();
+    ImGuiWindow* popup = ImGui::GetCurrentContext()->OpenPopupStack.empty()
+                             ? nullptr
+                             : ImGui::GetCurrentContext()->OpenPopupStack.back().Window;
+    ASSERT_NE(popup, nullptr);
+    const float item = ImGui::GetFontSize() + ImGui::GetStyle().ItemSpacing.y;
+    // Off, Original, then a row per stage after Decode, then Swap sides.
+    const int stages = static_cast<int>(std::count_if(
+        gui::pipeline_stages().begin(), gui::pipeline_stages().end(),
+        [](const gui::StageInfo& st) { return !st.hidden; }));
+    EXPECT_LT(popup->ContentSize.y, item * static_cast<float>(stages + 3));
+}
+
+TEST_F(MinimumWidthHeadless, TheEaselsWidestValuesAreDrawnWholeAtTheMinimumWidth) {
+    for (const float scale : {1.0f, 1.5f, 2.0f}) {
+        apply_style(gui::Theme::dark, scale);
+        ImGui::NewFrame();
+        width_ = light_path_min_width();
+        ImGui::EndFrame();
+        fits_seen_.clear();
+        for (const prism::Aspect aspect : prism::all_aspects) {
+            for (const float angle : {0.0f, -44.95f, 44.95f, -0.04f}) {
+                for (const bool exact : {true, false}) {
+                    prism::Frame f;
+                    f.aspect = aspect;
+                    f.angle = angle;
+                    easel_value_ = gui::easel_value(f, {65535, 65535}, exact);
+                    run_case();
+                }
+            }
+        }
+        int easel_fits = 0;
+        for (const TextFit& fit : fits_seen_) {
+            if (fit.what == "Easel value") {
+                ++easel_fits;
+                EXPECT_TRUE(fit.whole()) << scale << " '" << fit.text << "' drawn as '" << fit.shown
+                                         << "', " << fit.width << " wide in " << fit.room;
+            }
+        }
+        EXPECT_GT(easel_fits, 0) << scale;
+        EXPECT_TRUE(seen("Easel value", "Original \xC2\xB7 about 65535 \xC3\x97 65535")) << scale;
+        EXPECT_TRUE(seen("Easel value", "Original \xC2\xB7 under 0.1\xC2\xB0 anticlockwise")) << scale;
     }
 }
 

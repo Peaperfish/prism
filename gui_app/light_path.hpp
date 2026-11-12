@@ -54,6 +54,17 @@ struct LightPathData {
     bool brush_on = false;         // Brush mode is on: Dodge & burn's Brush button is pressed in
     bool brush_available = true;   // false: the button is greyed out, and says why
     std::string brush_hint;
+    // The Easel line above the stages (#58): its value (gui::easel_value), whether framing is on
+    // (its Frame button is pressed in), and whether it can begin (a photo is open).
+    std::string easel_value = "Whole photo";
+    bool framing = false;
+    bool easel_available = true;
+    // For the tests: when set, where the Easel line was drawn.
+    struct Rect {
+        ImVec2 min;
+        ImVec2 max;
+    };
+    Rect* easel_rect = nullptr;
 };
 
 struct LightPathCallbacks {
@@ -80,6 +91,8 @@ struct LightPathCallbacks {
     // Dodge & burn's Strength slider: the new strength in stops, already a step of 0.1.
     std::function<void(float)> brush_strength;
     std::function<void()> clear_strokes;  // Dodge & burn's Clear button: one undo step
+    // A press on the Easel line or its Frame button: framing on, or off (keeping the frame) when on.
+    std::function<void()> toggle_framing;
     std::function<void(std::optional<gui::StageId>)> set_compare;  // none: Off
     std::function<void()> swap_compare;
     // Called right after a control is submitted, as the app's explain() and describe() want: the
@@ -117,7 +130,12 @@ struct LightPathRowRect {
 // the interface size, up to the fonts' rounding.
 [[nodiscard]] float light_path_min_mock_px();
 
-// Draws the panel at the cursor, across the available width, and leaves the cursor under it.
+// The Easel line's height: a row's padding around one line. The same whatever it says.
+[[nodiscard]] float easel_line_height();
+
+// Draws the panel at the cursor, across the available width, and leaves the cursor under it. The
+// Easel line comes first under the header: not a stage, so no dot, switch, clip marks or Compare
+// entry (#58). A press anywhere on it, or on its Frame button, toggles framing.
 std::vector<LightPathRowRect> draw_light_path(const LightPathData& data,
                                               const LightPathCallbacks& callbacks);
 

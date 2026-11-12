@@ -35,6 +35,7 @@ add_library(prism_gui_panels STATIC
   active_control.cpp
   export_sheet.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/fonts.cpp
+  framing_bar.cpp
   light_path.cpp
   scopes_panel.cpp
   theme.cpp

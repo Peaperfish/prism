@@ -77,7 +77,8 @@ protected:
         Placed placed;
         placed.content_origin = ImGui::GetCursorScreenPos();
         const ExportSheetResult result =
-            draw_export_sheet(state_, ExportSheetContext{file_, start_}, cb, &placed.rects);
+            draw_export_sheet(state_, ExportSheetContext{file_, start_, exact_, framed_}, cb,
+                              &placed.rects);
         if (result != ExportSheetResult::none) {
             results_.push_back(result);
         }
@@ -183,6 +184,8 @@ protected:
     ExportSheetState state_;
     prism::PixelSize file_;
     prism::PixelSize start_;
+    bool exact_ = true;
+    bool framed_ = false;
     std::vector<ExportSheetResult> results_;
     std::set<std::string> hovered_ids_;
 };
@@ -225,6 +228,41 @@ TEST_F(ExportSheetHeadless, TheSheetIsTheSameHeightInAllThreeModesAndForEverySiz
     // And it is what the window was sized for: the content plus the padding, both ways.
     EXPECT_FLOAT_EQ(export_sheet_size().y, first->rects.height + 2 * export_sheet_padding());
     EXPECT_FLOAT_EQ(first->window_max.y - first->window_min.y, export_sheet_size().y);
+}
+
+// A framed photo (#58 §7): the sheet measures the frame and says so, in all three modes, with
+// "about" for a RAW file's estimate, and keeps its height.
+TEST_F(ExportSheetHeadless, AFramedPhotoSaysFullSizeOfTheFrame) {
+    file_ = {5120, 3413};
+    start_ = file_;
+    exact_ = false;
+    state_.size.mode = Mode::original;
+    const Placed unframed = settled();
+    EXPECT_EQ(unframed.rects.row_text, "Full size, about 5120 \xC3\x97 3413");
+    framed_ = true;
+    const Placed original = settled();
+    EXPECT_EQ(original.rects.row_text, "Full size of the frame, about 5120 \xC3\x97 3413");
+    EXPECT_EQ(original.rects.result_text, "Exports at full size, about 5120 \xC3\x97 3413");
+    expect_same(original, unframed);
+    state_.size.mode = Mode::long_side;
+    state_.size.long_side = 2048;
+    const Placed reduced = settled();
+    EXPECT_EQ(reduced.rects.result_text, "Exports at about 2048 \xC3\x97 1365");
+    expect_same(reduced, unframed);
+    state_.size.long_side = 9000;
+    const Placed bigger = settled();
+    EXPECT_EQ(bigger.rects.result_text,
+              "Not smaller than the frame: exports at full size, about 5120 \xC3\x97 3413");
+    expect_same(bigger, unframed);
+    state_.size.mode = Mode::percent;
+    state_.size.percent = 50;
+    const Placed half = settled();
+    EXPECT_EQ(half.rects.result_text, "Exports at about 2560 \xC3\x97 1707");
+    // An exact size has no "about".
+    exact_ = true;
+    EXPECT_EQ(settled().rects.result_text, "Exports at 2560 \xC3\x97 1707");
+    state_.size.mode = Mode::original;
+    EXPECT_EQ(settled().rects.row_text, "Full size of the frame, 5120 \xC3\x97 3413");
 }
 
 TEST_F(ExportSheetHeadless, EveryItemStaysInsideTheSheet) {

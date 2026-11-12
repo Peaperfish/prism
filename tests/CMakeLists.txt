@@ -131,6 +131,7 @@ if(PRISM_BUILD_GUI)
   add_executable(prism_gui_app_tests
     gui_app/active_control_test.cpp
     gui_app/export_sheet_test.cpp
+    gui_app/framing_bar_test.cpp
     gui_app/light_path_test.cpp
     gui_app/scopes_panel_test.cpp)
   target_link_libraries(prism_gui_app_tests PRIVATE prism_gui_panels prism_warnings

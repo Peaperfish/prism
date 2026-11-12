@@ -12,6 +12,7 @@
 
 #include "export_sheet.hpp"
 #include "file_dialogs.hpp"
+#include "framing_bar.hpp"
 #include "preview_texture.hpp"
 #include "scope_view.hpp"
 #include "prism/gui/background_export.hpp"
@@ -21,6 +22,7 @@
 #include "prism/gui/close_guard.hpp"
 #include "prism/gui/clipping.hpp"
 #include "prism/gui/explanations.hpp"
+#include "prism/gui/framing.hpp"
 #include "prism/gui/histogram.hpp"
 #include "prism/gui/layout.hpp"
 #include "prism/gui/live_preview.hpp"
@@ -186,6 +188,21 @@ private:
     // The zoom's chip: the number, Fit and 100%. Drawn last on the canvas, clear of canvas_taken_.
     void draw_zoom_chip();
     void draw_banner();
+    // Framing on the easel (#58). C, View > Frame and the Easel line toggle it; Return, Done, C and
+    // Esc leave, keeping the frame. Entering turns every canvas tool off and drops the comparison;
+    // choosing a tool or a comparison, or opening a photo, leaves first (framing_leaves).
+    void toggle_framing();
+    void begin_framing();
+    void leave_framing();
+    // The canvas while framing: the whole photo turned, the veil, the blades, handles and guides.
+    void draw_framing_canvas(ImDrawList* draw, ImVec2 min, ImVec2 size);
+    // A press, drag or release on the canvas while framing. Called after the canvas's items.
+    void update_framing_pointer();
+    void draw_framing_bar(float width);
+    // The canvas's measure for the zoom's and Sample's lines (canvas_measure).
+    [[nodiscard]] gui::CanvasMeasure canvas_measure() const;
+    // The render on hand may be drawn (gui::render_drawable).
+    [[nodiscard]] bool render_drawable() const;
     // The test strip. Whether it is on and usable (strip_ is cleared when the viewed stage can't
     // show it).
     [[nodiscard]] bool strip_active() const { return strip_.has_value(); }
@@ -365,6 +382,8 @@ private:
     gui::PointerPlatform pointer_platform_ = gui::PointerPlatform::other;
     gui::PinchTracker pinch_{gui::PinchScale::per_event};  // set for the platform when constructed
     float pinch_factor_ = 1.0f;                            // this frame's pinching, all told
+    gui::FramingState framing_;
+    gui::FramingView framing_view_;  // the turned photo on the canvas, as of the last frame drawn
     gui::HandDrag hand_drag_;
     gui::SampleMode sample_;
     gui::SampleClick sample_click_;

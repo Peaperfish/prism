@@ -343,6 +343,9 @@ void App::open_now(const fs::path& path) {
         return;
     }
     error_.reset();
+    if (gui::framing_leaves(framing_.on(), gui::FramingEvent::photo_opened)) {
+        framing_ = {};  // the old photo's draft and gesture go with it, as the brush's do
+    }
     baseline_.opened(session_.settings());
     recipes_.photo_opened();
     texture_.reset();  // don't show the previous photo under the new name
@@ -617,7 +620,8 @@ void App::draw_export_popup() {
     ExportSheetCallbacks callbacks;
     callbacks.explain = [this](std::string_view id) { explain(id); };
     const ExportSheetContext context{session_.framed_file_size(), session_.framed_start_size(),
-                                     session_.file_size_exact()};
+                                     session_.file_size_exact(),
+                                     session_.preview_framing().has_value()};
     const ExportSheetResult result = draw_export_sheet(*export_sheet_, context, callbacks);
     if (result != ExportSheetResult::none) {
         ImGui::CloseCurrentPopup();
@@ -913,8 +917,19 @@ void App::update_preview() {
     options.compare_stage = strip_ ? std::nullopt : gui::effective_compare(viewed_stage_, compare_stage_);
     options.test_strip = strip_;
     options.as_shot_white = session_.as_shot_white();
-    options.framing = session_.preview_framing();
-    preview_.update(session_.preview_base(), session_.settings(), viewed_stage_, options);
+    if (framing_.on()) {
+        // While framing the canvas shows the WHOLE photo, turned on the GPU (#58): the render is of
+        // the whole base, without the frame, so a frame committed during framing renders nothing
+        // new; only leaving makes one framed render. The scopes then measure the whole photo too.
+        gui::EditSettings whole = session_.settings();
+        whole.frame.reset();
+        options.framing.reset();
+        options.compare_stage.reset();
+        preview_.update(session_.whole_base(), whole, viewed_stage_, options);
+    } else {
+        options.framing = session_.preview_framing();
+        preview_.update(session_.preview_base(), session_.settings(), viewed_stage_, options);
+    }
     std::optional<gui::PreviewFrame> frame = preview_.poll();
     if (!frame) {
         return;
@@ -1037,14 +1052,23 @@ void App::report(gui::MaybeError error) {
 }
 
 void App::undo() {
+    // Not during a framing drag: its release commits from where it began (FramingState::follow).
+    if (framing_.gesture() != gui::FramingGesture::none) {
+        return;
+    }
     if (session_.history().can_undo()) {
         report(session_.undo());
+        framing_.follow(session_.settings().frame);  // the draft follows the frame undone
     }
 }
 
 void App::redo() {
+    if (framing_.gesture() != gui::FramingGesture::none) {
+        return;
+    }
     if (session_.history().can_redo()) {
         report(session_.redo());
+        framing_.follow(session_.settings().frame);
     }
 }
 
@@ -1248,6 +1272,10 @@ void App::frame() {
         const float top = ImGui::GetCursorPosY();
         draw_strip_bar(canvas);
         bar_height = ImGui::GetCursorPosY() - top;
+    } else if (framing_.on()) {
+        const float top = ImGui::GetCursorPosY();
+        draw_framing_bar(canvas);
+        bar_height = ImGui::GetCursorPosY() - top;
     }
     // NoScrollWithMouse too: the picture's hit areas must never make the canvas itself scroll.
     ImGui::BeginChild("canvas", ImVec2(canvas, std::max(1.0f, body_height - bar_height)),
@@ -1378,8 +1406,49 @@ void App::handle_shortcuts() {
     // Esc backs out one level: first the comparison, then the viewed stage. Read as a plain key
     // press, not a Shortcut(): a Shortcut route loses to the panel once a slider or combo there
     // has the keyboard focus, so Esc did nothing until the picture was clicked.
+    // The easel's keys (#58), through framing_key: nothing behind a sheet (handled above), in a text
+    // field, during a brush stroke, or while a menu or list is open.
+    gui::FramingKeyContext framing_keys;
+    framing_keys.has_file = session_.has_file();
+    framing_keys.framing = framing_.on();
+    framing_keys.gesture = framing_.gesture() != gui::FramingGesture::none;
+    framing_keys.sheets = open_sheets();
+    framing_keys.text_editing = ImGui::GetIO().WantTextInput;
+    framing_keys.stroking = brush_gesture_.stroking();
+    framing_keys.popup_open = popup_open_last_frame_;
+    const auto act_on_framing_key = [this](gui::FramingKeyAction action) {
+        switch (action) {
+            case gui::FramingKeyAction::begin_framing:
+                begin_framing();
+                break;
+            case gui::FramingKeyAction::leave_framing:
+                leave_framing();
+                break;
+            case gui::FramingKeyAction::cancel_gesture:
+                (void)framing_.cancel();  // the draft goes back; no undo step
+                break;
+            case gui::FramingKeyAction::turn_aspect:
+                report(framing_.flip_aspect(session_));
+                break;
+            case gui::FramingKeyAction::none:
+                break;
+        }
+    };
+    bool escape_taken = false;
     if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        // Esc during a framing drag cancels just that drag; otherwise escape_action decides.
+        const gui::FramingKeyAction action = gui::framing_key(gui::FramingKey::escape, framing_keys);
+        escape_taken = action != gui::FramingKeyAction::none;
+        act_on_framing_key(action);
+    }
+    // Return as a plain key press, as Esc: a Shortcut route would lose it to a focused control.
+    if (ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
+        ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false)) {
+        act_on_framing_key(gui::framing_key(gui::FramingKey::return_key, framing_keys));
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) && !escape_taken) {
         gui::EscapeContext esc;
+        esc.framing = framing_.on();
         esc.brushing = brush_.on();
         esc.picking = pick_.on();
         esc.sampling = sample_.on();
@@ -1413,14 +1482,17 @@ void App::handle_shortcuts() {
                 viewed_stage_ = gui::final_stage;
                 compare_stage_.reset();  // one that equalled the viewed stage goes too
                 break;
-            case gui::EscapeAction::leave_framing:  // framing has no window yet (#58)
+            case gui::EscapeAction::leave_framing:
+                leave_framing();  // keeps the frame
+                break;
             case gui::EscapeAction::none:
                 break;
         }
     }
     // Not in the middle of a drag: History would end the drag's step, but the slider would keep
     // sending values that each became a step of their own.
-    if (control_active() || brush_gesture_.stroking()) {
+    if (control_active() || brush_gesture_.stroking() ||
+        framing_.gesture() != gui::FramingGesture::none) {
         return;
     }
     if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Z, ImGuiInputFlags_RouteGlobal)) {
@@ -1444,6 +1516,12 @@ void App::handle_shortcuts() {
     }
     if (ImGui::Shortcut(ImGuiKey_B, ImGuiInputFlags_RouteGlobal)) {
         toggle_brush();  // B: Dodge & burn's brush, routed like the others
+    }
+    if (ImGui::Shortcut(ImGuiKey_C, ImGuiInputFlags_RouteGlobal)) {
+        act_on_framing_key(gui::framing_key(gui::FramingKey::c, framing_keys));  // C: the easel
+    }
+    if (framing_.on() && global(ImGuiKey_X)) {
+        act_on_framing_key(gui::framing_key(gui::FramingKey::x, framing_keys));  // X: turn the shape
     }
     // The brush's own keys, only in Brush mode (brush_key does nothing otherwise).
     if (brush_.on()) {
@@ -1574,6 +1652,9 @@ void App::draw_menu() {
             ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled)) {
             ImGui::SetTooltip("%s", gui::brush_unavailable_hint);
         }
+        if (ImGui::MenuItem("Frame", "C", framing_.on(), session_.has_file() || framing_.on())) {
+            toggle_framing();  // the easel (#58)
+        }
         ImGui::Separator();
         const bool can_zoom = view_available();
         const float zoom = can_zoom ? gui::view_zoom(view_, view_geometry_) : 1.0f;
@@ -1629,7 +1710,18 @@ void App::draw_canvas() {
         pinch_factor_ = 1.0f;
     }
 
-    if (texture_.texture() != nullptr) {
+    if (framing_.on() && session_.has_file()) {
+        // The easel (#58): the whole photo turned under the blades. No render runs for a drag.
+        update_clip_overlay_texture();
+        draw_framing_canvas(draw, min, size);
+        update_framing_pointer();
+        const std::string_view fit_note = gui::framing_fit_note(framing_.fitted());
+        if (!fit_note.empty()) {
+            const ImVec2 fit_at(min.x + margin, max.y - margin - 4 * ImGui::GetFontSize());
+            overlay_text(draw, colours, fit_at, std::string(fit_note));
+            canvas_taken_.push_back(overlay_rect(fit_at, std::string(fit_note)));
+        }
+    } else if (texture_.texture() != nullptr && render_drawable()) {
         // Where the view puts the picture this frame: letterboxed at fit, and clipped to the
         // canvas (the child window's clip rectangle) when zoomed in past it.
         view_geometry_ = {min.x,
@@ -1852,10 +1944,228 @@ void App::update_hand_drag() {
     }
 }
 
+void App::toggle_framing() {
+    if (framing_.on()) {
+        leave_framing();
+    } else {
+        begin_framing();
+    }
+}
+
+void App::begin_framing() {
+    if (framing_.on() || !session_.has_file() || !framing_.begin(session_)) {
+        return;
+    }
+    // Every canvas tool off and no comparison (#58): what they show is the framed picture.
+    const gui::FramingEntry entry =
+        gui::framing_entry({sample_.on(), pick_.on(), strip_.has_value(), brush_.on()},
+                           compare_stage_);
+    if (!entry.tools.sampling) {
+        clear_sample();
+    }
+    if (!entry.tools.picking) {
+        leave_pick();
+    }
+    if (!entry.tools.strip) {
+        strip_.reset();
+    }
+    if (!entry.tools.brushing) {
+        leave_brush();
+    }
+    compare_stage_ = entry.compare;
+    hand_drag_.release();
+    view_ = {};  // the whole turned photo, fitted
+}
+
+void App::leave_framing() {
+    if (!framing_.on()) {
+        return;
+    }
+    report(framing_.leave(session_));  // a drag under way is committed: one undo step
+    hand_drag_.release();
+    view_ = {};  // the framed picture, fitted
+}
+
+void App::draw_framing_canvas(ImDrawList* draw, ImVec2 min, ImVec2 size) {
+    const prism::PixelSize photo = framing_.photo();
+    const prism::Frame& draft = framing_.draft();
+    const gui::ViewGeometry canvas{min.x,
+                                   min.y,
+                                   size.x,
+                                   size.y,
+                                   ImGui::GetIO().DisplayFramebufferScale.x,
+                                   photo.width,
+                                   photo.height};
+    view_geometry_ = gui::framing_geometry(canvas, draft.angle, photo.width, photo.height,
+                                           token_metrics().canvas_margin);
+    apply_canvas_input();
+    view_ = gui::view_settled(view_, view_geometry_);
+    framing_view_ =
+        gui::framing_view_placed(draft.angle, photo.width, photo.height, view_, view_geometry_);
+
+    // The whole photo's render, once it has arrived (until then the canvas stays empty).
+    const bool picture = texture_.texture() != nullptr && render_drawable();
+    const std::array<gui::CanvasPoint, 4> corners = gui::photo_corners(framing_view_);
+    const auto at = [](gui::CanvasPoint p) {
+        return ImVec2(static_cast<float>(p.x), static_cast<float>(p.y));
+    };
+    const auto id = [](SDL_Texture* t) {
+        return ImTextureRef(static_cast<ImTextureID>(reinterpret_cast<std::uintptr_t>(t)));
+    };
+    if (picture) {
+        begin_picture_sampling(draw);
+        draw->AddImageQuad(id(texture_.texture()), at(corners[0]), at(corners[1]), at(corners[2]),
+                           at(corners[3]));
+        // J's marks lie on the same quad (#58).
+        if (texture_.overlay() != nullptr && prefs_.clip_overlay &&
+            clip_mask_width_ == texture_.width() && clip_mask_height_ == texture_.height()) {
+            draw->AddImageQuad(id(texture_.overlay()), at(corners[0]), at(corners[1]),
+                               at(corners[2]), at(corners[3]));
+        }
+        end_picture_sampling(draw);
+    }
+
+    // The veil: the canvas's grey at 60% over everything outside the frame, so what is cut away is
+    // still seen, quietly.
+    const gui::CanvasRect rect = gui::frame_rect(framing_view_, draft);
+    const ImVec2 cmax(min.x + size.x, min.y + size.y);
+    // Zoomed in, the frame can reach past the canvas: the veil's pieces stop at its edges.
+    const auto inside = [&](gui::CanvasPoint p) {
+        return ImVec2(std::clamp(static_cast<float>(p.x), min.x, cmax.x),
+                      std::clamp(static_cast<float>(p.y), min.y, cmax.y));
+    };
+    const ImVec2 fmin = inside(rect.min);
+    const ImVec2 fmax = inside(rect.max);
+    ImU32 veil = palette(theme()).canvas;
+    veil = (veil & ~IM_COL32_A_MASK) | (static_cast<ImU32>(std::lround(255 * 0.6)) << IM_COL32_A_SHIFT);
+    draw->AddRectFilled(min, ImVec2(cmax.x, fmin.y), veil);
+    draw->AddRectFilled(ImVec2(min.x, fmax.y), cmax, veil);
+    draw->AddRectFilled(ImVec2(min.x, fmin.y), ImVec2(fmin.x, fmax.y), veil);
+    draw->AddRectFilled(ImVec2(fmax.x, fmin.y), ImVec2(cmax.x, fmax.y), veil);
+
+    // The guides while a gesture is under way, then the blades and the eight handles: a light line
+    // on a dark one, so they show on any picture.
+    const float scale = ui_scale();
+    const ImU32 dark = IM_COL32(0, 0, 0, 150);
+    const ImU32 light = IM_COL32(255, 255, 255, 230);
+    const ImU32 guide = IM_COL32(255, 255, 255, 110);
+    for (const gui::CanvasLine& line :
+         gui::framing_guide_lines(rect, gui::framing_guides(framing_.gesture()))) {
+        draw->AddLine(at(line.from), at(line.to), guide, 1.0f * scale);
+    }
+    const ImVec2 bmin = at(rect.min);  // the blades where they are, on the canvas or not
+    const ImVec2 bmax = at(rect.max);
+    draw->AddRect(bmin, bmax, dark, 0.0f, 0, 3.0f * scale);
+    draw->AddRect(bmin, bmax, light, 0.0f, 0, 1.0f * scale);
+    const float handle = std::round(mock(4.0f));
+    const ImVec2 mid((bmin.x + bmax.x) * 0.5f, (bmin.y + bmax.y) * 0.5f);
+    for (const ImVec2 h : {bmin, ImVec2(mid.x, bmin.y), ImVec2(bmax.x, bmin.y), ImVec2(bmax.x, mid.y),
+                           bmax, ImVec2(mid.x, bmax.y), ImVec2(bmin.x, bmax.y), ImVec2(bmin.x, mid.y)}) {
+        draw->AddRectFilled(ImVec2(h.x - handle - 1, h.y - handle - 1),
+                            ImVec2(h.x + handle + 1, h.y + handle + 1), dark);
+        draw->AddRectFilled(ImVec2(h.x - handle, h.y - handle), ImVec2(h.x + handle, h.y + handle),
+                            light);
+    }
+    // The horizon line being drawn (Option/Alt-drag).
+    if (const std::optional<gui::CanvasLine> horizon = framing_.horizon()) {
+        draw->AddLine(at(horizon->from), at(horizon->to), dark, 3.0f * scale);
+        draw->AddLine(at(horizon->from), at(horizon->to), light, 1.25f * scale);
+    }
+}
+
+void App::update_framing_pointer() {
+    const ImGuiIO& io = ImGui::GetIO();
+    const gui::ViewPoint cursor{io.MousePos.x, io.MousePos.y};
+    const gui::CanvasPoint point{cursor.x, cursor.y};
+    const bool on_canvas = ImGui::IsWindowHovered();  // the canvas itself, not a chip on it
+    const bool over_control = ImGui::IsAnyItemHovered();
+    const double reach = mock(10.0f);
+    const auto pointer_gesture = [this] {
+        const gui::FramingGesture g = framing_.gesture();
+        return g == gui::FramingGesture::handle || g == gui::FramingGesture::move ||
+               g == gui::FramingGesture::horizon;
+    };
+    if (on_canvas && !over_control && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        canvas_press_ = true;
+        if (hand_key_held_) {
+            hand_drag_.press(cursor, 0.0f);  // Space: the hand, as ever
+        } else if (!framing_.press(point, io.KeyAlt, framing_view_, reach) && !view_.fit) {
+            hand_drag_.press(cursor, io.MouseDragThreshold);  // outside the frame: pan when zoomed
+        }
+    } else {
+        if (pointer_gesture() && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+            framing_.move(point);  // the draft only: nothing is rendered or built
+        }
+        if (const std::optional<gui::ViewPoint> moved = hand_drag_.move(cursor)) {
+            view_ = gui::view_panned_by(view_, view_geometry_, moved->x, moved->y);
+        }
+    }
+    // The release commits: one undo step, and the framed base is built once. A release missed (the
+    // button let go outside the window) ends the gesture the same way.
+    if (pointer_gesture() && (ImGui::IsMouseReleased(ImGuiMouseButton_Left) ||
+                              !ImGui::IsMouseDown(ImGuiMouseButton_Left))) {
+        report(framing_.release(point, session_));
+    }
+
+    // The cursor says what a press would take hold of.
+    if (hand_drag_.dragging() || (hand_key_held_ && !view_.fit)) {
+        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
+        return;
+    }
+    if (!on_canvas || over_control || hand_key_held_) {
+        return;
+    }
+    const gui::FrameHandle handle = framing_.gesture() != gui::FramingGesture::none
+                                        ? framing_.handle()
+                                        : gui::frame_handle_at(framing_view_, framing_.draft(),
+                                                               point, reach);
+    switch (handle) {
+        case gui::FrameHandle::left:
+        case gui::FrameHandle::right: ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW); break;
+        case gui::FrameHandle::top:
+        case gui::FrameHandle::bottom: ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS); break;
+        case gui::FrameHandle::top_left:
+        case gui::FrameHandle::bottom_right: ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNWSE); break;
+        case gui::FrameHandle::top_right:
+        case gui::FrameHandle::bottom_left: ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNESW); break;
+        case gui::FrameHandle::inside: ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll); break;
+        case gui::FrameHandle::none: break;
+    }
+}
+
+void App::draw_framing_bar(float width) {
+    const prism::Frame& draft = framing_.draft();
+    const bool exact = session_.file_size_exact();
+    const prism::PixelSize file{session_.file_width(), session_.file_height()};
+    FramingBarData data;
+    data.aspect = draft.aspect;
+    data.portrait = draft.portrait;
+    data.angle = draft.angle;
+    // The draft's frame on the file, as the export will measure it.
+    data.live_line = gui::framing_live_line(gui::framed_export_size(draft, file), file, draft.angle,
+                                            exact);
+    data.hint = std::string(gui::framing_hint(ImGui::GetIO().ConfigMacOSXBehaviors));
+    FramingBarCallbacks cb;
+    cb.begin_turn = [this] { framing_.begin_turn(); };
+    cb.turn_to = [this](float angle) { framing_.turn_to(angle); };
+    cb.end_turn = [this] { report(framing_.commit(session_)); };
+    cb.set_angle = [this](float angle) { report(framing_.set_angle(angle, session_)); };
+    cb.set_aspect = [this](prism::Aspect aspect) { report(framing_.set_aspect(aspect, session_)); };
+    cb.turn_aspect = [this] { report(framing_.flip_aspect(session_)); };
+    cb.reset = [this] { report(framing_.reset(session_)); };
+    cb.done = [this] { leave_framing(); };
+    cb.describe = [this](std::string_view id) { describe(id); };
+    cb.hover = [this](std::string_view id) { explain_hover_ = std::string(id); };
+    gui_app::draw_framing_bar(data, cb, width);
+}
+
 void App::toggle_sample() {
     if (sample_.on()) {
         clear_sample();
     } else if (session_.has_file()) {
+        if (gui::framing_leaves(framing_.on(), gui::FramingEvent::tool_chosen)) {
+            leave_framing();
+        }
         sample_.toggle();
         leave_pick();  // one tool at a time
         leave_brush();
@@ -1871,6 +2181,9 @@ void App::clear_sample() {
 }
 
 void App::toggle_pick() {
+    if (!pick_.on() && gui::framing_leaves(framing_.on(), gui::FramingEvent::tool_chosen)) {
+        leave_framing();  // the picker needs the framed picture on screen
+    }
     const gui::CanvasTools before{sample_.on(), pick_.on(), strip_.has_value(), brush_.on()};
     const gui::CanvasTools after = gui::tools_after_key(
         before, gui::ToolKey::pick,
@@ -1894,6 +2207,9 @@ void App::toggle_pick() {
 }
 
 void App::toggle_brush() {
+    if (!brush_.on() && gui::framing_leaves(framing_.on(), gui::FramingEvent::tool_chosen)) {
+        leave_framing();
+    }
     const gui::CanvasTools before{sample_.on(), pick_.on(), strip_.has_value(), brush_.on()};
     const gui::CanvasTools after = gui::tools_after_key(
         before, gui::ToolKey::brush, true, true,
@@ -2140,8 +2456,22 @@ const gui::PixelTrace* App::sample_on_show() const {
 }
 
 gui::SampleScale App::sample_scale() const {
-    return {std::max(texture_.width(), texture_.height()),
-            session_.framed_file_long_side()};
+    const gui::CanvasMeasure measure = canvas_measure();
+    return {std::max(texture_.width(), texture_.height()), measure.file_long_side, measure.framed};
+}
+
+bool App::render_drawable() const {
+    const std::shared_ptr<const Image> whole = session_.whole_base();
+    const std::shared_ptr<const Image> framed = session_.preview_base();
+    if (!whole || !framed) {
+        return false;
+    }
+    return gui::render_drawable(framing_.on(), {texture_.width(), texture_.height()},
+                                {whole->width, whole->height}, {framed->width, framed->height});
+}
+
+gui::CanvasMeasure App::canvas_measure() const {
+    return gui::canvas_measure(session_, framing_.on());
 }
 
 // White on a dark edge, so that it shows on any picture, in either theme: the picture's colours
@@ -2270,6 +2600,9 @@ void App::toggle_test_strip() {
     }
     if (!gui::strip_available(viewed_stage_)) {
         return;
+    }
+    if (gui::framing_leaves(framing_.on(), gui::FramingEvent::tool_chosen)) {
+        leave_framing();
     }
     gui::TestStrip strip;
     strip.step = strip_step_;
@@ -2865,8 +3198,7 @@ void App::draw_zoom_chip() {
     const float zoom = gui::view_zoom(view_, view_geometry_);
     const float fit = gui::view_fit_zoom(view_geometry_);
     const std::string label = gui::view_zoom_label(
-        zoom, std::max(texture_.width(), texture_.height()),
-        session_.framed_file_long_side());
+        zoom, std::max(texture_.width(), texture_.height()), canvas_measure().file_long_side);
     // The choice the view is at is lit; clicking it does nothing. 100% can't be chosen where Fit
     // already shows the photo at 100% or more.
     const bool fit_current = view_.fit;
@@ -3025,10 +3357,14 @@ App::ExplainText App::explain_text() const {
     context.strip_step = strip_ ? strip_->step : strip_step_;
     context.recipe = recipes_.current();
     if (texture_.texture() != nullptr) {
+        const gui::CanvasMeasure measure = canvas_measure();
         context.preview_long_side = std::max(texture_.width(), texture_.height());
-        context.file_long_side = session_.framed_file_long_side();
+        context.file_long_side = measure.file_long_side;
+        context.measures_frame = measure.framed;
         context.file_size_exact = session_.file_size_exact();
     }
+    context.file_width = session_.file_width();
+    context.file_height = session_.file_height();
     context.sample = sample_on_show();
     context.as_shot_white = session_.as_shot_white();
     return {std::string(e->summary), std::string(e->detail),
@@ -3245,15 +3581,17 @@ void App::draw_scopes_panel() {
     ScopesData data;
     data.scope = prefs_.scope;
     data.theme = theme();
-    if (histogram_stage_ != gui::final_stage) {
-        data.detail = std::string(gui::stage_info(histogram_stage_).name);
-    }
-    if (strip_ && strip_shown_band_ >= 0) {
-        // With a test strip: whose histogram this is.
-        data.detail += data.detail.empty() ? "" : ", ";
-        data.detail += gui::strip_band_title(strip_->step, static_cast<int>(strip_bands_.size()),
-                                             strip_shown_band_);
-    }
+    // The viewed stage, a test strip band's title (whose histogram this is), and while framing that
+    // the scopes measure the whole photo (#58).
+    const std::string stage_name = histogram_stage_ != gui::final_stage
+                                       ? std::string(gui::stage_info(histogram_stage_).name)
+                                       : std::string();
+    const std::string band = strip_ && strip_shown_band_ >= 0
+                                 ? gui::strip_band_title(strip_->step,
+                                                         static_cast<int>(strip_bands_.size()),
+                                                         strip_shown_band_)
+                                 : std::string();
+    data.detail = gui::scopes_title_detail(stage_name, band, gui::scope_source(framing_.on()));
     data.clip_overlay_on = prefs_.clip_overlay;
     data.histogram = histogram_ ? &*histogram_ : nullptr;
     data.pixel_density = ImGui::GetIO().DisplayFramebufferScale.x;
@@ -3372,8 +3710,13 @@ void App::draw_light_path_panel() {
     data.brush_on = brush_.on();
     data.brush_available = gui::brush_available(viewed_stage_);
     data.brush_hint = gui::brush_unavailable_hint;
+    data.easel_value = gui::easel_value(session_.settings().frame, session_.framed_file_size(),
+                                        session_.file_size_exact());
+    data.framing = framing_.on();
+    data.easel_available = session_.has_file();
 
     LightPathCallbacks cb;
+    cb.toggle_framing = [this] { toggle_framing(); };
     cb.view_stage = [this](gui::StageId stage) { viewed_stage_ = stage; };
     cb.set_stage_on = [this](gui::StageId stage, bool on) {
         gui::EditSettings s = session_.settings();
@@ -3434,6 +3777,9 @@ void App::draw_light_path_panel() {
     cb.brush_strength = [this](float strength) { brush_.set_strength(strength); };
     cb.clear_strokes = [this] { clear_strokes(); };
     cb.set_compare = [this](std::optional<gui::StageId> stage) {
+        if (stage && gui::framing_leaves(framing_.on(), gui::FramingEvent::compare_chosen)) {
+            leave_framing();  // the comparison is of the framed picture
+        }
         compare_stage_ = stage;
         if (stage) {
             strip_.reset();  // a comparison and a strip don't mix
@@ -3442,6 +3788,9 @@ void App::draw_light_path_panel() {
     cb.swap_compare = [this] {
         if (const std::optional<gui::StageId> shown =
                 gui::effective_compare(viewed_stage_, compare_stage_)) {
+            if (gui::framing_leaves(framing_.on(), gui::FramingEvent::compare_chosen)) {
+                leave_framing();
+            }
             compare_stage_ = viewed_stage_;
             viewed_stage_ = *shown;
             strip_.reset();

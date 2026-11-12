@@ -2,6 +2,7 @@
 
 #include <array>
 #include <functional>
+#include <string>
 #include <string_view>
 
 #include "imgui.h"
@@ -36,6 +37,9 @@ struct ExportSheetContext {
     prism::PixelSize file;   // the file's own size (a percentage is of this)
     prism::PixelSize start;  // what the export decodes at (the RAW half-size decode, or `file`)
     bool file_size_exact = true;  // false: `file` is an estimate, and the sheet says "about"
+    // The photo has a frame: `file` and `start` are the frame's sizes (Session::framed_file_size,
+    // framed_start_size), and the sheet says so ("Full size of the frame, ...", #58 §7).
+    bool framed = false;
 };
 
 enum class ExportSheetResult { none, cancel, save_as };
@@ -58,6 +62,10 @@ struct ExportSheetRects {
     ImVec2 save_min, save_max;
     // The bottom of what the sheet took, below its first item's top: the content height.
     float height = 0.0f;
+    // What the value row (Original's "Full size, ...", empty with a number field) and the result
+    // line say.
+    std::string row_text;
+    std::string result_text;
 };
 
 // The window padding the sheet's window must have (set it with ImGuiStyleVar_WindowPadding), and the

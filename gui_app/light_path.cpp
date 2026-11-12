@@ -8,6 +8,7 @@
 #include <memory>
 
 #include "imgui_internal.h"
+#include "prism/gui/framing.hpp"
 #include "prism/gui/layout.hpp"
 #include "prism/gui/paper_grade.hpp"
 #include "prism/gui/stage_controls.hpp"
@@ -813,6 +814,93 @@ void draw_row(const LightPathData& data, const gui::LightPathRow& row,
     ImGui::PopID();
 }
 
+// The Easel line's Frame button: the small type with the Test strip button's padding.
+float easel_button_width() {
+    ImGui::PushFont(nullptr, token_type().small);
+    const float width = text_width(gui::light_path_text::frame_button) + 2 * strip_button_padding();
+    ImGui::PopFont();
+    return width;
+}
+
+// The Easel line (#58): "Easel", its value at the right before the Frame button, and the line
+// itself as one press. Placed like a row's first line, without the dot, the switch or a clip line.
+void draw_easel_line(const LightPathData& data, const gui::LightPathMetrics& metrics,
+                     ImVec2 min, float width, const LightPathCallbacks& cb) {
+    const gui::TokenColours& colours = token_colours();
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    const float height = easel_line_height();
+    const ImVec2 max(min.x + width, min.y + height);
+    ImGui::PushID("easel");
+    const bool over = ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(min, max);
+    if (data.framing || over) {
+        gui::Rgba wash = colours.view_bg;
+        wash.a *= data.framing ? 1.0f : 0.5f;
+        draw->AddRectFilled(min, max, colour_u32(wash), px(8.0f));
+    }
+    const float line_y = min.y + metrics.pad_top;
+    const float x = min.x + row_left();
+    const float right = max.x - row_right_inset();
+
+    ImGui::PushFont(fonts().semibold, token_type().body);
+    text_in_band(draw, x, line_y, metrics.line,
+                 ImGui::GetColorU32(data.easel_available ? ImGuiCol_Text : ImGuiCol_TextDisabled),
+                 gui::light_path_text::easel);
+    const float name_end = x + text_width(gui::light_path_text::easel);
+    ImGui::PopFont();
+
+    // The Frame button, pressed in while framing.
+    const float button_w = easel_button_width();
+    const float button_left = right - button_w;
+    ImGui::PushFont(nullptr, token_type().small);
+    ImGui::SetCursorScreenPos(ImVec2(button_left, line_y));
+    ImGui::BeginDisabled(!data.easel_available);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, px(6.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(strip_button_padding(), 0.0f));
+    if (data.framing) {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+    }
+    const std::string label(gui::light_path_text::frame_button);
+    if (ImGui::ButtonEx(label.c_str(), ImVec2(button_w, metrics.line), press_only) &&
+        cb.toggle_framing) {
+        cb.toggle_framing();
+    }
+    if (data.framing) {
+        ImGui::PopStyleColor();
+    }
+    ImGui::PopStyleVar(2);
+    ImGui::EndDisabled();
+    ImGui::PopFont();
+    cb.describe(gui::explain::easel);
+
+    // The value, at the right before the button; shortened in the middle if it must be.
+    ImGui::PushFont(nullptr, token_type().body);
+    const float value_right = button_left - first_line_gap();
+    const float room = std::max(0.0f, value_right - name_end - first_line_gap());
+    const auto measure = [](std::string_view t) { return text_width(t); };
+    const std::string shown = gui::ellipsize_middle(data.easel_value, room, measure);
+    note_fit(data, "Easel value", data.easel_value, shown, room);
+    text_in_band(draw, value_right - text_width(shown), line_y, metrics.line,
+                 ImGui::GetColorU32(data.easel_available ? ImGuiCol_Text : ImGuiCol_TextDisabled),
+                 shown);
+    ImGui::PopFont();
+
+    // Last: the line itself, for the presses the button did not take.
+    ImGui::SetCursorScreenPos(min);
+    ImGui::BeginDisabled(!data.easel_available);
+    if (ImGui::InvisibleButton("##line", ImVec2(width, height), press_only) && cb.toggle_framing) {
+        cb.toggle_framing();
+    }
+    ImGui::EndDisabled();
+    cb.explain(gui::explain::easel, false);
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled)) {
+        ImGui::SetTooltip("%s", std::string(gui::easel_summary).c_str());
+    }
+    if (data.easel_rect != nullptr) {
+        *data.easel_rect = {min, max};
+    }
+    ImGui::PopID();
+}
+
 // Off, Original (Decode) and every stage, then Swap sides. The viewed stage is the right half of
 // the split, the chosen one the left half. Choosing the viewed stage itself is the same as Off.
 void draw_compare_popup(const LightPathData& data, const LightPathCallbacks& cb) {
@@ -991,6 +1079,31 @@ float light_path_min_width() {
     row_need = std::max(row_need, note + first_line_gap() + small_text(gui::light_path_text::test_strip) +
                                           2 * strip_button_padding());
 
+    // The Easel line: its name, the widest value it can show and its button. The widest values are
+    // the long shape names turned the longest way, and upright with the largest size there is,
+    // estimated.
+    {
+        ImGui::PushFont(fonts().semibold, token_type().body);
+        const float name = text_width(gui::light_path_text::easel);
+        ImGui::PopFont();
+        float value = 0.0f;
+        ImGui::PushFont(nullptr, token_type().body);
+        for (const prism::Aspect aspect : prism::all_aspects) {
+            for (const float angle : {0.0f, -44.95f, -0.04f}) {
+                for (const bool exact : {true, false}) {
+                    prism::Frame frame;
+                    frame.aspect = aspect;
+                    frame.angle = angle;
+                    value = std::max(value, text_width(gui::easel_value(frame, {65535, 65535},
+                                                                         exact)));
+                }
+            }
+        }
+        ImGui::PopFont();
+        row_need = std::max(row_need, name + first_line_gap() + value + first_line_gap() +
+                                          easel_button_width());
+    }
+
     // The header: the title, the gap between items, and the longest Compare action.
     ImGui::PushFont(fonts().semibold, token_type().section);
     const float title = text_width(gui::light_path_text::title);
@@ -1012,6 +1125,11 @@ float light_path_min_width() {
         std::max(row_need + row_left() + row_right_inset(), header_need);
     // The panel's own padding at both sides, and the scrollbar that takes room when the panel scrolls.
     return std::ceil(inside + 2 * tm.panel_pad.x + ImGui::GetStyle().ScrollbarSize);
+}
+
+float easel_line_height() {
+    const gui::LightPathMetrics m = row_metrics();
+    return m.pad_top + m.line + m.pad_bottom;
 }
 
 float light_path_min_mock_px() {
@@ -1049,8 +1167,10 @@ std::vector<LightPathRowRect> draw_light_path(const LightPathData& data,
     draw_compare_popup(data, cb);
 
     const gui::LightPathMetrics metrics = row_metrics();
-    const ImVec2 origin = ImGui::GetCursorScreenPos();
     const float width = std::max(1.0f, ImGui::GetContentRegionAvail().x);
+    const ImVec2 easel_at = ImGui::GetCursorScreenPos();
+    draw_easel_line(data, metrics, easel_at, width, cb);
+    const ImVec2 origin(easel_at.x, easel_at.y + easel_line_height());
 
     std::vector<gui::LightPathRowLayout> layouts;
     layouts.reserve(data.view.rows.size());
