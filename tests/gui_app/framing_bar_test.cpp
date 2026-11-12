@@ -277,6 +277,46 @@ TEST_F(FramingBarHeadless, TheSliderIsOneGestureAndTypingIsOneStep) {
     EXPECT_GT(angles_.back(), 0.0f);  // to the right: clockwise
 }
 
+TEST_F(FramingBarHeadless, ATypedAngleIsOneStepAndEnterOnTheOpeningTextIsNone) {
+    data_.angle = 1.2345f;  // as a horizon line can leave it: more digits than the field shows
+    FramingBarRects r = settled();
+    // As the Light path's tests open a field: Ctrl held, then the click, on a non-Mac keyboard.
+    ImGui::GetIO().ConfigMacOSXBehaviors = false;
+    const auto open_field = [&] {
+        mouse_to(middle(r.slider_min, r.slider_max));
+        frame();
+        frame();
+        ImGui::GetIO().AddKeyEvent(ImGuiMod_Ctrl, true);
+        frame();
+        mouse(true);
+        frame();
+        mouse(false);
+        ImGui::GetIO().AddKeyEvent(ImGuiMod_Ctrl, false);
+        frame();
+        frame();
+        frame();
+        EXPECT_TRUE(ImGui::GetIO().WantTextInput);
+    };
+    const auto press_enter = [&] {
+        ImGui::GetIO().AddKeyEvent(ImGuiKey_Enter, true);
+        frame();
+        ImGui::GetIO().AddKeyEvent(ImGuiKey_Enter, false);
+        frame();
+        frame();
+    };
+    open_field();
+    press_enter();
+    EXPECT_TRUE(calls_.empty());  // no turn, no refit, no undo step
+    // Typed: one set_angle with the typed angle, and no drag.
+    open_field();
+    ImGui::GetIO().AddInputCharactersUTF8("3");
+    frame();
+    press_enter();
+    EXPECT_EQ(calls_, (std::vector<std::string>{"set_angle"}));
+    ASSERT_EQ(angles_.size(), 1u);
+    EXPECT_EQ(angles_[0], 3.0f);
+}
+
 TEST_F(FramingBarHeadless, TheButtonsAndTheAspectMenuDoWhatTheySay) {
     FramingBarRects r = settled();
     click_at(middle(r.reset_min, r.reset_max));

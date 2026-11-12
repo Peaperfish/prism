@@ -261,11 +261,11 @@ void draw_framing_bar(const FramingBarData& data, const FramingBarCallbacks& cb,
     const bool changed =
         styled_slider_typed("##straighten", &angle, -45.0f, 45.0f, 0.0f, field, &typing, 0, 0.1f);
     note(&r.slider_min, &r.slider_max);
-    if (typing.text) {
+    if (typing.text && *typing.text != field) {  // Enter on the text as it opened changes nothing
         if (const std::optional<float> typed = gui::typed_angle(*typing.text); typed && cb.set_angle) {
             cb.set_angle(*typed);
         }
-    } else if (!typing.open && !typing.just_closed) {
+    } else if (!typing.text && !typing.open && !typing.just_closed) {
         if (ImGui::IsItemActivated() && cb.begin_turn) {
             cb.begin_turn();
         }

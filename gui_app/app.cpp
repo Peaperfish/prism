@@ -1998,7 +1998,13 @@ void App::draw_framing_canvas(ImDrawList* draw, ImVec2 min, ImVec2 size) {
                                    photo.height};
     view_geometry_ = gui::framing_geometry(canvas, draft.angle, photo.width, photo.height,
                                            token_metrics().canvas_margin);
-    apply_canvas_input();
+    if (framing_.gesture() == gui::FramingGesture::none) {
+        apply_canvas_input();
+    } else {
+        // A drag maps the pointer through the view at its press: the view holds still until it ends.
+        canvas_wheels_.clear();
+        pinch_factor_ = 1.0f;
+    }
     view_ = gui::view_settled(view_, view_geometry_);
     framing_view_ =
         gui::framing_view_placed(draft.angle, photo.width, photo.height, view_, view_geometry_);
@@ -2181,15 +2187,16 @@ void App::clear_sample() {
 }
 
 void App::toggle_pick() {
-    if (!pick_.on() && gui::framing_leaves(framing_.on(), gui::FramingEvent::tool_chosen)) {
-        leave_framing();  // the picker needs the framed picture on screen
-    }
     const gui::CanvasTools before{sample_.on(), pick_.on(), strip_.has_value(), brush_.on()};
     const gui::CanvasTools after = gui::tools_after_key(
         before, gui::ToolKey::pick,
         session_.has_file() && gui::pick_available(viewed_stage_, compare_stage_), true);
     if (after == before) {
         return;
+    }
+    // Only a picker that really turns on leaves framing: it needs the framed picture on screen.
+    if (after.picking && gui::framing_leaves(framing_.on(), gui::FramingEvent::tool_chosen)) {
+        leave_framing();
     }
     if (!after.picking) {
         leave_pick();
@@ -2207,15 +2214,16 @@ void App::toggle_pick() {
 }
 
 void App::toggle_brush() {
-    if (!brush_.on() && gui::framing_leaves(framing_.on(), gui::FramingEvent::tool_chosen)) {
-        leave_framing();
-    }
     const gui::CanvasTools before{sample_.on(), pick_.on(), strip_.has_value(), brush_.on()};
     const gui::CanvasTools after = gui::tools_after_key(
         before, gui::ToolKey::brush, true, true,
         session_.has_file() && gui::brush_available(viewed_stage_));
     if (after == before) {
         return;
+    }
+    // Only a brush that really turns on leaves framing.
+    if (after.brushing && gui::framing_leaves(framing_.on(), gui::FramingEvent::tool_chosen)) {
+        leave_framing();
     }
     if (!after.brushing) {
         leave_brush();
@@ -3361,8 +3369,8 @@ App::ExplainText App::explain_text() const {
         context.preview_long_side = std::max(texture_.width(), texture_.height());
         context.file_long_side = measure.file_long_side;
         context.measures_frame = measure.framed;
-        context.file_size_exact = session_.file_size_exact();
     }
+    context.file_size_exact = session_.file_size_exact();
     context.file_width = session_.file_width();
     context.file_height = session_.file_height();
     context.sample = sample_on_show();
