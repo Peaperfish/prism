@@ -307,7 +307,13 @@ v0.1.0 was a pre-release of the desktop app, and v0.2.0 is its first full releas
 - [Contrast as paper grades](https://github.com/Peaperfish/prism/issues/23) *(done)*
 - [Dodge and burn](https://github.com/Peaperfish/prism/issues/22) with brushes (masks) *(done)*
 
-[**0.6.0 – HDR**](https://github.com/Peaperfish/prism/milestone/6): HDR photos on HDR displays, and HDR files out.
+[**0.6.0 – Crop & straighten**](https://github.com/Peaperfish/prism/milestone/7): the easel, which frames and straightens the photo before the stages run.
+
+- [Crop and straighten](https://github.com/Peaperfish/prism/issues/58) on the easel, with blades, aspect shapes and a straighten slider *(done)*
+- `--rotate`, `--crop` and `--aspect` on the command line *(done)*
+- Small fixes *(done)*
+
+[**0.7.0 – HDR**](https://github.com/Peaperfish/prism/milestone/6): HDR photos on HDR displays, and HDR files out.
 
 - Show HDR photos on HDR displays (macOS first)
 - Export HDR files with gain maps
