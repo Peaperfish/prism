@@ -311,7 +311,6 @@ v0.1.0 was a pre-release of the desktop app, and v0.2.0 is its first full releas
 
 - [Crop and straighten](https://github.com/Peaperfish/prism/issues/58) on the easel, with blades, aspect shapes and a straighten slider *(done)*
 - `--rotate`, `--crop` and `--aspect` on the command line *(done)*
-- Small fixes *(done)*
 
 [**0.7.0 – HDR**](https://github.com/Peaperfish/prism/milestone/6): HDR photos on HDR displays, and HDR files out.
 
