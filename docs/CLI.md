@@ -130,7 +130,7 @@ Make the frame the largest one of this shape, centred inside the `--crop` box (o
 | `3:2` / `2:3` | 3 wide × 2 tall / 2 wide × 3 tall |
 | `16:9` / `9:16` | 16 wide × 9 tall / 9 wide × 16 tall |
 
-Unlike the app's Aspect menu (which follows the photo's orientation and uses `X` to turn the shape), the command line reads `W:H` literally as `width:height` on every photo: `--aspect 4:5` is always 4 wide by 5 tall (portrait), even on a landscape photo, and `--aspect 5:4` is always 5 wide by 4 tall; `--aspect 16:9` is always wide, and `--aspect 9:16` is always tall. Any other value is a usage error (exit code 2):
+Unlike the app's Aspect menu (which follows the photo's orientation and uses `X` to turn the shape), the command line always reads the shape as `width:height`, whatever the photo's orientation: `--aspect 4:5` is tall (4 wide by 5 tall) and `--aspect 5:4` wide (5 wide by 4 tall) on any photo; `--aspect 16:9` is always wide, and `--aspect 9:16` is always tall. Any other value is a usage error (exit code 2):
 
 ```
 error: --aspect needs original, free, 1:1, 4:5, 5:7, 3:2 or 16:9 (also 5:4, 7:5, 2:3 and 9:16), got '4/5'
@@ -138,9 +138,9 @@ error: --aspect needs original, free, 1:1, 4:5, 5:7, 3:2 or 16:9 (also 5:4, 7:5,
 
 Default: not applied.
 
-**Order relative to other options.** The three frame options (`--rotate`, `--crop` and `--aspect`) always run together as one step, **first of all**, right after decoding (including `--raw-half` and `--raw-camera-matrix`). When more than one of the three is given, `--crop` defines the box along the straightened axes, `--aspect` cuts the largest centred rectangle of that shape inside the box, and `--rotate` turns the photo about its centre and closes the blades in if a corner would pass the photo's edge. A whole-photo frame at `0` degrees (`--rotate 0`, `--crop 0,0,1,1`, `--aspect original` or `--aspect free` without a turn) is a no-op and skips the `frame` stage completely.
+**Frame options and other options.** The three frame options (`--rotate`, `--crop` and `--aspect`) always run together as one step, **first of all**, right after decoding (including `--raw-half` and `--raw-camera-matrix`). When more than one of the three is given, `--crop` defines the box along the straightened axes, `--aspect` cuts the largest centred rectangle of that shape inside the box, and `--rotate` turns the photo about its centre and closes the blades in if a corner would pass the photo's edge. A whole-photo frame at `0` degrees (`--rotate 0`, `--crop 0,0,1,1`, `--aspect original` or `--aspect free` without a turn) is a no-op and skips the `frame` stage completely.
 
-After framing, `--long-side` measures and shrinks the **framed** photo (not the unframed file), and then exposure, white balance, colour matrix, saturation, contrast, tone curve, `--histogram` and the output all work on and measure the framed picture. A frame is not part of a recipe: `--recipe` and the frame flags combine on the same run, and a recipe file never holds a frame.
+Frames are not part of a recipe: `--recipe` and the frame flags combine on the same run, and a recipe file never holds a frame. After framing, `--long-side` measures and shrinks the **framed** photo (not the unframed file), and then exposure, white balance, colour matrix, saturation, contrast, tone curve, `--histogram` and the output all work on and measure the framed picture.
 
 ### `--long-side <pixels>`
 

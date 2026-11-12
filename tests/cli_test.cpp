@@ -1111,8 +1111,14 @@ TEST(CliFrame, ARawHalfSizeDecodeIsFramedByTheSameFractions) {
 TEST(CliFrame, HelpDescribesTheFrameFlags) {
     const RunResult r = run_prism("--help");
     EXPECT_EQ(r.exit_code, 0) << r.output;
-    EXPECT_TRUE(contains(r.output, "--rotate <degrees>")) << r.output;
-    EXPECT_TRUE(contains(r.output, "--crop <l,t,r,b>")) << r.output;
-    EXPECT_TRUE(contains(r.output, "--aspect <shape>")) << r.output;
-    EXPECT_TRUE(contains(r.output, "Frames are not part of a recipe")) << r.output;
+    const std::string help = plain(r.output);
+    EXPECT_TRUE(contains(help, "--rotate <degrees>")) << help;
+    EXPECT_TRUE(contains(help, "--crop <l,t,r,b>")) << help;
+    EXPECT_TRUE(contains(help, "--aspect <shape>")) << help;
+    EXPECT_TRUE(contains(help,
+                         "Always width:height, whatever the\n"
+                         "                      photo's orientation: "
+                         "4:5 is tall and 5:4 wide on any photo"))
+        << help;
+    EXPECT_TRUE(contains(help, "\n  Frames are not part of a recipe")) << help;
 }
