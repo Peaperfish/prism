@@ -38,6 +38,7 @@ Both include RAW support, and nothing needs installing beside them. The apps are
 
 - [x] Load and save PNG / JPEG (via [stb](https://github.com/nothings/stb))
 - [x] sRGB ↔ linear conversion
+- [x] Framing on the easel: crop, aspect ratios (`1:1`, `4:5`, `5:7`, `3:2`, `16:9`, original, free, turned with `X`) and straightening (±45°, slider or horizon line) in the GUI; `--rotate`, `--crop` and `--aspect` on the command line
 - [x] Exposure adjustment (in stops)
 - [x] Dodge & burn with a brush, in stops (GUI)
 - [x] White balance in Kelvin and tint, with a neutral picker (GUI); `--kelvin` and `--tint` on the command line
@@ -207,12 +208,13 @@ Between the two outputs: mean CIE76 ΔE 5.7 (median 4.0, 95th percentile 16.7, m
 
 ## GUI
 
-A desktop app for macOS and Windows. `prism_gui` (`gui_app/`) is a window built with SDL3 and Dear ImGui; it is off by default and built with `-DPRISM_BUILD_GUI=ON` (see [Building the GUI](#building-the-gui)). The panel has the scopes, the Look menu and the light path, where each stage of the edit is a row with its own switch and slider. How to use it is in the [user guide](docs/GUIDE.md): opening a photo, the Look menu, the scopes, the light path, white balance and the neutral picker, contrast as a paper grade, dodge and burn with the Brush, comparing stages, zoom and pan, reading a pixel, the test strip, the status bar, the Explain area, export, every keyboard shortcut and the preferences. Packaging is done: see [Downloading and running Prism](#downloading-and-running-prism). What is planned is in the [Roadmap](#roadmap).
+A desktop app for macOS and Windows. `prism_gui` (`gui_app/`) is a window built with SDL3 and Dear ImGui; it is off by default and built with `-DPRISM_BUILD_GUI=ON` (see [Building the GUI](#building-the-gui)). The panel has the scopes, the Look menu and the light path, where each stage of the edit is a row with its own switch and slider. How to use it is in the [user guide](docs/GUIDE.md): opening a photo, the Look menu, the scopes, the light path, white balance and the neutral picker, contrast as a paper grade, dodge and burn with the Brush, framing and straightening on the easel, comparing stages, zoom and pan, reading a pixel, the test strip, the status bar, the Explain area, export, every keyboard shortcut and the preferences. Packaging is done: see [Downloading and running Prism](#downloading-and-running-prism). What is planned is in the [Roadmap](#roadmap).
 
 ### How the GUI measures things
 
 The numbers behind what the guide describes, for people working on the code:
 
+- **Framing.** The session holds the unframed 2560 px preview as `whole_base` and derives `preview_base = apply_frame(whole_base, fit_frame(frame))` whenever the frame changes. Every stage, the scopes, Sample, Pick neutral, the test strip and Compare work on `preview_base`, so none of them needs its own framing path. While framing is on, the canvas draws `whole_base` turned by the GPU and veiled outside the blades, so dragging a blade or the angle slider starts no render; leaving runs one framed render. At 0° `apply_frame` copies the box pixel for pixel; when turned, it resamples with Catmull-Rom weights in linear light and clamps each channel to its 2×2 nearest neighbours, so turning never overshoots or clips. Brush strokes stay in whole-photo `(u, v)` coordinates and are mapped through `framed_uv_to_photo` and `photo_uv_to_framed`. Export decodes at full size, frames first, then reduces (`downscale`), then runs the stages.
 - **Histogram.** It is computed on the render worker from the stage's float values *before* the 8-bit sRGB display encode, which is how it counts what clips separately from the end bins.
 - **Scopes.** The counts come from a sample of at most 250,000 pixels and are computed on the render worker only while a scope is shown.
 - **Clipping.** The counts come from a sample of at most 250,000 pixels and are computed on the render worker whenever the Light path is on screen, which is whenever a photo is open, except while the test strip is on (each band has its own light). A stage's marks follow its slider during a drag. The overlay mask is computed only while the overlay is on. Decode counts any channel within 0.000001 of 1.0.
@@ -253,6 +255,7 @@ prism_core (lib/)                            the pipeline, shared with the CLI
 | `preferences.hpp` | The app's own settings (theme, interface size, panel width, which scope is shown, whether explanations show): defaults, reading and writing the key=value file, clamping, and resolving "System" to light or dark |
 | `layout.hpp` | Window layout as pure functions: the panel's width for a given window and scale, and shortening a file name in the middle to fit the status bar |
 | `view_transform.hpp`, `canvas_input.hpp` | Zoom and pan as pure functions: fit, zoom about a point, pan limits, the mapping between screen and preview pixels, and what each wheel, pinch and drag does. Also Sample mode's click, pin and marker rules |
+| `framing.hpp` | The easel: `FramingDraft`, handle and edge drags, inside moves, aspect locks (`Original`, `Free`, `1:1`, `4:5`, `5:7`, `3:2`, `16:9` and `X` to turn them), the Straighten slider, Option-drag horizon lines, typed angles, thirds and 8×8 guides, and the canvas geometry while framing (`frame.hpp` in `prism_core` holds `Frame`, `fit_frame` and `apply_frame`) |
 | `pixel_sample.hpp` | The colour sampler: one pixel of the preview base run through `process()` as a 1×1 image, its linear values after every stage, and the readout in words. Bit-identical to the render, and cached until the pixel, the settings or the view changes |
 | `file_types.hpp` | The file dialogs' filters (RAW only in a build with LibRaw), and the export file name: the suggested name next to the source, and the extension added if the user left it out |
 
