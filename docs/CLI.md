@@ -90,17 +90,57 @@ The file format follows the extension (`.png`, `.jpg`, `.jpeg`). The histogram i
 
 ### `--rotate <degrees>`
 
-Straighten the photo by turning it about its centre, by a decimal from −45 to 45 degrees. Positive turns the picture clockwise on screen. A value outside the range, or text that is not a number, is a usage error (exit code 2). The frame is made smaller as needed so that no corner of the turned photo shows (a `note:` on stderr says so and gives the final size, and the exit code is unaffected). Default: 0.
+Straighten the photo by turning it about its centre, by a decimal number from −45 to 45 degrees (`0`, `1.2`, `-0.8`, `+1.5`). Positive turns the picture clockwise on screen; negative turns it anticlockwise. A value outside −45 to 45, or text that is not a finite number, is a usage error (exit code 2):
+
+```
+error: --rotate needs a number from -45 to 45, got '46'
+```
+
+Turning the photo closes the blades in as needed (keeping the shape) so that no corner of the frame runs past the photo's edge. When fitting makes the frame smaller than what you asked for, `prism` prints a note on stderr with the final pixel size, as for a 6000 × 4000 photo turned by `1.2` degrees:
+
+```
+note: photo.jpg: the frame was made smaller so no corner shows; it is now 5818 × 3878 px
+```
+
+The note is not an error: the photo is still written and the exit code is unaffected. At `0` degrees the box is copied pixel for pixel with no resampling; when turned, each pixel is resampled in linear light (Catmull-Rom over the 4×4 neighbours, clamped to the 2×2 nearest source pixels so turning never overshoots or clips). Default: 0 (not applied).
 
 ### `--crop <l,t,r,b>`
 
-Keep only this part of the photo: the left, top, right and bottom edges as four fractions from 0 to 1 of the photo's width and height, measured along the straightened axes (so at `--rotate 0` it is the plain crop). Left must be less than right, and top less than bottom; anything else is a usage error (exit code 2). Default: the whole photo.
+Keep only this part of the photo: the left, top, right and bottom edges as four decimal fractions from `0` to `1` of the photo's width and height, separated by commas with no spaces (for example `--crop 0.05,0.05,0.95,0.95` or `--crop 0.1,0,0.9,1`). The edges are measured along the straightened axes (around the photo's centre), so at `--rotate 0` it is a plain upright crop, and with `--rotate` the box is fitted inside the turned photo if a corner would run off the edge.
+
+All four numbers must be between `0` and `1`, with `left` strictly less than `right` and `top` strictly less than `bottom`. Anything else is a usage error (exit code 2), with a message saying which rule failed:
+
+- `--crop needs four numbers from 0 to 1, left,top,right,bottom, got '<text>'`
+- `--crop edges must be from 0 to 1, got '<text>'`
+- `--crop needs left less than right and top less than bottom, got '<text>'`
+
+Default: `0,0,1,1` (the whole photo).
 
 ### `--aspect <shape>`
 
-Make the frame the largest one of this shape, centred in the `--crop` part (in the whole photo without `--crop`): `original` (the photo's own shape), `free` (no change), `1:1`, `4:5`, `5:7`, `3:2` or `16:9`, read as width:height, so `4:5` is tall on a landscape photo and `16:9` is turned to stand up on a portrait one. `5:4`, `7:5`, `2:3` and `9:16` are the same shapes turned. Anything else is a usage error (exit code 2). Default: not applied.
+Make the frame the largest one of this shape, centred inside the `--crop` box (or inside the whole photo when `--crop` is not given), before fitting for any turn:
 
-The frame flags come first of all, right after decoding: the photo is turned and cropped at its full resolution, and then `--long-side` and every stage work on the framed picture. The `--histogram` and the output measure it too. A frame is not part of a recipe: `--recipe` and the frame flags combine, and a recipe never holds a frame.
+| `<shape>` | Width : height |
+|---|---|
+| `original` | the photo's own shape |
+| `free` | no change to the `--crop` box |
+| `1:1` | square |
+| `4:5` / `5:4` | 4 wide × 5 tall (portrait) / 5 wide × 4 tall (landscape) |
+| `5:7` / `7:5` | 5 wide × 7 tall / 7 wide × 5 tall |
+| `3:2` / `2:3` | 3 wide × 2 tall / 2 wide × 3 tall |
+| `16:9` / `9:16` | 16 wide × 9 tall / 9 wide × 16 tall |
+
+Unlike the app's Aspect menu (which follows the photo's orientation and uses `X` to turn the shape), the command line reads `W:H` literally as `width:height` on every photo: `--aspect 4:5` is always 4 wide by 5 tall (portrait), even on a landscape photo, and `--aspect 5:4` is always 5 wide by 4 tall; `--aspect 16:9` is always wide, and `--aspect 9:16` is always tall. Any other value is a usage error (exit code 2):
+
+```
+error: --aspect needs original, free, 1:1, 4:5, 5:7, 3:2 or 16:9 (also 5:4, 7:5, 2:3 and 9:16), got '4/5'
+```
+
+Default: not applied.
+
+**Order relative to other options.** The three frame options (`--rotate`, `--crop` and `--aspect`) always run together as one step, **first of all**, right after decoding (including `--raw-half` and `--raw-camera-matrix`). When more than one of the three is given, `--crop` defines the box along the straightened axes, `--aspect` cuts the largest centred rectangle of that shape inside the box, and `--rotate` turns the photo about its centre and closes the blades in if a corner would pass the photo's edge. A whole-photo frame at `0` degrees (`--rotate 0`, `--crop 0,0,1,1`, `--aspect original` or `--aspect free` without a turn) is a no-op and skips the `frame` stage completely.
+
+After framing, `--long-side` measures and shrinks the **framed** photo (not the unframed file), and then exposure, white balance, colour matrix, saturation, contrast, tone curve, `--histogram` and the output all work on and measure the framed picture. A frame is not part of a recipe: `--recipe` and the frame flags combine on the same run, and a recipe file never holds a frame.
 
 ### `--long-side <pixels>`
 
@@ -199,6 +239,27 @@ prism IMG_001.CR3 IMG_002.CR3 --raw-half --recipe look.prism --curve filmic --fo
 
 ## Examples
 
+Straighten a 6000 × 4000 JPEG by 1.2° clockwise and cut a 16:9 frame (turning the full width closes the blades in slightly so no corner runs off the photo, and `prism` notes the final size on stderr):
+
+```sh
+prism photo.jpg --rotate 1.2 --aspect 16:9 -o wide.jpg
+```
+
+```
+note: photo.jpg: the frame was made smaller so no corner shows; it is now 5932 × 3336 px
+wrote wide.jpg (5932x3336)
+```
+
+Straighten by 0.8° anticlockwise, trim 5% off each edge, cut a vertical 4:5 frame from the middle, shrink the framed picture to 2048 pixels on its longer side (here the height), and apply +0.5 stops and the filmic curve (because the 5% margin already leaves room for the 0.8° turn, the blades don't need to close in and no `note:` is printed):
+
+```sh
+prism photo.jpg --rotate -0.8 --crop 0.05,0.05,0.95,0.95 --aspect 4:5 --long-side 2048 --exposure +0.5 --curve filmic -o framed.jpg
+```
+
+```
+wrote framed.jpg (1638x2048)
+```
+
 A whole shoot for sharing online, each photo reduced to 2048 pixels on its longer side, written as `edited/<name>_prism_2048.jpg`:
 
 ```sh
@@ -267,7 +328,7 @@ foreach ($f in Get-ChildItem *.jpg) {
 |---|---|
 | 0 | Success. Also `--help` and `--version` |
 | 1 | The run failed: a file couldn't be read or written, an input can't be decoded, a recipe has mistakes or can't be read, a matrix file or a `--curve` spec is wrong, or a RAW file was given to a build without RAW support. The message after `error:` says which |
-| 2 | The command line is wrong: no input, a missing value, an unknown option, an option given twice, a number outside its range, a `--format` other than `jpg` or `png` or without `--out-dir`, none of `-o`, `--out-dir` and `--histogram`, `--raw-half` or `--raw-camera-matrix` on a PNG or JPEG, several inputs without `--out-dir` (or with `-o` or `--histogram`), `-o` together with `--out-dir`, an `--out-dir` folder that doesn't exist, or two inputs that would be written under the same name. Prism prints `error: <reason>` and then the usage text |
+| 2 | The command line is wrong: no input, a missing value, an unknown option, an option given twice, a number outside its range, a malformed `--crop` or unknown `--aspect`, a `--format` other than `jpg` or `png` or without `--out-dir`, none of `-o`, `--out-dir` and `--histogram`, `--raw-half` or `--raw-camera-matrix` on a PNG or JPEG, several inputs without `--out-dir` (or with `-o` or `--histogram`), `-o` together with `--out-dir`, an `--out-dir` folder that doesn't exist, or two inputs that would be written under the same name. Prism prints `error: <reason>` and then the usage text |
 
 Errors go to stderr.
 
