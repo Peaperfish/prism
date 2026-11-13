@@ -269,6 +269,22 @@ private:
     bool finished_ = false;
 };
 
+// Lets every read go when the test ends, even on a failed assertion, so that the Session declared
+// before it never waits at its end for a read that is still held. Declare it after the Session.
+class LetGo {
+public:
+    explicit LetGo(FakeReads& reads) : reads_(reads) {}
+    ~LetGo() {
+        reads_.release();
+        reads_.finish();
+    }
+    LetGo(const LetGo&) = delete;
+    LetGo& operator=(const LetGo&) = delete;
+
+private:
+    FakeReads& reads_;
+};
+
 SessionOptions with_detail(FakeReads* reads = nullptr) {
     SessionOptions o;
     o.detail_base = true;
@@ -322,6 +338,7 @@ TEST(DetailSession, APhotoThatFitsThePreviewReadsNothing) {
     const fs::path source = write_png(files, "small.png", small_w, small_h);
     FakeReads reads;
     Session session(with_detail(&reads));
+    const LetGo let_go(reads);
     ASSERT_EQ(session.open_file(source), std::nullopt);
     EXPECT_EQ(session.detail_base_state(), DetailBaseState::not_needed);
     const std::shared_ptr<const Photo> base = session.detail_base();
@@ -363,6 +380,7 @@ TEST(DetailSession, ARawPreviewIsTheBaseOnlyAtHalfSize) {
     half.raw_half_size = true;
     ASSERT_EQ(session.set_settings(half), std::nullopt);
     EXPECT_EQ(session.detail_base_state(), DetailBaseState::not_needed);
+    ASSERT_NE(session.detail_base(), nullptr);
     EXPECT_EQ(&session.detail_base()->image, session.whole_base().get());
     EXPECT_EQ(bits(session.detail_base()->image),
               bits(decoded_for_export(source, InputKind::raw, half).image));
@@ -373,6 +391,7 @@ TEST(DetailSession, SettingsThatDontChangeTheDecodeDontRestartTheRead) {
     const fs::path source = write_png(files, "big.png", big_w, big_h);
     FakeReads reads;
     Session session(with_detail(&reads));
+    const LetGo let_go(reads);
     ASSERT_EQ(session.open_file(source), std::nullopt);
     ASSERT_TRUE(reads.wait_for_calls(1));
     EXPECT_EQ(session.detail_base_state(), DetailBaseState::reading);
@@ -404,6 +423,7 @@ TEST(DetailSession, ACameraMatrixChangeRestartsTheRead) {
     const fs::path source = write_dng(files, "shot.dng");
     FakeReads reads;
     Session session(with_detail(&reads));
+    const LetGo let_go(reads);
     ASSERT_EQ(session.open_file(source), std::nullopt);
     ASSERT_TRUE(reads.wait_for_calls(1));
 
@@ -434,6 +454,7 @@ TEST(DetailSession, AnotherPhotoRestartsTheReadAndDropsTheOldResult) {
     const fs::path second = write_png(files, "second.png", big_w + 40, big_h + 30);
     FakeReads reads;
     Session session(with_detail(&reads));
+    const LetGo let_go(reads);
     ASSERT_EQ(session.open_file(first), std::nullopt);
     reads.release();
     // The first photo's read has finished and posted its result, which nobody has taken yet.
@@ -457,6 +478,7 @@ TEST(DetailSession, AnotherPhotoWhileReadingStopsTheOldRead) {
     const fs::path second = write_png(files, "second.png", big_w + 40, big_h + 30);
     FakeReads reads;
     Session session(with_detail(&reads));
+    const LetGo let_go(reads);
     ASSERT_EQ(session.open_file(first), std::nullopt);
     ASSERT_TRUE(reads.wait_for_calls(1));
     ASSERT_EQ(session.open_file(second), std::nullopt);
@@ -477,6 +499,7 @@ TEST(DetailSession, TooBigForMemoryReadsNothing) {
     // A quarter of this is less than the 2600 x 1100 photo's 34 MB.
     options.physical_memory = 100'000'000;
     Session session(options);
+    const LetGo let_go(reads);
     ASSERT_EQ(session.open_file(write_png(files, "big.png", big_w, big_h)), std::nullopt);
     EXPECT_EQ(session.detail_base_state(), DetailBaseState::too_big);
     EXPECT_EQ(session.detail_base(), nullptr);
@@ -504,6 +527,7 @@ TEST(DetailSession, ExportWhileReadingWaitsForTheReadAndWritesTheSameFile) {
     FakeReads reads;
     reads.hold();  // once stopped, the read still finishes its decode, as LibRaw's would
     Session session(with_detail(&reads));
+    const LetGo let_go(reads);
     ASSERT_EQ(session.open_file(source), std::nullopt);
     ASSERT_EQ(session.set_settings(look(session.settings(), big_w, big_h)), std::nullopt);
     ASSERT_TRUE(reads.wait_for_calls(1));
@@ -547,6 +571,7 @@ TEST(DetailSession, ExportWithTheBaseReadyKeepsIt) {
 
     FakeReads reads;
     Session session(with_detail(&reads));
+    const LetGo let_go(reads);
     ASSERT_EQ(session.open_file(source), std::nullopt);
     ASSERT_EQ(session.set_settings(look(session.settings(), big_w, big_h)), std::nullopt);
     reads.release();
@@ -584,6 +609,7 @@ TEST(DetailSession, CancellingAnExportWaitingForTheReadWritesNothing) {
     FakeReads reads;
     reads.hold();
     Session session(with_detail(&reads));
+    const LetGo let_go(reads);
     ASSERT_EQ(session.open_file(source), std::nullopt);
     ASSERT_TRUE(reads.wait_for_calls(1));
     const ExportJob job = session.begin_export();
