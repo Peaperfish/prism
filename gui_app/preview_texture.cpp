@@ -170,4 +170,40 @@ void PreviewTexture::reset() {
     height_ = 0;
 }
 
+bool DetailTexture::upload(const gui::DetailFrame& frame) {
+    const int w = frame.size.width;
+    const int h = frame.size.height;
+    if (w <= 0 || h <= 0 ||
+        frame.rgb8.size() != static_cast<std::size_t>(w) * static_cast<std::size_t>(h) * 3) {
+        SDL_SetError("the detail frame is empty or the wrong size");
+        reset();
+        return false;
+    }
+    if (texture_ == nullptr || w != width_ || h != height_) {
+        reset();
+        texture_ =
+            SDL_CreateTexture(renderer_, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STATIC, w, h);
+        if (texture_ == nullptr) {
+            return false;
+        }
+        SDL_SetTextureScaleMode(texture_, SDL_SCALEMODE_LINEAR);
+        width_ = w;
+        height_ = h;
+    }
+    if (!SDL_UpdateTexture(texture_, nullptr, frame.rgb8.data(), w * 3)) {
+        reset();
+        return false;
+    }
+    return true;
+}
+
+void DetailTexture::reset() {
+    if (texture_ != nullptr) {
+        SDL_DestroyTexture(texture_);
+        texture_ = nullptr;
+    }
+    width_ = 0;
+    height_ = 0;
+}
+
 }  // namespace prism::gui_app

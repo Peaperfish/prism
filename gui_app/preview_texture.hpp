@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "prism/gui/detail_renderer.hpp"
 #include "prism/gui/preview_renderer.hpp"
 
 namespace prism::gui_app {
@@ -80,6 +81,32 @@ private:
     std::vector<std::uint32_t> overlay_pixels_;
     int overlay_width_ = 0;
     int overlay_height_ = 0;
+    int width_ = 0;
+    int height_ = 0;
+};
+
+// A frame of real pixels on the GPU (#37): one SDL_Texture holding the DetailFrame last taken from
+// the DetailRenderer, drawn over the enlarged preview. Main thread only, as PreviewTexture. The
+// texture is reused while frames keep the same size; only its pixels are replaced.
+class DetailTexture {
+public:
+    explicit DetailTexture(SDL_Renderer* renderer) : renderer_(renderer) {}
+    ~DetailTexture() { reset(); }
+
+    DetailTexture(const DetailTexture&) = delete;
+    DetailTexture& operator=(const DetailTexture&) = delete;
+
+    // Copies the frame's RGB8 bytes into the texture. False (with SDL_GetError() set) if the frame
+    // is empty or the wrong size, or SDL couldn't; there is no texture then.
+    bool upload(const gui::DetailFrame& frame);
+    // Drops the texture.
+    void reset();
+
+    [[nodiscard]] SDL_Texture* texture() const noexcept { return texture_; }
+
+private:
+    SDL_Renderer* renderer_;
+    SDL_Texture* texture_ = nullptr;
     int width_ = 0;
     int height_ = 0;
 };

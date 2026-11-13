@@ -14,13 +14,14 @@
 #include "file_dialogs.hpp"
 #include "framing_bar.hpp"
 #include "preview_texture.hpp"
-#include "scope_view.hpp"
 #include "prism/gui/background_export.hpp"
 #include "prism/gui/brush.hpp"
 #include "prism/gui/canvas_input.hpp"
 #include "prism/gui/clip_note.hpp"
-#include "prism/gui/close_guard.hpp"
 #include "prism/gui/clipping.hpp"
+#include "prism/gui/close_guard.hpp"
+#include "prism/gui/detail_canvas.hpp"
+#include "prism/gui/detail_renderer.hpp"
 #include "prism/gui/explanations.hpp"
 #include "prism/gui/framing.hpp"
 #include "prism/gui/histogram.hpp"
@@ -33,6 +34,7 @@
 #include "prism/gui/settings.hpp"
 #include "prism/gui/test_strip.hpp"
 #include "prism/gui/view_transform.hpp"
+#include "scope_view.hpp"
 
 namespace prism::gui_app {
 
@@ -120,6 +122,17 @@ private:
     void take_dialog_results();
     void take_export_dialog(DialogResult& result);
     void update_preview();
+    // Real-pixel zoom (#37), once per drawn frame of the normal canvas, after the view is settled:
+    // takes a finished detail frame, if any, into detail_texture_, then works out this frame's
+    // plan (plan_detail_frame) into detail_plan_ and carries out its clear and submit.
+    void update_detail();
+    // Forgets every detail frame and request (another photo, or the canvas isn't showing them).
+    void drop_detail();
+    // The file's framed picture at full size: the detail base's, or before it is read the size an
+    // export would start from (Session::framed_start_size). What 100% and the zoom are measured on.
+    [[nodiscard]] prism::PixelSize framed_full_size() const;
+    // Whether a gesture is under way on the canvas this frame (gui::canvas_gesture).
+    [[nodiscard]] bool canvas_gesture_now() const;
     void show_error(gui::Error error);
     void report(gui::MaybeError error);
     [[nodiscard]] gui::Theme theme() const;
@@ -276,6 +289,17 @@ private:
     gui::Session session_;
     gui::LivePreview preview_;
     PreviewTexture texture_;
+    // Real-pixel zoom (#37). The renderer is declared after session_, so it is destroyed (its
+    // render stopped and joined, the base it holds let go) before the session.
+    DetailTexture detail_texture_;
+    gui::DetailRenderer detail_renderer_;
+    gui::DetailBaseNumber detail_base_number_;
+    bool detail_photo_opened_ = false;  // a photo opened since the base was last numbered
+    std::optional<gui::ShownDetail> detail_shown_;          // the frame in detail_texture_
+    std::optional<gui::SubmittedDetail> detail_submitted_;  // the last request since a clear
+    std::uint64_t detail_awaited_ = 0;     // the newest admitted request's generation, until shown
+    gui::DetailFramePlan detail_plan_;     // this frame's (drawing, the chip, Explain)
+    std::optional<double> last_wheel_ms_;  // the last wheel, scroll or pinch on the canvas
     ScopeView scope_view_;
     HistogramTexture histogram_texture_;
     std::optional<gui::StageHistogram> histogram_;
@@ -319,6 +343,11 @@ private:
     bool stroke_overlay_dirty_ = false;
     std::optional<gui::Theme> stroke_overlay_theme_;
     gui::BackgroundExport exporter_;
+    // Exports go through the session's bracket (begin_export / end_export), ended on every path.
+    // Declared after exporter_ and session_, so it is destroyed first: closing mid-export cancels
+    // the export and ends it while both still exist.
+    gui::SessionExport exports_{exporter_, [this] { return session_.begin_export(); },
+                                [this] { session_.end_export(); }};
     // What the photo was last saved with, by export or as a recipe, to tell unsaved edits from
     // none.
     gui::SavedBaseline baseline_;

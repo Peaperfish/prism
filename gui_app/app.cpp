@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <exception>
+#include <memory>
+#include <stdexcept>
 #include <utility>
 
 #include "about_info.hpp"
@@ -149,13 +151,23 @@ bool folder_exists(const fs::path& path) {
     return fs::is_directory(path, ec);
 }
 
+// The app's session keeps the full-size photo for real-pixel zoom (#37): it reads it in the
+// background after opening, and App polls for it and exports through begin_export.
+gui::SessionOptions app_session_options() {
+    gui::SessionOptions options;
+    options.detail_base = true;
+    return options;
+}
+
 }  // namespace
 
 App::App(SDL_Window* window, SDL_Renderer* renderer, DialogQueue& dialogs,
          fs::path preferences_file)
     : window_(window),
       dialogs_(dialogs),
+      session_(app_session_options()),
       texture_(renderer),
+      detail_texture_(renderer),
       scope_view_(renderer),
       histogram_texture_(renderer),
       prefs_file_(std::move(preferences_file)),
@@ -349,6 +361,8 @@ void App::open_now(const fs::path& path) {
     baseline_.opened(session_.settings());
     recipes_.photo_opened();
     texture_.reset();  // don't show the previous photo under the new name
+    drop_detail();     // nor its real pixels
+    detail_photo_opened_ = true;
     histogram_.reset();
     clips_.reset();
     clip_note_.reset();
@@ -471,7 +485,7 @@ void App::take_export_dialog(DialogResult& result) {
     error_.reset();
     notice_.clear();
     exporting_settings_ = session_.settings();
-    exporter_.start(session_.export_job(), output);
+    exports_.start(output);  // the session pauses its read of the full-size photo meanwhile
     if (for_close) {
         apply_close_step(gui::save_dialog_closed(true));
     }
@@ -870,7 +884,7 @@ void App::draw_recipe_line() {
 }
 
 void App::take_export_result() {
-    std::optional<gui::ExportResult> result = exporter_.poll();
+    std::optional<gui::ExportResult> result = exports_.poll();
     if (!result) {
         return;
     }
@@ -890,6 +904,109 @@ void App::take_export_result() {
         apply_close_step(gui::export_finished(end));
     } else if (close_pending_ && close_phase_ == ClosePhase::waiting) {
         apply_close_step(gui::close_requested(close_state()));  // decide again with the new state
+    }
+}
+
+prism::PixelSize App::framed_full_size() const {
+    if (const std::shared_ptr<const prism::Photo> base = session_.detail_base()) {
+        try {
+            return prism::plan_export_frame(session_.settings().frame, base->image.width,
+                                            base->image.height)
+                .size;
+        } catch (const std::invalid_argument&) {
+            // The session's settings are valid; nothing to measure if they somehow aren't.
+        }
+    }
+    return session_.framed_start_size();
+}
+
+bool App::canvas_gesture_now() const {
+    gui::CanvasActivity activity;
+    activity.hand_drag = hand_drag_.dragging();
+    activity.wheel = gui::wheel_gesture_live(static_cast<double>(SDL_GetTicks()), last_wheel_ms_);
+    activity.pinch = pinch_factor_ != 1.0f;
+    activity.brush_stroke = brush_gesture_.stroking();
+    activity.control_active = control_active();
+    return gui::canvas_gesture(activity);
+}
+
+void App::drop_detail() {
+    detail_renderer_.clear();
+    detail_texture_.reset();
+    detail_shown_.reset();
+    detail_submitted_.reset();
+    detail_awaited_ = 0;
+    detail_plan_ = {};
+}
+
+void App::update_detail() {
+    const std::shared_ptr<const prism::Photo> base = session_.detail_base();
+    const std::uint64_t base_id =
+        detail_base_number_.update(base, std::exchange(detail_photo_opened_, false));
+
+    // A frame that finished since the last one: only one of the current base comes back.
+    if (std::optional<gui::DetailFrame> frame = detail_renderer_.poll(base_id)) {
+        quiet_frames_ = 0;
+        if (frame->generation >= detail_awaited_) {
+            detail_awaited_ = 0;  // the newest asked for has arrived
+        }
+        if (frame->error.empty() && detail_texture_.upload(*frame)) {
+            detail_shown_ = gui::ShownDetail{frame->key, frame->region, frame->picture};
+        } else {
+            // A failed render (or upload) shows nothing: the enlarged preview stays.
+            detail_texture_.reset();
+            detail_shown_.reset();
+        }
+    }
+
+    gui::DetailFrameInput in;
+    in.view = view_;
+    in.geometry = view_geometry_;
+    if (const std::shared_ptr<const prism::Image> preview = session_.preview_base()) {
+        in.framed_preview_now = {preview->width, preview->height};
+    }
+    if (base) {
+        in.framed_full = framed_full_size();
+    }
+    in.base_state = session_.detail_base_state();
+    in.base = base_id;
+    in.settings = session_.settings_generation();
+    in.gesture = canvas_gesture_now();
+    in.mode = gui::canvas_view(
+        framing_.on(), strip_.has_value(),
+        !strip_ && gui::effective_compare(viewed_stage_, compare_stage_).has_value(),
+        viewed_stage_ != gui::final_stage, prefs_.clip_overlay, stroke_mask_on_);
+    in.shown = detail_shown_;
+    in.submitted = detail_submitted_;
+    detail_plan_ = gui::plan_detail_frame(in);
+
+    if (detail_plan_.clear) {
+        detail_renderer_.clear();
+        detail_texture_.reset();
+        detail_shown_.reset();
+        detail_submitted_.reset();
+        detail_awaited_ = 0;
+    }
+    if (detail_plan_.submit && base) {
+        const gui::DetailSubmit& ask = *detail_plan_.submit;
+        gui::DetailRenderRequest request;
+        request.base = base;
+        request.settings = session_.settings();
+        request.request = ask.request;
+        request.output = ask.output;
+        request.key = ask.key;
+        std::uint64_t generation = 0;
+        try {
+            generation = detail_renderer_.submit(std::move(request), in.gesture);
+        } catch (const std::invalid_argument&) {
+            // plan_detail_frame never asks for an empty region or a size downscale can't make;
+            // if it did, the enlarged preview stays rather than the app stopping.
+        }
+        detail_submitted_ = gui::SubmittedDetail{ask.key, ask.request.region, ask.output,
+                                                 ask.picture, generation != 0};
+        // A refused request also dropped the one waiting; while the gesture goes on the app draws
+        // anyway, and on release the region is asked for again.
+        detail_awaited_ = generation;
     }
 }
 
@@ -1191,8 +1308,13 @@ void App::take_drop() {
 }
 
 bool App::animating() const {
+    // Real pixels: keep drawing while the full-size photo is read, while a requested frame is on
+    // its way, and until a wheel gesture has ended (the region is then asked for with its margin).
+    const bool detail_busy =
+        session_.detail_base_state() == gui::DetailBaseState::reading || detail_awaited_ != 0 ||
+        gui::wheel_gesture_live(static_cast<double>(SDL_GetTicks()), last_wheel_ms_);
     return quiet_frames_ < settle_frames || preview_.rendering() || pending_open_.has_value() ||
-           exporter_.busy() || close_pending_.has_value();
+           exporter_.busy() || close_pending_.has_value() || detail_busy;
 }
 
 void App::frame() {
@@ -1205,6 +1327,9 @@ void App::frame() {
         open_now(path);
     }
     take_export_result();
+    if (session_.poll_detail_base()) {
+        quiet_frames_ = 0;  // the full-size photo arrived (or failed): draw with it
+    }
     explain_hover_.clear();
     explain_focus_.clear();
     handle_shortcuts();
@@ -1666,8 +1791,11 @@ void App::draw_menu() {
         const bool can_zoom = view_available();
         const float zoom = can_zoom ? gui::view_zoom(view_, view_geometry_) : 1.0f;
         const float fit = can_zoom ? gui::view_fit_zoom(view_geometry_) : 1.0f;
-        if (ImGui::MenuItem("Zoom In", "=", false,
-                            can_zoom && !gui::view_same_zoom(gui::view_step_zoom(zoom, fit, +1), zoom))) {
+        if (ImGui::MenuItem(
+                "Zoom In", "=", false,
+                can_zoom &&
+                    !gui::view_same_zoom(
+                        gui::view_step_zoom(zoom, fit, +1, view_geometry_.file_scale), zoom))) {
             view_step(+1);
         }
         if (ImGui::MenuItem("Zoom Out", "-", false, can_zoom && !view_.fit)) {
@@ -1677,8 +1805,9 @@ void App::draw_menu() {
             view_fit();
         }
         // Greyed out where it can't go: a photo so small that even its fit is above 100%.
-        if (ImGui::MenuItem("100% of Preview", "1", false,
-                            can_zoom && fit < 1.0f && !gui::view_same_zoom(zoom, 1.0f))) {
+        if (ImGui::MenuItem(std::string(gui::real_pixels_menu_item()).c_str(), "1", false,
+                            can_zoom && gui::view_actual_size_available(view_geometry_) &&
+                                !gui::view_at_actual_size(view_, view_geometry_))) {
             view_actual_size();
         }
         ImGui::EndMenu();
@@ -1704,6 +1833,7 @@ void App::draw_canvas() {
     canvas_taken_.clear();
     canvas_chips_.clear();
     sample_hover_.reset();
+    detail_plan_.draw = false;  // until this frame's canvas says otherwise
     update_hand_key();
     ImDrawList* draw = ImGui::GetWindowDrawList();
     const ImVec2 min = ImGui::GetWindowPos();
@@ -1738,8 +1868,13 @@ void App::draw_canvas() {
                           ImGui::GetIO().DisplayFramebufferScale.x,
                           texture_.width(),
                           texture_.height()};
+        // Zoom is measured in file pixels (#37): 100% is one pixel of the framed picture at its
+        // full size on one device pixel.
+        view_geometry_.file_scale = static_cast<float>(
+            gui::file_scale(framed_full_size(), {texture_.width(), texture_.height()}).shown);
         apply_canvas_input();
         view_ = gui::view_settled(view_, view_geometry_);
+        update_detail();
         const gui::ViewPlacement placed = gui::view_placement(view_, view_geometry_);
         const ImVec2 at(placed.at.x, placed.at.y);
         const ImVec2 shown(placed.shown.x, placed.shown.y);
@@ -1752,6 +1887,23 @@ void App::draw_canvas() {
             draw->AddImage(ImTextureRef(static_cast<ImTextureID>(
                                reinterpret_cast<std::uintptr_t>(texture_.texture()))),
                            at, ImVec2(at.x + shown.x, at.y + shown.y));
+            if (detail_plan_.draw && detail_texture_.texture() != nullptr) {
+                // Real pixels over the enlarged preview, on their own region's place; the preview
+                // shows around them. Sampled by the rule for file pixels, then back to the
+                // preview's rule for the overlays.
+                const ImGuiPlatformIO& platform = ImGui::GetPlatformIO();
+                draw->AddCallback(detail_plan_.nearest ? platform.DrawCallback_SetSamplerNearest
+                                                       : platform.DrawCallback_SetSamplerLinear,
+                                  nullptr);
+                draw->AddImage(ImTextureRef(static_cast<ImTextureID>(
+                                   reinterpret_cast<std::uintptr_t>(detail_texture_.texture()))),
+                               ImVec2(detail_plan_.where.min.x, detail_plan_.where.min.y),
+                               ImVec2(detail_plan_.where.max.x, detail_plan_.where.max.y));
+                draw->AddCallback(gui::view_shows_pixels(gui::view_zoom(view_, view_geometry_))
+                                      ? platform.DrawCallback_SetSamplerNearest
+                                      : platform.DrawCallback_SetSamplerLinear,
+                                  nullptr);
+            }
             draw_picture_overlays(draw, at, ImVec2(at.x + shown.x, at.y + shown.y),
                                   ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f));
             end_picture_sampling(draw);
@@ -1819,14 +1971,15 @@ void App::view_fit() {
 
 void App::view_actual_size() {
     if (view_available()) {
-        view_ = gui::view_zoomed_to(view_, view_geometry_, 1.0f);
+        view_ = gui::view_zoomed_to(view_, view_geometry_, gui::view_actual_zoom(view_geometry_));
     }
 }
 
 void App::view_step(int direction) {
     if (view_available()) {
         const float next = gui::view_step_zoom(gui::view_zoom(view_, view_geometry_),
-                                               gui::view_fit_zoom(view_geometry_), direction);
+                                               gui::view_fit_zoom(view_geometry_), direction,
+                                               view_geometry_.file_scale);
         view_ = gui::view_zoomed_to(view_, view_geometry_, next);
     }
 }
@@ -1845,6 +1998,7 @@ void App::apply_canvas_input() {
         if (!scroll_latch_.on_canvas(hovered, e.now_ms)) {
             continue;
         }
+        last_wheel_ms_ = static_cast<double>(e.now_ms);  // a gesture until it has rested a moment
         // On a Mac ImGui's Ctrl is the Cmd key.
         const gui::CanvasScroll scroll = gui::canvas_scroll(e.wheel, e.trackpad, io.KeyCtrl, pan_unit);
         if (scroll.kind == gui::CanvasScrollKind::pan) {
@@ -1857,6 +2011,7 @@ void App::apply_canvas_input() {
     canvas_wheels_.clear();
     // SDL gives a pinch no position, so it goes about the cursor.
     if (pinch_factor_ != 1.0f && hovered) {
+        last_wheel_ms_ = static_cast<double>(SDL_GetTicks());
         view_ = gui::view_zoomed_to(view_, view_geometry_,
                                     gui::view_zoom(view_, view_geometry_) * pinch_factor_, cursor);
     }
@@ -1999,13 +2154,13 @@ void App::leave_framing() {
 void App::draw_framing_canvas(ImDrawList* draw, ImVec2 min, ImVec2 size) {
     const prism::PixelSize photo = framing_.photo();
     const prism::Frame& draft = framing_.draft();
-    const gui::ViewGeometry canvas{min.x,
-                                   min.y,
-                                   size.x,
-                                   size.y,
-                                   ImGui::GetIO().DisplayFramebufferScale.x,
-                                   photo.width,
-                                   photo.height};
+    gui::ViewGeometry canvas{
+        min.x,       min.y,       size.x, size.y, ImGui::GetIO().DisplayFramebufferScale.x,
+        photo.width, photo.height};
+    // The zoom in file pixels, as on the normal canvas: the whole photo at the export's size over
+    // the whole photo framing shows. Framing itself always shows the preview (#58).
+    canvas.file_scale = static_cast<float>(
+        gui::file_scale(session_.export_start_size(), {photo.width, photo.height}).shown);
     view_geometry_ = gui::framing_geometry(canvas, draft.angle, photo.width, photo.height,
                                            token_metrics().canvas_margin);
     if (framing_.gesture() == gui::FramingGesture::none) {
@@ -2016,6 +2171,7 @@ void App::draw_framing_canvas(ImDrawList* draw, ImVec2 min, ImVec2 size) {
         pinch_factor_ = 1.0f;
     }
     view_ = gui::view_settled(view_, view_geometry_);
+    update_detail();  // framing shows the preview: this clears any real pixels
     framing_view_ =
         gui::framing_view_placed(draft.angle, photo.width, photo.height, view_, view_geometry_);
 
@@ -3235,15 +3391,15 @@ void App::draw_zoom_chip() {
     const gui::TokenMetrics& metrics = token_metrics();
     const gui::TokenColours& tokens = token_colours();
     const auto rgba4 = [](const gui::Rgba& c) { return ImVec4(c.r, c.g, c.b, c.a); };
-    const float zoom = gui::view_zoom(view_, view_geometry_);
-    const float fit = gui::view_fit_zoom(view_geometry_);
-    const std::string label = gui::view_zoom_label(
-        zoom, std::max(texture_.width(), texture_.height()), canvas_measure().file_long_side);
+    // Percent of the file (#37), with "· preview" while enlarged preview pixels are shown for a
+    // reason that lasts (only ever in the normal canvas's picture view).
+    const gui::PreviewChip reason = framing_.on() ? gui::PreviewChip::none : detail_plan_.chip;
+    const std::string label = gui::canvas_zoom_chip(view_, view_geometry_, reason);
     // The choice the view is at is lit; clicking it does nothing. 100% can't be chosen where Fit
     // already shows the photo at 100% or more.
     const bool fit_current = view_.fit;
-    const bool actual_current = !view_.fit && gui::view_same_zoom(zoom, 1.0f);
-    const bool actual_unavailable = fit >= 1.0f;
+    const bool actual_current = gui::view_at_actual_size(view_, view_geometry_);
+    const bool actual_unavailable = !gui::view_actual_size_available(view_geometry_);
 
     ImGui::PushFont(nullptr, token_type().small);
     const float pad = metrics.zoom_chip_pad;
@@ -3401,6 +3557,10 @@ App::ExplainText App::explain_text() const {
         context.preview_long_side = std::max(texture_.width(), texture_.height());
         context.file_long_side = measure.file_long_side;
         context.measures_frame = measure.framed;
+        if (!framing_.on()) {
+            context.view_state = detail_plan_.draw ? gui::real_pixels_shown_explain()
+                                                   : gui::preview_chip_explain(detail_plan_.chip);
+        }
     }
     context.file_size_exact = session_.file_size_exact();
     context.file_width = session_.file_width();
@@ -4171,7 +4331,7 @@ void App::draw_saving_popup() {
             if (waiting) {
                 apply_close_step(gui::CloseStep::cancel);
             } else {
-                exporter_.cancel();
+                exports_.cancel();
             }
         }
         ImGui::EndPopup();
