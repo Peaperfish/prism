@@ -297,6 +297,45 @@ TEST(DetailCanvasPlan, ARegionTooBigForAGestureWaitsHidesTheFrameAndSaysSo) {
     EXPECT_EQ(plan.chip, PreviewChip::none);
 }
 
+TEST(DetailCanvasPlan, APanIntoARegionTooBigForTheGestureHidesEvenACurrentFrame) {
+    // Real pixels of the current settings, then a drag that pans: the new region is over 8 MP, so
+    // it waits, and the frame (of the right settings, but now a refused request behind it) hides.
+    DetailFrameInput in = settled_after(input(50.0));
+    in.gesture = true;
+    in.view = view_panned_by(in.view, in.geometry, 200.0f, 0.0f);
+    const DetailFramePlan plan = plan_detail_frame(in);
+    ASSERT_TRUE(plan.submit);
+    EXPECT_FALSE(plan.submit->admitted);
+    EXPECT_EQ(in.shown->key.settings, in.settings);
+    EXPECT_FALSE(plan.draw);
+    EXPECT_EQ(plan.chip, PreviewChip::region_too_big_live);
+}
+
+TEST(DetailCanvasPlan, ARefusedRequestIsAskedAgainWhenTheGestureEndsEvenIfNothingElseChanged) {
+    // A 24 MP photo at 100% on a canvas just smaller than it: the region is the whole photo with
+    // or without the margin, so letting go changes nothing but the gesture.
+    constexpr PixelSize full{6000, 4000};
+    constexpr PixelSize preview{2560, 1707};
+    DetailFrameInput in = input(100.0, preview, full);
+    in.geometry = canvas(preview, full, 2950.0f, 1975.0f, 2.0f);
+    in.view = at_percent(in.geometry, 100.0, 1280.0f, 853.0f);
+    ASSERT_FALSE(in.view.fit);
+    in.gesture = true;
+    DetailFramePlan plan = plan_detail_frame(in);
+    ASSERT_TRUE(plan.submit);
+    ASSERT_EQ(plan.submit->request.region, (FrameBox{0, 0, 6000, 4000}));
+    ASSERT_EQ(plan.submit->request.budget, RegionBudget::on_release);
+    EXPECT_FALSE(plan.submit->admitted);
+    in.submitted = recorded(*plan.submit);
+    EXPECT_FALSE(plan_detail_frame(in).submit);  // still dragging: not asked again
+
+    in.gesture = false;
+    plan = plan_detail_frame(in);
+    ASSERT_TRUE(plan.submit);
+    EXPECT_EQ(plan.submit->request.region, in.submitted->region);  // the same region
+    EXPECT_TRUE(plan.submit->admitted);
+}
+
 TEST(DetailCanvasPlan, TheGestureReasonOnlyShowsWhenThePreviewIsWhatIsDrawn) {
     // A gesture over 8 MP whose region was rendered (admitted before the gesture made it wait, say)
     // and has not changed since: the frame stays drawn, so the chip has no reason to give.
