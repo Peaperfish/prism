@@ -105,9 +105,9 @@ struct ExportJob {
 
 // The photo being edited: where it came from, what is known about the shot, the small image the
 // preview is rendered from, and the settings with their undo history. Not thread-safe; it belongs
-// to the UI thread. The full image is not kept: after opening, only the preview base stays in
-// memory (~52 MB at 2560 px instead of ~730 MB for 60 MP), and export decodes the file again at
-// full size.
+// to the UI thread. After opening, only the preview base stays in memory (~52 MB at 2560 px instead
+// of ~730 MB for 60 MP), and export decodes the file again at full size; with
+// SessionOptions::detail_base the full-size photo is also read in the background (detail_base()).
 class Session {
 public:
     explicit Session(SessionOptions options = {});
@@ -117,9 +117,11 @@ public:
     Session& operator=(const Session&) = delete;
 
     // Opens a PNG, JPEG or camera RAW file. RAW files are decoded at half size, which is still
-    // larger than the preview and twice as fast. The result is shrunk to the preview base, and the
-    // settings start over at the default preset for the kind of file (with no undo steps). On
-    // failure nothing changes: the previous file, if any, stays open.
+    // larger than the preview and twice as fast. The result is shrunk to the preview base, or kept
+    // as the preview base if it already fits, and the settings start over at the default preset
+    // for the kind of file (with no undo steps). With SessionOptions::detail_base, the detail base
+    // is planned and its read started. On failure nothing changes: the previous file, if any,
+    // stays open.
     [[nodiscard]] MaybeError open_file(const std::filesystem::path& path);
 
     [[nodiscard]] bool has_file() const noexcept { return whole_base_ != nullptr; }
@@ -341,7 +343,9 @@ private:
 // balance is measured against the as-shot light that decode reads from the file, the same one the
 // session read when it opened it. `stop` is checked between decoding, reducing, each stage and
 // saving; once it is triggered the export returns ErrorKind::cancelled and writes nothing. on_stage
-// reports each pipeline stage, for progress. Refuses to overwrite the source file itself.
+// reports each pipeline stage, for progress. Refuses to overwrite the source file itself. With
+// job.read_ended, it first waits for the session's background read to end (a stop during that wait
+// also returns ErrorKind::cancelled).
 [[nodiscard]] MaybeError export_image(const ExportJob& job, const std::filesystem::path& output,
                                       std::stop_token stop = {},
                                       const StageCallback& on_stage = {});
