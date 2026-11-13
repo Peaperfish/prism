@@ -142,9 +142,10 @@ Image finished(Photo base, const EditSettings& s, int threads) {
     return std::move(std::get<Image>(out));
 }
 
-// The first float of `part` of `whole` whose bits differ from `got`'s, as a message; empty if
-// every one is the same. No tolerance: bits, so -0 and NaN count too.
-std::string first_difference(const Image& whole, const FrameBox& part, const Image& got) {
+// The first float of `part` of `whole` whose bits differ from `got`'s, as a message naming
+// `whole` as `source`; empty if every one is the same. No tolerance: bits, so -0 and NaN count too.
+std::string first_difference(const Image& whole, const FrameBox& part, const Image& got,
+                             const std::string& source = "export") {
     if (got.width != part.width || got.height != part.height ||
         got.pixels.size() !=
             static_cast<std::size_t>(part.width) * static_cast<std::size_t>(part.height) * 3) {
@@ -167,7 +168,7 @@ std::string first_difference(const Image& whole, const FrameBox& part, const Ima
                 if (std::bit_cast<std::uint32_t>(want) != std::bit_cast<std::uint32_t>(have)) {
                     return "first difference at part pixel (" + std::to_string(x) + ", " +
                            std::to_string(y) + ") channel " + std::to_string(c) + ": got " +
-                           std::to_string(have) + ", export has " + std::to_string(want);
+                           std::to_string(have) + ", " + source + " has " + std::to_string(want);
                 }
             }
         }
@@ -292,7 +293,7 @@ TEST(RenderRegion, OneAndEightThreadsGiveTheSamePart) {
     const Image eight = prism::gui::render_region(base, s, part, 8);
     ASSERT_EQ(one.width, part.width);
     ASSERT_EQ(one.height, part.height);
-    EXPECT_EQ(first_difference(one, {0, 0, part.width, part.height}, eight), "");
+    EXPECT_EQ(first_difference(one, {0, 0, part.width, part.height}, eight, "1 thread"), "");
 }
 
 // --- Refused parts ---------------------------------------------------------------------------------
