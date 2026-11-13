@@ -13,6 +13,7 @@
 #include <stdexcept>
 #include <stop_token>
 #include <string>
+#include <thread>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -120,6 +121,11 @@ TEST(DetailRendererRules, FrameWanted) {
 // came would finish: the renderer must keep that out by its own checks.
 class FakeRender {
 public:
+    FakeRender() = default;
+    // With `ignore_stop`, a call waits for its release even once stopped, as a render stuck in a
+    // long stage would.
+    explicit FakeRender(bool ignore_stop) : ignore_stop_(ignore_stop) {}
+
     struct Call {
         FrameBox region;
         float exposure = 0.0f;  // the request's settings, as the tests tag them
@@ -135,7 +141,11 @@ public:
                 index = calls_.size();
                 calls_.push_back({region, s.exposure_stops, stop});
                 changed_.notify_all();
-                (void)changed_.wait_for(lock, stop, timeout, [&] { return released_ > index; });
+                if (ignore_stop_) {
+                    (void)changed_.wait_for(lock, timeout, [&] { return released_ > index; });
+                } else {
+                    (void)changed_.wait_for(lock, stop, timeout, [&] { return released_ > index; });
+                }
             }
             Image img;
             img.width = region.width;
@@ -170,6 +180,7 @@ private:
     std::condition_variable_any changed_;
     std::vector<Call> calls_;
     std::size_t released_ = 0;
+    bool ignore_stop_ = false;
 };
 
 std::shared_ptr<const Photo> tiny_photo() {
@@ -411,6 +422,72 @@ TEST(DetailRenderer, DestructionStopsTheRenderAndJoins) {
     ASSERT_EQ(calls.size(), 1u);  // the waiting one never started
     EXPECT_TRUE(calls[0].stop.stop_requested());
     EXPECT_TRUE(watch.expired());  // neither the render nor the waiting request kept the base
+}
+
+TEST(DetailRenderer, ClearStopsTheRenderAndDropsTheWaitingOne) {
+    FakeRender fake;
+    DetailRenderer renderer(fake.function());
+    std::shared_ptr<const Photo> base = tiny_photo();
+    const std::weak_ptr<const Photo> watch = base;
+    renderer.submit(request(base, 1, 1, region_a), false);
+    ASSERT_TRUE(fake.wait_for_calls(1));
+    renderer.submit(request(base, 1, 2, region_a), false);  // waits: same region
+    base.reset();                                           // the session lets go of it
+
+    renderer.clear();
+    EXPECT_TRUE(fake.calls()[0].stop.stop_requested());
+    ASSERT_TRUE(renderer.wait_until_idle(timeout));
+    EXPECT_EQ(fake.calls().size(), 1u);  // the waiting one never ran
+    EXPECT_FALSE(renderer.poll(1).has_value());
+    EXPECT_TRUE(watch.expired());
+}
+
+// Where a base was freed, and that it was.
+class FreedOn {
+public:
+    std::shared_ptr<const Photo> photo() {
+        return std::shared_ptr<const Photo>(new Photo(*tiny_photo()), [this](const Photo* p) {
+            {
+                std::lock_guard lock(mutex_);
+                thread_ = std::this_thread::get_id();
+                freed_ = true;
+            }
+            delete p;
+        });
+    }
+    std::optional<std::thread::id> thread() {
+        std::lock_guard lock(mutex_);
+        return freed_ ? std::optional(thread_) : std::nullopt;
+    }
+
+private:
+    std::mutex mutex_;
+    std::thread::id thread_;
+    bool freed_ = false;
+};
+
+// A waiting request replaced before it ran may hold the last reference to a base (another photo's,
+// ~700 MB): it is freed on the worker thread, not on the UI thread that replaced it.
+TEST(DetailRenderer, AReplacedRequestsBaseIsFreedOnTheWorker) {
+    FakeRender fake(true);
+    FreedOn freed;
+    DetailRenderer renderer(fake.function());
+    renderer.submit(request(tiny_photo(), 1, 1, region_a), false);
+    ASSERT_TRUE(fake.wait_for_calls(1));
+    // Another base: stops the first, which goes on until released; this one waits.
+    renderer.submit(request(freed.photo(), 2, 1, region_a), false);
+    EXPECT_TRUE(fake.calls()[0].stop.stop_requested());
+    // Yet another base replaces it: the waiting request held the last reference.
+    renderer.submit(request(tiny_photo(), 3, 1, region_a), false);
+    EXPECT_FALSE(freed.thread().has_value());  // not freed here, on the UI thread
+    fake.release(2);
+    ASSERT_TRUE(renderer.wait_until_idle(timeout));
+    ASSERT_TRUE(freed.thread().has_value());
+    EXPECT_NE(*freed.thread(), std::this_thread::get_id());
+    ASSERT_EQ(fake.calls().size(), 2u);
+    const std::optional<DetailFrame> frame = renderer.poll(3);
+    ASSERT_TRUE(frame.has_value());
+    EXPECT_EQ(frame->key.base, 3u);
 }
 
 TEST(DetailRenderer, AFailedRenderCarriesItsMessage) {

@@ -135,6 +135,12 @@ public:
     // empty region, or an output size of 0 or larger than the region.
     std::uint64_t submit(DetailRenderRequest request, bool gesture);
 
+    // UI thread. Stops the running render and drops the waiting request, for when nothing of the
+    // current base is wanted any more: the session dropped or replaced the detail base, or real
+    // pixels went off. Neither posts a frame, and the bases they hold are let go on the worker
+    // thread. A frame already posted stays for poll(), which drops it if it is of another base.
+    void clear();
+
     // UI thread. The newest finished frame, if one arrived since the last poll() and is wanted
     // (detail_frame_wanted) for the base now shown, `current_base` (DetailKey::base); otherwise
     // nothing. Frames of other bases, or older than the one last returned, are dropped.
@@ -151,6 +157,10 @@ private:
     };
 
     void run(std::stop_token thread_stop);
+    // Moves the waiting request, if any, to discarded_ for the worker to free. Under mutex_.
+    void discard_pending();
+    // An error frame for `job`.
+    [[nodiscard]] static DetailFrame failed(const Job& job, std::string message);
     // The frame for `job`, or nothing if `stop` was asked for.
     std::optional<DetailFrame> render(const Job& job, std::stop_token stop) const;
 
@@ -163,6 +173,9 @@ private:
     std::condition_variable_any wake_;  // a request arrived (or the thread should stop)
     std::condition_variable_any idle_;  // the worker finished a request
     std::optional<Job> pending_;
+    // Requests replaced or cleared before they ran, for the worker to free: they may hold the last
+    // reference to a base, and freeing ~700 MB is not for the UI thread.
+    std::vector<Job> discarded_;
     std::optional<DetailFrame> ready_;
     std::uint64_t latest_generation_ = 0;
     std::optional<DetailJob> running_;  // the render under way, if any
