@@ -182,6 +182,9 @@ enum class PreviewChip {
 // full size. On a Retina screen a photo pixel is half a point across."
 [[nodiscard]] std::string_view real_pixels_explain() noexcept;
 
+// The zoom's Explain line while real pixels are drawn: "Showing the photo's own pixels."
+[[nodiscard]] std::string_view real_pixels_shown_explain() noexcept;
+
 // One Explain line per chip reason, saying why the preview is shown; empty for PreviewChip::none.
 // For example "Showing the preview, enlarged: the full-size photo is still being read."
 [[nodiscard]] std::string_view preview_chip_explain(PreviewChip chip) noexcept;

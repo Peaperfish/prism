@@ -169,7 +169,8 @@ constexpr Explanation templates[] = {
      "ceiling). The red, green and blue figures count each channel alone.",
      LiveKind::over},
     {"chip.under", "Pixels darker than black.",
-     "Share of pixels with no light left at this stage: a channel is below 0 and the pixel is black "
+     "Share of pixels with no light left at this stage: a channel is below 0 and the pixel is "
+     "black "
      "or darker. A pixel with light and a channel below 0 is outside sRGB, counted apart.",
      LiveKind::under},
 
@@ -216,16 +217,18 @@ constexpr Explanation templates[] = {
      "1.3×, half a stop about 1.4×, a whole stop 2×."},
 
     // --- Zoom --------------------------------------------------------------------------------
-    {"view.zoom", "How large the preview is on the screen.",
-     "Pinch or use the wheel to zoom; scroll or drag to move. 100% is one preview pixel on one "
-     "screen pixel.",
+    {"view.zoom", "How large the photo is on the screen, in % of its own pixels.",
+     "Pinch or use the wheel to zoom; scroll or drag to move. 100% is one pixel of the photo on "
+     "each pixel of your screen, up to 800%. Zoomed in, the photo's own pixels are shown.",
      LiveKind::preview_size},
     {"view.fit", "Show the whole photo (F).",
      "The picture fills the canvas as far as it can and follows the window as it changes size. "
      "Only the view changes, not the photo."},
-    {"view.actual", "One preview pixel on one screen pixel (1).",
-     "The sharpest this preview can look. A large file has more pixels than the preview: look at "
-     "an export for those. Greyed out when the photo already fills the canvas above 100%."},
+    // The detail starts with real_pixels_explain() (detail_view.hpp), word for word.
+    {"view.actual", "One pixel of the photo on each pixel of your screen (1).",
+     "100%: one pixel of the photo on each pixel of your screen, the photo at its full size. On a "
+     "Retina screen a photo pixel is half a point across. Greyed out when the whole photo already "
+     "fits above 100%."},
 
     // --- Sample colour -------------------------------------------------------------------------
     {"sample", "Read one pixel's values at the viewed stage (I).",
@@ -263,7 +266,8 @@ constexpr Explanation templates[] = {
      "bigger and smaller, Shift+[ and Shift+] its edge softer and harder. Hold M to see the "
      "strokes."},
     {"dodge_burn.strength", "How many stops one stroke moves the light.",
-     "From 0.1 to 2 stops, in steps of 0.1. A stroke of 1 stop moves the light as much as doubling or "
+     "From 0.1 to 2 stops, in steps of 0.1. A stroke of 1 stop moves the light as much as doubling "
+     "or "
      "halving the time. It belongs to the brush: undo leaves it, and it isn't saved."},
     {"dodge_burn.clear", "Take every stroke off the photo.",
      "Removes all the dodging and burning in one undo step. Greyed out when there is none."},
@@ -667,18 +671,20 @@ std::string live_line(std::string_view id, const EditSettings& s, const LiveCont
             // With a frame the preview is the framed picture, so it is measured against the frame
             // in the file, not the whole file.
             const std::string what = context.measures_frame ? "frame" : "file";
+            // What the canvas shows zoomed in, as its own sentence after the preview's.
+            const std::string view_state =
+                context.view_state.empty() ? std::string() : ". " + std::string(context.view_state);
             if (context.preview_long_side >= context.file_long_side && context.file_size_exact) {
                 return "Preview and " + what + " are both " + file +
-                       " px on the long side: each preview pixel is one " + what + " pixel";
+                       " px on the long side: each preview pixel is one " + what + " pixel" +
+                       view_state;
             }
             const double across =
                 file_pixels_across(context.preview_long_side, context.file_long_side);
             return "Preview " + preview + " px, " + what + " " +
                    std::string(size_estimate_prefix(context.file_size_exact)) + file +
                    " px on the long side: each preview pixel stands for about " +
-                   printf_string("%.1f", across) + " " + what + " pixels across" +
-                   (context.measures_frame ? ", so a tight frame looks softer here than it exports"
-                                           : "");
+                   printf_string("%.1f", across) + " " + what + " pixels across" + view_state;
         }
         case LiveKind::sample:
             if (context.sample == nullptr) {

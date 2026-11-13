@@ -169,6 +169,10 @@ struct LiveContext {
     int file_width = 0;   // the file's whole size (Session::file_width), for the frame's live line
     int file_height = 0;
     const PixelTrace* sample = nullptr;    // the pixel the sampler is reading, if any
+    // What the canvas shows zoomed in (#37), for the zoom's line: real_pixels_shown_explain() while
+    // real pixels are drawn, preview_chip_explain() of the chip's reason, or empty. It follows the
+    // preview's sentence, ending in its own full stop.
+    std::string_view view_state;
     std::optional<Chromaticity> as_shot_white;  // the photo's as-shot light, if the file has one
 };
 
@@ -183,8 +187,10 @@ struct LiveContext {
 //   view.zoom on a 61 MP RAW:  "Preview 2560 px, file 9566 px on the long side: each preview pixel
 //                               stands for about 3.7 file pixels across"
 //   view.zoom, framed:         "Preview 1600 px, frame 5980 px on the long side: each preview pixel
-//                               stands for about 3.7 frame pixels across, so a tight frame looks
-//                               softer here than it exports"
+//                               stands for about 3.7 frame pixels across"
+//   view.zoom at 100%:         "Preview 2560 px, file 9566 px on the long side: each preview pixel
+//                               stands for about 3.7 file pixels across. Showing the photo's own
+//                               pixels."
 //   easel with a frame:        "Frame 5120 × 3413 of 6000 × 4000 (73% of the photo), turned 1.2°
 //                               clockwise."
 // Empty for an unknown id and for entries without one.

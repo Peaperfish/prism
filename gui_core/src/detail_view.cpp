@@ -179,6 +179,10 @@ std::string_view real_pixels_explain() noexcept {
            "On a Retina screen a photo pixel is half a point across.";
 }
 
+std::string_view real_pixels_shown_explain() noexcept {
+    return "Showing the photo's own pixels.";
+}
+
 std::string_view preview_chip_explain(PreviewChip chip) noexcept {
     switch (chip) {
         case PreviewChip::none: return {};

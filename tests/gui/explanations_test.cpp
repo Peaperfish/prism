@@ -10,6 +10,7 @@
 #include <string_view>
 #include <vector>
 
+#include "prism/gui/detail_view.hpp"
 #include "prism/gui/light_path.hpp"
 #include "prism/gui/pixel_sample.hpp"
 #include "prism/gui/stage_controls.hpp"
@@ -613,6 +614,44 @@ TEST(LiveLines, APreviewOfTheWholeFileSaysOneToOne) {
               "pixel");
 }
 
+TEST(LiveLines, TheZoomSaysWhatTheCanvasShowsZoomedIn) {
+    LiveContext context;
+    context.preview_long_side = 2560;
+    context.file_long_side = 9566;
+    context.view_state = real_pixels_shown_explain();
+    EXPECT_EQ(live_line(explain::view_zoom, EditSettings{}, context),
+              "Preview 2560 px, file 9566 px on the long side: each preview pixel stands for about "
+              "3.7 file pixels across. Showing the photo's own pixels.");
+    context.view_state = preview_chip_explain(PreviewChip::reading);
+    EXPECT_EQ(live_line(explain::view_zoom, EditSettings{}, context),
+              "Preview 2560 px, file 9566 px on the long side: each preview pixel stands for about "
+              "3.7 file pixels across. Showing the preview, enlarged: the full-size photo is still "
+              "being read.");
+    context.preview_long_side = 1600;
+    context.file_long_side = 1600;
+    context.view_state = real_pixels_shown_explain();
+    EXPECT_EQ(live_line(explain::view_zoom, EditSettings{}, context),
+              "Preview and file are both 1600 px on the long side: each preview pixel is one file "
+              "pixel. Showing the photo's own pixels.");
+}
+
+TEST(Explanations, TheZoomAndHundredPercentSpeakOfThePhotosOwnPixels) {
+    const Explanation* zoom = explanation_for(explain::view_zoom);
+    ASSERT_NE(zoom, nullptr);
+    EXPECT_EQ(zoom->summary, "How large the photo is on the screen, in % of its own pixels.");
+    EXPECT_EQ(zoom->detail,
+              "Pinch or use the wheel to zoom; scroll or drag to move. 100% is one pixel of the "
+              "photo on each pixel of your screen, up to 800%. Zoomed in, the photo's own pixels "
+              "are shown.");
+    const Explanation* actual = explanation_for(explain::view_actual);
+    ASSERT_NE(actual, nullptr);
+    EXPECT_EQ(actual->summary, "One pixel of the photo on each pixel of your screen (1).");
+    // The words of real-pixel zoom's own explanation, then when the button is greyed out.
+    EXPECT_EQ(actual->detail.substr(0, real_pixels_explain().size()), real_pixels_explain());
+    EXPECT_EQ(actual->detail.substr(real_pixels_explain().size()),
+              " Greyed out when the whole photo already fits above 100%.");
+}
+
 TEST(LiveLines, ThePreviewSizeIsEmptyWithoutAPhoto) {
     EXPECT_EQ(live_line(explain::view_zoom, EditSettings{}, LiveContext{}), "");
 }
@@ -890,19 +929,22 @@ TEST(Explanations, DodgeAndBurnExplainsTheRowItsSwitchBrushStrengthAndClear) {
 }
 
 TEST(LiveLines, AFramedPreviewIsMeasuredAgainstTheFrame) {
-    // With a frame the preview is the framed picture: its pixels stand for the frame's, and a tight
-    // frame previews softer than it exports (#58, open question 2).
+    // With a frame the preview is the framed picture: its pixels stand for the frame's. (Until
+    // #37 the line went on "so a tight frame looks softer here than it exports"; zoomed in, the
+    // canvas now shows the frame's own pixels, and view_state says what it shows.)
     LiveContext context;
     context.preview_long_side = 1600;
     context.file_long_side = 5980;
     context.measures_frame = true;
-    EXPECT_EQ(live_line(explain::view_zoom, EditSettings{}, context),
-              "Preview 1600 px, frame 5980 px on the long side: each preview pixel stands for about "
-              "3.7 frame pixels across, so a tight frame looks softer here than it exports");
+    EXPECT_EQ(
+        live_line(explain::view_zoom, EditSettings{}, context),
+        "Preview 1600 px, frame 5980 px on the long side: each preview pixel stands for about "
+        "3.7 frame pixels across");
     context.file_size_exact = false;
-    EXPECT_EQ(live_line(explain::view_zoom, EditSettings{}, context),
-              "Preview 1600 px, frame about 5980 px on the long side: each preview pixel stands for "
-              "about 3.7 frame pixels across, so a tight frame looks softer here than it exports");
+    EXPECT_EQ(
+        live_line(explain::view_zoom, EditSettings{}, context),
+        "Preview 1600 px, frame about 5980 px on the long side: each preview pixel stands for "
+        "about 3.7 frame pixels across");
     context.file_size_exact = true;
     context.file_long_side = 1600;
     EXPECT_EQ(live_line(explain::view_zoom, EditSettings{}, context),

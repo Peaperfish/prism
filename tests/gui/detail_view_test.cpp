@@ -414,6 +414,7 @@ TEST(DetailView, Words) {
     EXPECT_EQ(real_pixels_explain(),
               "100%: one pixel of the photo on each pixel of your screen, the photo at its full "
               "size. On a Retina screen a photo pixel is half a point across.");
+    EXPECT_EQ(real_pixels_shown_explain(), "Showing the photo's own pixels.");
     EXPECT_EQ(preview_chip_explain(PreviewChip::none), "");
     EXPECT_EQ(preview_chip_explain(PreviewChip::not_kept),
               "Showing the preview, enlarged: the full-size photo isn't kept, so there are no real "
