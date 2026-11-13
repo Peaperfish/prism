@@ -516,7 +516,30 @@ TEST(DetailRenderer, ABadRequestIsRefusedAtOnce) {
     EXPECT_THROW(renderer.submit(r, false), std::invalid_argument);
     r.output = {0, 1};
     EXPECT_THROW(renderer.submit(r, false), std::invalid_argument);
-    EXPECT_TRUE(fake.calls().empty());
+    // Smaller, but not what downscale makes of the region (640 x 384 at 320 is 320 x 192).
+    r.output = {320, 191};
+    EXPECT_THROW(renderer.submit(r, false), std::invalid_argument);
+    r.output = {region_a.width, region_a.height - 1};
+    EXPECT_THROW(renderer.submit(r, false), std::invalid_argument);
+    r.output = {320, 192};
+    EXPECT_EQ(renderer.submit(r, false), 1u);
+    fake.release();
+    ASSERT_TRUE(renderer.wait_until_idle(timeout));
+    ASSERT_EQ(fake.calls().size(), 1u);
+    const std::optional<DetailFrame> frame = renderer.poll(1);
+    ASSERT_TRUE(frame.has_value());
+    EXPECT_EQ(frame->size, (PixelSize{320, 192}));
+    EXPECT_EQ(frame->rgb8.size(), std::size_t{320} * 192 * 3);
+}
+
+TEST(DetailRenderer, ARenderThrowingSomethingElseFailsToo) {
+    DetailRenderer renderer([](const Photo&, const EditSettings&, const FrameBox&,
+                               std::stop_token) -> std::optional<Image> { throw 42; });
+    renderer.submit(request(tiny_photo(), 1, 1, region_a), false);
+    ASSERT_TRUE(renderer.wait_until_idle(timeout));
+    const std::optional<DetailFrame> frame = renderer.poll(1);
+    ASSERT_TRUE(frame.has_value());
+    EXPECT_EQ(frame->error, "The detail render failed.");
 }
 
 // --- The real render against export --------------------------------------------------------------
@@ -738,7 +761,8 @@ TEST(DetailRenderer, OneAndEightThreadsGiveTheSameFrame) {
 
     DetailRenderer one(1);
     DetailRenderer eight(8);
-    // 100%, and 80% so the shrink runs too (on fewer pixels: its output is under 1 MP).
+    // 100%, and 80% so the shrink runs too: downscale's threads go by its input, the region, so
+    // it runs on 8; its output is under 1 MP, so that pass's encode runs on one thread in both.
     for (const double percent : {100.0, 80.0}) {
         SCOPED_TRACE(std::to_string(percent) + "%");
         const PixelSize out =

@@ -116,7 +116,7 @@ public:
     // How a region of the framed picture becomes linear pixels. The default is render_region with
     // the renderer's thread count; tests pass their own to control timing. Runs on the worker
     // thread; nothing means it was stopped. If it throws, the frame carries the message in
-    // `error`.
+    // `error` (a fixed one for an exception not derived from std::exception).
     using RenderFunction =
         std::function<std::optional<Image>(const Photo& base, const EditSettings& settings,
                                            const FrameBox& region, std::stop_token stop)>;
@@ -130,9 +130,11 @@ public:
     DetailRenderer& operator=(const DetailRenderer&) = delete;
 
     // UI thread. Asks for `request`, with `gesture` saying whether a gesture is under way, and
-    // returns its generation (1, 2, 3... in the order of the requests rendered), or 0 if it was
+    // returns its generation (1, 2, 3... in the order of the requests admitted; a request replaced
+    // while it waits never renders, so its number never comes back in a frame), or 0 if it was
     // refused (detail_admit). Returns at once. Throws std::invalid_argument for a null base, an
-    // empty region, or an output size of 0 or larger than the region.
+    // empty region, or an output size that is neither the region nor the region shrunk by
+    // downscale (detail_output_size gives one of the two).
     std::uint64_t submit(DetailRenderRequest request, bool gesture);
 
     // UI thread. Stops the running render and drops the waiting request, for when nothing of the
@@ -143,7 +145,10 @@ public:
 
     // UI thread. The newest finished frame, if one arrived since the last poll() and is wanted
     // (detail_frame_wanted) for the base now shown, `current_base` (DetailKey::base); otherwise
-    // nothing. Frames of other bases, or older than the one last returned, are dropped.
+    // nothing. Frames of other bases, or older than the one last returned, are dropped. A frame
+    // can show older settings than the current ones (a render the stop rule let finish, while the
+    // newer request waits or was refused during a gesture): its key.settings says which, for the
+    // caller to compare with its own.
     [[nodiscard]] std::optional<DetailFrame> poll(std::uint64_t current_base);
 
     // Waits until no request is waiting or being rendered, for at most `timeout`; false if that did

@@ -78,6 +78,14 @@ std::uint64_t DetailRenderer::submit(DetailRenderRequest request, bool gesture) 
             "DetailRenderer::submit: the output size is 0 or larger than "
             "the region");
     }
+    // Below 100% the output must be what downscale makes of the region, or the whole region would
+    // be rendered for an error frame.
+    if (request.output != PixelSize{region.width, region.height} &&
+        request.output != downscaled_size(region.width, region.height,
+                                          std::max(request.output.width, request.output.height))) {
+        throw std::invalid_argument(
+            "DetailRenderer::submit: the output size is not the region shrunk by downscale");
+    }
     const DetailJob wanted{request.base.get(), request.key.base, region};
     const bool admitted = detail_admit(request.request.budget, gesture) == DetailAdmit::render;
 
