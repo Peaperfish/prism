@@ -35,6 +35,7 @@ add_library(prism_gui_core STATIC
   src/clipping.cpp
   src/close_guard.cpp
   src/detail_base.cpp
+  src/detail_canvas.cpp
   src/detail_reader.cpp
   src/detail_renderer.cpp
   src/detail_view.cpp
