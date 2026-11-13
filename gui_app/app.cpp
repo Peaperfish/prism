@@ -393,6 +393,11 @@ void App::open_now(const fs::path& path) {
     leave_pick();
     sample_pin_trace_.clear();
     sample_hover_trace_.clear();
+    sample_pin_photo_trace_.clear();
+    sample_hover_photo_trace_.clear();
+    sample_pin_file_.reset();
+    sample_pin_file_for_.reset();
+    sample_hover_file_.reset();
     explain_last_.clear();
     SDL_SetWindowTitle(window_, ("Prism — " + file_name(path)).c_str());
 }
@@ -2108,6 +2113,10 @@ void App::update_hand_drag() {
         if (base && pixel && base->width == texture_.width() && base->height == texture_.height()) {
             sample_.place({pixel->x, pixel->y}, base->width, base->height,
                           session_.settings().frame);
+            // The photo pixel clicked, for reading it where real pixels are on the canvas.
+            sample_pin_file_ =
+                gui::file_pixel_at(view_, view_geometry_, framed_full_size(), cursor);
+            sample_pin_file_for_ = sample_.pin();
         }
     }
     if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && pick_click_.release(cursor)) {
@@ -2385,6 +2394,11 @@ void App::clear_sample() {
     sample_hover_.reset();
     sample_pin_trace_.clear();
     sample_hover_trace_.clear();
+    sample_pin_photo_trace_.clear();
+    sample_hover_photo_trace_.clear();
+    sample_pin_file_.reset();
+    sample_pin_file_for_.reset();
+    sample_hover_file_.reset();
 }
 
 void App::toggle_pick() {
@@ -2477,8 +2491,10 @@ void App::update_brush_press(bool pressed, bool over_control) {
                                    gui::view_point_in_any(cursor, canvas_chips_))) {
             stroke_canvas_ = *canvas;
             const gui::BrushStyle style = brush_style();
-            const float spacing =
-                min_point_spacing(style.radius, gui::brush_long_side(*canvas));
+            // A file pixel apart while real pixels are drawn (#37), a preview pixel otherwise.
+            const float spacing = min_point_spacing(
+                style.radius,
+                gui::brush_spacing_long_side(*canvas, detail_plan_.draw, framed_full_size()));
             apply_brush(brush_gesture_.press(at, keys, brush_.tone(), spacing, *canvas));
         }
         return;
@@ -2526,7 +2542,15 @@ void App::pick_at(gui::ViewPoint cursor) {
     if (!base || !pixel || base->width != texture_.width() || base->height != texture_.height()) {
         return;
     }
-    const gui::NeutralPick pick = gui::pick_neutral(*base, pixel->x, pixel->y, session_.as_shot_white());
+    // Real pixels (#37): where they are on the canvas, the patch is the photo's own pixels.
+    const std::shared_ptr<const prism::Photo> photo = session_.detail_base();
+    const std::optional<gui::FilePixel> file =
+        gui::file_pixel_at(view_, view_geometry_, framed_full_size(), cursor);
+    const gui::NeutralPick pick =
+        photo && reads_photo_at(file)
+            ? gui::pick_neutral_photo(*photo, session_.settings().frame, file->x, file->y,
+                                      gui::as_shot_white_of(photo->info))
+            : gui::pick_neutral(*base, pixel->x, pixel->y, session_.as_shot_white());
     if (pick.outcome == gui::PickOutcome::unavailable) {
         return;
     }
@@ -2619,6 +2643,8 @@ void App::update_sample_cursor() {
             gui::view_pixel_at(view_, view_geometry_, {mouse.x, mouse.y})) {
         sample_hover_ = gui::SamplePin{pixel->x, pixel->y};
         sample_.read(*sample_hover_, base->width, base->height, session_.settings().frame);
+        sample_hover_file_ =
+            gui::file_pixel_at(view_, view_geometry_, framed_full_size(), {mouse.x, mouse.y});
     }
 }
 
@@ -2640,18 +2666,64 @@ void App::update_sample_traces() {
         (void)cache.read(base, session_.settings(), strip_, viewed_stage_, compare, pixel.x, pixel.y,
                          session_.as_shot_white(), session_.preview_framing());
     };
-    if (sample_.pin()) {
+    // Real pixels (#37): a slot reads the photo's own pixel where real pixels of it are on the
+    // canvas, and the preview's elsewhere, as in 0.6.0.
+    const std::shared_ptr<const prism::Photo> photo = session_.detail_base();
+    const auto read_photo = [&](gui::PhotoSampleCache& cache,
+                                const std::optional<gui::FilePixel>& file) {
+        if (!photo || !reads_photo_at(file)) {
+            cache.clear();
+            return false;
+        }
+        return cache.read(photo, session_.settings(), file->x, file->y,
+                          gui::as_shot_white_of(photo->info)) != nullptr;
+    };
+    if (sample_.pin() != sample_pin_file_for_) {
+        // A pin placed or moved where its photo pixel wasn't taken from the cursor: the photo pixel
+        // in the middle of its preview pixel.
+        sample_pin_file_.reset();
+        if (sample_.pin()) {
+            sample_pin_file_ = gui::file_pixel_of(sample_.pin()->x, sample_.pin()->y,
+                                                  {base->width, base->height}, framed_full_size());
+        }
+        sample_pin_file_for_ = sample_.pin();
+    }
+    sample_pin_photo_ = sample_.pin() && read_photo(sample_pin_photo_trace_, sample_pin_file_);
+    if (sample_.pin() && !sample_pin_photo_) {
         read(sample_pin_trace_, *sample_.pin());
     } else {
         sample_pin_trace_.clear();
     }
     // With a pin the cursor's pixel only matters while it is on the picture. Without one the block
     // keeps the last pixel read, so that its rows are still there to point at.
-    if (sample_hover_) {
-        read(sample_hover_trace_, *sample_hover_);
-    } else if (!sample_.pin() && sample_.last_read()) {
-        read(sample_hover_trace_, *sample_.last_read());
+    const bool hovering = sample_hover_.has_value() || (!sample_.pin() && sample_.last_read());
+    sample_hover_photo_ = hovering && read_photo(sample_hover_photo_trace_, sample_hover_file_);
+    if (!sample_hover_photo_) {
+        if (sample_hover_) {
+            read(sample_hover_trace_, *sample_hover_);
+        } else if (!sample_.pin() && sample_.last_read()) {
+            read(sample_hover_trace_, *sample_.last_read());
+        }
     }
+}
+
+bool App::reads_photo_at(const std::optional<gui::FilePixel>& pixel) const {
+    return pixel && !strip_ &&
+           gui::sample_source(detail_plan_, detail_shown_, detail_base_number_.current(),
+                              session_.settings_generation(), *pixel) == gui::PixelSource::photo;
+}
+
+gui::SampleMarker App::sample_marker_for(gui::SamplePin preview, bool photo,
+                                         const std::optional<gui::FilePixel>& file) const {
+    if (photo && file) {
+        return gui::file_pixel_marker(view_, view_geometry_, framed_full_size(), *file);
+    }
+    return gui::sample_marker(view_, view_geometry_, preview);
+}
+
+const gui::PixelTrace* App::sample_hover_on_show() const {
+    return sample_hover_photo_ ? sample_hover_photo_trace_.current()
+                               : sample_hover_trace_.current();
 }
 
 const gui::PixelTrace* App::sample_on_show() const {
@@ -2659,14 +2731,17 @@ const gui::PixelTrace* App::sample_on_show() const {
         return nullptr;
     }
     if (sample_.pin()) {
-        return sample_pin_trace_.current();
+        return sample_pin_photo_ ? sample_pin_photo_trace_.current() : sample_pin_trace_.current();
     }
-    return sample_.last_read() ? sample_hover_trace_.current() : nullptr;
+    return sample_.last_read() ? sample_hover_on_show() : nullptr;
 }
 
 gui::SampleScale App::sample_scale() const {
     const gui::CanvasMeasure measure = canvas_measure();
-    return {std::max(texture_.width(), texture_.height()), measure.file_long_side, measure.framed};
+    // A photo pixel averages nothing: the line says it is a real pixel instead.
+    const bool photo = sample_.pin() ? sample_pin_photo_ : sample_hover_photo_;
+    return {std::max(texture_.width(), texture_.height()), measure.file_long_side, measure.framed,
+            photo};
 }
 
 bool App::render_drawable() const {
@@ -2716,13 +2791,15 @@ void App::draw_sample_markers(ImDrawList* draw) const {
         arms(light, line, 0.0f);
     };
     if (sample_hover_ && sample_hover_ != sample_.pin()) {
-        const gui::SampleMarker m = gui::sample_marker(view_, view_geometry_, *sample_hover_);
+        const gui::SampleMarker m =
+            sample_marker_for(*sample_hover_, sample_hover_photo_, sample_hover_file_);
         if (m.on_canvas) {
             outline(m, IM_COL32(255, 255, 255, 130), IM_COL32(0, 0, 0, 90));
         }
     }
     if (sample_.pin()) {
-        const gui::SampleMarker m = gui::sample_marker(view_, view_geometry_, *sample_.pin());
+        const gui::SampleMarker m =
+            sample_marker_for(*sample_.pin(), sample_pin_photo_, sample_pin_file_);
         if (m.on_canvas) {
             const ImU32 light = IM_COL32(255, 255, 255, 255);
             const ImU32 dark = IM_COL32(0, 0, 0, 200);
@@ -2764,8 +2841,9 @@ void App::draw_sample_block() {
     if (const gui::PixelTrace* trace = sample_on_show()) {
         const std::optional<gui::StageId> compare =
             strip_ ? std::nullopt : gui::effective_compare(viewed_stage_, compare_stage_);
-        const bool off_screen = sample_.pin() && !gui::sample_marker(view_, view_geometry_,
-                                                                     *sample_.pin()).on_canvas;
+        const bool off_screen =
+            sample_.pin() &&
+            !sample_marker_for(*sample_.pin(), sample_pin_photo_, sample_pin_file_).on_canvas;
         const auto stage_rows = [&](gui::StageId stage, const gui::SampleRows& rows) {
             if (compare) {
                 ImGui::PushFont(fonts().semibold, token_type().small);
@@ -2786,7 +2864,7 @@ void App::draw_sample_block() {
             explained_row(viewed.average, gui::explain::sample_range, muted);
         }
         if (sample_.pin() && sample_hover_) {
-            if (const gui::PixelTrace* under = sample_hover_trace_.current()) {
+            if (const gui::PixelTrace* under = sample_hover_on_show()) {
                 explained_row(gui::sample_cursor_line(*under, viewed_stage_),
                               gui::explain::sample_values, muted);
             }

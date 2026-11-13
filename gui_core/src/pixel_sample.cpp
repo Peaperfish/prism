@@ -607,4 +607,29 @@ void SampleCache::clear() noexcept {
     trace_.reset();
 }
 
+const PixelTrace* PhotoSampleCache::read(std::shared_ptr<const Photo> photo,
+                                         const EditSettings& settings, int x, int y,
+                                         const std::optional<Chromaticity>& as_shot_white) {
+    Key key{std::move(photo), settings, x, y, as_shot_white};
+    if (key_ && *key_ == key) {
+        return current();
+    }
+    ++computes_;
+    trace_.reset();
+    if (key.photo) {
+        try {
+            trace_ = sample_photo_trace(*key.photo, settings, x, y, as_shot_white);
+        } catch (const std::invalid_argument&) {
+            // Remembered too, as SampleCache does.
+        }
+    }
+    key_ = std::move(key);
+    return current();
+}
+
+void PhotoSampleCache::clear() noexcept {
+    key_.reset();
+    trace_.reset();
+}
+
 }  // namespace prism::gui

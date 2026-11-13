@@ -170,6 +170,33 @@ struct SampleRows {
                                           std::optional<StageId> compare = {},
                                           SampleScale scale = {});
 
+// A photo pixel's trace (sample_photo_trace, #37), kept as SampleCache keeps a preview pixel's:
+// computed again only when the photo, the settings, the pixel or the as-shot light differ from the
+// last call. Nothing for a pixel off the picture or settings that can't be rendered.
+class PhotoSampleCache {
+public:
+    [[nodiscard]] const PixelTrace* read(std::shared_ptr<const Photo> photo,
+                                         const EditSettings& settings, int x, int y,
+                                         const std::optional<Chromaticity>& as_shot_white = {});
+    [[nodiscard]] const PixelTrace* current() const noexcept { return trace_ ? &*trace_ : nullptr; }
+    // Forgets the trace and lets go of the photo.
+    void clear() noexcept;
+    [[nodiscard]] std::uint64_t computes() const noexcept { return computes_; }
+
+private:
+    struct Key {
+        std::shared_ptr<const Photo> photo;
+        EditSettings settings;
+        int x = 0;
+        int y = 0;
+        std::optional<Chromaticity> as_shot_white;
+        bool operator==(const Key&) const = default;
+    };
+    std::optional<Key> key_;
+    std::optional<PixelTrace> trace_;
+    std::uint64_t computes_ = 0;
+};
+
 // One pixel's trace, kept until something it depends on changes, so that a still cursor costs
 // nothing however many frames go by. One per pixel on show.
 class SampleCache {

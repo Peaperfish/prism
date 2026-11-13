@@ -244,6 +244,30 @@ TEST(DetailSample, TheReadoutSaysItIsARealPixel) {
         sample_rows(*t, StageId::encode, scale).average.rfind("One preview pixel averages", 0), 0u);
 }
 
+TEST(DetailSample, APhotoPixelsTraceIsKeptUntilSomethingItDependsOnChanges) {
+    auto photo = std::make_shared<const Photo>(make_photo(64, 48));
+    PhotoSampleCache cache;
+    EditSettings s;
+    const PixelTrace* first = cache.read(photo, s, 10, 12);
+    ASSERT_NE(first, nullptr);
+    EXPECT_EQ(first->x, 10);
+    EXPECT_EQ(cache.computes(), 1u);
+    (void)cache.read(photo, s, 10, 12);  // nothing changed
+    EXPECT_EQ(cache.computes(), 1u);
+    (void)cache.read(photo, s, 11, 12);  // another pixel
+    EXPECT_EQ(cache.computes(), 2u);
+    s.exposure_stops = 1.0f;
+    (void)cache.read(photo, s, 11, 12);  // other settings
+    EXPECT_EQ(cache.computes(), 3u);
+    auto other = std::make_shared<const Photo>(make_photo(64, 48));
+    (void)cache.read(other, s, 11, 12);  // another photo
+    EXPECT_EQ(cache.computes(), 4u);
+    EXPECT_EQ(cache.read(other, s, 64, 0), nullptr);  // off the picture
+    cache.clear();
+    EXPECT_EQ(cache.current(), nullptr);
+    EXPECT_EQ(other.use_count(), 1);  // let go
+}
+
 // --- Which pixel, and from where
 // ------------------------------------------------------------------
 

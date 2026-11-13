@@ -196,6 +196,14 @@ private:
     // The trace the Sample block shows: the pin's, else the last pixel the cursor read.
     [[nodiscard]] const gui::PixelTrace* sample_on_show() const;
     [[nodiscard]] gui::SampleScale sample_scale() const;
+    // The trace of the pixel under the cursor (or the last read), photo or preview, as on show.
+    [[nodiscard]] const gui::PixelTrace* sample_hover_on_show() const;
+    // Whether real pixels of `pixel` are on the canvas now (gui::sample_source), so Sample and Pick
+    // read the photo there.
+    [[nodiscard]] bool reads_photo_at(const std::optional<gui::FilePixel>& pixel) const;
+    // A marker for a sample slot: the photo pixel's while it reads the photo, else the preview's.
+    [[nodiscard]] gui::SampleMarker sample_marker_for(
+        gui::SamplePin preview, bool photo, const std::optional<gui::FilePixel>& file) const;
     // A control is being used. Dear ImGui also counts a press on a window's empty space as an active
     // item, and a press on the canvas isn't a control: with it the render would stop asking for the
     // clip report, and render once more on release.
@@ -432,6 +440,16 @@ private:
     std::optional<gui::SamplePin> sample_hover_;  // the pixel under the cursor this frame
     gui::SampleCache sample_pin_trace_;
     gui::SampleCache sample_hover_trace_;
+    // Real pixels (#37): the file pixels of the pin and of the cursor (or the last read), and their
+    // traces read from the photo where real pixels are drawn (gui::sample_source); *_photo_ says
+    // which of the two traces each slot shows this frame.
+    std::optional<gui::FilePixel> sample_pin_file_;
+    std::optional<gui::SamplePin> sample_pin_file_for_;  // the pin sample_pin_file_ belongs to
+    std::optional<gui::FilePixel> sample_hover_file_;
+    gui::PhotoSampleCache sample_pin_photo_trace_;
+    gui::PhotoSampleCache sample_hover_photo_trace_;
+    bool sample_pin_photo_ = false;
+    bool sample_hover_photo_ = false;
     bool hand_key_held_ = false;   // Space is down and the canvas has it
     bool canvas_press_ = false;    // the left button went down on the canvas itself, and is still down
     std::vector<gui::ViewRect> canvas_taken_;  // this frame's chips and notes on the canvas
