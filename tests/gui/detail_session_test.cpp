@@ -539,7 +539,10 @@ TEST(DetailSession, ExportWhileReadingWaitsForTheReadAndWritesTheSameFile) {
 
     const fs::path out = files.add(temp_file("out.png"));
     MaybeError result = Error{};
-    std::jthread exporter([&] { result = prism::gui::export_image(job, out); });
+    // With the jthread's stop token, so that a failed assertion below ends the export (its
+    // destructor stops it) rather than leaving it waiting for a read that is held.
+    std::jthread exporter(
+        [&](std::stop_token stop) { result = prism::gui::export_image(job, out, stop); });
     // The export waits for the read to end before it decodes.
     ASSERT_TRUE(job.read_ended->wait_for_waiters(1, timeout));
     EXPECT_FALSE(job.read_ended->is_set());
@@ -667,4 +670,77 @@ TEST(DetailSession, TheRawFilesBaseIsExportsDecode) {
         EXPECT_TRUE(base->image.pixels == want.image.pixels) << "half size " << half;
         EXPECT_EQ(base->info.as_shot_white_xy, want.info.as_shot_white_xy);
     }
+}
+
+TEST(DetailSession, AReadThatFinishedBeforeTheExportIsKept) {
+    TempFiles files;
+    FakeReads reads;
+    Session session(with_detail(&reads));
+    const LetGo let_go(reads);
+    ASSERT_EQ(session.open_file(write_png(files, "big.png", big_w, big_h)), std::nullopt);
+    reads.release();
+    // The read has posted its photo, which nobody has taken yet, when the export begins.
+    ASSERT_TRUE(session.wait_for_detail_read(timeout));
+    const ExportJob job = session.begin_export();
+    EXPECT_EQ(session.detail_base_state(), DetailBaseState::ready);
+    EXPECT_NE(session.detail_base(), nullptr);
+    session.end_export();
+    ASSERT_TRUE(session.wait_for_detail_base(timeout));
+    EXPECT_EQ(session.detail_base_state(), DetailBaseState::ready);
+    EXPECT_EQ(reads.calls().size(), 1u);  // not read again
+}
+
+TEST(DetailSession, AFailedOpenReadsTheOldPhotosBaseAgain) {
+    TempFiles files;
+    const fs::path source = write_png(files, "big.png", big_w, big_h);
+    const fs::path broken = files.add(temp_file("broken.png"));
+    {
+        std::ofstream out(broken, std::ios::binary);
+        out << "not a PNG";
+    }
+    Session session(with_detail());
+    ASSERT_EQ(session.open_file(source), std::nullopt);
+    ASSERT_TRUE(session.wait_for_detail_base(timeout));
+    const std::weak_ptr<const Photo> old = session.detail_base();
+    ASSERT_FALSE(old.expired());
+
+    // The old base was let go before the decode; the open fails, and the old photo stays open.
+    const MaybeError error = session.open_file(broken);
+    ASSERT_NE(error, std::nullopt);
+    EXPECT_EQ(session.path(), source);
+    EXPECT_TRUE(old.expired());
+    ASSERT_TRUE(session.wait_for_detail_base(timeout));
+    ASSERT_EQ(session.detail_base_state(), DetailBaseState::ready);
+    EXPECT_EQ(session.detail_base()->image.width, big_w);
+}
+
+// DetailReader itself: a read decodes only once every read started before it has ended, so two
+// full-size photos are never decoded at once.
+TEST(DetailReader, AReadWaitsForTheReadBeforeIt) {
+    TempFiles files;
+    const fs::path first = write_png(files, "first.png", small_w, small_h);
+    const fs::path second = write_png(files, "second.png", small_w + 10, small_h);
+    FakeReads reads;
+    reads.hold();  // the first read, once stopped, still runs until finish()
+    prism::gui::DetailReader reader(reads.function());
+    const LetGo let_go(reads);
+    reader.start(1, first, InputKind::image, EditSettings{}, 0);
+    ASSERT_TRUE(reads.wait_for_calls(1));
+    const std::shared_ptr<const prism::gui::ReadEnd> first_end = reader.ended();
+
+    reader.start(2, second, InputKind::image, EditSettings{}, 0);
+    EXPECT_TRUE(reads.calls()[0].stop.stop_requested());
+    // The second read is waiting for the first to end, and has not begun reading.
+    ASSERT_TRUE(first_end->wait_for_waiters(1, timeout));
+    EXPECT_EQ(reads.calls().size(), 1u);
+
+    reads.finish();
+    reads.release();
+    ASSERT_TRUE(reads.wait_for_calls(2));
+    EXPECT_EQ(reads.calls()[1].source, second);
+    ASSERT_TRUE(reader.wait(timeout));
+    const std::vector<prism::gui::DetailReader::Result> results = reader.take_all();
+    ASSERT_EQ(results.size(), 1u);  // the stopped first read posted nothing
+    EXPECT_EQ(results[0].generation, 2u);
+    EXPECT_TRUE(first_end->is_set());
 }
