@@ -627,6 +627,13 @@ TEST(LiveLines, TheZoomSaysWhatTheCanvasShowsZoomedIn) {
               "Preview 2560 px, file 9566 px on the long side: each preview pixel stands for about "
               "3.7 file pixels across. Showing the preview, enlarged: the full-size photo is still "
               "being read.");
+    context.measures_frame = true;  // framed: what the canvas shows replaces the softness clause
+    EXPECT_EQ(
+        live_line(explain::view_zoom, EditSettings{}, context),
+        "Preview 2560 px, frame 9566 px on the long side: each preview pixel stands for "
+        "about 3.7 frame pixels across. Showing the preview, enlarged: the full-size photo is "
+        "still being read.");
+    context.measures_frame = false;
     context.preview_long_side = 1600;
     context.file_long_side = 1600;
     context.view_state = real_pixels_shown_explain();
@@ -642,7 +649,7 @@ TEST(Explanations, TheZoomAndHundredPercentSpeakOfThePhotosOwnPixels) {
     EXPECT_EQ(zoom->detail,
               "Pinch or use the wheel to zoom; scroll or drag to move. 100% is one pixel of the "
               "photo on each pixel of your screen, up to 800%. Zoomed in, the photo's own pixels "
-              "are shown.");
+              "replace the preview where they can.");
     const Explanation* actual = explanation_for(explain::view_actual);
     ASSERT_NE(actual, nullptr);
     EXPECT_EQ(actual->summary, "One pixel of the photo on each pixel of your screen (1).");
@@ -929,9 +936,9 @@ TEST(Explanations, DodgeAndBurnExplainsTheRowItsSwitchBrushStrengthAndClear) {
 }
 
 TEST(LiveLines, AFramedPreviewIsMeasuredAgainstTheFrame) {
-    // With a frame the preview is the framed picture: its pixels stand for the frame's. (Until
-    // #37 the line went on "so a tight frame looks softer here than it exports"; zoomed in, the
-    // canvas now shows the frame's own pixels, and view_state says what it shows.)
+    // With a frame the preview is the framed picture: its pixels stand for the frame's, and a tight
+    // frame previews softer than it exports (#58, open question 2) wherever the preview is shown;
+    // zoomed in (#37) view_state says what the canvas shows instead.
     LiveContext context;
     context.preview_long_side = 1600;
     context.file_long_side = 5980;
@@ -939,12 +946,12 @@ TEST(LiveLines, AFramedPreviewIsMeasuredAgainstTheFrame) {
     EXPECT_EQ(
         live_line(explain::view_zoom, EditSettings{}, context),
         "Preview 1600 px, frame 5980 px on the long side: each preview pixel stands for about "
-        "3.7 frame pixels across");
+        "3.7 frame pixels across, so a tight frame looks softer here than it exports");
     context.file_size_exact = false;
     EXPECT_EQ(
         live_line(explain::view_zoom, EditSettings{}, context),
         "Preview 1600 px, frame about 5980 px on the long side: each preview pixel stands for "
-        "about 3.7 frame pixels across");
+        "about 3.7 frame pixels across, so a tight frame looks softer here than it exports");
     context.file_size_exact = true;
     context.file_long_side = 1600;
     EXPECT_EQ(live_line(explain::view_zoom, EditSettings{}, context),

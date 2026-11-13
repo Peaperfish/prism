@@ -169,8 +169,7 @@ constexpr Explanation templates[] = {
      "ceiling). The red, green and blue figures count each channel alone.",
      LiveKind::over},
     {"chip.under", "Pixels darker than black.",
-     "Share of pixels with no light left at this stage: a channel is below 0 and the pixel is "
-     "black "
+     "Share of pixels with no light left at this stage: a channel is below 0 and the pixel is black "
      "or darker. A pixel with light and a channel below 0 is outside sRGB, counted apart.",
      LiveKind::under},
 
@@ -219,7 +218,8 @@ constexpr Explanation templates[] = {
     // --- Zoom --------------------------------------------------------------------------------
     {"view.zoom", "How large the photo is on the screen, in % of its own pixels.",
      "Pinch or use the wheel to zoom; scroll or drag to move. 100% is one pixel of the photo on "
-     "each pixel of your screen, up to 800%. Zoomed in, the photo's own pixels are shown.",
+     "each pixel of your screen, up to 800%. Zoomed in, the photo's own pixels replace the preview "
+     "where they can.",
      LiveKind::preview_size},
     {"view.fit", "Show the whole photo (F).",
      "The picture fills the canvas as far as it can and follows the window as it changes size. "
@@ -266,8 +266,7 @@ constexpr Explanation templates[] = {
      "bigger and smaller, Shift+[ and Shift+] its edge softer and harder. Hold M to see the "
      "strokes."},
     {"dodge_burn.strength", "How many stops one stroke moves the light.",
-     "From 0.1 to 2 stops, in steps of 0.1. A stroke of 1 stop moves the light as much as doubling "
-     "or "
+     "From 0.1 to 2 stops, in steps of 0.1. A stroke of 1 stop moves the light as much as doubling or "
      "halving the time. It belongs to the brush: undo leaves it, and it isn't saved."},
     {"dodge_burn.clear", "Take every stroke off the photo.",
      "Removes all the dodging and burning in one undo step. Greyed out when there is none."},
@@ -684,7 +683,12 @@ std::string live_line(std::string_view id, const EditSettings& s, const LiveCont
             return "Preview " + preview + " px, " + what + " " +
                    std::string(size_estimate_prefix(context.file_size_exact)) + file +
                    " px on the long side: each preview pixel stands for about " +
-                   printf_string("%.1f", across) + " " + what + " pixels across" + view_state;
+                   printf_string("%.1f", across) + " " + what + " pixels across" +
+                   // Still true wherever the canvas shows the preview; zoomed in, view_state says
+                   // what it shows instead.
+                   (context.measures_frame && view_state.empty()
+                        ? ", so a tight frame looks softer here than it exports"
+                        : view_state);
         }
         case LiveKind::sample:
             if (context.sample == nullptr) {
