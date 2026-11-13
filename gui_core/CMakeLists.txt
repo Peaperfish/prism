@@ -32,6 +32,7 @@ add_library(prism_gui_core STATIC
   src/brush.cpp
   src/canvas_input.cpp
   src/clip_note.cpp
+  src/detail_base.cpp
   src/clipping.cpp
   src/close_guard.cpp
   src/explanations.cpp
@@ -59,6 +60,7 @@ add_library(prism_gui_core STATIC
   src/settings.cpp
   src/slider_gesture.cpp
   src/stage_controls.cpp
+  src/system_memory.cpp
   src/test_strip.cpp
   src/theme_tokens.cpp
   src/typed_value.cpp
