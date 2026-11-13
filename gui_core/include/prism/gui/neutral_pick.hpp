@@ -4,6 +4,7 @@
 #include <optional>
 #include <string>
 
+#include "prism/frame.hpp"
 #include "prism/gui/settings.hpp"
 #include "prism/image.hpp"
 
@@ -69,6 +70,15 @@ struct NeutralPick {
 // as-shot light, or none for the 6500 K / tint 0 that photos without one are taken to have.
 [[nodiscard]] NeutralPick pick_neutral(const Image& base, int x, int y,
                                        const std::optional<Chromaticity>& as_shot) noexcept;
+
+// Real pixels (#37): pick_neutral at pixel (x, y) of the framed picture at full size, from `photo`
+// (the full-size decode, Session::detail_base) framed by `frame` as an export frames it: the patch
+// is pick_patch_size pixels of that picture across, cut off at its edges. `as_shot` as for
+// pick_neutral. Unavailable for a pixel off the framed picture; throws std::invalid_argument for an
+// invalid frame.
+[[nodiscard]] NeutralPick pick_neutral_photo(const Photo& photo, const std::optional<Frame>& frame,
+                                             int x, int y,
+                                             const std::optional<Chromaticity>& as_shot);
 
 // The chip's words: "Neutral here: 5180 K, tint +4" (plus " (limited to the slider's range)"), or the
 // reason nothing changed: "Too dark to judge; click a lighter grey" or "Clipped; click a grey that

@@ -122,4 +122,42 @@ void apply_pick(EditSettings& s, const NeutralPick& pick) noexcept {
     s.white_balance_on = true;
 }
 
+NeutralPick pick_neutral_photo(const Photo& photo, const std::optional<Frame>& frame, int x, int y,
+                               const std::optional<Chromaticity>& as_shot) {
+    const int w = photo.image.width;
+    const int h = photo.image.height;
+    if (w < 1 || h < 1) {
+        return {};
+    }
+    const ExportFrame plan = plan_export_frame(frame, w, h);
+    const std::optional<PatchBounds> bounds =
+        pick_patch_bounds(plan.size.width, plan.size.height, x, y);
+    if (!bounds) {
+        return {};
+    }
+    // The patch's pixels of the framed picture, made as an export makes them; the patch is then
+    // the whole of this small image, around the same pixel.
+    const FrameBox part{bounds->x0, bounds->y0, bounds->x1 - bounds->x0 + 1,
+                        bounds->y1 - bounds->y0 + 1};
+    Image patch;
+    if (plan.fitted) {
+        patch = apply_frame(photo.image, *plan.fitted, 1, part);
+    } else {
+        patch.width = part.width;
+        patch.height = part.height;
+        patch.pixels.reserve(static_cast<std::size_t>(part.width) *
+                             static_cast<std::size_t>(part.height) * Image::channels);
+        for (int row = part.y0; row < part.y0 + part.height; ++row) {
+            const auto first = photo.image.pixels.begin() +
+                               static_cast<std::ptrdiff_t>(
+                                   (static_cast<std::size_t>(row) * static_cast<std::size_t>(w) +
+                                    static_cast<std::size_t>(part.x0)) *
+                                   Image::channels);
+            patch.pixels.insert(patch.pixels.end(), first,
+                                first + static_cast<std::ptrdiff_t>(part.width) * Image::channels);
+        }
+    }
+    return pick_neutral(patch, x - part.x0, y - part.y0, as_shot);
+}
+
 }  // namespace prism::gui

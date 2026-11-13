@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "prism/frame.hpp"
 #include "prism/gui/stage_controls.hpp"
 #include "prism/pipeline.hpp"
 #include "prism/process.hpp"
@@ -333,6 +334,9 @@ float light_at(const PixelTrace& trace, StageId stage) noexcept {
 
 // The line about what one preview pixel averages, or nothing if it stands for one file pixel.
 std::string average_text(const SampleScale& scale) {
+    if (scale.photo_pixel) {
+        return std::string(sample_photo_pixel_text());
+    }
     const double across = file_pixels_across(scale.preview_long_side, scale.file_long_side);
     const std::string number = fixed(static_cast<float>(across), 1);
     if (across < 1.0 || number == "1.0") {
@@ -342,6 +346,15 @@ std::string average_text(const SampleScale& scale) {
            (scale.framed ? " frame pixels" : " file pixels") +
            ", so a small clipped highlight can hide in it.";
 }
+
+}  // namespace
+
+namespace {
+
+// One pixel (`one`, 1 x 1) run through the stages of `process_settings`, recording each stage's
+// values, at (x, y) of its picture.
+PixelTrace trace_one(Image one, const EditSettings& settings,
+                     const ProcessSettings& process_settings, int x, int y);
 
 }  // namespace
 
@@ -370,7 +383,54 @@ std::optional<PixelTrace> sample_trace(const Image& base, const EditSettings& se
     one.height = 1;
     one.pixels.assign(base.pixels.begin() + static_cast<std::ptrdiff_t>(index),
                       base.pixels.begin() + static_cast<std::ptrdiff_t>(index + Image::channels));
+    return trace_one(std::move(one), settings, process_settings, x, y);
+}
 
+std::optional<PixelTrace> sample_photo_trace(const Photo& photo, const EditSettings& settings,
+                                             int x, int y,
+                                             const std::optional<Chromaticity>& as_shot_white) {
+    const int w = photo.image.width;
+    const int h = photo.image.height;
+    if (w < 1 || h < 1 ||
+        photo.image.pixels.size() !=
+            static_cast<std::size_t>(w) * static_cast<std::size_t>(h) * Image::channels) {
+        throw std::invalid_argument(
+            "sample_photo_trace: pixel buffer size does not match the image");
+    }
+    // Export's own framing of the full-size decode (render_region's): the framed picture's size,
+    // the frame fitted on the decode, and the strokes' grid placing (x, y) in the whole picture.
+    const ExportFrame plan = plan_export_frame(settings.frame, w, h);
+    std::optional<PictureFrame> framing;
+    if (plan.fitted) {
+        framing = PictureFrame{*plan.fitted, w, h, 1.0f};
+    }
+    const ProcessSettings process_settings =
+        to_process_settings(settings, final_stage, as_shot_white,
+                            stage_grid(framing, plan.size.width, plan.size.height, x, y, 1, 1, 1));
+    if (x < 0 || y < 0 || x >= plan.size.width || y >= plan.size.height) {
+        return std::nullopt;
+    }
+    const FrameBox pixel{x, y, 1, 1};
+    Image one;
+    if (plan.fitted) {
+        one = apply_frame(photo.image, *plan.fitted, 1, pixel);  // reads the whole decode
+    } else {
+        const auto index = (static_cast<std::size_t>(y) * static_cast<std::size_t>(w) +
+                            static_cast<std::size_t>(x)) *
+                           Image::channels;
+        one.width = 1;
+        one.height = 1;
+        one.pixels.assign(
+            photo.image.pixels.begin() + static_cast<std::ptrdiff_t>(index),
+            photo.image.pixels.begin() + static_cast<std::ptrdiff_t>(index + Image::channels));
+    }
+    return trace_one(std::move(one), settings, process_settings, x, y);
+}
+
+namespace {
+
+PixelTrace trace_one(Image one, const EditSettings& settings,
+                     const ProcessSettings& process_settings, int x, int y) {
     PixelTrace trace;
     trace.x = x;
     trace.y = y;
@@ -422,6 +482,8 @@ std::optional<PixelTrace> sample_trace(const Image& base, const EditSettings& se
     return trace;
 }
 
+}  // namespace
+
 EditSettings sample_settings(const EditSettings& s, const std::optional<TestStrip>& strip,
                              StageId viewed, int width, int height, int x, int y) {
     if (!strip || viewed == StageId::decode) {
@@ -462,6 +524,10 @@ double file_pixels_across(int preview_long_side, int file_long_side) noexcept {
         return 0.0;
     }
     return static_cast<double>(file_long_side) / static_cast<double>(preview_long_side);
+}
+
+std::string_view sample_photo_pixel_text() noexcept {
+    return "A real pixel: one pixel of the photo at its full size, as it exports.";
 }
 
 std::string sample_dodge_burn_text(const PixelTrace& trace) {

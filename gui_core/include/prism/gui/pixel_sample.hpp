@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 
 #include "prism/gui/clipping.hpp"
 #include "prism/gui/settings.hpp"
@@ -63,6 +64,17 @@ struct PixelTrace {
     const std::optional<Chromaticity>& as_shot_white = std::nullopt,
     const std::optional<PictureFrame>& framing = std::nullopt);
 
+// Real pixels (#37): the pixel (x, y) of the framed picture at full size, from `photo`, the
+// full-size decode (Session::detail_base). The same trace as sample_trace, made the way an export
+// makes that pixel (render_region's steps for a 1 x 1 part): the frame applied to the whole decode
+// at that one pixel, and the strokes placed where it is in the whole picture. So its Output encode
+// values and srgb8 are bit-identical to the export's pixel there. `as_shot_white` is the decode's
+// (as_shot_white_of(photo.info)), as export takes it. Nothing for a pixel off the framed picture.
+// Throws as sample_trace does for invalid settings, and for a pixel buffer that does not match.
+[[nodiscard]] std::optional<PixelTrace> sample_photo_trace(
+    const Photo& photo, const EditSettings& settings, int x, int y,
+    const std::optional<Chromaticity>& as_shot_white = std::nullopt);
+
 // The settings a pixel (x, y) of a width x height picture was rendered with: `s`, or the band's
 // (strip_band_settings) while a test strip is on. As in render_preview, no strip shows at Decode.
 [[nodiscard]] EditSettings sample_settings(const EditSettings& s,
@@ -106,7 +118,14 @@ struct SampleScale {
     // The preview is the framed picture and file_long_side the frame's in the file: a preview
     // pixel then averages "frame pixels" (canvas_measure).
     bool framed = false;
+    // The pixel read is the photo's own (sample_photo_trace, #37): it averages nothing, and the
+    // line says so (sample_photo_pixel_text) instead.
+    bool photo_pixel = false;
 };
+
+// The readout's line for a photo pixel: "A real pixel: one pixel of the photo at its full size, as
+// it exports."
+[[nodiscard]] std::string_view sample_photo_pixel_text() noexcept;
 
 // The readout, in the words a photographer uses, a row at a time so that a window can show each on
 // its own. Positions are in words ("2.6 stops above middle grey"); signs are for adjustments.
@@ -122,6 +141,7 @@ struct SampleRows {
     // SampleStats::fate.
     std::string range;
     // What one preview pixel averages, if the preview is smaller than the file; otherwise empty.
+    // For a photo pixel (SampleScale::photo_pixel), sample_photo_pixel_text.
     std::string average;
     // sample_dodge_burn_text, for a stage at or after Dodge & burn; otherwise empty.
     std::string dodge_burn;

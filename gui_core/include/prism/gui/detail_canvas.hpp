@@ -6,6 +6,8 @@
 #include <string>
 
 #include "prism/frame.hpp"
+#include "prism/gui/brush.hpp"
+#include "prism/gui/canvas_input.hpp"
 #include "prism/gui/detail_base.hpp"
 #include "prism/gui/detail_renderer.hpp"
 #include "prism/gui/detail_view.hpp"
@@ -209,5 +211,59 @@ struct DetailFramePlan {
 // Whether 100% of the file can be chosen: not when the fit already shows the photo at 100% or
 // more (a photo smaller than the canvas in device pixels).
 [[nodiscard]] bool view_actual_size_available(const ViewGeometry& g) noexcept;
+
+// --- Sample and Pick on real pixels (#37, session 7)
+// -----------------------------------------------
+
+// A pixel of the framed picture at full size (the detail base's framed picture).
+struct FilePixel {
+    int x = 0;
+    int y = 0;
+    bool operator==(const FilePixel&) const = default;
+};
+
+// The file pixel under a screen point: the point taken to preview pixels (view_screen_to_image),
+// then to file pixels by the per-axis scale, rounded down. Nothing off the picture or the canvas
+// (as view_pixel_at), or with either size empty.
+[[nodiscard]] std::optional<FilePixel> file_pixel_at(const ViewState& s, const ViewGeometry& g,
+                                                     PixelSize framed_full,
+                                                     ViewPoint screen) noexcept;
+
+// The file pixel at the middle of preview pixel (x, y) of a `framed_preview` picture, for a pin
+// made where only the preview was shown: it reads the photo there once real pixels are.
+[[nodiscard]] FilePixel file_pixel_of(int x, int y, PixelSize framed_preview,
+                                      PixelSize framed_full) noexcept;
+
+// What Sample and Pick read.
+enum class PixelSource {
+    preview,  // the preview pixel, as in 0.6.0
+    photo,    // the photo's own pixel (sample_photo_trace, pick_neutral_photo)
+};
+
+// Which: the photo's pixel only where real pixels of it are on the canvas now, of the current base,
+// settings and frame (`plan` draws the shown frame, which is of the current settings, and its
+// region holds `pixel`); otherwise the preview's. A frame standing in with older settings a moment
+// behind a drag is not read: what is read is always the current settings' value.
+[[nodiscard]] PixelSource sample_source(const DetailFramePlan& plan,
+                                        const std::optional<ShownDetail>& shown, std::uint64_t base,
+                                        std::uint64_t settings, FilePixel pixel) noexcept;
+
+// Where a file pixel's marker goes on the screen: its square (detail_screen_rect of the 1 x 1
+// region), the centre, whether the centre is on the canvas, and shows_square past 200% of the file
+// (detail_shows_pixels), as sample_marker does for a preview pixel.
+[[nodiscard]] SampleMarker file_pixel_marker(const ViewState& s, const ViewGeometry& g,
+                                             PixelSize framed_full, FilePixel pixel) noexcept;
+
+// --- The brush on real pixels
+// ---------------------------------------------------------------------
+
+// The long side, in pixels, the brush's point spacing is measured on (min_point_spacing): the whole
+// photo's long side on the canvas (brush_long_side), or while real pixels are drawn
+// (`real_pixels`) that long side in file pixels: brush_long_side times the file scale along the
+// shown axis (file_scale(framed_full, canvas size)), rounded. So a small brush at 100% or more lays
+// its points a file pixel apart rather than a preview pixel. The strokes themselves stay in photo
+// coordinates (u, v), whatever the zoom.
+[[nodiscard]] int brush_spacing_long_side(const BrushCanvas& canvas, bool real_pixels,
+                                          PixelSize framed_full) noexcept;
 
 }  // namespace prism::gui

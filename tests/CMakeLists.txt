@@ -85,6 +85,7 @@ add_executable(prism_gui_core_tests
   gui/detail_base_test.cpp
   gui/detail_canvas_test.cpp
   gui/detail_renderer_test.cpp
+  gui/detail_sample_test.cpp
   gui/detail_session_test.cpp
   gui/detail_view_test.cpp
   gui/explanations_test.cpp

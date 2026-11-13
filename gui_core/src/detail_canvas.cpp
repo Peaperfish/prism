@@ -1,5 +1,6 @@
 #include "prism/gui/detail_canvas.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 namespace prism::gui {
@@ -171,6 +172,64 @@ bool view_at_actual_size(const ViewState& s, const ViewGeometry& g) noexcept {
 
 bool view_actual_size_available(const ViewGeometry& g) noexcept {
     return view_fit_zoom(g) < view_actual_zoom(g);  // as 0.6.0's fit < 1, in file pixels
+}
+
+std::optional<FilePixel> file_pixel_at(const ViewState& s, const ViewGeometry& g,
+                                       PixelSize framed_full, ViewPoint screen) noexcept {
+    if (framed_full.width < 1 || framed_full.height < 1 || !view_pixel_at(s, g, screen)) {
+        return std::nullopt;
+    }
+    const FileScale k = file_scale(framed_full, {g.image_width, g.image_height});
+    const ViewPoint image = view_screen_to_image(s, g, screen);
+    const auto clamp = [](double v, int size) {
+        return static_cast<int>(std::clamp(std::floor(v), 0.0, static_cast<double>(size - 1)));
+    };
+    return FilePixel{clamp(static_cast<double>(image.x) * k.x, framed_full.width),
+                     clamp(static_cast<double>(image.y) * k.y, framed_full.height)};
+}
+
+FilePixel file_pixel_of(int x, int y, PixelSize framed_preview, PixelSize framed_full) noexcept {
+    const FileScale k = file_scale(framed_full, framed_preview);
+    const auto clamp = [](double v, int size) {
+        return static_cast<int>(
+            std::clamp(std::floor(v), 0.0, static_cast<double>(std::max(0, size - 1))));
+    };
+    return {clamp((x + 0.5) * k.x, framed_full.width), clamp((y + 0.5) * k.y, framed_full.height)};
+}
+
+PixelSource sample_source(const DetailFramePlan& plan, const std::optional<ShownDetail>& shown,
+                          std::uint64_t base, std::uint64_t settings, FilePixel pixel) noexcept {
+    if (!plan.draw || !shown || base == 0 || shown->key.base != base ||
+        shown->key.settings != settings) {
+        return PixelSource::preview;
+    }
+    const FrameBox& r = shown->region;
+    const bool inside = pixel.x >= r.x0 && pixel.y >= r.y0 &&
+                        static_cast<long long>(pixel.x) < static_cast<long long>(r.x0) + r.width &&
+                        static_cast<long long>(pixel.y) < static_cast<long long>(r.y0) + r.height;
+    return inside ? PixelSource::photo : PixelSource::preview;
+}
+
+SampleMarker file_pixel_marker(const ViewState& s, const ViewGeometry& g, PixelSize framed_full,
+                               FilePixel pixel) noexcept {
+    SampleMarker m;
+    m.square = detail_screen_rect(s, g, framed_full, FrameBox{pixel.x, pixel.y, 1, 1});
+    m.centre = {(m.square.min.x + m.square.max.x) / 2.0f, (m.square.min.y + m.square.max.y) / 2.0f};
+    const ViewRect canvas = view_canvas_rect(g);
+    m.on_canvas = m.centre.x >= canvas.min.x && m.centre.x < canvas.max.x &&
+                  m.centre.y >= canvas.min.y && m.centre.y < canvas.max.y;
+    m.shows_square = detail_shows_pixels(view_zoom(view_settled(s, g), g), g.file_scale);
+    return m;
+}
+
+int brush_spacing_long_side(const BrushCanvas& canvas, bool real_pixels,
+                            PixelSize framed_full) noexcept {
+    const int preview = brush_long_side(canvas);
+    if (!real_pixels || preview < 1) {
+        return preview;
+    }
+    const double k = file_scale(framed_full, {canvas.width, canvas.height}).shown;
+    return static_cast<int>(std::max(1.0, std::round(static_cast<double>(preview) * k)));
 }
 
 }  // namespace prism::gui
