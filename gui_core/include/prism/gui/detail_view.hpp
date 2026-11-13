@@ -149,7 +149,7 @@ enum class PreviewChip {
     none,      // no chip: the preview isn't enlarged, or real pixels are (or soon will be) shown
     not_kept,  // DetailBaseState::off: no full-size photo is kept
     reading,   // the full-size photo is still being read
-    failed,    // reading the full-size photo failed
+    failed,    // reading the full-size photo failed, or it ran out of memory
     too_big,   // the full-size photo would take more than a quarter of the memory
     region_too_big,       // the part on screen is over 30 MP (RegionBudget::never)
     region_too_big_live,  // over 8 MP during a gesture (RegionBudget::on_release while one runs)

@@ -355,7 +355,8 @@ TEST(DetailView, Words) {
     EXPECT_EQ(preview_chip_explain(PreviewChip::reading),
               "Showing the preview, enlarged: the full-size photo is still being read.");
     EXPECT_EQ(preview_chip_explain(PreviewChip::failed),
-              "Showing the preview, enlarged: the full-size photo couldn't be read again.");
+              "Showing the preview, enlarged: the full-size photo couldn't be read or didn't fit "
+              "in memory.");
     EXPECT_EQ(preview_chip_explain(PreviewChip::too_big),
               "Showing the preview, enlarged: the full-size photo would take more than a quarter "
               "of this computer's memory.");

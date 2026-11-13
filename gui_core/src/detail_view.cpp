@@ -178,7 +178,8 @@ std::string_view preview_chip_explain(PreviewChip chip) noexcept {
         case PreviewChip::reading:
             return "Showing the preview, enlarged: the full-size photo is still being read.";
         case PreviewChip::failed:
-            return "Showing the preview, enlarged: the full-size photo couldn't be read again.";
+            return "Showing the preview, enlarged: the full-size photo couldn't be read or didn't "
+                   "fit in memory.";
         case PreviewChip::too_big:
             return "Showing the preview, enlarged: the full-size photo would take more than a "
                    "quarter of this computer's memory.";
