@@ -206,6 +206,35 @@ TEST(DetailView, FitOnALargeRetinaCanvasKeepsThePreview) {
         EXPECT_EQ(request.region, *r);
         EXPECT_EQ(request.budget, RegionBudget::never);
         EXPECT_FALSE(region_renders_now(request.budget, !idle));
+        // At Fit the chip doesn't show, whatever the base and budget: the canvas reads as in 0.6.0.
+        for (const DetailBaseState base : {DetailBaseState::ready, DetailBaseState::reading,
+                                           DetailBaseState::off, DetailBaseState::too_big}) {
+            EXPECT_EQ(preview_chip(true, true, base, request.budget, !idle), PreviewChip::none);
+        }
+    }
+
+    // One step in from Fit (the next stop in file percent: 34.7% to 50%) on the same canvas: the
+    // visible region is 6802 x 4400, 29.9 MP, and the region a render would ask for is over 30 MP
+    // (6912 x 4480 during a gesture, 7168 x 4736 idle), so the chip says why the preview shows.
+    const FileScale k = file_scale(file_60mp, preview);
+    const double fit_points = static_cast<double>(view_fit_zoom(g)) / g.density;
+    const double fit_percent = file_zoom_percent(fit_points, g.density, k);
+    const double step_percent =
+        100.0 * static_cast<double>(view_step_zoom(static_cast<float>(fit_percent / 100.0),
+                                                   static_cast<float>(fit_percent / 100.0), 1));
+    EXPECT_DOUBLE_EQ(step_percent, 50.0);
+    const double step_points = view_scale_for_file_percent(step_percent, g.density, k);
+    const ViewState stepped =
+        view_zoomed_to(ViewState{}, g, static_cast<float>(step_points * g.density));
+    ASSERT_FALSE(stepped.fit);
+    EXPECT_TRUE(real_pixels_needed(step_points, g.density));
+    const std::optional<FrameBox> step_region = visible_file_region(stepped, g, file_60mp);
+    ASSERT_TRUE(step_region);
+    for (const bool idle : {false, true}) {
+        const DetailRequest request = detail_request(*step_region, file_60mp, idle);
+        EXPECT_EQ(request.budget, RegionBudget::never);
+        EXPECT_EQ(preview_chip(true, stepped.fit, DetailBaseState::ready, request.budget, !idle),
+                  PreviewChip::region_too_big);
     }
 }
 
@@ -322,26 +351,27 @@ using Base = prism::gui::DetailBaseState;
 
 TEST(DetailView, ChipGivesEachReasonTheBaseIsNotRead) {
     for (const bool gesture : {false, true}) {
-        EXPECT_EQ(preview_chip(true, Base::off, RegionBudget::live, gesture),
+        EXPECT_EQ(preview_chip(true, false, Base::off, RegionBudget::live, gesture),
                   PreviewChip::not_kept);
-        EXPECT_EQ(preview_chip(true, Base::reading, RegionBudget::live, gesture),
+        EXPECT_EQ(preview_chip(true, false, Base::reading, RegionBudget::live, gesture),
                   PreviewChip::reading);
-        EXPECT_EQ(preview_chip(true, Base::failed, RegionBudget::live, gesture),
+        EXPECT_EQ(preview_chip(true, false, Base::failed, RegionBudget::live, gesture),
                   PreviewChip::failed);
-        EXPECT_EQ(preview_chip(true, Base::too_big, RegionBudget::live, gesture),
+        EXPECT_EQ(preview_chip(true, false, Base::too_big, RegionBudget::live, gesture),
                   PreviewChip::too_big);
         // The base's reason comes first, whatever the region.
-        EXPECT_EQ(preview_chip(true, Base::reading, RegionBudget::never, gesture),
+        EXPECT_EQ(preview_chip(true, false, Base::reading, RegionBudget::never, gesture),
                   PreviewChip::reading);
     }
 }
 
 TEST(DetailView, ChipGivesTheRegionsReasonOnceTheBaseIsThere) {
     for (const Base base : {Base::ready, Base::not_needed}) {
-        EXPECT_EQ(preview_chip(true, base, RegionBudget::never, false),
+        EXPECT_EQ(preview_chip(true, false, base, RegionBudget::never, false),
                   PreviewChip::region_too_big);
-        EXPECT_EQ(preview_chip(true, base, RegionBudget::never, true), PreviewChip::region_too_big);
-        EXPECT_EQ(preview_chip(true, base, RegionBudget::on_release, true),
+        EXPECT_EQ(preview_chip(true, false, base, RegionBudget::never, true),
+                  PreviewChip::region_too_big);
+        EXPECT_EQ(preview_chip(true, false, base, RegionBudget::on_release, true),
                   PreviewChip::region_too_big_live);
     }
 }
@@ -352,10 +382,12 @@ TEST(DetailView, ChipDoesNotShowForARenderInFlight) {
     // a gesture or without, so it can't flash.
     for (const Base base : {Base::ready, Base::not_needed}) {
         for (const bool gesture : {false, true}) {
-            EXPECT_EQ(preview_chip(true, base, RegionBudget::live, gesture), PreviewChip::none);
+            EXPECT_EQ(preview_chip(true, false, base, RegionBudget::live, gesture),
+                      PreviewChip::none);
         }
         // Over 8 MP once the gesture ends: the render on release is in flight.
-        EXPECT_EQ(preview_chip(true, base, RegionBudget::on_release, false), PreviewChip::none);
+        EXPECT_EQ(preview_chip(true, false, base, RegionBudget::on_release, false),
+                  PreviewChip::none);
     }
 }
 
@@ -365,7 +397,7 @@ TEST(DetailView, ChipNeverShowsWhenThePreviewIsNotEnlarged) {
         for (const RegionBudget budget :
              {RegionBudget::live, RegionBudget::on_release, RegionBudget::never}) {
             for (const bool gesture : {false, true}) {
-                EXPECT_EQ(preview_chip(false, base, budget, gesture), PreviewChip::none);
+                EXPECT_EQ(preview_chip(false, false, base, budget, gesture), PreviewChip::none);
             }
         }
     }

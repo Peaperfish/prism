@@ -143,9 +143,9 @@ PixelSize detail_output_size(const FrameBox& region, double points_per_preview_p
     return downscaled_size(width, height, target);
 }
 
-PreviewChip preview_chip(bool enlarged, DetailBaseState base, RegionBudget budget,
+PreviewChip preview_chip(bool enlarged, bool at_fit, DetailBaseState base, RegionBudget budget,
                          bool gesture) noexcept {
-    if (!enlarged) {
+    if (!enlarged || at_fit) {
         return PreviewChip::none;
     }
     switch (base) {
