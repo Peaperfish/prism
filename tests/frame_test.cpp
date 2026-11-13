@@ -910,4 +910,197 @@ TEST(Frame, FrameAndReduceOneAndEightThreadsAreBitIdentical) {
     }
 }
 
+// --- Part of the framed image --------------------------------------------------------------------
+
+// The `part` of `img`, copied.
+Image crop(const Image& img, const FrameBox& part) {
+    Image out;
+    out.width = part.width;
+    out.height = part.height;
+    out.pixels.reserve(static_cast<std::size_t>(part.width) *
+                       static_cast<std::size_t>(part.height) * 3);
+    for (int y = part.y0; y < part.y0 + part.height; ++y) {
+        const float* row = pixel(img, part.x0, y);
+        out.pixels.insert(out.pixels.end(), row, row + static_cast<std::size_t>(part.width) * 3);
+    }
+    return out;
+}
+
+// Parts of a w x h framed image: the centre, a strip along each edge, each corner, two single
+// pixels (one in the bottom-right corner) and the whole.
+std::vector<FrameBox> parts_of(int w, int h) {
+    return {
+        {w / 4, h / 4, w / 2, h / 2},              // centre
+        {w / 4, 0, w / 2, 3},                      // top edge
+        {w / 4, h - 3, w / 2, 3},                  // bottom edge
+        {0, h / 4, 3, h / 2},                      // left edge
+        {w - 3, h / 4, 3, h / 2},                  // right edge
+        {0, 0, 5, 4},                              // corners
+        {w - 5, 0, 5, 4},
+        {0, h - 4, 5, 4},
+        {w - 5, h - 4, 5, 4},
+        {w / 2, h / 3, 1, 1},                      // single pixels
+        {w - 1, h - 1, 1, 1},
+        {0, 0, w, h},                              // the whole
+    };
+}
+
+// Fitted frames at the angles the part tests use, and one not fitted, whose turned corners reach
+// past the photo so edge pixels repeat.
+std::vector<Frame> part_frames(int w, int h) {
+    std::vector<Frame> frames;
+    for (const float angle : {0.0f, 7.0f, -45.0f, 0.1f}) {
+        frames.push_back(prism::fit_frame(frame_of(angle, 0.1f, 0.05f, 0.9f, 0.95f), w, h));
+    }
+    frames.push_back(frame_of(7.0f, 0.0f, 0.0f, 1.0f, 1.0f));
+    return frames;
+}
+
+TEST(Frame, APartIsTheSameCropOfTheWholeFramedImage) {
+    constexpr int W = 97;
+    constexpr int H = 71;
+    const Image img = patterned(W, H);
+    for (const Frame& f : part_frames(W, H)) {
+        const Image whole = prism::apply_frame(img, f, 1);
+        ASSERT_GE(whole.width, 6) << "angle " << f.angle;
+        ASSERT_GE(whole.height, 6) << "angle " << f.angle;
+        for (const FrameBox& part : parts_of(whole.width, whole.height)) {
+            const Image got = prism::apply_frame(img, f, 1, part);
+            ASSERT_EQ(got.width, part.width);
+            ASSERT_EQ(got.height, part.height);
+            EXPECT_EQ(first_bit_difference(got, crop(whole, part)), -1)
+                << "angle " << f.angle << ", part " << part.width << " x " << part.height
+                << " at (" << part.x0 << ", " << part.y0 << ")";
+        }
+    }
+}
+
+TEST(Frame, APartIsBitIdenticalOnOneAndEightThreads) {
+    constexpr int W = 2400;
+    constexpr int H = 1400;
+    const Image img = patterned(W, H);
+    const Frame f = frame_of(7.0f, 0, 0, 1, 1);
+    // 1501 x 1049 = 1,574,549 pixels, with odd sides so chunks split unevenly, off the corner.
+    const FrameBox part{450, 200, 1501, 1049};
+    const std::size_t part_pixels =
+        static_cast<std::size_t>(part.width) * static_cast<std::size_t>(part.height);
+    ASSERT_GE(part_pixels, prism::parallel_min_pixels * 3 / 2);
+    ASSERT_EQ(prism::threads_for_pixels(part_pixels, 8), 8);
+    const Image one = prism::apply_frame(img, f, 1, part);
+    const Image eight = prism::apply_frame(img, f, 8, part);
+    ASSERT_EQ(one.width, part.width);
+    ASSERT_EQ(one.height, part.height);
+    EXPECT_EQ(first_bit_difference(one, eight), -1);
+    EXPECT_EQ(first_bit_difference(eight, crop(prism::apply_frame(img, f, 8), part)), -1);
+}
+
+// The lowest and highest photo pixel apply_frame's taps reach for `part`, worked out pixel by
+// pixel, as the kernel does: floor of the centre's position, then -1 .. +2, held inside the photo.
+FrameBox tap_bounds(const Frame& f, int w, int h, const FrameBox& part) {
+    const FrameMap map(f, w, h);
+    int lo_x = w;
+    int hi_x = -1;
+    int lo_y = h;
+    int hi_y = -1;
+    for (int j = part.y0; j < part.y0 + part.height; ++j) {
+        for (int i = part.x0; i < part.x0 + part.width; ++i) {
+            const FramePoint p = map.to_photo_pixels({i + 0.5, j + 0.5});
+            const int fx = static_cast<int>(std::floor(p.x - 0.5));
+            const int fy = static_cast<int>(std::floor(p.y - 0.5));
+            lo_x = std::min(lo_x, std::clamp(fx - 1, 0, w - 1));
+            hi_x = std::max(hi_x, std::clamp(fx + 2, 0, w - 1));
+            lo_y = std::min(lo_y, std::clamp(fy - 1, 0, h - 1));
+            hi_y = std::max(hi_y, std::clamp(fy + 2, 0, h - 1));
+        }
+    }
+    return {lo_x, lo_y, hi_x - lo_x + 1, hi_y - lo_y + 1};
+}
+
+TEST(Frame, SourceRectHoldsEveryTapAPartReads) {
+    constexpr int W = 97;
+    constexpr int H = 71;
+    const Image img = patterned(W, H);
+    // Some turned parts must be held in by the photo's edge and some not, so both are checked.
+    bool held_by_edge = false;
+    bool inside = false;
+    for (const Frame& f : part_frames(W, H)) {
+        const FrameBox box = prism::framed_box(f, W, H);
+        for (const FrameBox& part : parts_of(box.width, box.height)) {
+            const FrameBox rect = prism::frame_source_rect(f, W, H, part);
+            const std::string where = "angle " + std::to_string(f.angle) + ", part at (" +
+                                      std::to_string(part.x0) + ", " + std::to_string(part.y0) +
+                                      ") " + std::to_string(part.width) + " x " +
+                                      std::to_string(part.height);
+            if (f.angle == 0.0f) {
+                EXPECT_EQ(rect, (FrameBox{box.x0 + part.x0, box.y0 + part.y0, part.width,
+                                          part.height}))
+                    << where;
+            } else {
+                EXPECT_EQ(rect, tap_bounds(f, W, H, part)) << where;
+                if (rect.x0 == 0 && rect.y0 == 0) {
+                    held_by_edge = true;
+                }
+                if (rect.x0 > 0 && rect.y0 > 0 && rect.x0 + rect.width < W &&
+                    rect.y0 + rect.height < H) {
+                    inside = true;
+                }
+            }
+            // And reading only those pixels gives the same part: every other photo pixel is NaN,
+            // which reaches the result through any tap, even one of weight 0.
+            Image poisoned = img;
+            for (int y = 0; y < H; ++y) {
+                for (int x = 0; x < W; ++x) {
+                    if (x < rect.x0 || x >= rect.x0 + rect.width || y < rect.y0 ||
+                        y >= rect.y0 + rect.height) {
+                        const std::size_t at =
+                            static_cast<std::size_t>(y) * W + static_cast<std::size_t>(x);
+                        float* q = poisoned.pixels.data() + at * 3;
+                        q[0] = q[1] = q[2] = std::numeric_limits<float>::quiet_NaN();
+                    }
+                }
+            }
+            EXPECT_EQ(first_bit_difference(prism::apply_frame(poisoned, f, 1, part),
+                                           prism::apply_frame(img, f, 1, part)),
+                      -1)
+                << where;
+        }
+    }
+    EXPECT_TRUE(held_by_edge);
+    EXPECT_TRUE(inside);
+}
+
+TEST(Frame, APartOutsideTheFramedImageOrEmptyIsRefused) {
+    constexpr int W = 40;
+    constexpr int H = 30;
+    const Image img = patterned(W, H);
+    for (const float angle : {0.0f, 7.0f}) {
+        const Frame f = frame_of(angle, 0, 0, 1, 1);
+        const FrameBox box = prism::framed_box(f, W, H);
+        ASSERT_EQ(box, (FrameBox{0, 0, W, H}));
+        const FrameBox bad[] = {
+            {-1, 0, 1, 1},       {0, -1, 1, 1},     {W - 1, 0, 2, 1},
+            {0, H - 1, 1, 2},    {W, 0, 1, 1},      {0, H, 1, 1},
+            {0, 0, 0, 1},        {0, 0, 1, 0},      {0, 0, -1, 1},
+            {0, 0, W + 1, H},    {std::numeric_limits<int>::max(), 0, 1, 1},
+            {1, 0, std::numeric_limits<int>::max(), 1},
+        };
+        for (const FrameBox& part : bad) {
+            EXPECT_THROW((void)prism::apply_frame(img, f, 1, part), std::invalid_argument)
+                << "angle " << angle << ", part " << part.width << " x " << part.height
+                << " at (" << part.x0 << ", " << part.y0 << ")";
+            EXPECT_THROW((void)prism::frame_source_rect(f, W, H, part), std::invalid_argument)
+                << "angle " << angle << ", part " << part.width << " x " << part.height
+                << " at (" << part.x0 << ", " << part.y0 << ")";
+        }
+        // The whole box and the last pixel are inside.
+        EXPECT_NO_THROW((void)prism::apply_frame(img, f, 1, FrameBox{0, 0, W, H}));
+        EXPECT_NO_THROW((void)prism::frame_source_rect(f, W, H, FrameBox{W - 1, H - 1, 1, 1}));
+    }
+    // An invalid frame is still named first.
+    EXPECT_THROW((void)prism::frame_source_rect(frame_of(50.0f, 0, 0, 1, 1), W, H, {0, 0, 1, 1}),
+                 std::invalid_argument);
+    EXPECT_THROW((void)prism::frame_source_rect(frame_of(0.0f, 0, 0, 1, 1), 0, H, {0, 0, 1, 1}),
+                 std::invalid_argument);
+}
+
 }  // namespace
