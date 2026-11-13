@@ -23,6 +23,9 @@ double file_zoom_percent(double points_per_preview_pixel, double density,
 }
 
 double view_scale_for_file_percent(double percent, double density, FileScale scale) noexcept {
+    if (!(density > 0.0)) {
+        return 0.0;  // no screen to measure against (view_transform's has_picture case), or NaN
+    }
     return percent / 100.0 * scale.shown / density;
 }
 
@@ -62,7 +65,8 @@ int cells_up(int v, int cells) noexcept {
 std::optional<FrameBox> file_region(const PreviewRect& preview, PixelSize framed_preview,
                                     PixelSize framed_full) noexcept {
     if (framed_preview.width < 1 || framed_preview.height < 1 || framed_full.width < 1 ||
-        framed_full.height < 1) {
+        framed_full.height < 1 || std::isnan(preview.x0) || std::isnan(preview.y0) ||
+        std::isnan(preview.x1) || std::isnan(preview.y1)) {
         return std::nullopt;
     }
     const FileScale k = file_scale(framed_full, framed_preview);
@@ -119,7 +123,8 @@ PixelSize detail_output_size(const FrameBox& region, double points_per_preview_p
     const int width = std::max(1, region.width);
     const int height = std::max(1, region.height);
     const double device_per_file_pixel = points_per_preview_pixel * density / scale.shown;
-    if (device_per_file_pixel >= 1.0 - real_pixels_tolerance) {
+    // Written so that a NaN scale (a NaN density) gives the region rather than a NaN size.
+    if (!(device_per_file_pixel < 1.0 - real_pixels_tolerance)) {
         return {width, height};
     }
     const int long_side = std::max(width, height);

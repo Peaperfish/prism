@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <limits>
 #include <optional>
 #include <string_view>
 
@@ -373,6 +374,21 @@ TEST(DetailView, Words) {
     }
     EXPECT_EQ(real_pixels_menu_item().find("Actual"), std::string_view::npos);
     EXPECT_LE(real_pixels_explain().size(), prism::gui::explain_detail_max);
+}
+
+
+TEST(DetailView, NoScreenOrANaNGivesNoNonsense) {
+    const FileScale k = file_scale(file_60mp, preview_of(file_60mp));
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    // No density: no view scale, so the largest is the fit's.
+    EXPECT_EQ(view_scale_for_file_percent(100.0, 0.0, k), 0.0);
+    EXPECT_EQ(view_scale_for_file_percent(100.0, nan, k), 0.0);
+    EXPECT_EQ(max_view_scale(0.3, 0.0, k), 0.3);
+    // A NaN edge: no region.
+    EXPECT_FALSE(file_region({nan, 10.0, 20.0, 20.0}, small_preview, small_full));
+    EXPECT_FALSE(file_region({10.0, 10.0, 20.0, nan}, small_preview, small_full));
+    // A NaN density: the region itself, not a NaN size.
+    EXPECT_EQ(detail_output_size({0, 0, 300, 200}, 0.5, nan, k), (PixelSize{300, 200}));
 }
 
 }  // namespace

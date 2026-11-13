@@ -53,9 +53,9 @@ inline constexpr double file_zoom_max_percent = 800.0;
                                        FileScale scale) noexcept;
 
 // The view's scale (points per preview pixel) that shows `percent` of the file: the inverse of
-// file_zoom_percent. For "100% (real pixels)" and for the zoom steps, which step in file percent:
-// view_step_zoom(percent / 100, fit_percent / 100, direction) * 100 gives the next stop, its top
-// stop being 800%.
+// file_zoom_percent; 0 if density isn't above 0. For "100% (real pixels)" and for the zoom steps,
+// which step in file percent: view_step_zoom(percent / 100, fit_percent / 100, direction) * 100
+// gives the next stop, its top stop being 800%.
 [[nodiscard]] double view_scale_for_file_percent(double percent, double density,
                                                  FileScale scale) noexcept;
 
@@ -92,7 +92,8 @@ struct PreviewRect {
 // The file pixels `preview` covers, as render_region takes them: pixels of the framed picture at
 // full size (`framed_full`), measured with the per-axis scale from `framed_preview`. Each edge is
 // rounded outward (an edge in the middle of a file pixel takes that pixel in), then clamped to the
-// framed picture. Nothing if nothing of the picture is left, or either size is empty.
+// framed picture. Nothing if nothing of the picture is left, either size is empty or an edge is
+// NaN.
 [[nodiscard]] std::optional<FrameBox> file_region(const PreviewRect& preview,
                                                   PixelSize framed_preview,
                                                   PixelSize framed_full) noexcept;
@@ -136,7 +137,8 @@ enum class RegionBudget {
 //    region's long side times the device pixels per file pixel, rounded to the nearest pixel
 //    (halves up) and at least 1; the short side is downscaled_size's, so it is exactly what
 //    downscale(image, long side) gives.
-// Never 0 x 0: an empty region (which file_region never gives) counts as 1 x 1.
+// Never 0 x 0: an empty region (which file_region never gives) counts as 1 x 1. A NaN density gives
+// the region itself.
 [[nodiscard]] PixelSize detail_output_size(const FrameBox& region, double points_per_preview_pixel,
                                            double density, FileScale scale);
 
