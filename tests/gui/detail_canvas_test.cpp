@@ -67,12 +67,12 @@ DetailFrameInput input(double percent = 100.0, PixelSize preview = preview_60mp,
 
 // What the app records after carrying out `plan`'s submit (the renderer admitting as predicted).
 SubmittedDetail recorded(const DetailSubmit& s) {
-    return {s.key, s.request.region, s.output, s.picture, s.admitted};
+    return {s.key, s.request.region, s.output, s.picture, s.admitted, s.hold};
 }
 
-// The frame the renderer would give back for a request.
-ShownDetail frame_of(const DetailSubmit& s) {
-    return {s.key, s.request.region, s.picture};
+// The frame the renderer would give back for a request made with the settings' `frame`.
+ShownDetail frame_of(const DetailSubmit& s, const std::optional<prism::Frame>& frame = {}) {
+    return {s.key, s.request.region, s.picture, frame};
 }
 
 // The input one frame later, with the plan carried out and its frame arrived.
@@ -81,7 +81,7 @@ DetailFrameInput settled_after(DetailFrameInput in) {
     EXPECT_TRUE(plan.submit.has_value());
     if (plan.submit) {
         in.submitted = recorded(*plan.submit);
-        in.shown = frame_of(*plan.submit);
+        in.shown = frame_of(*plan.submit, in.frame);
     }
     return in;
 }
@@ -288,13 +288,28 @@ TEST(DetailCanvasPlan, ARegionTooBigForAGestureWaitsHidesTheFrameAndSaysSo) {
     EXPECT_FALSE(plan.draw);
     EXPECT_EQ(plan.chip, PreviewChip::region_too_big_live);
 
-    // Let go: asked for (with the margin) and admitted; the old frame shows until it arrives.
+    // Let go: asked for (with the margin) and admitted. The frame from before the drag does not
+    // come back meanwhile (the picture would jump back to the old settings): the preview stays
+    // until the new frame arrives.
     in.gesture = false;
     plan = plan_detail_frame(in);
     ASSERT_TRUE(plan.submit);
     EXPECT_TRUE(plan.submit->admitted);
-    EXPECT_TRUE(plan.draw);
+    EXPECT_FALSE(plan.draw);
     EXPECT_EQ(plan.chip, PreviewChip::none);
+    in.submitted = recorded(*plan.submit);
+    EXPECT_FALSE(plan_detail_frame(in).draw);  // still on its way
+    in.shown = frame_of(*plan.submit);
+    EXPECT_TRUE(plan_detail_frame(in).draw);  // arrived
+
+    // The next drag (live now, nothing refused) shows real pixels a moment behind again.
+    in.settings = 7;
+    in.view = at_percent(in.geometry, 100.0);
+    plan = plan_detail_frame(in);
+    ASSERT_TRUE(plan.submit);
+    EXPECT_TRUE(plan.submit->admitted);
+    EXPECT_FALSE(plan.submit->hold);
+    EXPECT_TRUE(plan.draw);
 }
 
 TEST(DetailCanvasPlan, APanIntoARegionTooBigForTheGestureHidesEvenACurrentFrame) {
@@ -408,6 +423,36 @@ TEST(DetailCanvasPlan, AFrameIsDrawnWithCurrentSettingsOrWithARequestForThemOnIt
     DetailFrameInput reframed = shown;
     reframed.shown->picture = {9000, 6000};
     EXPECT_FALSE(plan_detail_frame(reframed).draw);
+}
+
+TEST(DetailCanvasPlan, AFrameOfAnotherCropOfTheSameSizeIsNotDrawn) {
+    // Real pixels of one crop; then undo moves the crop to another part of the photo, the same
+    // size. The old frame shows another part of the photo: not drawn while the new one renders.
+    prism::Frame left;
+    left.left = 0.0f;
+    left.right = 0.5f;
+    left.aspect = prism::Aspect::free;
+    prism::Frame right = left;
+    right.left = 0.5f;
+    right.right = 1.0f;
+    DetailFrameInput in = input(100.0);
+    in.frame = left;
+    in = settled_after(in);
+    ASSERT_TRUE(plan_detail_frame(in).draw);
+    in.frame = right;
+    in.settings = 6;
+    const DetailFramePlan plan = plan_detail_frame(in);
+    ASSERT_TRUE(plan.submit);
+    EXPECT_TRUE(plan.submit->admitted);  // on its way, but of another part of the photo
+    EXPECT_FALSE(plan.draw);
+    // The same frame with other settings (a slider): drawn a moment behind, as before.
+    DetailFrameInput slider = settled_after([&] {
+        DetailFrameInput i = input(100.0);
+        i.frame = left;
+        return i;
+    }());
+    slider.settings = 6;
+    EXPECT_TRUE(plan_detail_frame(slider).draw);
 }
 
 TEST(DetailCanvasPlan, WithoutAReadyBaseTheChipSaysWhyAndNothingIsAskedFor) {

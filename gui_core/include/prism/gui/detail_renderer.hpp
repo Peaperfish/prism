@@ -88,6 +88,9 @@ struct DetailFrame {
     // the request's settings and base. A frame made before the frame (crop or turn) changed is in
     // another picture, and the canvas must not place it on this one. 0 x 0 on an error frame.
     PixelSize picture{0, 0};
+    // The request's settings.frame: which part of the photo the picture is, and how far it is
+    // turned. A frame of a crop moved to the same size is another picture all the same.
+    std::optional<Frame> frame;
     // width x height: the region itself at 100% and above, smaller below (the request's output).
     PixelSize size;
     // size.width * size.height * 3 bytes of 8-bit sRGB, row-major, encoded by encode_srgb8 as the

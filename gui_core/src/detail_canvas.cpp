@@ -132,14 +132,21 @@ DetailFramePlan plan_detail_frame(const DetailFrameInput& in) {
                          (!last->admitted && admitted);
     std::optional<SubmittedDetail> latest = last;
     if (changed) {
-        plan.submit = DetailSubmit{request, output, key, in.framed_full, admitted};
-        latest = SubmittedDetail{key, request.region, output, in.framed_full, admitted};
+        // Held while refused, and after a refusal until the frame shown is of settings asked for
+        // since (the last request's): only then may an older frame stand in again.
+        const bool hold = !admitted || (last && last->hold &&
+                                        !(shown && shown->key.settings == last->key.settings));
+        plan.submit = DetailSubmit{request, output, key, in.framed_full, admitted, hold};
+        latest = SubmittedDetail{key, request.region, output, in.framed_full, admitted, hold};
     }
 
     const bool refused = latest && !latest->admitted;
     const bool current_on_its_way = latest && latest->admitted && latest->key == key;
-    plan.draw = shown && !refused && shown->picture == in.framed_full &&
-                (shown->key.settings == in.settings || current_on_its_way);
+    const bool current = shown && shown->key.settings == in.settings;
+    const bool older_may_stand_in =
+        current_on_its_way && !(latest && latest->hold) && shown && shown->frame == in.frame;
+    plan.draw =
+        shown && !refused && shown->picture == in.framed_full && (current || older_may_stand_in);
     if (plan.draw) {
         plan.where = detail_screen_rect(view, in.geometry, in.framed_full, shown->region);
         plan.nearest = detail_shows_pixels(zoom, static_cast<float>(k.shown));

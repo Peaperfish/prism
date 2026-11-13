@@ -83,7 +83,8 @@ struct CanvasActivity {
 struct ShownDetail {
     DetailKey key;
     FrameBox region;
-    PixelSize picture;  // DetailFrame::picture
+    PixelSize picture;           // DetailFrame::picture
+    std::optional<Frame> frame;  // DetailFrame::frame
     bool operator==(const ShownDetail&) const = default;
 };
 
@@ -94,6 +95,10 @@ struct SubmittedDetail {
     PixelSize output;
     PixelSize picture;      // the framed picture the region is in
     bool admitted = false;  // DetailRenderer::submit gave it a generation (not 0)
+    // A request was refused during a gesture since the shown frame's settings were asked for:
+    // until a frame of the current settings arrives, no frame of older ones is drawn
+    // (DetailSubmit).
+    bool hold = false;
     bool operator==(const SubmittedDetail&) const = default;
 };
 
@@ -109,6 +114,9 @@ struct DetailFrameInput {
     // The framed picture at full size: plan_export_frame(settings.frame, detail base size).size, or
     // 0 x 0 with no detail base.
     PixelSize framed_full;
+    // The current settings' frame (EditSettings::frame): a frame of older settings is drawn only
+    // while it shows the same part of the photo.
+    std::optional<Frame> frame;
     DetailBaseState base_state = DetailBaseState::off;
     std::uint64_t base = 0;      // DetailBaseNumber: 0 is no base
     std::uint64_t settings = 0;  // Session::settings_generation()
@@ -127,6 +135,9 @@ struct DetailSubmit {
     PixelSize picture;  // for SubmittedDetail
     // What detail_admit will say, for the record the app keeps until submit() says.
     bool admitted = false;
+    // For SubmittedDetail::hold: this request is refused, or an earlier one was and no frame of
+    // the settings asked for since has arrived.
+    bool hold = false;
 };
 
 // What the app does this frame, in this order: clear() the renderer and forget the shown frame and
@@ -155,11 +166,13 @@ struct DetailFramePlan {
 //   anything asked for or shown is cleared, and the chip says region_too_big.
 // - A frame of another base than the current one is never drawn; the request and frame of an old
 //   base are cleared (and the new base asked for in the same frame).
-// - The shown frame is drawn only if it is in the current framed picture, and its settings are the
-//   current ones or the last request is for the current ones and admitted (a slider drag shows real
-//   pixels a moment behind rather than none). If the last request was refused during a gesture,
-//   nothing is drawn (the preview shows) and the chip says region_too_big_live; that reason only
-//   shows when nothing is drawn.
+// - The shown frame is drawn only if it is in the current framed picture (its size, and for a
+//   frame of older settings the same Frame), and its settings are the current ones or the last
+//   request is for the current ones and admitted (a slider drag shows real pixels a moment behind
+//   rather than none). If the last request was refused during a gesture, nothing is drawn (the
+//   preview shows) and the chip says region_too_big_live; that reason only shows when nothing is
+//   drawn. After such a refusal only a frame of the current settings is drawn, until one arrives:
+//   letting go never brings back the picture from before the drag.
 // - While the texture is not yet the current picture (framed_preview_now differs), nothing is
 //   asked for, drawn or cleared.
 // - `where` is the frame's region taken to preview pixels by the per-axis file scale, then to the

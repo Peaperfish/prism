@@ -811,8 +811,12 @@ TEST(DetailRenderer, AFrameSaysWhichFramedPictureItsRegionIsIn) {
     const PixelSize turned_size = prism::plan_export_frame(turned.frame, 640, 430).size;
     ASSERT_NE(turned_size, (PixelSize{640, 430}));
     const FrameBox region{10, 20, 100, 60};
-    EXPECT_EQ(rendered(renderer, base, whole, region, {100, 60}).picture, (PixelSize{640, 430}));
-    EXPECT_EQ(rendered(renderer, base, turned, region, {100, 60}).picture, turned_size);
+    const DetailFrame of_whole = rendered(renderer, base, whole, region, {100, 60});
+    EXPECT_EQ(of_whole.picture, (PixelSize{640, 430}));
+    EXPECT_EQ(of_whole.frame, std::nullopt);
+    const DetailFrame of_turned = rendered(renderer, base, turned, region, {100, 60});
+    EXPECT_EQ(of_turned.picture, turned_size);
+    EXPECT_EQ(of_turned.frame, turned.frame);
 }
 
 }  // namespace

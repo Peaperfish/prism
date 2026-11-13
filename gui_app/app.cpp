@@ -951,7 +951,8 @@ void App::update_detail() {
             detail_awaited_ = 0;  // the newest asked for has arrived
         }
         if (frame->error.empty() && detail_texture_.upload(*frame)) {
-            detail_shown_ = gui::ShownDetail{frame->key, frame->region, frame->picture};
+            detail_shown_ =
+                gui::ShownDetail{frame->key, frame->region, frame->picture, frame->frame};
         } else {
             // A failed render (or upload) shows nothing: the enlarged preview stays.
             detail_texture_.reset();
@@ -968,6 +969,7 @@ void App::update_detail() {
     if (base) {
         in.framed_full = framed_full_size();
     }
+    in.frame = session_.settings().frame;
     in.base_state = session_.detail_base_state();
     in.base = base_id;
     in.settings = session_.settings_generation();
@@ -1002,8 +1004,9 @@ void App::update_detail() {
             // plan_detail_frame never asks for an empty region or a size downscale can't make;
             // if it did, the enlarged preview stays rather than the app stopping.
         }
-        detail_submitted_ = gui::SubmittedDetail{ask.key, ask.request.region, ask.output,
-                                                 ask.picture, generation != 0};
+        detail_submitted_ =
+            gui::SubmittedDetail{ask.key,     ask.request.region, ask.output,
+                                 ask.picture, generation != 0,    ask.hold || generation == 0};
         // A refused request also dropped the one waiting; while the gesture goes on the app draws
         // anyway, and on release the region is asked for again.
         detail_awaited_ = generation;
