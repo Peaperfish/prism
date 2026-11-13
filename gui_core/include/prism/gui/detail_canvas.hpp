@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 
 #include "prism/frame.hpp"
 #include "prism/gui/detail_base.hpp"
@@ -177,5 +178,23 @@ struct DetailFramePlan {
 // squares past 200% of the file. `zoom` is device pixels per preview pixel, `file_scale` file
 // pixels per preview pixel (ViewGeometry::file_scale).
 [[nodiscard]] bool detail_shows_pixels(float zoom, float file_scale) noexcept;
+
+// --- The zoom chip and 100%
+// -----------------------------------------------------------------------
+
+// The zoom in percent of the file for the view: 100 x device pixels per file pixel.
+[[nodiscard]] double view_file_percent(const ViewState& s, const ViewGeometry& g) noexcept;
+
+// The zoom chip's text: file_zoom_chip(view_file_percent, chip), e.g. "25%", "400% · preview".
+[[nodiscard]] std::string canvas_zoom_chip(const ViewState& s, const ViewGeometry& g,
+                                           PreviewChip chip);
+
+// Whether the view is at 100% of the file (zoomed, not Fit, within view_same_zoom of it), so the
+// chip's 100% is lit and the View menu's "100% (real pixels)" has nothing to do.
+[[nodiscard]] bool view_at_actual_size(const ViewState& s, const ViewGeometry& g) noexcept;
+
+// Whether 100% of the file can be chosen: not when the fit already shows the photo at 100% or
+// more (a photo smaller than the canvas in device pixels).
+[[nodiscard]] bool view_actual_size_available(const ViewGeometry& g) noexcept;
 
 }  // namespace prism::gui

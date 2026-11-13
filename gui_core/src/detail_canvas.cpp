@@ -150,4 +150,20 @@ DetailFramePlan plan_detail_frame(const DetailFrameInput& in) {
     return plan;
 }
 
+double view_file_percent(const ViewState& s, const ViewGeometry& g) noexcept {
+    return 100.0 * static_cast<double>(view_zoom(s, g)) / static_cast<double>(view_actual_zoom(g));
+}
+
+std::string canvas_zoom_chip(const ViewState& s, const ViewGeometry& g, PreviewChip chip) {
+    return file_zoom_chip(view_file_percent(s, g), chip);
+}
+
+bool view_at_actual_size(const ViewState& s, const ViewGeometry& g) noexcept {
+    return !s.fit && view_same_zoom(view_zoom(s, g) / view_actual_zoom(g), 1.0f);
+}
+
+bool view_actual_size_available(const ViewGeometry& g) noexcept {
+    return view_fit_zoom(g) < view_actual_zoom(g);  // as 0.6.0's fit < 1, in file pixels
+}
+
 }  // namespace prism::gui

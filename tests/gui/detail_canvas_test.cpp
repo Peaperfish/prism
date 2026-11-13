@@ -591,3 +591,40 @@ TEST(DetailCanvasGesture, AWheelCountsForAMomentAfterItsLastEvent) {
 }
 
 }  // namespace
+
+namespace {
+
+// --- The zoom chip and 100%
+// -----------------------------------------------------------------------
+
+TEST(DetailCanvasChip, TheChipReadsPercentOfTheFile) {
+    const ViewGeometry g = canvas();  // fit 1.17 device pixels per preview pixel
+    EXPECT_EQ(canvas_zoom_chip(ViewState{}, g, PreviewChip::none), "31%");
+    EXPECT_EQ(canvas_zoom_chip(at_percent(g, 100.0), g, PreviewChip::none), "100%");
+    EXPECT_EQ(canvas_zoom_chip(at_percent(g, 400.0), g, PreviewChip::reading), "400% · preview");
+    EXPECT_NEAR(view_file_percent(at_percent(g, 800.0), g), 800.0, 1e-3);
+    // A preview that is the file reads as the zoom itself, as 0.6.0 did ("of preview" aside).
+    const ViewGeometry same = canvas({1600, 1067}, {1600, 1067}, 800.0f, 600.0f, 2.0f);
+    ViewState s;
+    s.fit = false;
+    s.zoom = 1.5f;
+    s.centre_x = 800.0f;
+    s.centre_y = 533.0f;
+    EXPECT_EQ(canvas_zoom_chip(s, same, PreviewChip::none), "150%");
+}
+
+TEST(DetailCanvasChip, HundredPercentIsOfTheFile) {
+    const ViewGeometry g = canvas();
+    EXPECT_TRUE(view_actual_size_available(g));
+    EXPECT_FALSE(view_at_actual_size(ViewState{}, g));
+    EXPECT_TRUE(view_at_actual_size(at_percent(g, 100.0), g));
+    ViewState preview_100;  // 100% of the preview: 27% of the file
+    preview_100.fit = false;
+    preview_100.zoom = 1.0f;
+    EXPECT_FALSE(view_at_actual_size(preview_100, g));
+    // A photo smaller than the canvas in device pixels: its fit is beyond 100% already.
+    const ViewGeometry small = canvas({1200, 800}, {1200, 800});
+    EXPECT_FALSE(view_actual_size_available(small));
+}
+
+}  // namespace
