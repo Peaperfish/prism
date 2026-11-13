@@ -393,4 +393,12 @@ private:
 [[nodiscard]] Image render_region(const Photo& base, const EditSettings& settings,
                                   const FrameBox& part, int threads = 0);
 
+// render_region that can be stopped, for a worker thread (DetailRenderer): the same image, or
+// nothing (std::nullopt) once `stop` is triggered. `stop` is checked where export checks it, after
+// the frame and between the stages; a stage under way runs to its end first. A stopped render
+// never hands out what it made so far. Throws as render_region does.
+[[nodiscard]] std::optional<Image> render_region(const Photo& base, const EditSettings& settings,
+                                                 const FrameBox& part, int threads,
+                                                 std::stop_token stop);
+
 }  // namespace prism::gui

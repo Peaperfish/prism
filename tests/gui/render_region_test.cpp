@@ -11,6 +11,7 @@
 #include <memory>
 #include <optional>
 #include <stdexcept>
+#include <stop_token>
 #include <string>
 #include <utility>
 #include <variant>
@@ -317,6 +318,34 @@ TEST(RenderRegion, OneAndEightThreadsGiveTheSamePart) {
     ASSERT_EQ(one.width, part.width);
     ASSERT_EQ(one.height, part.height);
     EXPECT_EQ(first_difference(one, {0, 0, part.width, part.height}, eight, "1 thread"), "");
+}
+
+// --- Stopping ------------------------------------------------------------------------------------
+
+// A stopped render gives nothing, never a partial image, framed (the check after apply_frame's
+// part) or not (the copy of the part); one not stopped gives render_region's own pixels.
+TEST(RenderRegion, AStoppedRenderGivesNothing) {
+    const int w = 160;
+    const int h = 120;
+    const Photo base = make_photo(w, h);
+    for (const std::optional<Frame>& frame :
+         {std::optional<Frame>{}, std::optional(turned(7.0f))}) {
+        SCOPED_TRACE(frame ? "framed" : "no frame");
+        const EditSettings s = look(frame, w, h, false);
+        const FrameBox part{10, 12, 90, 70};
+
+        std::stop_source stopped;
+        stopped.request_stop();
+        EXPECT_FALSE(prism::gui::render_region(base, s, part, 1, stopped.get_token()).has_value());
+
+        const std::stop_source running;
+        const std::optional<Image> got =
+            prism::gui::render_region(base, s, part, 1, running.get_token());
+        ASSERT_TRUE(got.has_value());
+        EXPECT_EQ(first_difference(prism::gui::render_region(base, s, part, 1),
+                                   {0, 0, part.width, part.height}, *got, "unstoppable"),
+                  "");
+    }
 }
 
 // --- No copy of the decode ------------------------------------------------------------------------

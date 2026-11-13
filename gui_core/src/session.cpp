@@ -601,6 +601,12 @@ std::variant<Image, Error> finish_export(Photo decoded, const EditSettings& sett
 
 Image render_region(const Photo& base, const EditSettings& settings, const FrameBox& part,
                     int threads) {
+    // Not stopped: with no stop token there is always an image.
+    return *render_region(base, settings, part, threads, std::stop_token{});
+}
+
+std::optional<Image> render_region(const Photo& base, const EditSettings& settings,
+                                   const FrameBox& part, int threads, std::stop_token stop) {
     if (const std::vector<std::string> problems = validate(settings); !problems.empty()) {
         throw std::invalid_argument("render_region: " + problems.front());
     }
@@ -621,12 +627,15 @@ Image render_region(const Photo& base, const EditSettings& settings, const Frame
             " framed picture");
     }
     std::variant<Image, Error> result = run_after_decode(
-        &base.image, as_shot_white_of(base.info), settings, std::nullopt, part, threads, {}, {});
+        &base.image, as_shot_white_of(base.info), settings, std::nullopt, part, threads, stop, {});
     if (Error* e = std::get_if<Error>(&result)) {
+        if (e->kind == ErrorKind::cancelled) {
+            return std::nullopt;  // stopped: what was made so far is freed, never handed out
+        }
         if (e->kind == ErrorKind::out_of_memory) {
             throw std::bad_alloc();
         }
-        // Not reached: with no stop token nothing is cancelled.
+        // Not reached: run_after_decode fails only when out of memory or stopped.
         throw std::runtime_error("render_region: " + e->message);
     }
     return std::move(std::get<Image>(result));
