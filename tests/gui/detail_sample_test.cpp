@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
@@ -165,6 +166,12 @@ TEST(DetailSample, APhotoPixelIsTheExportsPixel) {
     }
 }
 
+TEST(DetailSample, APhotoWhosePixelsDontMatchItsSizeIsRefused) {
+    Photo photo = make_photo(20, 10);
+    photo.image.pixels.pop_back();
+    EXPECT_THROW((void)sample_photo_trace(photo, EditSettings{}, 1, 1), std::invalid_argument);
+}
+
 TEST(DetailSample, APixelOffTheFramedPictureReadsNothing) {
     const Photo photo = make_photo(200, 150);
     const EditSettings s = look(200, 150, false, true);
@@ -235,9 +242,8 @@ TEST(DetailSample, TheReadoutSaysItIsARealPixel) {
     ASSERT_TRUE(t);
     SampleScale scale{2560, 9564, false, true};
     EXPECT_EQ(sample_rows(*t, StageId::encode, scale).average,
-              "A real pixel: one pixel of the photo at its full size, as it exports.");
-    EXPECT_EQ(sample_photo_pixel_text(),
-              "A real pixel: one pixel of the photo at its full size, as it exports.");
+              "A real pixel: one pixel of the photo at its full size.");
+    EXPECT_EQ(sample_photo_pixel_text(), "A real pixel: one pixel of the photo at its full size.");
     // A preview pixel still says what it averages.
     scale.photo_pixel = false;
     EXPECT_EQ(
@@ -327,6 +333,7 @@ TEST(DetailSampleSource, TheFilePixelUnderTheCursorIsFoundAlongEachAxis) {
 TEST(DetailSampleSource, ThePhotoIsReadOnlyWhereItsCurrentPixelsAreDrawn) {
     DetailFramePlan plan;
     plan.draw = true;
+    plan.whole_pixels = true;
     const ShownDetail shown{{3, 9}, {1000, 800, 512, 384}, full_7, std::nullopt};
     const FilePixel inside{1200, 900};
     EXPECT_EQ(sample_source(plan, shown, 3, 9, inside), PixelSource::photo);
@@ -345,6 +352,68 @@ TEST(DetailSampleSource, ThePhotoIsReadOnlyWhereItsCurrentPixelsAreDrawn) {
     EXPECT_EQ(sample_source(plan, shown, 4, 9, inside), PixelSource::preview);
     EXPECT_EQ(sample_source(plan, shown, 0, 9, inside), PixelSource::preview);
     EXPECT_EQ(sample_source(plan, shown, 3, 10, inside), PixelSource::preview);
+    // Below 100% the frame drawn is shrunk: a device pixel shows several photo pixels averaged, so
+    // the preview's pixel is read, with its line about what it averages.
+    DetailFramePlan shrunk = plan;
+    shrunk.whole_pixels = false;
+    EXPECT_EQ(sample_source(shrunk, shown, 3, 9, inside), PixelSource::preview);
+}
+
+TEST(DetailSampleSource, ThePlanSaysWhenEachPhotoPixelIsDrawnWhole) {
+    // A 60 MP photo on a 1500 x 1000 point canvas at 2x, real pixels shown.
+    DetailFrameInput in;
+    in.geometry = canvas_7();
+    in.framed_preview_now = preview_7;
+    in.framed_full = full_7;
+    in.base_state = DetailBaseState::ready;
+    in.base = 1;
+    in.settings = 5;
+    for (const auto& [percent, whole] : std::vector<std::pair<double, bool>>{
+             {50.0, false}, {99.0, false}, {100.0, true}, {400.0, true}}) {
+        SCOPED_TRACE(percent);
+        in.view = at_percent(in.geometry, percent, 1088.0f, 726.0f);
+        const DetailFramePlan first = plan_detail_frame(in);
+        ASSERT_TRUE(first.submit);
+        DetailFrameInput shown = in;
+        shown.submitted = SubmittedDetail{first.submit->key,      first.submit->request.region,
+                                          first.submit->output,   first.submit->picture,
+                                          first.submit->admitted, first.submit->hold};
+        shown.shown = ShownDetail{first.submit->key, first.submit->request.region,
+                                  first.submit->picture, std::nullopt};
+        const DetailFramePlan plan = plan_detail_frame(shown);
+        ASSERT_TRUE(plan.draw);
+        EXPECT_EQ(plan.whole_pixels, whole);
+    }
+}
+
+TEST(DetailSampleSource, APixelOfAnEstimatedSizeMovesToTheRealOne) {
+    // A pin taken on an estimated 8000 x 5333 picture; the photo read is 8138 x 5424.
+    const FilePixel p = file_pixel_rescaled({7999, 2666}, {8000, 5333}, full_7);
+    EXPECT_EQ(p, (FilePixel{static_cast<int>(7999.5 * 8138.0 / 8000.0),
+                            static_cast<int>(2666.5 * 5424.0 / 5333.0)}));
+    EXPECT_EQ(p.x, 8137);  // the last pixel stays the last
+    // The same size, or a size that can't be used: unchanged.
+    EXPECT_EQ(file_pixel_rescaled({5, 6}, full_7, full_7), (FilePixel{5, 6}));
+    EXPECT_EQ(file_pixel_rescaled({5, 6}, {0, 0}, full_7), (FilePixel{5, 6}));
+}
+
+TEST(DetailSampleSource, PicksRingIsAroundThePhotoPixelsItAverages) {
+    const ViewGeometry g = canvas_7();
+    const ViewState s = at_percent(g, 800.0, 1000.0f, 700.0f);
+    const PickMarker m = file_pick_marker(s, g, full_7, {3740, 2610});
+    ASSERT_TRUE(m.on_canvas);
+    // Five photo pixels across, eight device pixels each at 800%: 20 points on a 2x screen.
+    EXPECT_NEAR(m.patch.width(), 20.0f, 0.51f);
+    EXPECT_NEAR(m.patch.height(), 20.0f, 0.51f);
+    const ViewRect patch = detail_screen_rect(s, g, full_7, FrameBox{3738, 2608, 5, 5});
+    EXPECT_FLOAT_EQ(m.patch.min.x, patch.min.x);
+    EXPECT_FLOAT_EQ(m.patch.min.y, patch.min.y);
+    // Cut off at the picture's edge, as the patch is.
+    const ViewState corner = at_percent(g, 800.0, 0.0f, 0.0f);
+    const PickMarker edge = file_pick_marker(corner, g, full_7, {0, 1});
+    EXPECT_NEAR(edge.patch.width(), 12.0f, 0.51f);   // pixels 0 to 2
+    EXPECT_NEAR(edge.patch.height(), 16.0f, 0.51f);  // pixels 0 to 3
+    EXPECT_FALSE(file_pick_marker(corner, g, full_7, {8138, 0}).on_canvas);
 }
 
 TEST(DetailSampleSource, AFilePixelsMarkerIsItsOwnSquare) {
@@ -371,7 +440,22 @@ TEST(DetailBrush, PointsAreAFilePixelApartWhileRealPixelsAreDrawn) {
     EXPECT_EQ(brush_spacing_long_side(canvas, true, full), 9564);
     // A preview that is the file: the same either way.
     EXPECT_EQ(brush_spacing_long_side(canvas, true, {2560, 1707}), 2560);
-    // A small brush (0.5% of the long side): its points are much closer at real pixels.
+    // With the smallest brush the UI allows, the 2560 px preview's pixel is already finer than the
+    // radius's own spacing: nothing changes (the one-pixel floor only matters under ~1333 px).
+    EXPECT_EQ(
+        prism::min_point_spacing(brush_radius_min, brush_spacing_long_side(canvas, true, full)),
+        prism::min_point_spacing(brush_radius_min, brush_spacing_long_side(canvas, false, full)));
+    // A framed canvas: the whole photo's long side, in file pixels by the framed picture's scale.
+    BrushCanvas framed;
+    framed.width = 2177;
+    framed.height = 1453;
+    framed.framing = prism::gui::picture_frame_of(turned_7(), 2560, 1707);
+    ASSERT_TRUE(framed.framing);
+    const int whole_preview = brush_long_side(framed);
+    EXPECT_EQ(brush_spacing_long_side(framed, false, full_7), whole_preview);
+    EXPECT_EQ(brush_spacing_long_side(framed, true, full_7),
+              static_cast<int>(std::round(whole_preview * file_scale(full_7, preview_7).shown)));
+    // A brush smaller than the UI allows (0.05%): its points are closer at real pixels.
     EXPECT_LT(prism::min_point_spacing(0.0005f, brush_spacing_long_side(canvas, true, full)),
               prism::min_point_spacing(0.0005f, brush_spacing_long_side(canvas, false, full)));
 }

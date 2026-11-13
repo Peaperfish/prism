@@ -527,7 +527,7 @@ double file_pixels_across(int preview_long_side, int file_long_side) noexcept {
 }
 
 std::string_view sample_photo_pixel_text() noexcept {
-    return "A real pixel: one pixel of the photo at its full size, as it exports.";
+    return "A real pixel: one pixel of the photo at its full size.";
 }
 
 std::string sample_dodge_burn_text(const PixelTrace& trace) {

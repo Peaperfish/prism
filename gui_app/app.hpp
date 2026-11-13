@@ -435,6 +435,7 @@ private:
     gui::BrushCanvas stroke_canvas_;     // the picture the stroke under way is drawn on
     gui::SampleClick pick_click_;
     std::optional<gui::SamplePin> pick_hover_;  // the pixel under the cursor this frame
+    std::optional<gui::FilePixel> pick_hover_file_;  // its photo pixel (#37)
     std::string pick_message_;                  // the chip: what the last pick did, or why not
     double pick_message_until_ = 0.0;           // ImGui::GetTime() at which the chip goes
     std::optional<gui::SamplePin> sample_hover_;  // the pixel under the cursor this frame
@@ -445,6 +446,7 @@ private:
     // which of the two traces each slot shows this frame.
     std::optional<gui::FilePixel> sample_pin_file_;
     std::optional<gui::SamplePin> sample_pin_file_for_;  // the pin sample_pin_file_ belongs to
+    prism::PixelSize sample_pin_file_size_;  // the framed full size sample_pin_file_ is on
     std::optional<gui::FilePixel> sample_hover_file_;
     gui::PhotoSampleCache sample_pin_photo_trace_;
     gui::PhotoSampleCache sample_hover_photo_trace_;

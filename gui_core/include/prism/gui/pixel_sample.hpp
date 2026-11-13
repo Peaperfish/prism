@@ -123,8 +123,7 @@ struct SampleScale {
     bool photo_pixel = false;
 };
 
-// The readout's line for a photo pixel: "A real pixel: one pixel of the photo at its full size, as
-// it exports."
+// The readout's line for a photo pixel: "A real pixel: one pixel of the photo at its full size."
 [[nodiscard]] std::string_view sample_photo_pixel_text() noexcept;
 
 // The readout, in the words a photographer uses, a row at a time so that a window can show each on

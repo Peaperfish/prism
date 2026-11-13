@@ -398,6 +398,8 @@ void App::open_now(const fs::path& path) {
     sample_pin_file_.reset();
     sample_pin_file_for_.reset();
     sample_hover_file_.reset();
+    sample_pin_photo_ = false;
+    sample_hover_photo_ = false;
     explain_last_.clear();
     SDL_SetWindowTitle(window_, ("Prism — " + file_name(path)).c_str());
 }
@@ -2114,8 +2116,9 @@ void App::update_hand_drag() {
             sample_.place({pixel->x, pixel->y}, base->width, base->height,
                           session_.settings().frame);
             // The photo pixel clicked, for reading it where real pixels are on the canvas.
+            sample_pin_file_size_ = framed_full_size();
             sample_pin_file_ =
-                gui::file_pixel_at(view_, view_geometry_, framed_full_size(), cursor);
+                gui::file_pixel_at(view_, view_geometry_, sample_pin_file_size_, cursor);
             sample_pin_file_for_ = sample_.pin();
         }
     }
@@ -2399,6 +2402,8 @@ void App::clear_sample() {
     sample_pin_file_.reset();
     sample_pin_file_for_.reset();
     sample_hover_file_.reset();
+    sample_pin_photo_ = false;
+    sample_hover_photo_ = false;
 }
 
 void App::toggle_pick() {
@@ -2565,6 +2570,7 @@ void App::pick_at(gui::ViewPoint cursor) {
 
 void App::update_pick_cursor() {
     pick_hover_.reset();
+    pick_hover_file_.reset();
     if (!pick_.on()) {
         return;
     }
@@ -2577,6 +2583,8 @@ void App::update_pick_cursor() {
     if (const std::optional<gui::ViewPixel> pixel =
             gui::view_pixel_at(view_, view_geometry_, {mouse.x, mouse.y})) {
         pick_hover_ = gui::SamplePin{pixel->x, pixel->y};
+        pick_hover_file_ =
+            gui::file_pixel_at(view_, view_geometry_, framed_full_size(), {mouse.x, mouse.y});
     }
 }
 
@@ -2589,8 +2597,12 @@ void App::draw_pick_overlay(ImDrawList* draw) {
     const float scale = ui_scale();
     const float line = std::max(1.0f, std::round(scale));
     if (pick_hover_ && gui::pick_available(viewed_stage_, compare_stage_)) {
-        const gui::PickMarker m = gui::pick_marker(view_, view_geometry_, *pick_hover_,
-                                                   texture_.width(), texture_.height());
+        // Around the patch a click averages: the photo's pixels where it reads them (#37).
+        const gui::PickMarker m = reads_photo_at(pick_hover_file_)
+                                      ? gui::file_pick_marker(view_, view_geometry_,
+                                                              framed_full_size(), *pick_hover_file_)
+                                      : gui::pick_marker(view_, view_geometry_, *pick_hover_,
+                                                         texture_.width(), texture_.height());
         if (m.on_canvas) {
             // At least as big as a ring can be seen at.
             const float least = 9.0f * scale;
@@ -2682,11 +2694,19 @@ void App::update_sample_traces() {
         // A pin placed or moved where its photo pixel wasn't taken from the cursor: the photo pixel
         // in the middle of its preview pixel.
         sample_pin_file_.reset();
+        sample_pin_file_size_ = framed_full_size();
         if (sample_.pin()) {
-            sample_pin_file_ = gui::file_pixel_of(sample_.pin()->x, sample_.pin()->y,
-                                                  {base->width, base->height}, framed_full_size());
+            sample_pin_file_ =
+                gui::file_pixel_of(sample_.pin()->x, sample_.pin()->y, {base->width, base->height},
+                                   sample_pin_file_size_);
         }
         sample_pin_file_for_ = sample_.pin();
+    } else if (sample_pin_file_ && framed_full_size() != sample_pin_file_size_) {
+        // The full-size photo arrived a little larger or smaller than the size estimated before:
+        // the pin's photo pixel moves with it.
+        sample_pin_file_ =
+            gui::file_pixel_rescaled(*sample_pin_file_, sample_pin_file_size_, framed_full_size());
+        sample_pin_file_size_ = framed_full_size();
     }
     sample_pin_photo_ = sample_.pin() && read_photo(sample_pin_photo_trace_, sample_pin_file_);
     if (sample_.pin() && !sample_pin_photo_) {
@@ -2790,7 +2810,12 @@ void App::draw_sample_markers(ImDrawList* draw) const {
         arms(dark, 3.0f * line, line);
         arms(light, line, 0.0f);
     };
-    if (sample_hover_ && sample_hover_ != sample_.pin()) {
+    // The cursor's marker, unless it is the pin's own pixel: the photo's pixel while both read the
+    // photo (many lie under one preview pixel), the preview's otherwise.
+    const bool hover_is_pin = sample_hover_photo_ && sample_pin_photo_
+                                  ? sample_hover_file_ == sample_pin_file_
+                                  : sample_hover_ == sample_.pin();
+    if (sample_hover_ && !hover_is_pin) {
         const gui::SampleMarker m =
             sample_marker_for(*sample_hover_, sample_hover_photo_, sample_hover_file_);
         if (m.on_canvas) {

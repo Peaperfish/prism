@@ -11,6 +11,7 @@
 #include "prism/gui/detail_base.hpp"
 #include "prism/gui/detail_renderer.hpp"
 #include "prism/gui/detail_view.hpp"
+#include "prism/gui/neutral_pick.hpp"
 #include "prism/gui/view_transform.hpp"
 #include "prism/image.hpp"
 #include "prism/resize.hpp"
@@ -151,6 +152,10 @@ struct DetailFramePlan {
     bool draw = false;
     ViewRect where;
     bool nearest = false;
+    // The frame drawn shows each file pixel whole: at 100% or more of the file (within
+    // real_pixels_tolerance). Below 100% it is shrunk by area averaging, so a device pixel shows
+    // several file pixels and no one of them is what is on screen.
+    bool whole_pixels = false;
     PreviewChip chip = PreviewChip::none;
 };
 
@@ -224,7 +229,9 @@ struct FilePixel {
 
 // The file pixel under a screen point: the point taken to preview pixels (view_screen_to_image),
 // then to file pixels by the per-axis scale, rounded down. Nothing off the picture or the canvas
-// (as view_pixel_at), or with either size empty.
+// (as view_pixel_at), or with either size empty. The drawn squares (detail_screen_rect) have their
+// edges on whole device pixels, so within half a device pixel of an edge the pixel found can be the
+// neighbour of the square drawn there; at 100% and above that is under half a photo pixel.
 [[nodiscard]] std::optional<FilePixel> file_pixel_at(const ViewState& s, const ViewGeometry& g,
                                                      PixelSize framed_full,
                                                      ViewPoint screen) noexcept;
@@ -240,13 +247,27 @@ enum class PixelSource {
     photo,    // the photo's own pixel (sample_photo_trace, pick_neutral_photo)
 };
 
-// Which: the photo's pixel only where real pixels of it are on the canvas now, of the current base,
-// settings and frame (`plan` draws the shown frame, which is of the current settings, and its
-// region holds `pixel`); otherwise the preview's. A frame standing in with older settings a moment
-// behind a drag is not read: what is read is always the current settings' value.
+// Which: the photo's pixel only where real pixels of it are on the canvas now, whole, of the
+// current base and settings (`plan` draws the shown frame at 100% or more,
+// DetailFramePlan::whole_pixels; the frame is of the current settings, and its region holds
+// `pixel`); otherwise the preview's. Below 100% the canvas shows file pixels averaged, so the
+// preview's pixel (with its line about what it averages) is read, as in 0.6.0. A frame standing in
+// with older settings a moment behind a drag is not read: what is read is always the current
+// settings' value.
 [[nodiscard]] PixelSource sample_source(const DetailFramePlan& plan,
                                         const std::optional<ShownDetail>& shown, std::uint64_t base,
                                         std::uint64_t settings, FilePixel pixel) noexcept;
+
+// `pixel` of a `from` picture taken to a `to` picture of another size (the file's size was an
+// estimate until the full-size photo arrived): the pixel at the same place, by its middle, per
+// axis.
+[[nodiscard]] FilePixel file_pixel_rescaled(FilePixel pixel, PixelSize from, PixelSize to) noexcept;
+
+// The ring Pick shows on real pixels: around the pick_patch_size patch of file pixels that a click
+// at `pixel` averages (pick_neutral_photo), cut off at the picture's edges, on whole device pixels.
+// Not on the canvas if the pixel's middle isn't, or the pixel is off the picture.
+[[nodiscard]] PickMarker file_pick_marker(const ViewState& s, const ViewGeometry& g,
+                                          PixelSize framed_full, FilePixel pixel) noexcept;
 
 // Where a file pixel's marker goes on the screen: its square (detail_screen_rect of the 1 x 1
 // region), the centre, whether the centre is on the canvas, and shows_square past 200% of the file
@@ -258,10 +279,12 @@ enum class PixelSource {
 // ---------------------------------------------------------------------
 
 // The long side, in pixels, the brush's point spacing is measured on (min_point_spacing): the whole
-// photo's long side on the canvas (brush_long_side), or while real pixels are drawn
-// (`real_pixels`) that long side in file pixels: brush_long_side times the file scale along the
-// shown axis (file_scale(framed_full, canvas size)), rounded. So a small brush at 100% or more lays
-// its points a file pixel apart rather than a preview pixel. The strokes themselves stay in photo
+// photo's long side on the canvas (brush_long_side), or while real pixels are drawn (`real_pixels`)
+// that long side in file pixels: brush_long_side times the file scale along the shown axis
+// (file_scale(framed_full, canvas size)), rounded. Only the one-pixel floor of min_point_spacing
+// depends on it: with the brush's smallest radius (0.5% of the long side, whose 0.15 x radius is
+// 1/1333 of it) that floor matters only for a preview under about 1333 px across the whole photo,
+// so with the 2560 px preview it changes nothing today. The strokes themselves stay in photo
 // coordinates (u, v), whatever the zoom.
 [[nodiscard]] int brush_spacing_long_side(const BrushCanvas& canvas, bool real_pixels,
                                           PixelSize framed_full) noexcept;

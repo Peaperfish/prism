@@ -151,6 +151,7 @@ DetailFramePlan plan_detail_frame(const DetailFrameInput& in) {
     if (plan.draw) {
         plan.where = detail_screen_rect(view, in.geometry, in.framed_full, shown->region);
         plan.nearest = detail_shows_pixels(zoom, static_cast<float>(k.shown));
+        plan.whole_pixels = !(static_cast<double>(zoom) / k.shown < 1.0 - real_pixels_tolerance);
         if (plan.chip == PreviewChip::region_too_big_live) {
             plan.chip = PreviewChip::none;  // real pixels are what is drawn
         }
@@ -199,7 +200,7 @@ FilePixel file_pixel_of(int x, int y, PixelSize framed_preview, PixelSize framed
 
 PixelSource sample_source(const DetailFramePlan& plan, const std::optional<ShownDetail>& shown,
                           std::uint64_t base, std::uint64_t settings, FilePixel pixel) noexcept {
-    if (!plan.draw || !shown || base == 0 || shown->key.base != base ||
+    if (!plan.draw || !plan.whole_pixels || !shown || base == 0 || shown->key.base != base ||
         shown->key.settings != settings) {
         return PixelSource::preview;
     }
@@ -208,6 +209,28 @@ PixelSource sample_source(const DetailFramePlan& plan, const std::optional<Shown
                         static_cast<long long>(pixel.x) < static_cast<long long>(r.x0) + r.width &&
                         static_cast<long long>(pixel.y) < static_cast<long long>(r.y0) + r.height;
     return inside ? PixelSource::photo : PixelSource::preview;
+}
+
+FilePixel file_pixel_rescaled(FilePixel pixel, PixelSize from, PixelSize to) noexcept {
+    if (from.width < 1 || from.height < 1 || to.width < 1 || to.height < 1 || from == to) {
+        return pixel;
+    }
+    return file_pixel_of(pixel.x, pixel.y, from, to);  // file_pixel_of maps a pixel by its middle
+}
+
+PickMarker file_pick_marker(const ViewState& s, const ViewGeometry& g, PixelSize framed_full,
+                            FilePixel pixel) noexcept {
+    PickMarker m;
+    const std::optional<PatchBounds> bounds =
+        pick_patch_bounds(framed_full.width, framed_full.height, pixel.x, pixel.y);
+    if (!bounds) {
+        return m;
+    }
+    m.patch = detail_screen_rect(
+        s, g, framed_full,
+        FrameBox{bounds->x0, bounds->y0, bounds->x1 - bounds->x0 + 1, bounds->y1 - bounds->y0 + 1});
+    m.on_canvas = file_pixel_marker(s, g, framed_full, pixel).on_canvas;
+    return m;
 }
 
 SampleMarker file_pixel_marker(const ViewState& s, const ViewGeometry& g, PixelSize framed_full,
