@@ -78,8 +78,8 @@ Photo make_photo(int w, int h) {
 }
 
 // Strokes across a w x h photo: a long soft burn, a soft dodge dab, a hard dodge line straight
-// across the middle and a hard burn down it, so the parts below have stroke edges running through
-// them and across their sides.
+// across the middle and a hard burn down it, and thin lines (below), so the parts below have
+// stroke edges running through them and across their sides.
 Strokes make_strokes(int w, int h) {
     auto field = std::make_shared<StrokeField>();
     field->aspect = prism::aspect_of(w, h);
@@ -91,6 +91,18 @@ Strokes make_strokes(int w, int h) {
         FieldStroke{{{0.0f, 0.5f}, {1.0f, 0.52f}}, 0.04f, 0.0f, 0.7f}));
     field->strokes.push_back(std::make_shared<const FieldStroke>(
         FieldStroke{{{0.5f, 0.0f}, {0.48f, 1.0f}}, 0.03f, 0.0f, -0.6f}));
+    // Thin hard lines a quarter in from each side and along both diagonals, so a stroke edge
+    // crosses every edge strip below, however the frame is turned.
+    for (const float t : {0.25f, 0.75f}) {
+        field->strokes.push_back(std::make_shared<const FieldStroke>(
+            FieldStroke{{{0.0f, t}, {1.0f, t}}, 0.01f, 0.0f, 0.4f}));
+        field->strokes.push_back(std::make_shared<const FieldStroke>(
+            FieldStroke{{{t, 0.0f}, {t, 1.0f}}, 0.01f, 0.0f, -0.4f}));
+    }
+    field->strokes.push_back(std::make_shared<const FieldStroke>(
+        FieldStroke{{{0.0f, 0.0f}, {1.0f, 1.0f}}, 0.01f, 0.0f, 0.3f}));
+    field->strokes.push_back(std::make_shared<const FieldStroke>(
+        FieldStroke{{{1.0f, 0.0f}, {0.0f, 1.0f}}, 0.01f, 0.0f, -0.3f}));
     return Strokes(std::move(field));
 }
 
@@ -205,11 +217,13 @@ std::vector<FrameBox> parts_of(PixelSize size) {
 struct Case {
     const char* name;
     std::optional<Frame> frame;
+    bool frames = true;  // plan_export_frame fits a frame (not the whole photo, upright)
 };
 
 std::vector<Case> frames() {
     Frame upright = turned(0.0f);
-    return {{"no frame", std::nullopt},
+    return {{"no frame", std::nullopt, false},
+            {"0 degrees, the whole photo", Frame{}, false},
             {"0 degrees, cropped", upright},
             {"7 degrees", turned(7.0f)},
             {"-45 degrees", turned(-45.0f)},
@@ -230,8 +244,8 @@ TEST(RenderRegion, EveryPartMatchesExportBitForBit) {
             const PixelSize size = prism::plan_export_frame(c.frame, w, h).size;
             ASSERT_EQ(whole.width, size.width);
             ASSERT_EQ(whole.height, size.height);
-            if (c.frame) {
-                ASSERT_TRUE(prism::plan_export_frame(c.frame, w, h).fitted);
+            ASSERT_EQ(prism::plan_export_frame(c.frame, w, h).fitted.has_value(), c.frames);
+            if (c.frames) {
                 ASSERT_LT(size.width, w);  // the frame really frames
             }
             for (const FrameBox& part : parts_of(size)) {
@@ -243,32 +257,40 @@ TEST(RenderRegion, EveryPartMatchesExportBitForBit) {
     }
 }
 
-// The strokes really act on the parts above, and across their edges: without them the centre
-// part differs, and the hard line's edge lies inside it (some pixels of a row change and some
-// don't). Otherwise the test above would not see a misplaced stroke.
-TEST(RenderRegion, TheStrokesReachThePartsTested) {
+// The strokes really act on the parts above, and not evenly: within each part the strokes' gain
+// differs from pixel to pixel (a stroke's edge or its soft falloff runs through it), so moving
+// the strokes would change the part. Otherwise the test above would not see a misplaced stroke.
+// Measured with the strokes alone, where the picture with them over the picture without them is
+// each pixel's gain. Not the corners and the single pixel, which may lie wholly inside or outside
+// every stroke.
+TEST(RenderRegion, TheStrokesVaryAcrossThePartsTested) {
     const int w = 401;
     const int h = 303;
     const Photo base = make_photo(w, h);
     for (const Case& c : frames()) {
         SCOPED_TRACE(c.name);
-        const EditSettings with = look(c.frame, w, h, false);
+        EditSettings with;
+        with.strokes = make_strokes(w, h);
+        with.frame = c.frame;
         EditSettings without = with;
         without.strokes = {};
         const PixelSize size = prism::plan_export_frame(c.frame, w, h).size;
         for (const FrameBox& part : parts_of(size)) {
-            if (part.width * part.height < 1000) {
-                continue;  // the strips and corners may lie outside every stroke
+            if (part.width < 10 && part.height < 10) {
+                continue;
             }
             SCOPED_TRACE(describe(part));
             const Image a = prism::gui::render_region(base, with, part, 1);
             const Image b = prism::gui::render_region(base, without, part, 1);
-            std::size_t changed = 0;
-            for (std::size_t i = 0; i < a.pixels.size(); ++i) {
-                changed += a.pixels[i] != b.pixels[i] ? 1u : 0u;
+            ASSERT_EQ(a.pixels.size(), b.pixels.size());
+            // The red channel's gain at every pixel (the photo's red is never 0).
+            std::vector<float> gains;
+            for (std::size_t i = 0; i < a.pixels.size(); i += 3) {
+                ASSERT_GT(b.pixels[i], 0.0f);
+                gains.push_back(a.pixels[i] / b.pixels[i]);
             }
-            EXPECT_GT(changed, 0u);
-            EXPECT_LT(changed, a.pixels.size());
+            const auto [lo, hi] = std::minmax_element(gains.begin(), gains.end());
+            EXPECT_LT(*lo, *hi);
         }
     }
 }
@@ -294,6 +316,22 @@ TEST(RenderRegion, OneAndEightThreadsGiveTheSamePart) {
     ASSERT_EQ(one.width, part.width);
     ASSERT_EQ(one.height, part.height);
     EXPECT_EQ(first_difference(one, {0, 0, part.width, part.height}, eight, "1 thread"), "");
+}
+
+// --- No copy of the decode ------------------------------------------------------------------------
+
+// finish_export takes the decode over rather than copying it (on a 60 MP photo a copy is ~730 MB
+// more for the whole export): with nothing to frame or reduce, the finished picture is the
+// decode's own pixel buffer, edited in place.
+TEST(FinishExport, TakesTheDecodeOverWithoutCopyingIt) {
+    const int w = 64;
+    const int h = 48;
+    Photo photo = make_photo(w, h);
+    const float* const decoded_pixels = photo.image.pixels.data();
+    const EditSettings s = look(std::nullopt, w, h, false);
+    const Image out = finished(std::move(photo), s, 1);
+    ASSERT_EQ(out.width, w);
+    EXPECT_EQ(out.pixels.data(), decoded_pixels);
 }
 
 // --- Refused parts ---------------------------------------------------------------------------------
