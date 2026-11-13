@@ -36,6 +36,7 @@ add_library(prism_gui_core STATIC
   src/close_guard.cpp
   src/detail_base.cpp
   src/detail_reader.cpp
+  src/detail_view.cpp
   src/explanations.cpp
   src/export_size.cpp
   src/field_cache.cpp
