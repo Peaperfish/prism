@@ -406,6 +406,87 @@ TEST(ViewTransform, ADoubleClickOnATinyPhotoStaysAtFit) {
     EXPECT_TRUE(view_toggled(ViewState{}, g, {480.0f, 400.0f}).fit);
 }
 
+// Real-pixel zoom (#37): with a preview smaller than the file, 100% and the closest zoom are in
+// file pixels. A 60 MP photo: 9564 px across over a 2560 px preview.
+constexpr float sixty_mp_scale = 9564.0f / 2560.0f;
+
+ViewGeometry sixty_mp_geometry() {
+    ViewGeometry g = geometry();
+    g.file_scale = sixty_mp_scale;
+    return g;
+}
+
+TEST(ViewTransformFilePercent, ASixtyMegapixelFileReaches800PercentOfTheFile) {
+    const ViewGeometry g = sixty_mp_geometry();
+    const ViewState s = view_zoomed_to(ViewState{}, g, 1000.0f);
+    EXPECT_FALSE(s.fit);
+    EXPECT_FLOAT_EQ(s.zoom, 8.0f * sixty_mp_scale);
+    EXPECT_FLOAT_EQ(view_max_zoom(g), 8.0f * sixty_mp_scale);
+    EXPECT_NEAR(s.zoom / sixty_mp_scale * 100.0f, 800.0f, 1e-3f);
+    // Before, the limit was 8 preview pixels: about 214% of this file.
+    ViewGeometry before = g;
+    before.file_scale = 1.0f;
+    EXPECT_NEAR(view_zoomed_to(ViewState{}, before, 1000.0f).zoom / sixty_mp_scale * 100.0f, 214.1f,
+                0.1f);
+    // A view already that close stays there when the canvas changes.
+    EXPECT_FLOAT_EQ(view_settled(s, g).zoom, 8.0f * sixty_mp_scale);
+}
+
+TEST(ViewTransformFilePercent, APreviewThatIsTheFileBehavesAsBefore) {
+    const ViewGeometry g = geometry();
+    ASSERT_FLOAT_EQ(g.file_scale, 1.0f);
+    EXPECT_FLOAT_EQ(view_actual_zoom(g), 1.0f);
+    EXPECT_FLOAT_EQ(view_max_zoom(g), view_zoom_max);
+    EXPECT_FLOAT_EQ(view_zoomed_to(ViewState{}, g, 100.0f).zoom, view_zoom_max);
+    EXPECT_FLOAT_EQ(view_step_zoom(1.0f, 0.742f, 1), view_step_zoom(1.0f, 0.742f, 1, 1.0f));
+    EXPECT_FLOAT_EQ(view_toggled(ViewState{}, g, {520.0f, 420.0f}).zoom, 1.0f);
+}
+
+TEST(ViewTransformFilePercent, AScaleThatCantBeUsedCountsAsOne) {
+    for (const float bad : {0.0f, -2.0f, std::nanf(""), INFINITY}) {
+        ViewGeometry g = geometry();
+        g.file_scale = bad;
+        EXPECT_FLOAT_EQ(view_actual_zoom(g), 1.0f) << bad;
+        EXPECT_FLOAT_EQ(view_max_zoom(g), view_zoom_max) << bad;
+        EXPECT_FLOAT_EQ(view_step_zoom(1.0f, 0.5f, 1, bad), 1.5f) << bad;
+    }
+}
+
+TEST(ViewTransformFilePercent, StepsAreInFilePercent) {
+    const float k = sixty_mp_scale;
+    const float fit = 0.742f;  // 19.9% of the file
+    EXPECT_FLOAT_EQ(view_step_zoom(fit, fit, 1, k), 0.25f * k);
+    EXPECT_FLOAT_EQ(view_step_zoom(0.25f * k, fit, 1, k), 0.33f * k);
+    EXPECT_FLOAT_EQ(view_step_zoom(1.0f * k, fit, 1, k), 1.5f * k);
+    EXPECT_FLOAT_EQ(view_step_zoom(1.0f * k, fit, -1, k), 0.67f * k);
+    EXPECT_FLOAT_EQ(view_step_zoom(6.0f * k, fit, 1, k), 8.0f * k);
+    EXPECT_FLOAT_EQ(view_step_zoom(8.0f * k, fit, 1, k), 8.0f * k);  // the top stop
+    // Fit is a stop: out from 25% of the file goes to the fit, and nothing beyond it.
+    EXPECT_FLOAT_EQ(view_step_zoom(0.25f * k, fit, -1, k), fit);
+    EXPECT_FLOAT_EQ(view_step_zoom(fit, fit, -1, k), fit);
+    // A zoom a hair off a stop (in file percent) moves on, as before.
+    EXPECT_FLOAT_EQ(view_step_zoom(1.00001f * k, fit, 1, k), 1.5f * k);
+}
+
+TEST(ViewTransformFilePercent, TheToggleGoesTo100PercentOfTheFileAboutTheAnchor) {
+    const ViewGeometry g = sixty_mp_geometry();
+    const ViewPoint anchor{300.0f, 250.0f};
+    const ViewPoint under = view_screen_to_image(ViewState{}, g, anchor);
+    const ViewState in = view_toggled(ViewState{}, g, anchor);
+    EXPECT_FALSE(in.fit);
+    EXPECT_FLOAT_EQ(in.zoom, sixty_mp_scale);
+    // The image point under the anchor stays there, to within a preview pixel: at fit the corner
+    // is snapped to a whole device pixel, which is up to 0.67 preview pixels at a fit of 0.742.
+    const ViewPoint after = view_screen_to_image(in, g, anchor);
+    EXPECT_NEAR(after.x, under.x, 1.0f);
+    EXPECT_NEAR(after.y, under.y, 1.0f);
+    // From 100% of the file it goes back to fit; from 100% of the preview it goes to the file's.
+    EXPECT_TRUE(view_toggled(in, g, anchor).fit);
+    const ViewState preview_100 = view_toggled(zoomed(1.0f, 1280.0f, 853.0f), g, anchor);
+    EXPECT_FALSE(preview_100.fit);
+    EXPECT_FLOAT_EQ(preview_100.zoom, sixty_mp_scale);
+}
+
 TEST(ViewTransform, PixelsShowOnlyAbove200Percent) {
     EXPECT_FALSE(view_shows_pixels(0.5f));
     EXPECT_FALSE(view_shows_pixels(1.0f));

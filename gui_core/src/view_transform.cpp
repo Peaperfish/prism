@@ -30,6 +30,11 @@ float settled_centre(float centre, float canvas, float density, float zoom, int 
     return std::clamp(centre, half_view, static_cast<float>(image) - half_view);
 }
 
+// ViewGeometry::file_scale, or 1 where it can't be used.
+float usable_scale(float file_scale) noexcept {
+    return std::isfinite(file_scale) && file_scale > 0.0f ? file_scale : 1.0f;
+}
+
 // To a whole device pixel.
 float snapped(float screen, float density) noexcept {
     return std::round(screen * density) / density;
@@ -43,6 +48,14 @@ float view_fit_zoom(const ViewGeometry& g) noexcept {
     }
     return std::min(g.width * g.density / static_cast<float>(g.image_width),
                     g.height * g.density / static_cast<float>(g.image_height));
+}
+
+float view_actual_zoom(const ViewGeometry& g) noexcept {
+    return usable_scale(g.file_scale);
+}
+
+float view_max_zoom(const ViewGeometry& g) noexcept {
+    return std::max(view_zoom_max * usable_scale(g.file_scale), view_fit_zoom(g));
 }
 
 float view_zoom(const ViewState& s, const ViewGeometry& g) noexcept {
@@ -60,7 +73,7 @@ ViewState view_settled(const ViewState& s, const ViewGeometry& g) noexcept {
         return out;
     }
     ViewState out = s;
-    out.zoom = std::min(s.zoom, std::max(view_zoom_max, fit));
+    out.zoom = std::min(s.zoom, view_max_zoom(g));
     out.centre_x = settled_centre(s.centre_x, g.width, g.density, out.zoom, g.image_width);
     out.centre_y = settled_centre(s.centre_y, g.height, g.density, out.zoom, g.image_height);
     return out;
@@ -153,7 +166,7 @@ ViewState view_zoomed_to(const ViewState& s, const ViewGeometry& g, float zoom,
     const float image_y = old_y + to_anchor_y / old_zoom;
     ViewState to;
     to.fit = false;
-    to.zoom = std::min(zoom, std::max(view_zoom_max, view_fit_zoom(g)));
+    to.zoom = std::min(zoom, view_max_zoom(g));
     if (!(to.zoom > 0.0f)) {
         to.fit = true;
         return to;
@@ -169,12 +182,13 @@ ViewState view_zoomed_to(const ViewState& s, const ViewGeometry& g, float zoom) 
 
 ViewState view_toggled(const ViewState& s, const ViewGeometry& g, ViewPoint anchor) noexcept {
     const ViewState from = view_settled(s, g);
-    if (!from.fit && view_same_zoom(from.zoom, 1.0f)) {
+    const float actual = view_actual_zoom(g);
+    if (!from.fit && view_same_zoom(from.zoom / actual, 1.0f)) {
         ViewState fit = from;
         fit.fit = true;
         return fit;
     }
-    return view_zoomed_to(from, g, 1.0f, anchor);
+    return view_zoomed_to(from, g, actual, anchor);
 }
 
 ViewState view_panned_by(const ViewState& s, const ViewGeometry& g, float dx, float dy) noexcept {
@@ -191,18 +205,23 @@ ViewState view_panned_by(const ViewState& s, const ViewGeometry& g, float dx, fl
     return view_settled(to, g);
 }
 
-float view_step_zoom(float zoom, float fit_zoom, int direction) noexcept {
+float view_step_zoom(float zoom, float fit_zoom, int direction, float file_scale) noexcept {
+    // The stops are in file percent: compared with the zoom in file pixels, handed back in image
+    // pixels. With a scale of 1 both are the zoom itself, exactly as before files and previews
+    // differed.
+    const float k = usable_scale(file_scale);
+    const float file_zoom = zoom / k;
     if (direction > 0) {
         for (const float stop : zoom_stops) {
-            if (stop > zoom && !view_same_zoom(stop, zoom)) {
-                return stop;
+            if (stop > file_zoom && !view_same_zoom(stop, file_zoom)) {
+                return stop * k;
             }
         }
-        return std::max(zoom, view_zoom_max);
+        return std::max(zoom, view_zoom_max * k);
     }
     for (auto stop = zoom_stops.rbegin(); stop != zoom_stops.rend(); ++stop) {
-        if (*stop < zoom && !view_same_zoom(*stop, zoom)) {
-            return std::max(*stop, fit_zoom);
+        if (*stop < file_zoom && !view_same_zoom(*stop, file_zoom)) {
+            return std::max(*stop * k, fit_zoom);
         }
     }
     return fit_zoom;

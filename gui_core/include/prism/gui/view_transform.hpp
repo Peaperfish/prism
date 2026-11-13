@@ -42,6 +42,12 @@ struct ViewGeometry {
     float density = 1.0f;  // device pixels per screen unit
     int image_width = 0;
     int image_height = 0;
+    // File pixels per image pixel along the axis the zoom is read on (FileScale::shown in
+    // detail_view.hpp): how many pixels of the photo at its export size one preview pixel stands
+    // for. 1 when the preview is the whole file. It moves where 100% and the closest zoom are
+    // (view_actual_zoom, view_max_zoom): both are measured in file pixels. Not finite or not above
+    // 0 counts as 1.
+    float file_scale = 1.0f;
 };
 
 // What the user chose. While `fit` is on the zoom and centre are ignored: the whole picture follows
@@ -60,9 +66,19 @@ struct ViewPlacement {
     ViewPoint shown;  // its size, in screen units
 };
 
-// The closest the view can go is 8 device pixels per image pixel. Fit is the furthest out: a smaller
-// picture would show nothing more. So a tiny photo whose fit is above this stays at its fit.
+// The closest the view can go is 8 device pixels per file pixel (800% of the file): 8 device pixels
+// per image pixel when the preview is the whole file, and 8 x ViewGeometry::file_scale per image
+// pixel when it is smaller (view_max_zoom). Fit is the furthest out: a smaller picture would show
+// nothing more. So a tiny photo whose fit is above this stays at its fit.
 inline constexpr float view_zoom_max = 8.0f;
+
+// The zoom (device pixels per image pixel) for 100% of the file: one device pixel per file pixel,
+// ViewGeometry::file_scale.
+[[nodiscard]] float view_actual_zoom(const ViewGeometry& g) noexcept;
+
+// The closest zoom (device pixels per image pixel) for `g`: view_zoom_max file pixels, or the fit's
+// zoom if that is closer.
+[[nodiscard]] float view_max_zoom(const ViewGeometry& g) noexcept;
 
 // The zoom at which the whole picture just fits the canvas. 1 for an empty canvas or image.
 [[nodiscard]] float view_fit_zoom(const ViewGeometry& g) noexcept;
@@ -112,7 +128,7 @@ struct ViewPixel {
 [[nodiscard]] ViewState view_zoomed_to(const ViewState& s, const ViewGeometry& g,
                                        float zoom) noexcept;
 
-// A double-click: to 100% about `anchor`, or back to fit from 100%.
+// A double-click: to 100% of the file (view_actual_zoom) about `anchor`, or back to fit from 100%.
 [[nodiscard]] ViewState view_toggled(const ViewState& s, const ViewGeometry& g,
                                      ViewPoint anchor) noexcept;
 
@@ -120,10 +136,13 @@ struct ViewPixel {
 [[nodiscard]] ViewState view_panned_by(const ViewState& s, const ViewGeometry& g, float dx,
                                        float dy) noexcept;
 
-// The next zoom for the keys: the next of 25, 33, 50, 67, 100, 150, 200, 300, 400, 600 and 800%
-// beyond `zoom`, in the direction of `direction` (> 0: in). Fit is a stop too: stepping out below
-// it gives the fit's zoom, and the steps start from there, whatever it is.
-[[nodiscard]] float view_step_zoom(float zoom, float fit_zoom, int direction) noexcept;
+// The next zoom for the keys: the next of 25, 33, 50, 67, 100, 150, 200, 300, 400, 600 and 800% of
+// the file beyond `zoom`, in the direction of `direction` (> 0: in). Fit is a stop too: stepping
+// out below it gives the fit's zoom, and the steps start from there, whatever it is. Zooms are in
+// device pixels per image pixel, as everywhere here; `file_scale` is ViewGeometry::file_scale, so a
+// stop of p% is the zoom p / 100 x file_scale (with 1, the stops are the zooms themselves).
+[[nodiscard]] float view_step_zoom(float zoom, float fit_zoom, int direction,
+                                   float file_scale = 1.0f) noexcept;
 
 // True if the two zooms would read as the same number and draw the same size: the zoom after a
 // stop has been reached, or a fit that happens to be 100%.
