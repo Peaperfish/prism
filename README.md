@@ -220,7 +220,8 @@ The numbers behind what the guide describes, for people working on the code:
 - **Clipping.** The counts come from a sample of at most 250,000 pixels and are computed on the render worker whenever the Light path is on screen, which is whenever a photo is open, except while the test strip is on (each band has its own light). A stage's marks follow its slider during a drag. The overlay mask is computed only while the overlay is on. Decode counts any channel within 0.000001 of 1.0.
 - **Gamut warning.** It is counted on the same sampled grid and in the same pass as the clipping, so it costs nothing extra. A pixel is outside the gamut when it has light (luminance `Y > 0`) but a channel is below −0.00015 in linear sRGB. It is counted at every stage the same way and independently of highlights and shadows.
 - **Colour sampler.** It runs one pixel through the same stages as the render, on the UI thread, in about 0.6 ms, since `contrast()` builds its table each time. A trace is kept until the pixel, the settings, the viewed stage, the comparison, the strip or the base changes, so a still cursor costs nothing. Every stage reads only its own pixel, so the values are bit-identical to the full render; if a stage ever reads its neighbours, `sample_trace` is the one function to change.
-- **Zoom and pan.** They only change where the picture is drawn, on the GPU, so neither ever starts a render. Nothing about the view is in the settings, undo or a recipe. The zoom is in device pixels per preview pixel, and the picture's corner is on a whole device pixel. Above 100% it is the 2560 px preview enlarged, not more of the file. A RAW file's real size comes from LibRaw's metadata in the same open as the decode.
+- **Zoom and pan.** They only change where the picture is drawn, on the GPU, so they never re-render the preview. Nothing about the view is in the settings, undo or a recipe. The view works in preview pixels, with the picture's corner on a whole device pixel, but the zoom is read in pixels of the file: 100% is one pixel of the framed picture at its full size on each device pixel, and the closest is 800%. A RAW file's real size comes from LibRaw's metadata in the same open as the decode, until the full-size photo is read.
+- **Real pixels.** After a photo opens, the session reads it again at its full size in the background (the export's own decode, about 0.7 GB for a 60 MP RAW file), unless the preview already is the whole photo or the full size would take more than a quarter of the computer's memory. Whenever the canvas would show preview pixels enlarged, a second worker renders just the part on screen from that photo, through the same frame and stages as an export, and the app draws it over the enlarged preview. At 100% and above each of its pixels is the export's pixel at that place, bit for bit. A part over 8 megapixels is only rendered once no slider, drag, scroll or stroke is under way, and over 30 megapixels not at all; below 100% the part is shrunk to the screen's pixels. Fit, the easel, an earlier stage, Compare, the clipping marks (`J`), the stroke mask and the test strip show the preview, as do the scopes and the histogram.
 - **Comparing stages.** Both halves come from one render with one set of settings, which runs to the later of the two stages and encodes the earlier picture as it passes. Comparing costs one extra 8-bit encode rather than a second render, and costs nothing while it is off.
 - **Explain area.** The texts live in `gui_core/src/explanations.cpp`, and a test checks that every stage, slider, curve, scope and look has one and that the live numbers match the engine.
 - **Preferences.** They are kept in `preferences.txt`, `key=value` lines next to ImGui's `imgui.ini` in the folder SDL picks for the app. The file is written atomically (a temporary file renamed over it).
@@ -245,7 +246,8 @@ prism_core (lib/)                            the pipeline, shared with the CLI
 | `clipping.hpp` | `ClipReport`: for every stage, the pixels of a sampled grid (at most 250,000) above 1.0, with no light (Y ≤ 0), and outside the sRGB gamut (Y > 0 with a channel below −0.00015), per channel, marked lost (the stage clamps) or recoverable, plus the first stage of each kind. `ClipRecorder` fills it while the pipeline runs; `compute_clip_mask` marks the out-of-range pixels of one stage; `describe_clipping` and `describe_gamut` word the result |
 | `presets.hpp` | Named looks (Natural, Original, Vivid, Soft, Black & white), different for RAW and PNG/JPEG. Read from the files in `recipes/`, which `builtin_looks.hpp` compiles in. A preset sets only the look; settings that match no preset are "Custom" |
 | `history.hpp` | Undo/redo of whole `EditSettings` snapshots. A slider drag, marked by `begin_gesture()` / `end_gesture()`, is one step; at most 100 steps |
-| `session.hpp` | The open photo: `open_file()` decodes it (RAW at half size), shrinks it with `prism::downscale` to a 2560 px preview base and frees the full image; errors come back as a kind plus a sentence for the user. `export_image()` decodes the file again at full size, runs the pipeline with a stop token and saves PNG or JPEG |
+| `session.hpp` | The open photo: `open_file()` decodes it (RAW at half size), shrinks it with `prism::downscale` to a 2560 px preview base and frees the full image; errors come back as a kind plus a sentence for the user. `export_image()` decodes the file again at full size, runs the pipeline with a stop token and saves PNG or JPEG. With `SessionOptions::detail_base` it also reads the full-size photo in the background for real pixels (`detail_base()`), pausing that read while an export decodes (`begin_export` / `end_export`); `render_region()` renders any part of the export's picture from it |
+| `detail_base.hpp`, `detail_view.hpp`, `detail_renderer.hpp`, `detail_canvas.hpp` | Real pixels: whether to read the full-size photo; zoom in percent of the file, the part of the photo on screen and its megapixel budget; a worker that renders that part, latest request first; and each frame's plan for the canvas (what to ask for, what to draw where, the chip's words), plus which pixel Sample and Pick read |
 | `preview_renderer.hpp` | A worker thread that re-renders the preview (up to `stop_after`) and its `StageHistogram` whenever the settings or viewed stage change. The newest request wins: it replaces one that hasn't started and stops the one in progress between stages (`std::stop_token`). The UI polls for finished 8-bit frames; nothing calls back into UI code |
 | `live_preview.hpp` | Keeps the preview in step with the session for a UI that redraws every frame: submits a render only when the preview base, the settings or the viewed stage changed, and says whether one is still in flight ("Rendering…") |
 | `slider_gesture.hpp` | Turns a slider's per-frame state (pressed, moved, released) into History gestures, so a whole drag is one undo step, made on release |
@@ -256,14 +258,14 @@ prism_core (lib/)                            the pipeline, shared with the CLI
 | `layout.hpp` | Window layout as pure functions: the panel's width for a given window and scale, and shortening a file name in the middle to fit the status bar |
 | `view_transform.hpp`, `canvas_input.hpp` | Zoom and pan as pure functions: fit, zoom about a point, pan limits, the mapping between screen and preview pixels, and what each wheel, pinch and drag does. Also Sample mode's click, pin and marker rules |
 | `framing.hpp` | The easel: `FramingState`, handle and edge drags, inside moves, aspect locks (`Original`, `Free`, `1:1`, `4:5`, `5:7`, `3:2`, `16:9` and `X` to turn them), the Straighten slider, Option-drag horizon lines, typed angles, thirds and 8×8 guides, and the canvas geometry while framing (`frame.hpp` in `prism_core` holds `Frame`, `fit_frame` and `apply_frame`) |
-| `pixel_sample.hpp` | The colour sampler: one pixel of the preview base run through `process()` as a 1×1 image, its linear values after every stage, and the readout in words. Bit-identical to the render, and cached until the pixel, the settings or the view changes |
+| `pixel_sample.hpp` | The colour sampler: one pixel of the preview base run through `process()` as a 1×1 image, its linear values after every stage, and the readout in words. Bit-identical to the render, and cached until the pixel, the settings or the view changes. Where real pixels are on the canvas, the photo's own pixel instead, made as an export makes it |
 | `file_types.hpp` | The file dialogs' filters (RAW only in a build with LibRaw), and the export file name: the suggested name next to the source, and the extension added if the user left it out |
 
 A full preview re-render (every stage plus the sRGB encode, 2560×1707 from a 61 MP image) takes 10 ms on 12 threads and 53 ms on one (`prism_bench`'s "preview render" row).
 
 ## Roadmap
 
-v0.1.0 was a pre-release of the desktop app, and v0.2.0 is its first full release. What's planned next is tracked as GitHub issues in four milestones.
+v0.1.0 was a pre-release of the desktop app, and v0.2.0 is its first full release. What's planned next is tracked as GitHub issues in milestones.
 
 [**0.2.0 – See the light**](https://github.com/Peaperfish/prism/milestone/1): understand what each step does to the light.
 
@@ -312,11 +314,30 @@ v0.1.0 was a pre-release of the desktop app, and v0.2.0 is its first full releas
 - [Crop and straighten](https://github.com/Peaperfish/prism/issues/58) on the easel, with blades, aspect shapes and a straighten slider *(done)*
 - `--rotate`, `--crop` and `--aspect` on the command line *(done)*
 
-[**0.7.0 – HDR**](https://github.com/Peaperfish/prism/milestone/6): HDR photos on HDR displays, and HDR files out.
+[**0.7.0 – Real pixels**](https://github.com/Peaperfish/prism/milestone/8), next (in progress, not released yet): zoom in to the photo's own pixels.
+
+- [Zoom to the photo's real pixels](https://github.com/Peaperfish/prism/issues/37), up to 800%: 100% is one pixel of the photo on each pixel of your screen *(in progress)*
+- Sample colour and Pick neutral read the photo's own pixels where real pixels are on the canvas *(in progress)*
+
+[**0.7.1 – Polish**](https://github.com/Peaperfish/prism/milestone/9): small fixes after 0.7.0.
+
+- Keys: [Return with keyboard focus](https://github.com/Peaperfish/prism/issues/74), [shortcuts during a brush stroke](https://github.com/Peaperfish/prism/issues/66), [brush size keys on any layout](https://github.com/Peaperfish/prism/issues/64)
+- [The panel splitter's edge](https://github.com/Peaperfish/prism/issues/61), [small UI text fixes](https://github.com/Peaperfish/prism/issues/62) and [real minus signs in RECIPES.md](https://github.com/Peaperfish/prism/issues/76)
+- [Numbers read without depending on the C locale](https://github.com/Peaperfish/prism/issues/34), and [a look's name after loading a recipe](https://github.com/Peaperfish/prism/issues/35)
+- [Tests that were never broken on purpose](https://github.com/Peaperfish/prism/issues/65)
+
+[**0.8.0 – HDR**](https://github.com/Peaperfish/prism/milestone/6): HDR photos on HDR displays, and HDR files out.
 
 - Show HDR photos on HDR displays (macOS first)
 - Export HDR files with gain maps
 - Later: merge exposure brackets
+
+[**0.9.0 – The easel, part 2**](https://github.com/Peaperfish/prism/milestone/10): more for framing.
+
+- [Quarter turns (90°)](https://github.com/Peaperfish/prism/issues/67) on the easel
+- [Frames and strokes kept in a sidecar file](https://github.com/Peaperfish/prism/issues/71)
+- [Live framed scopes while framing](https://github.com/Peaperfish/prism/issues/72)
+- [The Sample pin kept in photo coordinates](https://github.com/Peaperfish/prism/issues/73)
 
 [**Later**](https://github.com/Peaperfish/prism/milestone/2), not scheduled yet:
 
