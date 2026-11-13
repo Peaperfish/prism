@@ -323,7 +323,9 @@ TEST(DetailRenderer, AFrameOfAnotherBaseIsDropped) {
     EXPECT_FALSE(renderer.poll(1).has_value());  // taken and dropped, not kept for later
 }
 
-TEST(DetailRenderer, AFrameNoNewerThanTheShownOneIsDropped) {
+// Requests run in order, so a frame older than the one shown can't come out of the worker; the
+// rule that would drop one is FrameWanted's. Here: each frame is shown once, the newer after.
+TEST(DetailRenderer, EachFrameIsShownOnceInOrder) {
     FakeRender fake;
     DetailRenderer renderer(fake.function());
     const auto base = tiny_photo();
@@ -337,6 +339,7 @@ TEST(DetailRenderer, AFrameNoNewerThanTheShownOneIsDropped) {
     const std::optional<DetailFrame> frame = renderer.poll(1);
     ASSERT_TRUE(frame.has_value());
     EXPECT_EQ(frame->generation, 2u);
+    EXPECT_FALSE(renderer.poll(1).has_value());
 }
 
 TEST(DetailRenderer, BudgetNeverIsRefusedOnReleaseWaitsForTheGesture) {
