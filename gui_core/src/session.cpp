@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <exception>
 #include <new>
+#include <stdexcept>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -305,6 +306,170 @@ ExportJob Session::export_job() const {
     return {path_, kind_, settings(), options_.threads, export_long_side()};
 }
 
+namespace {
+
+// The decode handed to run_after_decode: export's own, moved in so the frame can free it, or a
+// base kept by the caller (render_region), only read.
+using DecodedImage = std::variant<Image, const Image*>;
+
+const Image& image_of(const DecodedImage& decoded) noexcept {
+    if (const Image* owned = std::get_if<Image>(&decoded)) {
+        return *owned;
+    }
+    return *std::get<const Image*>(decoded);
+}
+
+// `part` of `img` as a new image: the framed picture's pixels when nothing is framed, since the
+// picture is then the decode itself.
+Image copy_part(const Image& img, const FrameBox& part) {
+    Image out;
+    out.width = part.width;
+    out.height = part.height;
+    out.pixels.resize(static_cast<std::size_t>(part.width) * static_cast<std::size_t>(part.height) *
+                      3);
+    const std::size_t row = static_cast<std::size_t>(part.width) * 3;
+    for (int y = 0; y < part.height; ++y) {
+        const std::size_t from =
+            (static_cast<std::size_t>(part.y0 + y) * static_cast<std::size_t>(img.width) +
+             static_cast<std::size_t>(part.x0)) *
+            3;
+        std::copy_n(img.pixels.begin() + static_cast<std::ptrdiff_t>(from), row,
+                    out.pixels.begin() + static_cast<std::ptrdiff_t>(y * row));
+    }
+    return out;
+}
+
+// Everything export does between the decode and the encode, in export's order: frame (and reduce
+// to `long_side`), then the stages on the framed picture's grid. The one list of these steps:
+// finish_export and render_region both run it.
+//
+// With `part`, only that part of the full-size framed picture is made (no reduction): the frame
+// works out just those pixels (apply_frame's part) and every stage then runs on them with the
+// part's place in the whole framed picture, so the result is bit-identical to the same pixels of
+// the whole. `part` must already be checked against the framed size.
+std::variant<Image, Error> run_after_decode(DecodedImage decoded,
+                                            const std::optional<Chromaticity>& as_shot,
+                                            const EditSettings& settings,
+                                            std::optional<int> long_side,
+                                            const std::optional<FrameBox>& part, int threads,
+                                            std::stop_token stop, const StageCallback& on_stage) {
+    const int decoded_width = image_of(decoded).width;
+    const int decoded_height = image_of(decoded).height;
+
+    // Frame, then reduce, before editing: the turn works on the full decode and every stage then
+    // works on the small image. The full decode (which on a 60 MP photo is ~730 MB) is moved in and
+    // freed before the pipeline allocates its own buffers. Without a frame this is the reduction
+    // alone, exactly as before frames existed.
+    FramedExport framed;
+    try {
+        if (part) {
+            framed.frame = plan_export_frame(settings.frame, decoded_width, decoded_height);
+            framed.image = framed.frame.fitted
+                               ? apply_frame(image_of(decoded), *framed.frame.fitted, threads, part)
+                               : copy_part(image_of(decoded), *part);
+        } else {
+            Image whole = std::holds_alternative<Image>(decoded)
+                              ? std::move(std::get<Image>(decoded))
+                              : *std::get<const Image*>(decoded);
+            framed = frame_and_reduce(std::move(whole), settings.frame, long_side, threads);
+        }
+    } catch (const std::bad_alloc&) {
+        return Error{ErrorKind::out_of_memory,
+                     normalised_frame(settings.frame)
+                         ? "Not enough memory to frame or shrink this photo."
+                         : "Not enough memory to shrink this photo.",
+                     ""};
+    }
+    if (stop.stop_requested()) {
+        return cancelled();
+    }
+    Image& img = framed.image;
+
+    // The picture the stages see the image as part of: the framed picture, reduced or not, or for
+    // a part the whole full-size framed picture.
+    const PixelSize whole = part ? framed.frame.size : PixelSize{img.width, img.height};
+
+    // The strokes sit on the image as framed and reduced, not on the original: they cover the same
+    // part of the photo at any export size. Without a frame the grid is the whole image (as in
+    // 0.5.0); with one it is the framed grid of the decode, with the reduction as its scale. A part
+    // is placed at its own corner of the whole picture.
+    std::optional<PictureFrame> framing;
+    if (framed.frame.fitted) {
+        const PixelSize size = framed.frame.size;
+        const float scale = static_cast<float>(std::max(size.width, size.height)) /
+                            static_cast<float>(std::max(whole.width, whole.height));
+        framing = PictureFrame{*framed.frame.fitted, decoded_width, decoded_height, scale};
+    }
+    const PixelGrid grid =
+        part ? stage_grid(framing, whole.width, whole.height, part->x0, part->y0, 1, part->width,
+                          part->height)
+             : stage_grid(framing, img.width, img.height);
+    if (process(img, to_process_settings(settings, final_stage, as_shot, grid), threads, stop,
+                on_stage) == ProcessResult::cancelled ||
+        stop.stop_requested()) {
+        return cancelled();
+    }
+    return std::move(img);
+}
+
+}  // namespace
+
+std::variant<Photo, Error> decode_for_export(const fs::path& source, InputKind kind,
+                                             const EditSettings& settings, int threads,
+                                             std::stop_token stop) {
+    const std::variant<InputKind, Error> checked = check_input(source);
+    if (const Error* e = std::get_if<Error>(&checked)) {
+        return *e;
+    }
+    RawOptions raw;
+    raw.half_size = settings.raw_half_size;
+    raw.camera_matrix = camera_matrix_of(settings);
+    if (stop.stop_requested()) {
+        return cancelled();
+    }
+    return decode(source, kind, raw, threads);
+}
+
+std::variant<Image, Error> finish_export(Photo decoded, const EditSettings& settings,
+                                         std::optional<int> long_side, int threads,
+                                         std::stop_token stop, const StageCallback& on_stage) {
+    const std::optional<Chromaticity> as_shot = as_shot_white_of(decoded.info);
+    return run_after_decode(std::move(decoded.image), as_shot, settings, long_side, std::nullopt,
+                            threads, stop, on_stage);
+}
+
+Image render_region(const Photo& base, const EditSettings& settings, const FrameBox& part,
+                    int threads) {
+    if (const std::vector<std::string> problems = validate(settings); !problems.empty()) {
+        throw std::invalid_argument("render_region: " + problems.front());
+    }
+    const ExportFrame plan =
+        plan_export_frame(settings.frame, base.image.width, base.image.height);
+    const auto inside = [](int first, int count, int size) {
+        return first >= 0 && count >= 1 &&
+               static_cast<long long>(first) + static_cast<long long>(count) <=
+                   static_cast<long long>(size);
+    };
+    if (!inside(part.x0, part.width, plan.size.width) ||
+        !inside(part.y0, part.height, plan.size.height)) {
+        throw std::invalid_argument(
+            "render_region: the part (" + std::to_string(part.x0) + ", " +
+            std::to_string(part.y0) + ") " + std::to_string(part.width) + " × " +
+            std::to_string(part.height) + " is empty or not inside the " +
+            std::to_string(plan.size.width) + " × " + std::to_string(plan.size.height) +
+            " framed picture");
+    }
+    std::variant<Image, Error> result = run_after_decode(
+        &base.image, as_shot_white_of(base.info), settings, std::nullopt, part, threads, {}, {});
+    if (Error* e = std::get_if<Error>(&result)) {
+        if (e->kind == ErrorKind::out_of_memory) {
+            throw std::bad_alloc();
+        }
+        throw std::runtime_error("render_region: " + e->message);
+    }
+    return std::move(std::get<Image>(result));
+}
+
 MaybeError export_image(const ExportJob& job, const fs::path& output, std::stop_token stop,
                         const StageCallback& on_stage) {
     if (!is_png_or_jpeg(output)) {
@@ -322,64 +487,19 @@ MaybeError export_image(const ExportJob& job, const fs::path& output, std::stop_
         return invalid_settings_error(problems);
     }
 
-    const std::variant<InputKind, Error> checked = check_input(job.source);
-    if (const Error* e = std::get_if<Error>(&checked)) {
-        return *e;
-    }
-    RawOptions raw;
-    raw.half_size = job.settings.raw_half_size;
-    raw.camera_matrix = camera_matrix_of(job.settings);
-    if (stop.stop_requested()) {
-        return cancelled();
-    }
-    std::variant<Photo, Error> decoded = decode(job.source, job.kind, raw, job.threads);
+    std::variant<Photo, Error> decoded =
+        decode_for_export(job.source, job.kind, job.settings, job.threads, stop);
     if (Error* e = std::get_if<Error>(&decoded)) {
         return std::move(*e);
     }
-    const std::optional<Chromaticity> as_shot = as_shot_white_of(std::get<Photo>(decoded).info);
-    const int decoded_width = std::get<Photo>(decoded).image.width;
-    const int decoded_height = std::get<Photo>(decoded).image.height;
-
-    // Frame, then reduce, before editing: the turn works on the full decode and every stage then
-    // works on the small image. The full decode (which on a 60 MP photo is ~730 MB) is moved in and
-    // freed before the pipeline allocates its own buffers. Without a frame this is the reduction
-    // alone, exactly as before frames existed.
-    FramedExport framed;
-    try {
-        framed = frame_and_reduce(std::move(std::get<Photo>(decoded).image), job.settings.frame,
-                                  job.long_side, job.threads);
-    } catch (const std::bad_alloc&) {
-        return Error{ErrorKind::out_of_memory,
-                     normalised_frame(job.settings.frame)
-                         ? "Not enough memory to frame or shrink this photo."
-                         : "Not enough memory to shrink this photo.",
-                     ""};
-    }
-    if (stop.stop_requested()) {
-        return cancelled();
-    }
-    Image& img = framed.image;
-
-    // The strokes sit on the image as framed and reduced, not on the original: they cover the same
-    // part of the photo at any export size. Without a frame the grid is the whole image (as in
-    // 0.5.0); with one it is the framed grid of the decode, with the reduction as its scale.
-    std::optional<PictureFrame> framing;
-    if (framed.frame.fitted) {
-        const PixelSize size = framed.frame.size;
-        const float scale = static_cast<float>(std::max(size.width, size.height)) /
-                            static_cast<float>(std::max(img.width, img.height));
-        framing = PictureFrame{*framed.frame.fitted, decoded_width, decoded_height, scale};
-    }
-    if (process(img,
-                to_process_settings(job.settings, final_stage, as_shot,
-                                    stage_grid(framing, img.width, img.height)),
-                job.threads, stop, on_stage) ==
-            ProcessResult::cancelled ||
-        stop.stop_requested()) {
-        return cancelled();
+    std::variant<Image, Error> finished = finish_export(
+        std::move(std::get<Photo>(decoded)), job.settings, job.long_side, job.threads, stop,
+        on_stage);
+    if (Error* e = std::get_if<Error>(&finished)) {
+        return std::move(*e);
     }
     try {
-        save_image(output, img, job.threads);
+        save_image(output, std::get<Image>(finished), job.threads);
     } catch (const std::bad_alloc&) {
         return Error{ErrorKind::out_of_memory, "Not enough memory to save this photo.", ""};
     } catch (const std::exception& e) {

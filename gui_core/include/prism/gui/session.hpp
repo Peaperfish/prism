@@ -6,7 +6,9 @@
 #include <optional>
 #include <stop_token>
 #include <string>
+#include <variant>
 
+#include "prism/frame.hpp"
 #include "prism/gui/export_size.hpp"
 #include "prism/gui/history.hpp"
 #include "prism/gui/presets.hpp"
@@ -244,5 +246,42 @@ private:
 [[nodiscard]] MaybeError export_image(const ExportJob& job, const std::filesystem::path& output,
                                       std::stop_token stop = {},
                                       const StageCallback& on_stage = {});
+
+// export_image is these three steps, then save_image: decode_for_export, finish_export, encode.
+
+// The decode an export starts from, exactly as export_image makes it: `source` checked as open_file
+// checks it, then read at full size, or for a RAW file at half size when settings.raw_half_size,
+// with settings.raw_camera_matrix, upright (orientation applied). Unframed and unedited: the
+// photo's info holds the as-shot light the stages measure white balance against. Fails with the
+// same Error as export_image would for the same file (missing, unreadable, no RAW support, out of
+// memory), or ErrorKind::cancelled if `stop` was triggered before decoding. `kind` is the file's
+// kind, as in ExportJob.
+[[nodiscard]] std::variant<Photo, Error> decode_for_export(const std::filesystem::path& source,
+                                                           InputKind kind,
+                                                           const EditSettings& settings,
+                                                           int threads,
+                                                           std::stop_token stop = {});
+
+// What export_image does with `decoded` before encoding it: frame and reduce to `long_side`
+// (frame_and_reduce), then run the stages for `settings` on the result, with the strokes placed on
+// the framed picture. The finished picture, linear, not yet encoded. `decoded` is moved in and
+// freed by the frame or the reduction. Fails with ErrorKind::out_of_memory, or
+// ErrorKind::cancelled once `stop` is triggered (checked after the frame and between the stages).
+[[nodiscard]] std::variant<Image, Error> finish_export(Photo decoded, const EditSettings& settings,
+                                                      std::optional<int> long_side, int threads,
+                                                      std::stop_token stop = {},
+                                                      const StageCallback& on_stage = {});
+
+// `part` of the finished picture an export at the full framed size (no long_side) would make from
+// `base`, a decode_for_export result: bit-identical to those pixels of finish_export(base,
+// settings, nullopt), for any `threads`. `part` is in pixels of the whole framed picture
+// (plan_export_frame(settings.frame, base's size).size): columns [part.x0, part.x0 + part.width)
+// and rows [part.y0, part.y0 + part.height). It runs export's own steps, but only on the part's
+// pixels: the frame reads the whole `base` (apply_frame with a part), and each stage places the
+// part where it is in the whole picture. `base` is only read; the result is part.width x
+// part.height. Throws std::invalid_argument if `part` is empty or not inside the framed picture,
+// or if the settings are invalid (validate), and std::bad_alloc when out of memory.
+[[nodiscard]] Image render_region(const Photo& base, const EditSettings& settings,
+                                  const FrameBox& part, int threads = 0);
 
 }  // namespace prism::gui
