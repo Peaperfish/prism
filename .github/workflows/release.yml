@@ -146,7 +146,7 @@ jobs:
           libraw=$(basename "$tarball" -source.tar.gz)
           libraw=${libraw#LibRaw-}
           sed -e "s/{{VERSION}}/$version/g" -e "s/{{LIBRAW_VERSION}}/$libraw/g" \
-            docs/RELEASE_NOTES_TEMPLATE.md > notes.md
+            docs/release-notes/TEMPLATE.md > notes.md
           if grep -q '{{' notes.md; then
             echo "::error::notes.md still has a placeholder"
             exit 1

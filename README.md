@@ -547,7 +547,7 @@ On Windows: `cmake -S . -B build-release -A x64 -DPRISM_RELEASE=ON -DPRISM_BUILD
 
 `cmake --install` lays out the download (`cmake/Package.cmake`), and the packaging scripts sign the macOS app ad hoc, check that the binaries use only the operating system's own libraries, check the LibRaw tarball's hash and that its licence files in the download are byte-identical to the tarball's, and zip it (`ditto` on macOS). macOS 13.3 is the minimum because Prism's settings files use `std::to_chars` for floats.
 
-`.github/workflows/release.yml` does the same on GitHub for both systems after running every test with RAW support required. Run by hand (Actions → Release → Run workflow) it is a dry run that uploads the zips and the LibRaw tarball as workflow artifacts. Pushing a tag `v<version>`, which must match `project(prism VERSION …)` in `CMakeLists.txt`, the one place the version is set, also creates a **draft** release with both zips, the LibRaw tarball and `SHA256SUMS.txt`, and notes from `docs/RELEASE_NOTES_TEMPLATE.md`; it is published by hand. The version also reaches `prism --version`, the About window, the macOS `Info.plist` and the Windows version resource.
+`.github/workflows/release.yml` does the same on GitHub for both systems after running every test with RAW support required. Run by hand (Actions → Release → Run workflow) it is a dry run that uploads the zips and the LibRaw tarball as workflow artifacts. Pushing a tag `v<version>`, which must match `project(prism VERSION …)` in `CMakeLists.txt`, the one place the version is set, also creates a **draft** release with both zips, the LibRaw tarball and `SHA256SUMS.txt`, and notes from `docs/release-notes/TEMPLATE.md`; it is published by hand. All release notes live in `docs/release-notes/`: the template, and each release's notes as `RELEASE_NOTES_<version>.md`. The version also reaches `prism --version`, the About window, the macOS `Info.plist` and the Windows version resource.
 
 ### Continuous integration
 
@@ -612,7 +612,8 @@ prism/
 ├── samples/      # example matrix files
 ├── bench/        # prism_bench: per-stage timings on a 61 MP image
 ├── packaging/    # Info.plist, Windows version resource, icon drawing, README.txt, package scripts
-├── docs/         # user guide (GUIDE.md), command-line reference (CLI.md), release notes template
+├── docs/         # user guide (GUIDE.md), command-line reference (CLI.md),
+│                 # release-notes/: every release's notes and the template
 ├── .github/      # CI and release workflows
 └── third_party/  # stb headers
 ```
