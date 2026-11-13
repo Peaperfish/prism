@@ -318,8 +318,18 @@ TEST(RenderRegion, AnEmptyPartOrOnePastThePictureIsRefused) {
         };
         for (const FrameBox& part : refused) {
             SCOPED_TRACE(describe(part));
-            EXPECT_THROW((void)prism::gui::render_region(base, s, part, 1),
-                         std::invalid_argument);
+            // render_region's own check, not a later step's: its message names the part.
+            try {
+                (void)prism::gui::render_region(base, s, part, 1);
+                ADD_FAILURE() << "not refused";
+            } catch (const std::invalid_argument& e) {
+                EXPECT_NE(std::string(e.what()).find("is empty or not inside the " +
+                                                     std::to_string(size.width) + " × " +
+                                                     std::to_string(size.height) +
+                                                     " framed picture"),
+                          std::string::npos)
+                    << e.what();
+            }
         }
         // The largest part, the whole, is not refused.
         EXPECT_NO_THROW(
