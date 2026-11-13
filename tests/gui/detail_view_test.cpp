@@ -88,9 +88,6 @@ TEST(DetailView, ZoomStopsAtEightHundredPercentOfTheFile) {
     // A tiny photo whose fit is beyond 800% stays at its fit.
     const FileScale same = file_scale({40, 30}, {40, 30});
     EXPECT_DOUBLE_EQ(max_view_scale(20.0, 1.0, same), 20.0);
-    // The steps run up to 800% and stop there.
-    EXPECT_FLOAT_EQ(view_step_zoom(6.0f, 0.3f, 1), 8.0f);
-    EXPECT_FLOAT_EQ(view_step_zoom(8.0f, 0.3f, 1), 8.0f);
 }
 
 TEST(DetailView, LabelRoundsToWholePercent) {
@@ -137,7 +134,10 @@ TEST(DetailView, RegionRoundsOutward) {
     // Preview [25, 75) is file [62.5, 187.5): both half pixels are taken in.
     EXPECT_EQ(file_region({25.0, 25.0, 75.0, 75.0}, small_preview, small_full),
               (FrameBox{62, 62, 126, 126}));
-    // Just past a pixel's edge takes that pixel; on the edge doesn't.
+    // A quarter into a pixel takes that pixel in at both ends: y [101.25, 151.25) -> [101, 152).
+    EXPECT_EQ(file_region({40.0, 40.5, 60.0, 60.5}, small_preview, small_full),
+              (FrameBox{100, 101, 50, 51}));
+    // Edges on a pixel's edge (40.4 * 2.5 = 101 exactly) take nothing more.
     EXPECT_EQ(file_region({40.0, 40.4, 60.0, 60.4}, small_preview, small_full),
               (FrameBox{100, 101, 50, 50}));
     EXPECT_EQ(file_region({40.0, 40.0, 60.0, 60.0}, small_preview, small_full),

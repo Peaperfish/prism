@@ -60,7 +60,9 @@ inline constexpr double file_zoom_max_percent = 800.0;
                                                  FileScale scale) noexcept;
 
 // The largest view scale allowed: 800% of the file, or the fit's scale if that is larger (a tiny
-// photo whose fit is beyond 800% stays at its fit, as view_zoom_max says for the preview).
+// photo whose fit is beyond 800% stays at its fit, as view_zoom_max says for the preview). Not yet
+// enforced: view_settled and view_zoomed_to still clamp at view_zoom_max preview pixels (about 215%
+// of a 60 MP file) until the canvas takes this as its limit.
 [[nodiscard]] double max_view_scale(double fit_points_per_preview_pixel, double density,
                                     FileScale scale) noexcept;
 
