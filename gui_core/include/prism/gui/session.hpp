@@ -263,6 +263,9 @@ public:
     // Waits until the running read has a result or has ended, for at most `timeout` (false if
     // not by then), then poll_detail_base(). For tests and headless use; the UI just polls.
     bool wait_for_detail_base(std::chrono::milliseconds timeout);
+    // As wait_for_detail_base, but leaves a result where it is, for poll_detail_base (or for
+    // whatever replaces the read first) to take. For tests.
+    bool wait_for_detail_read(std::chrono::milliseconds timeout);
 
     // export_job() for an export about to start, which must end with end_export(). A read of the
     // detail base still running is stopped, and the job's read_ended makes export_image wait for

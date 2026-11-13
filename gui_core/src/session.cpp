@@ -413,12 +413,13 @@ bool Session::poll_detail_base() {
 }
 
 bool Session::wait_for_detail_base(std::chrono::milliseconds timeout) {
-    if (!detail_reader_) {
-        return true;
-    }
-    const bool done = detail_reader_->wait(timeout);
+    const bool done = wait_for_detail_read(timeout);
     (void)poll_detail_base();
     return done;
+}
+
+bool Session::wait_for_detail_read(std::chrono::milliseconds timeout) {
+    return !detail_reader_ || detail_reader_->wait(timeout);
 }
 
 ExportJob Session::begin_export() {

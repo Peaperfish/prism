@@ -83,6 +83,7 @@ add_executable(prism_gui_core_tests
   gui/clipping_test.cpp
   gui/close_guard_test.cpp
   gui/detail_base_test.cpp
+  gui/detail_session_test.cpp
   gui/explanations_test.cpp
   gui/export_size_test.cpp
   gui/field_cache_test.cpp
