@@ -300,6 +300,9 @@ private:
     // Plans the detail base again, and stops, drops and starts its read, if what
     // decode_for_export would read changed (or always, after opening a file).
     void update_detail_base(bool opened);
+    // Stops the read and lets go of the detail base and of any result waiting, before a decode
+    // that would otherwise hold memory beside them; the next update_detail_base plans it anew.
+    void drop_detail_base();
     // Starts the read if the plan is to read and nothing is running, ready or failed, unless an
     // export is running.
     void start_detail_read();
@@ -331,7 +334,7 @@ private:
     bool detail_reading_ = false;               // a read for detail_key_ is running
     bool exporting_ = false;                    // between begin_export and end_export
     std::uint64_t detail_generation_ = 0;       // the running read's; results of others are stale
-    // Created on first use. Declared last: destroyed (its reads stopped and joined) first.
+    // Created on first use (with SessionOptions::detail_base). Declared last: destroyed (its reads stopped and joined) first.
     std::unique_ptr<DetailReader> detail_reader_;
 };
 

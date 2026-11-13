@@ -16,7 +16,7 @@ enum class DetailPlan {
                  // from it, nothing is read
     read,        // read the file again at the export's size, in the background
     too_big,     // the full-size photo would take more than a quarter of the computer's memory:
-                 // nothing is read, and zoom shows the preview enlarged
+                 // nothing is read, so there are no real pixels to show
 };
 
 // The bytes a w x h float image takes: w x h x 3 channels x 4 bytes. Saturates at the largest

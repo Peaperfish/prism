@@ -50,11 +50,10 @@ private:
 // read and waits for all of them.
 class DetailReader {
 public:
-    // How a file becomes a detail base. The default is decode_for_export; tests pass their own to
-    // control timing. Runs on the read's thread with its stop token.
-    using ReadFunction = std::function<std::variant<Photo, Error>(
-        const std::filesystem::path& source, InputKind kind, const EditSettings& settings,
-        int threads, std::stop_token stop)>;
+    // How a file becomes a detail base (SessionOptions::read_detail_base). The default is
+    // decode_for_export; tests pass their own to control timing. Runs on the read's thread with
+    // its stop token.
+    using ReadFunction = DetailReadFunction;
 
     struct Result {
         std::uint64_t generation = 0;  // what start() was given

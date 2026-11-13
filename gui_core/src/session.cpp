@@ -160,8 +160,13 @@ MaybeError Session::open_file(const fs::path& path) {
     RawOptions raw;
     raw.half_size = true;
     raw.full_size = &full;
+    // The old photo's detail base goes before this decode, which for a PNG, JPEG or HEIC file is
+    // at full size: two full-size photos are never held at once. If the open fails, the old
+    // photo's base is read again.
+    drop_detail_base();
     std::variant<Photo, Error> decoded = decode(path, kind, raw, options_.threads);
     if (Error* e = std::get_if<Error>(&decoded)) {
+        update_detail_base(true);
         return std::move(*e);
     }
 
@@ -172,6 +177,7 @@ MaybeError Session::open_file(const fs::path& path) {
     try {
         set_whole_base(std::move(photo));
     } catch (const std::bad_alloc&) {
+        update_detail_base(true);
         return Error{ErrorKind::out_of_memory, "Not enough memory to open this photo.", ""};
     }
     path_ = path;
@@ -259,6 +265,9 @@ MaybeError Session::update_preview_base() {
     if (!has_file() || kind_ != InputKind::raw || wanted == preview_camera_matrix_) {
         return update_framed_base(settings().frame);
     }
+    // A new camera matrix is a new detail base: the old one goes before this decode (the callers
+    // plan and read the new one afterwards).
+    drop_detail_base();
     RawOptions raw;
     raw.half_size = true;
     raw.camera_matrix = wanted;
@@ -345,14 +354,7 @@ void Session::update_detail_base(bool opened) {
     if (!detail_reader_) {
         detail_reader_ = std::make_unique<DetailReader>(options_.read_detail_base);
     }
-    // The base, the read and anything it posted belong to the old file or options: stop the
-    // read, and drop its result now, so its memory is freed before the next read decodes.
-    detail_reader_->stop();
-    (void)detail_reader_->take_all();
-    detail_base_.reset();
-    detail_error_.reset();
-    detail_reading_ = false;
-    ++detail_generation_;
+    drop_detail_base();
 
     // The preview base is the export's decode when it was made by the same decode (a RAW file's
     // is half size, with the preview's camera matrix) and not shrunk (preview_photo_).
@@ -364,6 +366,21 @@ void Session::update_detail_base(bool opened) {
         options_.physical_memory ? *options_.physical_memory : physical_memory_bytes());
     detail_key_ = std::move(key);
     start_detail_read();
+}
+
+void Session::drop_detail_base() {
+    if (detail_reader_) {
+        // The base, the read and anything it posted belong to the old file or options: stop the
+        // read and drop its result now, so the session no longer holds it when the next decode
+        // runs (a render thread still holding the old base keeps it until it lets go).
+        detail_reader_->stop();
+        (void)detail_reader_->take_all();
+    }
+    detail_base_.reset();
+    detail_error_.reset();
+    detail_reading_ = false;
+    detail_key_.reset();
+    ++detail_generation_;
 }
 
 void Session::start_detail_read() {
@@ -425,11 +442,14 @@ bool Session::wait_for_detail_read(std::chrono::milliseconds timeout) {
 ExportJob Session::begin_export() {
     ExportJob job = export_job();
     if (detail_reader_) {
-        (void)poll_detail_base();  // a read that has just finished is kept, not stopped
+        // Stop first: after this nothing more is posted, so the poll below sees every result
+        // there will be. A read that finished in time is kept as the ready base; anything else
+        // still running is not wanted.
+        detail_reader_->stop();
+        (void)poll_detail_base();
         if (detail_reading_) {
-            detail_reader_->stop();
             detail_reading_ = false;
-            ++detail_generation_;  // what it may still have posted is not wanted
+            ++detail_generation_;  // stopped, it posts nothing; retired all the same
         }
         job.read_ended = detail_reader_->ended();
     }
