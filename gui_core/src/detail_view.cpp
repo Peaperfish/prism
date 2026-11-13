@@ -128,4 +128,63 @@ PixelSize detail_output_size(const FrameBox& region, double points_per_preview_p
     return downscaled_size(width, height, target);
 }
 
+PreviewChip preview_chip(bool enlarged, DetailBaseState base, RegionBudget budget,
+                         bool gesture) noexcept {
+    if (!enlarged) {
+        return PreviewChip::none;
+    }
+    switch (base) {
+        case DetailBaseState::off: return PreviewChip::not_kept;
+        case DetailBaseState::reading: return PreviewChip::reading;
+        case DetailBaseState::failed: return PreviewChip::failed;
+        case DetailBaseState::too_big: return PreviewChip::too_big;
+        case DetailBaseState::ready:
+        case DetailBaseState::not_needed: break;
+    }
+    switch (budget) {
+        case RegionBudget::live: return PreviewChip::none;
+        case RegionBudget::on_release:
+            return gesture ? PreviewChip::region_too_big_live : PreviewChip::none;
+        case RegionBudget::never: return PreviewChip::region_too_big;
+    }
+    return PreviewChip::none;
+}
+
+std::string file_zoom_chip(double percent, PreviewChip chip) {
+    const std::string label = file_zoom_label(percent);
+    return chip == PreviewChip::none ? label : label + " · preview";
+}
+
+std::string_view real_pixels_menu_item() noexcept {
+    return "100% (real pixels)";
+}
+
+std::string_view real_pixels_explain() noexcept {
+    return "100%: one pixel of the photo on each pixel of your screen, the photo at its full size. "
+           "On a Retina screen a photo pixel is half a point across.";
+}
+
+std::string_view preview_chip_explain(PreviewChip chip) noexcept {
+    switch (chip) {
+        case PreviewChip::none: return {};
+        case PreviewChip::not_kept:
+            return "Showing the preview, enlarged: the full-size photo isn't kept, so there are no "
+                   "real pixels to show.";
+        case PreviewChip::reading:
+            return "Showing the preview, enlarged: the full-size photo is still being read.";
+        case PreviewChip::failed:
+            return "Showing the preview, enlarged: the full-size photo couldn't be read again.";
+        case PreviewChip::too_big:
+            return "Showing the preview, enlarged: the full-size photo would take more than a "
+                   "quarter of this computer's memory.";
+        case PreviewChip::region_too_big:
+            return "Showing the preview, enlarged: the part on screen is over 30 megapixels. Zoom "
+                   "in to see real pixels.";
+        case PreviewChip::region_too_big_live:
+            return "Showing the preview while you adjust: the part on screen is over 8 megapixels, "
+                   "so real pixels come when you let go.";
+    }
+    return {};
+}
+
 }  // namespace prism::gui

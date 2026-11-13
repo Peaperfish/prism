@@ -1,9 +1,11 @@
 #include <gtest/gtest.h>
 
 #include <optional>
+#include <string_view>
 
 #include "prism/frame.hpp"
 #include "prism/gui/detail_view.hpp"
+#include "prism/gui/explanations.hpp"
 #include "prism/gui/view_transform.hpp"
 #include "prism/resize.hpp"
 
@@ -274,6 +276,98 @@ TEST(DetailView, OutputIsNeverEmpty) {
     EXPECT_EQ(detail_output_size({0, 0, 1, 1}, tiny, 1.0, k), (PixelSize{1, 1}));
     EXPECT_EQ(detail_output_size({0, 0, 0, 0}, tiny, 1.0, k), (PixelSize{1, 1}));
     EXPECT_EQ(detail_output_size({0, 0, 0, 0}, 4.0, 2.0, k), (PixelSize{1, 1}));
+}
+
+using Base = prism::gui::DetailBaseState;
+
+TEST(DetailView, ChipGivesEachReasonTheBaseIsNotRead) {
+    for (const bool gesture : {false, true}) {
+        EXPECT_EQ(preview_chip(true, Base::off, RegionBudget::live, gesture),
+                  PreviewChip::not_kept);
+        EXPECT_EQ(preview_chip(true, Base::reading, RegionBudget::live, gesture),
+                  PreviewChip::reading);
+        EXPECT_EQ(preview_chip(true, Base::failed, RegionBudget::live, gesture),
+                  PreviewChip::failed);
+        EXPECT_EQ(preview_chip(true, Base::too_big, RegionBudget::live, gesture),
+                  PreviewChip::too_big);
+        // The base's reason comes first, whatever the region.
+        EXPECT_EQ(preview_chip(true, Base::reading, RegionBudget::never, gesture),
+                  PreviewChip::reading);
+    }
+}
+
+TEST(DetailView, ChipGivesTheRegionsReasonOnceTheBaseIsThere) {
+    for (const Base base : {Base::ready, Base::not_needed}) {
+        EXPECT_EQ(preview_chip(true, base, RegionBudget::never, false),
+                  PreviewChip::region_too_big);
+        EXPECT_EQ(preview_chip(true, base, RegionBudget::never, true), PreviewChip::region_too_big);
+        EXPECT_EQ(preview_chip(true, base, RegionBudget::on_release, true),
+                  PreviewChip::region_too_big_live);
+    }
+}
+
+TEST(DetailView, ChipDoesNotShowForARenderInFlight) {
+    // The base is in memory and the region within its budget: a render may be under way (after a
+    // pan, a zoom or a slider move), and the enlarged preview shows until it lands. No chip, with
+    // a gesture or without, so it can't flash.
+    for (const Base base : {Base::ready, Base::not_needed}) {
+        for (const bool gesture : {false, true}) {
+            EXPECT_EQ(preview_chip(true, base, RegionBudget::live, gesture), PreviewChip::none);
+        }
+        // Over 8 MP once the gesture ends: the render on release is in flight.
+        EXPECT_EQ(preview_chip(true, base, RegionBudget::on_release, false), PreviewChip::none);
+    }
+}
+
+TEST(DetailView, ChipNeverShowsWhenThePreviewIsNotEnlarged) {
+    for (const Base base :
+         {Base::off, Base::not_needed, Base::reading, Base::ready, Base::too_big, Base::failed}) {
+        for (const RegionBudget budget :
+             {RegionBudget::live, RegionBudget::on_release, RegionBudget::never}) {
+            for (const bool gesture : {false, true}) {
+                EXPECT_EQ(preview_chip(false, base, budget, gesture), PreviewChip::none);
+            }
+        }
+    }
+}
+
+TEST(DetailView, ChipText) {
+    EXPECT_EQ(file_zoom_chip(400.0, PreviewChip::none), "400%");
+    EXPECT_EQ(file_zoom_chip(400.0, PreviewChip::reading), "400% \u00b7 preview");
+    EXPECT_EQ(file_zoom_chip(35.5, PreviewChip::region_too_big), "36% \u00b7 preview");
+}
+
+TEST(DetailView, Words) {
+    EXPECT_EQ(real_pixels_menu_item(), "100% (real pixels)");
+    EXPECT_EQ(real_pixels_explain(),
+              "100%: one pixel of the photo on each pixel of your screen, the photo at its full "
+              "size. On a Retina screen a photo pixel is half a point across.");
+    EXPECT_EQ(preview_chip_explain(PreviewChip::none), "");
+    EXPECT_EQ(preview_chip_explain(PreviewChip::not_kept),
+              "Showing the preview, enlarged: the full-size photo isn't kept, so there are no real "
+              "pixels to show.");
+    EXPECT_EQ(preview_chip_explain(PreviewChip::reading),
+              "Showing the preview, enlarged: the full-size photo is still being read.");
+    EXPECT_EQ(preview_chip_explain(PreviewChip::failed),
+              "Showing the preview, enlarged: the full-size photo couldn't be read again.");
+    EXPECT_EQ(preview_chip_explain(PreviewChip::too_big),
+              "Showing the preview, enlarged: the full-size photo would take more than a quarter "
+              "of this computer's memory.");
+    EXPECT_EQ(preview_chip_explain(PreviewChip::region_too_big),
+              "Showing the preview, enlarged: the part on screen is over 30 megapixels. Zoom in "
+              "to see real pixels.");
+    EXPECT_EQ(preview_chip_explain(PreviewChip::region_too_big_live),
+              "Showing the preview while you adjust: the part on screen is over 8 megapixels, so "
+              "real pixels come when you let go.");
+    // Prism's words: no "Actual Pixels", and each Explain line fits Explain's detail limit.
+    for (const PreviewChip chip :
+         {PreviewChip::not_kept, PreviewChip::reading, PreviewChip::failed, PreviewChip::too_big,
+          PreviewChip::region_too_big, PreviewChip::region_too_big_live}) {
+        EXPECT_FALSE(preview_chip_explain(chip).empty());
+        EXPECT_LE(preview_chip_explain(chip).size(), prism::gui::explain_detail_max);
+    }
+    EXPECT_EQ(real_pixels_menu_item().find("Actual"), std::string_view::npos);
+    EXPECT_LE(real_pixels_explain().size(), prism::gui::explain_detail_max);
 }
 
 }  // namespace

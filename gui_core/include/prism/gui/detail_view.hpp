@@ -3,8 +3,10 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 
 #include "prism/frame.hpp"
+#include "prism/gui/detail_base.hpp"
 #include "prism/gui/view_transform.hpp"
 #include "prism/resize.hpp"
 
@@ -135,5 +137,39 @@ enum class RegionBudget {
 // Never 0 x 0: an empty region (which file_region never gives) counts as 1 x 1.
 [[nodiscard]] PixelSize detail_output_size(const FrameBox& region, double points_per_preview_pixel,
                                            double density, FileScale scale);
+
+// Why the zoom chip says "· preview": the canvas shows preview pixels enlarged, and real pixels
+// can't take their place for a reason that lasts. A render of real pixels that is merely under way
+// is not a reason: the chip would flash on every pan and slider move.
+enum class PreviewChip {
+    none,      // no chip: the preview isn't enlarged, or real pixels are (or soon will be) shown
+    not_kept,  // DetailBaseState::off: no full-size photo is kept
+    reading,   // the full-size photo is still being read
+    failed,    // reading the full-size photo failed
+    too_big,   // the full-size photo would take more than a quarter of the memory
+    region_too_big,       // the part on screen is over 30 MP (RegionBudget::never)
+    region_too_big_live,  // over 8 MP during a gesture (RegionBudget::on_release while one runs)
+};
+
+// The chip's rule. `enlarged` is real_pixels_needed for the view; `budget` is region_budget of the
+// visible region; `gesture` is whether a drag, pan, wheel or brush stroke is under way. Nothing at
+// all when the preview isn't enlarged, whatever the state. Then a base that isn't read gives its
+// reason; a ready one (or one not needed, where the preview is the full photo) gives the budget's.
+[[nodiscard]] PreviewChip preview_chip(bool enlarged, DetailBaseState base, RegionBudget budget,
+                                       bool gesture) noexcept;
+
+// The chip: "N%" (file_zoom_label), or "N% · preview" when `chip` gives a reason.
+[[nodiscard]] std::string file_zoom_chip(double percent, PreviewChip chip);
+
+// The View menu item that goes to 100%: "100% (real pixels)".
+[[nodiscard]] std::string_view real_pixels_menu_item() noexcept;
+
+// Explain for 100%: "100%: one pixel of the photo on each pixel of your screen, the photo at its
+// full size. On a Retina screen a photo pixel is half a point across."
+[[nodiscard]] std::string_view real_pixels_explain() noexcept;
+
+// One Explain line per chip reason, saying why the preview is shown; empty for PreviewChip::none.
+// For example "Showing the preview, enlarged: the full-size photo is still being read."
+[[nodiscard]] std::string_view preview_chip_explain(PreviewChip chip) noexcept;
 
 }  // namespace prism::gui
