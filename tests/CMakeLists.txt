@@ -104,6 +104,7 @@ add_executable(prism_gui_core_tests
   gui/dodge_burn_stage_test.cpp
   gui/preview_renderer_test.cpp
   gui/recipe_settings_test.cpp
+  gui/render_region_test.cpp
   gui/recipe_ui_test.cpp
   gui/scopes_test.cpp
   gui/session_test.cpp
