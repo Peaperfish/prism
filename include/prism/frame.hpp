@@ -210,14 +210,15 @@ private:
 // repeat the nearest edge pixel.
 //
 // With `part`, only that part of the framed picture is worked out: `part` is in framed-image
-// pixels (columns [part.x0, part.x0 + part.width) of the framed_box's width, and the same for
-// rows), and the result is part.width x part.height pixels, bit-identical to the same pixels of the
-// whole framed picture. Each pixel is worked out from its place in the whole framed picture, by the
-// same code, and reads the whole photo, so a part needs no margin around it.
+// pixels, columns [part.x0, part.x0 + part.width) and rows [part.y0, part.y0 + part.height), all
+// inside the framed image (framed_size), and the result is part.width x part.height pixels,
+// bit-identical to the same pixels of the whole framed picture. Each pixel is worked out from its
+// place in the whole framed picture, by the same code, and reads the whole photo, so a part needs
+// no margin around it.
 //
 // `threads` as for the pipeline stages, decided by the size of what is worked out (the part, or
-// the framed image); the result is bit-identical for any value. Throws std::invalid_argument with
-// validate_frame's messages if `f` is invalid, if `img` is empty, if its pixel buffer does not
+// the framed image); the result is bit-identical for any value. Throws std::invalid_argument: with
+// validate_frame's messages if `f` is invalid; and if `img` is empty, if its pixel buffer does not
 // match width * height * 3, or if `part` is empty or not inside the framed image.
 [[nodiscard]] Image apply_frame(const Image& img, const Frame& f, int threads = 0,
                                 const std::optional<FrameBox>& part = std::nullopt);

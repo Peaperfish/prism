@@ -455,9 +455,10 @@ FrameBox frame_source_rect(const Frame& f, int width, int height, const FrameBox
         // apply_frame copies: the part's own pixels, moved by the box's corner.
         return {box.x0 + part.x0, box.y0 + part.y0, part.width, part.height};
     }
-    // apply_frame samples framed pixel centres. Its photo positions only grow (or only shrink)
-    // along a row or a column, rounding included (cos > 0 within 45 degrees, and rounding never
-    // reverses an order), so the extremes are at the four corner pixels' centres. Taken exactly as
+    // apply_frame samples framed pixel centres. Along a row or a column its photo positions only
+    // grow or only shrink, rounding included (each step of the sum is a product by a fixed number
+    // or an addition, and rounding never reverses an order), so the extremes are at the four
+    // corner pixels' centres. Taken exactly as
     // apply_frame takes them, then widened by the taps -1 and +2 and held inside the photo as taps
     // are.
     double lo_x = 0.0;

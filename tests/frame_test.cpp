@@ -987,19 +987,23 @@ TEST(Frame, APartIsBitIdenticalOnOneAndEightThreads) {
     constexpr int W = 2400;
     constexpr int H = 1400;
     const Image img = patterned(W, H);
-    const Frame f = frame_of(7.0f, 0, 0, 1, 1);
     // 1501 x 1049 = 1,574,549 pixels, with odd sides so chunks split unevenly, off the corner.
     const FrameBox part{450, 200, 1501, 1049};
     const std::size_t part_pixels =
         static_cast<std::size_t>(part.width) * static_cast<std::size_t>(part.height);
     ASSERT_GE(part_pixels, prism::parallel_min_pixels * 3 / 2);
     ASSERT_EQ(prism::threads_for_pixels(part_pixels, 8), 8);
-    const Image one = prism::apply_frame(img, f, 1, part);
-    const Image eight = prism::apply_frame(img, f, 8, part);
-    ASSERT_EQ(one.width, part.width);
-    ASSERT_EQ(one.height, part.height);
-    EXPECT_EQ(first_bit_difference(one, eight), -1);
-    EXPECT_EQ(first_bit_difference(eight, crop(prism::apply_frame(img, f, 8), part)), -1);
+    // Turned, and the copy at 0 degrees.
+    for (const float angle : {7.0f, 0.0f}) {
+        const Frame f = frame_of(angle, 0, 0, 1, 1);
+        const Image one = prism::apply_frame(img, f, 1, part);
+        const Image eight = prism::apply_frame(img, f, 8, part);
+        ASSERT_EQ(one.width, part.width);
+        ASSERT_EQ(one.height, part.height);
+        EXPECT_EQ(first_bit_difference(one, eight), -1) << "angle " << angle;
+        EXPECT_EQ(first_bit_difference(eight, crop(prism::apply_frame(img, f, 8), part)), -1)
+            << "angle " << angle;
+    }
 }
 
 // The lowest and highest photo pixel apply_frame's taps reach for `part`, worked out pixel by
@@ -1045,7 +1049,8 @@ TEST(Frame, SourceRectHoldsEveryTapAPartReads) {
                     << where;
             } else {
                 EXPECT_EQ(rect, tap_bounds(f, W, H, part)) << where;
-                if (rect.x0 == 0 && rect.y0 == 0) {
+                if (rect.x0 == 0 || rect.y0 == 0 || rect.x0 + rect.width == W ||
+                    rect.y0 + rect.height == H) {
                     held_by_edge = true;
                 }
                 if (rect.x0 > 0 && rect.y0 > 0 && rect.x0 + rect.width < W &&
@@ -1091,6 +1096,8 @@ TEST(Frame, APartOutsideTheFramedImageOrEmptyIsRefused) {
             {0, 0, 0, 1},        {0, 0, 1, 0},      {0, 0, -1, 1},
             {0, 0, W + 1, H},    {std::numeric_limits<int>::max(), 0, 1, 1},
             {1, 0, std::numeric_limits<int>::max(), 1},
+            {0, std::numeric_limits<int>::max(), 1, 1},
+            {0, 1, 1, std::numeric_limits<int>::max()},
         };
         for (const FrameBox& part : bad) {
             EXPECT_THROW((void)prism::apply_frame(img, f, 1, part), std::invalid_argument)
