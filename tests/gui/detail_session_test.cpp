@@ -615,15 +615,29 @@ TEST(DetailSession, CancellingAnExportWaitingForTheReadWritesNothing) {
     const ExportJob job = session.begin_export();
     const fs::path out = files.add(temp_file("out.png"));
     MaybeError result;
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool done = false;
+    std::jthread exporter([&](std::stop_token stop) {
+        MaybeError r = prism::gui::export_image(job, out, stop);
+        std::lock_guard lock(mutex);
+        result = std::move(r);
+        done = true;
+        cv.notify_all();
+    });
+    ASSERT_TRUE(job.read_ended->wait_for_waiters(1, timeout));
+    exporter.request_stop();
     {
-        std::jthread exporter(
-            [&](std::stop_token stop) { result = prism::gui::export_image(job, out, stop); });
-        ASSERT_TRUE(job.read_ended->wait_for_waiters(1, timeout));
-    }  // the jthread asks the export to stop and waits for it
+        // The export ends on its stop while the read is still held.
+        std::unique_lock lock(mutex);
+        EXPECT_TRUE(cv.wait_for(lock, timeout, [&] { return done; }));
+    }
+    EXPECT_FALSE(job.read_ended->is_set());
+    reads.finish();
+    exporter.join();
     ASSERT_NE(result, std::nullopt);
     EXPECT_EQ(result->kind, prism::gui::ErrorKind::cancelled);
     EXPECT_FALSE(fs::exists(out));
-    reads.finish();
     session.end_export();
 }
 
