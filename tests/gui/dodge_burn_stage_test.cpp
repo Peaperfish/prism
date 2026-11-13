@@ -287,14 +287,15 @@ TEST(DodgeBurnStage, NoStrokesChangesNothingInAnExport) {
 
     for (const std::optional<int> long_side : {std::optional<int>{}, std::optional<int>{90}}) {
         const fs::path want = temp_file("want.png");
-        ASSERT_EQ(prism::gui::export_image({source, prism::gui::InputKind::image, plain, 1, long_side},
-                                           want),
+        ASSERT_EQ(prism::gui::export_image(
+                      {source, prism::gui::InputKind::image, plain, 1, long_side, nullptr}, want),
                   std::nullopt);
         for (const EditSettings* other : {&empty, &off}) {
             const fs::path got = temp_file("got.png");
-            ASSERT_EQ(prism::gui::export_image(
-                          {source, prism::gui::InputKind::image, *other, 1, long_side}, got),
-                      std::nullopt);
+            ASSERT_EQ(
+                prism::gui::export_image(
+                    {source, prism::gui::InputKind::image, *other, 1, long_side, nullptr}, got),
+                std::nullopt);
             EXPECT_EQ(file_bytes(got), file_bytes(want));
             fs::remove(got);
         }
@@ -467,10 +468,10 @@ TEST(DodgeBurnStage, ExportAtAnySizeCoversTheSamePart) {
         const fs::path a = temp_file("a.png");
         const fs::path b = temp_file("b.png");
         EXPECT_EQ(prism::gui::export_image(
-                      {source, prism::gui::InputKind::image, with, 0, long_side}, a),
+                      {source, prism::gui::InputKind::image, with, 0, long_side, nullptr}, a),
                   std::nullopt);
         EXPECT_EQ(prism::gui::export_image(
-                      {source, prism::gui::InputKind::image, without, 0, long_side}, b),
+                      {source, prism::gui::InputKind::image, without, 0, long_side, nullptr}, b),
                   std::nullopt);
         const Image dodged = prism::load_image(a);
         const Image plain = prism::load_image(b);

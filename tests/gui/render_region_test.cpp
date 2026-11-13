@@ -412,7 +412,7 @@ TEST(DecodeForExport, FailsAsExportDoes) {
         EXPECT_EQ(e.message, "Couldn't find '" + prism::utf8(missing.filename()) +
                                  "'. It may have been moved or deleted.");
         const std::optional<Error> exported =
-            prism::gui::export_image({missing, InputKind::image, s, 1, std::nullopt}, out);
+            prism::gui::export_image({missing, InputKind::image, s, 1, std::nullopt, nullptr}, out);
         ASSERT_TRUE(exported);
         expect_same_error(e, *exported);
     }
@@ -432,7 +432,7 @@ TEST(DecodeForExport, FailsAsExportDoes) {
                                  "'. The file may be damaged, or not really a PNG.");
         EXPECT_FALSE(e.details.empty());
         const std::optional<Error> exported =
-            prism::gui::export_image({damaged, InputKind::image, s, 1, std::nullopt}, out);
+            prism::gui::export_image({damaged, InputKind::image, s, 1, std::nullopt, nullptr}, out);
         ASSERT_TRUE(exported);
         expect_same_error(e, *exported);
     }
