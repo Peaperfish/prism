@@ -487,6 +487,21 @@ TEST(ViewTransformFilePercent, TheToggleGoesTo100PercentOfTheFileAboutTheAnchor)
     EXPECT_FLOAT_EQ(preview_100.zoom, sixty_mp_scale);
 }
 
+TEST(ViewTransformFilePercent, ANewScaleKeepsThePercentOfTheFile) {
+    // At 100% of an estimated 9500 px file; the photo read is 9564 px across.
+    const float estimate = 9500.0f / 2560.0f;
+    ViewState s = zoomed(estimate, 1000.0f, 700.0f);
+    const ViewState after = view_rescaled(s, estimate, sixty_mp_scale);
+    EXPECT_FLOAT_EQ(after.zoom / sixty_mp_scale, 1.0f);  // still 100%
+    EXPECT_FLOAT_EQ(after.centre_x, 1000.0f);
+    EXPECT_FLOAT_EQ(after.centre_y, 700.0f);
+    // Fit, the same scale, or a scale that can't be used: unchanged.
+    EXPECT_TRUE(view_rescaled(ViewState{}, estimate, sixty_mp_scale).fit);
+    EXPECT_FLOAT_EQ(view_rescaled(s, estimate, estimate).zoom, s.zoom);
+    EXPECT_FLOAT_EQ(view_rescaled(s, 0.0f, sixty_mp_scale).zoom, s.zoom);
+    EXPECT_FLOAT_EQ(view_rescaled(s, estimate, std::nanf("")).zoom, s.zoom);
+}
+
 TEST(ViewTransform, PixelsShowOnlyAbove200Percent) {
     EXPECT_FALSE(view_shows_pixels(0.5f));
     EXPECT_FALSE(view_shows_pixels(1.0f));

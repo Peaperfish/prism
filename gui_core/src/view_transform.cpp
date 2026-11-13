@@ -191,6 +191,17 @@ ViewState view_toggled(const ViewState& s, const ViewGeometry& g, ViewPoint anch
     return view_zoomed_to(from, g, actual, anchor);
 }
 
+ViewState view_rescaled(const ViewState& s, float old_scale, float new_scale) noexcept {
+    const bool usable = std::isfinite(old_scale) && old_scale > 0.0f && std::isfinite(new_scale) &&
+                        new_scale > 0.0f;
+    if (s.fit || !usable || old_scale == new_scale) {
+        return s;
+    }
+    ViewState out = s;
+    out.zoom = s.zoom / old_scale * new_scale;
+    return out;
+}
+
 ViewState view_panned_by(const ViewState& s, const ViewGeometry& g, float dx, float dy) noexcept {
     if (!has_picture(g)) {
         return s;

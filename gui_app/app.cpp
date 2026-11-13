@@ -920,11 +920,17 @@ prism::PixelSize App::framed_full_size() const {
     return session_.framed_start_size();
 }
 
+void App::set_view_file_scale(float scale) {
+    view_ = gui::view_rescaled(view_, view_file_scale_, scale);
+    view_file_scale_ = scale;
+    view_geometry_.file_scale = scale;
+}
+
 bool App::canvas_gesture_now() const {
     gui::CanvasActivity activity;
     activity.hand_drag = hand_drag_.dragging();
     activity.wheel = gui::wheel_gesture_live(static_cast<double>(SDL_GetTicks()), last_wheel_ms_);
-    activity.pinch = pinch_factor_ != 1.0f;
+    activity.pinch = pinch_this_frame_;
     activity.brush_stroke = brush_gesture_.stroking();
     activity.control_active = control_active();
     return gui::canvas_gesture(activity);
@@ -1311,10 +1317,11 @@ void App::take_drop() {
 }
 
 bool App::animating() const {
-    // Real pixels: keep drawing while the full-size photo is read, while a requested frame is on
-    // its way, and until a wheel gesture has ended (the region is then asked for with its margin).
+    // Real pixels: keep drawing while the chip waits for the full-size photo, while a requested
+    // frame is on its way, and until a wheel gesture has ended (the region is then asked for with
+    // its margin).
     const bool detail_busy =
-        session_.detail_base_state() == gui::DetailBaseState::reading || detail_awaited_ != 0 ||
+        detail_plan_.chip == gui::PreviewChip::reading || detail_awaited_ != 0 ||
         gui::wheel_gesture_live(static_cast<double>(SDL_GetTicks()), last_wheel_ms_);
     return quiet_frames_ < settle_frames || preview_.rendering() || pending_open_.has_value() ||
            exporter_.busy() || close_pending_.has_value() || detail_busy;
@@ -1873,8 +1880,8 @@ void App::draw_canvas() {
                           texture_.height()};
         // Zoom is measured in file pixels (#37): 100% is one pixel of the framed picture at its
         // full size on one device pixel.
-        view_geometry_.file_scale = static_cast<float>(
-            gui::file_scale(framed_full_size(), {texture_.width(), texture_.height()}).shown);
+        set_view_file_scale(static_cast<float>(
+            gui::file_scale(framed_full_size(), {texture_.width(), texture_.height()}).shown));
         apply_canvas_input();
         view_ = gui::view_settled(view_, view_geometry_);
         update_detail();
@@ -2018,6 +2025,7 @@ void App::apply_canvas_input() {
         view_ = gui::view_zoomed_to(view_, view_geometry_,
                                     gui::view_zoom(view_, view_geometry_) * pinch_factor_, cursor);
     }
+    pinch_this_frame_ = pinch_factor_ != 1.0f && hovered;
     pinch_factor_ = 1.0f;
 }
 
@@ -2166,12 +2174,14 @@ void App::draw_framing_canvas(ImDrawList* draw, ImVec2 min, ImVec2 size) {
         gui::file_scale(session_.export_start_size(), {photo.width, photo.height}).shown);
     view_geometry_ = gui::framing_geometry(canvas, draft.angle, photo.width, photo.height,
                                            token_metrics().canvas_margin);
+    set_view_file_scale(canvas.file_scale);
     if (framing_.gesture() == gui::FramingGesture::none) {
         apply_canvas_input();
     } else {
         // A drag maps the pointer through the view at its press: the view holds still until it ends.
         canvas_wheels_.clear();
         pinch_factor_ = 1.0f;
+        pinch_this_frame_ = false;
     }
     view_ = gui::view_settled(view_, view_geometry_);
     update_detail();  // framing shows the preview: this clears any real pixels

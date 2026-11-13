@@ -133,6 +133,8 @@ private:
     [[nodiscard]] prism::PixelSize framed_full_size() const;
     // Whether a gesture is under way on the canvas this frame (gui::canvas_gesture).
     [[nodiscard]] bool canvas_gesture_now() const;
+    // Sets view_geometry_.file_scale, keeping the view's percent of the file when it changed.
+    void set_view_file_scale(float scale);
     void show_error(gui::Error error);
     void report(gui::MaybeError error);
     [[nodiscard]] gui::Theme theme() const;
@@ -300,6 +302,8 @@ private:
     std::uint64_t detail_awaited_ = 0;     // the newest admitted request's generation, until shown
     gui::DetailFramePlan detail_plan_;     // this frame's (drawing, the chip, Explain)
     std::optional<double> last_wheel_ms_;  // the last wheel, scroll or pinch on the canvas
+    bool pinch_this_frame_ = false;        // a pinch was applied to the view this frame
+    float view_file_scale_ = 0.0f;         // the file_scale view_ was last measured on
     ScopeView scope_view_;
     HistogramTexture histogram_texture_;
     std::optional<gui::StageHistogram> histogram_;

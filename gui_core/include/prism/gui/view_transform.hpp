@@ -132,6 +132,13 @@ struct ViewPixel {
 [[nodiscard]] ViewState view_toggled(const ViewState& s, const ViewGeometry& g,
                                      ViewPoint anchor) noexcept;
 
+// `s` for a ViewGeometry::file_scale that changed from `old_scale` to `new_scale` (the full-size
+// photo arrived a little larger or smaller than the estimate it was measured on, or the frame
+// changed): the same percent of the file, about the same image point. Fit, and scales that can't
+// be used, leave it as it is.
+[[nodiscard]] ViewState view_rescaled(const ViewState& s, float old_scale,
+                                      float new_scale) noexcept;
+
 // Moves the picture by this many screen units (dx > 0: the picture moves right).
 [[nodiscard]] ViewState view_panned_by(const ViewState& s, const ViewGeometry& g, float dx,
                                        float dy) noexcept;
