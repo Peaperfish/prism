@@ -427,6 +427,13 @@ TEST(DetailCanvasPlan, WithoutAReadyBaseTheChipSaysWhyAndNothingIsAskedFor) {
         EXPECT_FALSE(plan.clear);
         EXPECT_EQ(plan.chip, chip);
     }
+    // The state rules even with a base number still about (the app numbers what detail_base()
+    // gives; a base that isn't ready is never rendered from).
+    DetailFrameInput numbered = input(100.0);
+    numbered.base_state = DetailBaseState::reading;
+    const DetailFramePlan reading = plan_detail_frame(numbered);
+    EXPECT_FALSE(reading.submit);
+    EXPECT_EQ(reading.chip, PreviewChip::reading);
     // The base dropped (another read started) with real pixels shown: cleared.
     DetailFrameInput dropped = settled_after(input(100.0));
     dropped.base_state = DetailBaseState::reading;
