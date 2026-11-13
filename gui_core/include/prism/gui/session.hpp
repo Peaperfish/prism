@@ -1,7 +1,10 @@
 #pragma once
 
 #include <algorithm>
+#include <chrono>
+#include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <stop_token>
@@ -9,6 +12,7 @@
 #include <variant>
 
 #include "prism/frame.hpp"
+#include "prism/gui/detail_base.hpp"
 #include "prism/gui/export_size.hpp"
 #include "prism/gui/history.hpp"
 #include "prism/gui/presets.hpp"
@@ -55,9 +59,26 @@ struct FrameLock {
     bool operator==(const FrameLock&) const = default;
 };
 
+class DetailReader;
+class ReadEnd;
+
+// How the detail base is read: decode_for_export's signature (the default). Tests pass their own.
+using DetailReadFunction = std::function<std::variant<Photo, Error>(
+    const std::filesystem::path& source, InputKind kind, const EditSettings& settings, int threads,
+    std::stop_token stop)>;
+
 struct SessionOptions {
     int preview_long_side = 2560;  // the preview base's longer side, in pixels
     int threads = 0;               // as for the pipeline: 0 = one per hardware thread
+    // Keep a detail base (Session::detail_base): read the full-size photo in the background after
+    // opening. Off until the app shows real pixels, which also polls for it and exports through
+    // begin_export.
+    bool detail_base = false;
+    // The physical memory the detail base is measured against (plan_detail_base); nothing means
+    // the computer's own (physical_memory_bytes).
+    std::optional<std::uint64_t> physical_memory;
+    // How the detail base is read; empty means decode_for_export.
+    DetailReadFunction read_detail_base;
 };
 
 // The light the camera balanced for when it took the photo (PhotoInfo::as_shot_white_xy), as a
@@ -76,6 +97,10 @@ struct ExportJob {
     // does). Nothing means the full framed size; an image already this small is left as it is.
     // With RAW half-size on, this applies to the half-size decode, framed.
     std::optional<int> long_side;
+    // If set, export_image waits for it before decoding (Session::begin_export): the session's
+    // background reads of the full-size photo, stopped, have ended and freed what they read, so
+    // the photo is never decoded at full size twice at once. Stopping the export ends the wait.
+    std::shared_ptr<const ReadEnd> read_ended = nullptr;
 };
 
 // The photo being edited: where it came from, what is known about the shot, the small image the
@@ -86,6 +111,10 @@ struct ExportJob {
 class Session {
 public:
     explicit Session(SessionOptions options = {});
+    // Stops a background read of the detail base and waits for it to end.
+    ~Session();
+    Session(const Session&) = delete;
+    Session& operator=(const Session&) = delete;
 
     // Opens a PNG, JPEG or camera RAW file. RAW files are decoded at half size, which is still
     // larger than the preview and twice as fast. The result is shrunk to the preview base, and the
@@ -207,6 +236,43 @@ public:
     // A copy of what export_image() needs for the current file, settings and export size.
     [[nodiscard]] ExportJob export_job() const;
 
+    // --- The detail base (#37), with SessionOptions::detail_base ---------------------------------
+    //
+    // The full-size photo real-pixel zoom renders from: decode_for_export's photo for the current
+    // file and RAW options, the same pixels an export starts from. After a file is opened, and
+    // whenever what decode_for_export would read changes (another file, raw_half_size or
+    // raw_camera_matrix on a RAW file), the session plans it (plan_detail_base) and, if it must be
+    // read, reads it on a thread of its own. Other settings never restart the read. A result for a
+    // file or RAW options no longer current is thrown away when it arrives.
+
+    // Where the detail base stands (off without SessionOptions::detail_base or a file).
+    [[nodiscard]] DetailBaseState detail_base_state() const noexcept;
+    // The full-size photo to render from (render_region), for the open file and current RAW
+    // options: the read photo once ready, or with nothing to read (DetailBaseState::not_needed)
+    // the decode the preview base was made from, which is the preview base's own pixels (no copy).
+    // Null otherwise. Never changed once made: a render thread can keep it while the session
+    // drops or replaces it.
+    [[nodiscard]] std::shared_ptr<const Photo> detail_base() const noexcept;
+    // Why the read failed (DetailBaseState::failed), or nothing.
+    [[nodiscard]] const std::optional<Error>& detail_base_error() const noexcept {
+        return detail_error_;
+    }
+    // UI thread, once per frame: takes a finished read's result, if any, keeping it if it is for
+    // the current file and RAW options. True if detail_base_state() changed.
+    bool poll_detail_base();
+    // Waits until the running read has a result or has ended, for at most `timeout` (false if
+    // not by then), then poll_detail_base(). For tests and headless use; the UI just polls.
+    bool wait_for_detail_base(std::chrono::milliseconds timeout);
+
+    // export_job() for an export about to start, which must end with end_export(). A read of the
+    // detail base still running is stopped, and the job's read_ended makes export_image wait for
+    // it to end before decoding: the full-size photo is never decoded twice at once. A ready
+    // detail base stays (export still decodes the file itself). No read starts until end_export().
+    [[nodiscard]] ExportJob begin_export();
+    // The export from begin_export() has finished (or failed, or was cancelled): a read that was
+    // stopped for it, or is now wanted, starts again.
+    void end_export();
+
 private:
     // Decodes the file again if the preview base was made with another RAW camera matrix, then
     // frames it (update_framed_base).
@@ -214,6 +280,24 @@ private:
     // Makes the framed base for `frame` on the whole base, unless it is already that. On failure
     // (out of memory) nothing changes, and the base keeps the framing it was made with.
     MaybeError update_framed_base(const std::optional<Frame>& frame);
+    // Replaces whole_base_ with `decoded` shrunk to the preview's size, or with `decoded` itself
+    // (kept as preview_photo_, no copy) when it already fits. Throws std::bad_alloc.
+    void set_whole_base(Photo&& decoded);
+
+    // What decode_for_export reads for a file: the RAW options only matter for a RAW file.
+    struct DetailKey {
+        std::filesystem::path path;
+        bool raw_half_size = false;
+        std::optional<Matrix3> camera_matrix;
+
+        bool operator==(const DetailKey&) const = default;
+    };
+    // Plans the detail base again, and stops, drops and starts its read, if what
+    // decode_for_export would read changed (or always, after opening a file).
+    void update_detail_base(bool opened);
+    // Starts the read if the plan is to read and nothing is running, ready or failed, unless an
+    // export is running.
+    void start_detail_read();
 
     SessionOptions options_;
     std::filesystem::path path_;
@@ -225,6 +309,8 @@ private:
     bool file_size_exact_ = true;
     PhotoInfo photo_info_;
     std::shared_ptr<const Image> whole_base_;
+    // The decode whole_base_ points into, when it fits the preview without shrinking; else null.
+    std::shared_ptr<const Photo> preview_photo_;
     std::optional<Matrix3> preview_camera_matrix_;  // what whole_base_ was decoded with
     std::shared_ptr<const Image> framed_base_;      // whole_base_ framed by framing_
     std::shared_ptr<const Image> framed_from_;      // the whole base framed_base_ was made from
@@ -232,6 +318,16 @@ private:
     History history_;
     FrameLock frame_lock_;
     ExportSize export_size_;
+
+    std::optional<DetailKey> detail_key_;  // what detail_plan_ and the read are for
+    DetailPlan detail_plan_ = DetailPlan::not_needed;
+    std::shared_ptr<const Photo> detail_base_;  // the read's photo, once ready
+    std::optional<Error> detail_error_;         // the read's failure
+    bool detail_reading_ = false;               // a read for detail_key_ is running
+    bool exporting_ = false;                    // between begin_export and end_export
+    std::uint64_t detail_generation_ = 0;       // the running read's; results of others are stale
+    // Created on first use. Declared last: destroyed (its reads stopped and joined) first.
+    std::unique_ptr<DetailReader> detail_reader_;
 };
 
 // Renders `job` at full resolution and saves it as PNG or JPEG (by the extension of `output`; the

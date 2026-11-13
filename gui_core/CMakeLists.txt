@@ -32,9 +32,10 @@ add_library(prism_gui_core STATIC
   src/brush.cpp
   src/canvas_input.cpp
   src/clip_note.cpp
-  src/detail_base.cpp
   src/clipping.cpp
   src/close_guard.cpp
+  src/detail_base.cpp
+  src/detail_reader.cpp
   src/explanations.cpp
   src/export_size.cpp
   src/field_cache.cpp

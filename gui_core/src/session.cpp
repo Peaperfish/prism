@@ -11,7 +11,9 @@
 #include <vector>
 
 #include "prism/frame.hpp"
+#include "prism/gui/detail_reader.hpp"
 #include "prism/gui/recipe_settings.hpp"
+#include "prism/gui/system_memory.hpp"
 #include "prism/heic.hpp"
 #include "prism/raw.hpp"
 #include "prism/resize.hpp"
@@ -127,7 +129,23 @@ Error cancelled() {
 
 }  // namespace
 
-Session::Session(SessionOptions options) : options_(options) {}
+Session::Session(SessionOptions options) : options_(std::move(options)) {}
+
+Session::~Session() = default;  // detail_reader_: stops its reads and waits for them
+
+void Session::set_whole_base(Photo&& decoded) {
+    if (std::max(decoded.image.width, decoded.image.height) <= options_.preview_long_side) {
+        // The preview base is the decode itself (downscale would only copy it): keep the decode,
+        // which can then also be the detail base, and point the base at its pixels.
+        auto photo = std::make_shared<const Photo>(std::move(decoded));
+        whole_base_ = std::shared_ptr<const Image>(photo, &photo->image);
+        preview_photo_ = std::move(photo);
+        return;
+    }
+    whole_base_ = std::make_shared<const Image>(
+        downscale(decoded.image, options_.preview_long_side, options_.threads));
+    preview_photo_.reset();
+}
 
 MaybeError Session::open_file(const fs::path& path) {
     const std::variant<InputKind, Error> checked = check_input(path);
@@ -149,27 +167,27 @@ MaybeError Session::open_file(const fs::path& path) {
 
     // Only now, with everything loaded, replace the previous file.
     Photo& photo = std::get<Photo>(decoded);
-    const Image& img = photo.image;
+    const PixelSize size{photo.image.width, photo.image.height};
+    PhotoInfo info = photo.info;
     try {
-        whole_base_ = std::make_shared<const Image>(
-            downscale(img, options_.preview_long_side, options_.threads));
+        set_whole_base(std::move(photo));
     } catch (const std::bad_alloc&) {
         return Error{ErrorKind::out_of_memory, "Not enough memory to open this photo.", ""};
     }
     path_ = path;
     kind_ = kind;
-    photo_info_ = std::move(photo.info);
-    decoded_width_ = img.width;
-    decoded_height_ = img.height;
-    file_width_ = img.width;
-    file_height_ = img.height;
+    photo_info_ = std::move(info);
+    decoded_width_ = size.width;
+    decoded_height_ = size.height;
+    file_width_ = size.width;
+    file_height_ = size.height;
     file_size_exact_ = true;
     if (kind == InputKind::raw) {
         // Half size is about half the sensor's width and height: the estimate if the file won't
         // say.
         const bool known = full.width > 0;
-        file_width_ = known ? full.width : img.width * 2;
-        file_height_ = known ? full.height : img.height * 2;
+        file_width_ = known ? full.width : size.width * 2;
+        file_height_ = known ? full.height : size.height * 2;
         file_size_exact_ = known && full.exact;
     }
     preview_camera_matrix_.reset();
@@ -179,6 +197,7 @@ MaybeError Session::open_file(const fs::path& path) {
     framed_from_ = whole_base_;
     framing_.reset();
     frame_lock_ = FrameLock{};
+    update_detail_base(true);
     return std::nullopt;
 }
 
@@ -197,10 +216,13 @@ MaybeError Session::set_settings(const EditSettings& s) {
             return error;
         }
         history_.set(stored);
+        update_detail_base(false);
         return std::nullopt;
     }
     history_.set(stored);
-    return update_preview_base();
+    MaybeError error = update_preview_base();
+    update_detail_base(false);
+    return error;
 }
 
 MaybeError Session::apply_recipe(const Recipe& recipe) {
@@ -220,12 +242,16 @@ MaybeError Session::clear_strokes() {
 
 MaybeError Session::undo() {
     history_.undo();
-    return update_preview_base();
+    MaybeError error = update_preview_base();
+    update_detail_base(false);
+    return error;
 }
 
 MaybeError Session::redo() {
     history_.redo();
-    return update_preview_base();
+    MaybeError error = update_preview_base();
+    update_detail_base(false);
+    return error;
 }
 
 MaybeError Session::update_preview_base() {
@@ -244,8 +270,7 @@ MaybeError Session::update_preview_base() {
         return std::move(*e);
     }
     try {
-        whole_base_ = std::make_shared<const Image>(downscale(
-            std::get<Photo>(decoded).image, options_.preview_long_side, options_.threads));
+        set_whole_base(std::move(std::get<Photo>(decoded)));
     } catch (const std::bad_alloc&) {
         (void)update_framed_base(settings().frame);
         return Error{ErrorKind::out_of_memory, "Not enough memory to open this photo.", ""};
@@ -303,7 +328,120 @@ std::optional<Chromaticity> as_shot_white_of(const PhotoInfo& info) noexcept {
 }
 
 ExportJob Session::export_job() const {
-    return {path_, kind_, settings(), options_.threads, export_long_side()};
+    return {path_, kind_, settings(), options_.threads, export_long_side(), nullptr};
+}
+
+void Session::update_detail_base(bool opened) {
+    if (!options_.detail_base || !has_file()) {
+        return;
+    }
+    const EditSettings& s = settings();
+    const bool raw = kind_ == InputKind::raw;
+    // decode_for_export ignores the RAW options for anything but a RAW file.
+    DetailKey key{path_, raw && s.raw_half_size, raw ? camera_matrix_of(s) : std::nullopt};
+    if (!opened && detail_key_ == key) {
+        return;
+    }
+    if (!detail_reader_) {
+        detail_reader_ = std::make_unique<DetailReader>(options_.read_detail_base);
+    }
+    // The base, the read and anything it posted belong to the old file or options: stop the
+    // read, and drop its result now, so its memory is freed before the next read decodes.
+    detail_reader_->stop();
+    (void)detail_reader_->take_all();
+    detail_base_.reset();
+    detail_error_.reset();
+    detail_reading_ = false;
+    ++detail_generation_;
+
+    // The preview base is the export's decode when it was made by the same decode (a RAW file's
+    // is half size, with the preview's camera matrix) and not shrunk (preview_photo_).
+    const bool same_decode =
+        preview_photo_ != nullptr &&
+        (!raw || (key.raw_half_size && key.camera_matrix == preview_camera_matrix_));
+    detail_plan_ = plan_detail_base(
+        export_start_size(), {whole_base_->width, whole_base_->height}, same_decode,
+        options_.physical_memory ? *options_.physical_memory : physical_memory_bytes());
+    detail_key_ = std::move(key);
+    start_detail_read();
+}
+
+void Session::start_detail_read() {
+    if (detail_plan_ != DetailPlan::read || exporting_ || detail_base_ || detail_error_ ||
+        detail_reading_) {
+        return;
+    }
+    ++detail_generation_;
+    detail_reader_->start(detail_generation_, path_, kind_, settings(), options_.threads);
+    detail_reading_ = true;
+}
+
+DetailBaseState Session::detail_base_state() const noexcept {
+    return prism::gui::detail_base_state(options_.detail_base && has_file(), detail_plan_,
+                                         detail_base_ != nullptr, detail_error_.has_value());
+}
+
+std::shared_ptr<const Photo> Session::detail_base() const noexcept {
+    switch (detail_base_state()) {
+        case DetailBaseState::ready:
+            return detail_base_;
+        case DetailBaseState::not_needed:
+            return preview_photo_;
+        default:
+            return nullptr;
+    }
+}
+
+bool Session::poll_detail_base() {
+    if (!detail_reader_) {
+        return false;
+    }
+    bool changed = false;
+    for (DetailReader::Result& result : detail_reader_->take_all()) {
+        if (!detail_reading_ || result.generation != detail_generation_) {
+            continue;  // for a file or options no longer current: freed here
+        }
+        detail_reading_ = false;
+        changed = true;
+        if (auto* photo = std::get_if<std::shared_ptr<const Photo>>(&result.base)) {
+            detail_base_ = std::move(*photo);
+        } else {
+            detail_error_ = std::move(std::get<Error>(result.base));
+        }
+    }
+    return changed;
+}
+
+bool Session::wait_for_detail_base(std::chrono::milliseconds timeout) {
+    if (!detail_reader_) {
+        return true;
+    }
+    const bool done = detail_reader_->wait(timeout);
+    (void)poll_detail_base();
+    return done;
+}
+
+ExportJob Session::begin_export() {
+    ExportJob job = export_job();
+    if (detail_reader_) {
+        (void)poll_detail_base();  // a read that has just finished is kept, not stopped
+        if (detail_reading_) {
+            detail_reader_->stop();
+            detail_reading_ = false;
+            ++detail_generation_;  // what it may still have posted is not wanted
+        }
+        job.read_ended = detail_reader_->ended();
+    }
+    exporting_ = true;
+    return job;
+}
+
+void Session::end_export() {
+    exporting_ = false;
+    if (detail_reader_) {
+        (void)poll_detail_base();
+        start_detail_read();
+    }
 }
 
 namespace {
@@ -490,6 +628,10 @@ MaybeError export_image(const ExportJob& job, const fs::path& output, std::stop_
         return invalid_settings_error(problems);
     }
 
+    // The session's background read of this photo, if stopped for this export, has ended first.
+    if (job.read_ended && !job.read_ended->wait(stop)) {
+        return cancelled();
+    }
     std::variant<Photo, Error> decoded =
         decode_for_export(job.source, job.kind, job.settings, job.threads, stop);
     if (Error* e = std::get_if<Error>(&decoded)) {
