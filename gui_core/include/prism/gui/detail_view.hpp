@@ -124,4 +124,16 @@ enum class RegionBudget {
 // Whether a region of this budget is rendered now, with or without a gesture under way.
 [[nodiscard]] bool region_renders_now(RegionBudget budget, bool gesture) noexcept;
 
+// The size a region's render is drawn from: what the detail worker hands the canvas.
+//  - At 100% and above (one device pixel or more per file pixel, along the shown axis, within
+//    real_pixels_tolerance of 100%): the region itself, so each file pixel is drawn whole.
+//  - Below 100%: the region shrunk by area averaging (prism::downscale) to the device pixels it
+//    covers, so the texture is never larger than the canvas in device pixels. Its long side is the
+//    region's long side times the device pixels per file pixel, rounded to the nearest pixel
+//    (halves up) and at least 1; the short side is downscaled_size's, so it is exactly what
+//    downscale(image, long side) gives.
+// Never 0 x 0: an empty region (which file_region never gives) counts as 1 x 1.
+[[nodiscard]] PixelSize detail_output_size(const FrameBox& region, double points_per_preview_pixel,
+                                           double density, FileScale scale);
+
 }  // namespace prism::gui

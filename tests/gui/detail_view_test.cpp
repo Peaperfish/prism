@@ -237,4 +237,43 @@ TEST(DetailView, BudgetRendersOnReleaseUpToThirtyMegapixels) {
     EXPECT_FALSE(region_renders_now(RegionBudget::never, false));
 }
 
+TEST(DetailView, BelowHundredPercentTheRegionShrinksToItsDevicePixels) {
+    const FileScale k = file_scale(file_60mp, preview_of(file_60mp));
+    // 50% on a 2x screen: a 6800 x 4400 region covers 3400 x 2200 device pixels.
+    const double half = view_scale_for_file_percent(50.0, 2.0, k);
+    EXPECT_EQ(detail_output_size({0, 0, 6800, 4400}, half, 2.0, k), (PixelSize{3400, 2200}));
+    // The long side is rounded to the nearest pixel, halves up: 1001 * 0.5 = 500.5 -> 501, and the
+    // short side is downscale's: 401 * 501 / 1001 = 200.7 -> 201.
+    EXPECT_EQ(detail_output_size({0, 0, 1001, 401}, half, 2.0, k), (PixelSize{501, 201}));
+    EXPECT_EQ(detail_output_size({0, 0, 401, 1001}, half, 2.0, k), (PixelSize{201, 501}));
+    // 25% at 1x: 4000 x 3000 -> 1000 x 750.
+    const double quarter = view_scale_for_file_percent(25.0, 1.0, k);
+    EXPECT_EQ(detail_output_size({17, 9, 4000, 3000}, quarter, 1.0, k), (PixelSize{1000, 750}));
+}
+
+TEST(DetailView, AtOrAboveHundredPercentTheOutputIsTheRegion) {
+    const FileScale k = file_scale(file_60mp, preview_of(file_60mp));
+    const FrameBox r{100, 200, 3400, 2200};
+    for (const double percent : {100.0, 100.0 - 0.5e-2, 150.0, 800.0}) {
+        for (const double density : {1.0, 2.0}) {
+            EXPECT_EQ(
+                detail_output_size(r, view_scale_for_file_percent(percent, density, k), density, k),
+                (PixelSize{3400, 2200}))
+                << percent << "% at " << density << "x";
+        }
+    }
+    // Just below 100% by more than the tolerance: shrunk.
+    EXPECT_EQ(detail_output_size(r, view_scale_for_file_percent(99.0, 1.0, k), 1.0, k),
+              (PixelSize{3366, 2178}));
+}
+
+TEST(DetailView, OutputIsNeverEmpty) {
+    const FileScale k = file_scale(file_60mp, preview_of(file_60mp));
+    const double tiny = view_scale_for_file_percent(0.01, 1.0, k);
+    EXPECT_EQ(detail_output_size({0, 0, 3000, 2000}, tiny, 1.0, k), (PixelSize{1, 1}));
+    EXPECT_EQ(detail_output_size({0, 0, 1, 1}, tiny, 1.0, k), (PixelSize{1, 1}));
+    EXPECT_EQ(detail_output_size({0, 0, 0, 0}, tiny, 1.0, k), (PixelSize{1, 1}));
+    EXPECT_EQ(detail_output_size({0, 0, 0, 0}, 4.0, 2.0, k), (PixelSize{1, 1}));
+}
+
 }  // namespace

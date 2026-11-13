@@ -114,4 +114,18 @@ bool region_renders_now(RegionBudget budget, bool gesture) noexcept {
     return false;
 }
 
+PixelSize detail_output_size(const FrameBox& region, double points_per_preview_pixel,
+                             double density, FileScale scale) {
+    const int width = std::max(1, region.width);
+    const int height = std::max(1, region.height);
+    const double device_per_file_pixel = points_per_preview_pixel * density / scale.shown;
+    if (device_per_file_pixel >= 1.0 - real_pixels_tolerance) {
+        return {width, height};
+    }
+    const int long_side = std::max(width, height);
+    const double shown = std::round(static_cast<double>(long_side) * device_per_file_pixel);
+    const int target = static_cast<int>(std::clamp(shown, 1.0, static_cast<double>(long_side)));
+    return downscaled_size(width, height, target);
+}
+
 }  // namespace prism::gui
