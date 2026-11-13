@@ -183,6 +183,39 @@ TEST(Session, AFailedOpenKeepsThePreviousFile) {
     fs::remove(junk);
 }
 
+TEST(SessionGeneration, ChangesWithTheSettingsAndWithAnotherPhoto) {
+    const fs::path png = write_png("gen.png", 40, 30);
+    const fs::path junk = write_text("gen_junk.jpg", "not a JPEG either");
+    Session session;
+    ASSERT_EQ(session.open_file(png), std::nullopt);
+    std::uint64_t last = session.settings_generation();
+    const auto changed = [&] {
+        const std::uint64_t now = session.settings_generation();
+        const bool moved = now > last;
+        last = now;
+        return moved;
+    };
+    ASSERT_EQ(session.set_settings(vivid_look()), std::nullopt);
+    EXPECT_TRUE(changed());
+    ASSERT_EQ(session.set_settings(vivid_look()), std::nullopt);  // the same settings
+    EXPECT_FALSE(changed());
+    EditSettings bad = vivid_look();
+    bad.saturation = 50.0f;
+    ASSERT_TRUE(session.set_settings(bad));  // refused: nothing changes
+    EXPECT_FALSE(changed());
+    ASSERT_EQ(session.undo(), std::nullopt);
+    EXPECT_TRUE(changed());
+    ASSERT_EQ(session.redo(), std::nullopt);
+    EXPECT_TRUE(changed());
+    ASSERT_TRUE(session.open_file(junk));  // a failed open keeps the photo and its settings
+    EXPECT_FALSE(changed());
+    ASSERT_EQ(session.open_file(png), std::nullopt);  // the same file again: another photo
+    EXPECT_TRUE(changed());
+    EXPECT_EQ(session.settings_generation(), session.history().generation());
+    fs::remove(png);
+    fs::remove(junk);
+}
+
 TEST(Session, OpensARawFileAtHalfSizeOrSaysWhyNot) {
     const fs::path dng = write_dng("in.dng");
     Session session;

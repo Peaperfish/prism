@@ -169,6 +169,11 @@ public:
 
     [[nodiscard]] const EditSettings& settings() const noexcept { return history_.current(); }
     [[nodiscard]] const History& history() const noexcept { return history_; }
+    // history().generation(): changes whenever settings() may have, including when another file
+    // is opened. What a render made for the current settings is keyed by (DetailKey::settings).
+    [[nodiscard]] std::uint64_t settings_generation() const noexcept {
+        return history_.generation();
+    }
     // The easel's aspect lock (FrameLock): set by framing, Original for a newly opened photo.
     [[nodiscard]] const FrameLock& frame_lock() const noexcept { return frame_lock_; }
     void set_frame_lock(const FrameLock& lock) noexcept { frame_lock_ = lock; }

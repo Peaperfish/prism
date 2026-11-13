@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <vector>
 
@@ -56,6 +57,12 @@ public:
     // Starts over from `s` with no undo or redo steps, e.g. when another file is opened.
     void reset(EditSettings s);
 
+    // A number that changes whenever current() may have: every set() that changes it, undo(),
+    // redo() and reset() (even to equal settings: another photo). Never goes back, so two equal
+    // numbers mean the same settings; a render made for one can be told from one made for another
+    // without comparing settings (DetailKey::settings). Starts at 0.
+    [[nodiscard]] std::uint64_t generation() const noexcept { return generation_; }
+
 private:
     // Finishes the gesture: if the settings changed during it, one step from where it began.
     void finish_gesture();
@@ -67,6 +74,7 @@ private:
     std::size_t capacity_;
     bool in_gesture_ = false;
     EditSettings gesture_start_;
+    std::uint64_t generation_ = 0;
 };
 
 }  // namespace prism::gui

@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <cstdint>
+
 #include "prism/gui/history.hpp"
 #include "prism/gui/settings.hpp"
 
@@ -153,4 +155,43 @@ TEST(History, ResetStartsOver) {
     h.reset(with_exposure(7));
     EXPECT_EQ(h.current(), with_exposure(7));
     EXPECT_FALSE(h.can_undo() || h.can_redo() || h.in_gesture());
+}
+
+// --- The generation (#37: what a detail render is keyed by) ------------------------------------
+
+TEST(HistoryGeneration, ChangesWithEveryChangeOfTheSettings) {
+    History h(with_exposure(0));
+    std::uint64_t last = h.generation();
+    const auto changed = [&] {
+        const std::uint64_t now = h.generation();
+        const bool moved = now > last;
+        last = now;
+        return moved;
+    };
+    h.set(with_exposure(1));
+    EXPECT_TRUE(changed());
+    h.begin_gesture();
+    h.set(with_exposure(1.5f));  // inside a gesture: not a step, but the settings changed
+    EXPECT_TRUE(changed());
+    h.set(with_exposure(2));
+    EXPECT_TRUE(changed());
+    h.end_gesture();
+    EXPECT_FALSE(changed());  // the settings are where the drag left them
+    EXPECT_TRUE(h.undo());
+    EXPECT_TRUE(changed());
+    EXPECT_TRUE(h.redo());
+    EXPECT_TRUE(changed());
+    h.reset(h.current());  // another photo, with equal settings: another number all the same
+    EXPECT_TRUE(changed());
+}
+
+TEST(HistoryGeneration, StaysWhenNothingChanges) {
+    History h(with_exposure(1));
+    const std::uint64_t start = h.generation();
+    h.set(with_exposure(1));  // the same value
+    EXPECT_FALSE(h.undo());   // nothing to undo
+    EXPECT_FALSE(h.redo());
+    h.begin_gesture();
+    h.end_gesture();
+    EXPECT_EQ(h.generation(), start);
 }

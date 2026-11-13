@@ -16,6 +16,7 @@ void History::set(const EditSettings& s) {
         redo_.clear();
     }
     current_ = s;
+    ++generation_;
 }
 
 void History::begin_gesture() {
@@ -53,6 +54,7 @@ bool History::undo() {
     redo_.push_back(std::move(current_));
     current_ = std::move(undo_.back());
     undo_.pop_back();
+    ++generation_;
     return true;
 }
 
@@ -64,11 +66,13 @@ bool History::redo() {
     push_undo(std::move(current_));
     current_ = std::move(redo_.back());
     redo_.pop_back();
+    ++generation_;
     return true;
 }
 
 void History::reset(EditSettings s) {
     current_ = std::move(s);
+    ++generation_;
     undo_.clear();
     redo_.clear();
     in_gesture_ = false;
