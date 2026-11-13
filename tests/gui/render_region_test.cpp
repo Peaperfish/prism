@@ -289,8 +289,9 @@ TEST(RenderRegion, TheStrokesVaryAcrossThePartsTested) {
                 ASSERT_GT(b.pixels[i], 0.0f);
                 gains.push_back(a.pixels[i] / b.pixels[i]);
             }
+            // More than the rounding of an even gain, which varies a/b in the last bits.
             const auto [lo, hi] = std::minmax_element(gains.begin(), gains.end());
-            EXPECT_LT(*lo, *hi);
+            EXPECT_GT(*hi, *lo * 1.001f) << "gain " << *lo << " to " << *hi;
         }
     }
 }
