@@ -1,7 +1,11 @@
 #pragma once
 
+#include <cstdint>
+#include <optional>
 #include <string>
 
+#include "prism/frame.hpp"
+#include "prism/gui/view_transform.hpp"
 #include "prism/resize.hpp"
 
 // Real-pixel zoom (#37): the view's numbers measured against the file rather than the preview.
@@ -72,5 +76,52 @@ inline constexpr double real_pixels_tolerance = 1e-4;
 // device pixel per preview pixel, by more than real_pixels_tolerance. At or below that the preview
 // already has a pixel (or more) for each device pixel, and nothing changes from 0.6.0.
 [[nodiscard]] bool real_pixels_needed(double points_per_preview_pixel, double density) noexcept;
+
+// A rectangle in preview pixels (the view's image space): [x0, x1) x [y0, y1), continuous.
+struct PreviewRect {
+    double x0 = 0.0;
+    double y0 = 0.0;
+    double x1 = 0.0;
+    double y1 = 0.0;
+};
+
+// The file pixels `preview` covers, as render_region takes them: pixels of the framed picture at
+// full size (`framed_full`), measured with the per-axis scale from `framed_preview`. Each edge is
+// rounded outward (an edge in the middle of a file pixel takes that pixel in), then clamped to the
+// framed picture. Nothing if nothing of the picture is left, or either size is empty.
+[[nodiscard]] std::optional<FrameBox> file_region(const PreviewRect& preview,
+                                                  PixelSize framed_preview,
+                                                  PixelSize framed_full) noexcept;
+
+// The part of the picture on the canvas, in file pixels: view_visible_rect taken to preview pixels
+// through view_screen_to_image, then file_region. The view's image is the framed preview
+// (g.image_width x g.image_height).
+[[nodiscard]] std::optional<FrameBox> visible_file_region(const ViewState& s, const ViewGeometry& g,
+                                                          PixelSize framed_full) noexcept;
+
+// The design's region snapping (#37 section 5): the region a detail render asks for is the visible
+// one with its edges moved outward to the nearest multiple of detail_cell file pixels, so a pan of
+// a few pixels needs no new render; when no gesture is under way one more cell on each side, so a
+// small pan is sharp at once. Clamped to the framed picture. The budget below is measured on the
+// visible region, not on this one: the snapping and margin add at most 2 or 4 cells across.
+inline constexpr int detail_cell = 128;
+[[nodiscard]] FrameBox detail_region(const FrameBox& visible, PixelSize framed_full,
+                                     bool idle) noexcept;
+
+// How many file pixels a region of real pixels may have. Megapixels are millions of pixels.
+inline constexpr std::int64_t region_live_max_pixels = 8'000'000;  // rendered while dragging
+inline constexpr std::int64_t region_max_pixels = 30'000'000;      // rendered at all
+
+enum class RegionBudget {
+    live,        // at most 8 MP: rendered at once, also during a drag, a pan or a zoom
+    on_release,  // over 8 MP, at most 30 MP: rendered only once no gesture is under way
+    never,       // over 30 MP: not rendered; the preview stays
+};
+
+// The budget of a region of `region.width` x `region.height` file pixels (an empty one is live).
+[[nodiscard]] RegionBudget region_budget(const FrameBox& region) noexcept;
+
+// Whether a region of this budget is rendered now, with or without a gesture under way.
+[[nodiscard]] bool region_renders_now(RegionBudget budget, bool gesture) noexcept;
 
 }  // namespace prism::gui
