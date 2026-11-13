@@ -592,6 +592,26 @@ TEST(DetailSession, ExportWithTheBaseReadyKeepsIt) {
     EXPECT_EQ(reads.calls().size(), 1u);
 }
 
+TEST(DetailSession, AnExportEndedForClosingStartsNoRead) {
+    TempFiles files;
+    const fs::path source = write_png(files, "big.png", big_w, big_h);
+    FakeReads reads;  // never released: a read that starts stays running until stopped
+    Session session(with_detail(&reads));
+    const LetGo let_go(reads);
+    ASSERT_EQ(session.open_file(source), std::nullopt);
+    ASSERT_TRUE(reads.wait_for_calls(1));
+    const ExportJob job = session.begin_export();  // stops the read
+    ASSERT_TRUE(session.wait_for_detail_read(timeout));
+    session.end_export(false);
+    // Nothing running: no read was started.
+    EXPECT_TRUE(session.wait_for_detail_read(std::chrono::milliseconds(0)));
+    EXPECT_EQ(reads.calls().size(), 1u);
+    // An ordinary end does start it.
+    const ExportJob again = session.begin_export();
+    session.end_export();
+    EXPECT_TRUE(reads.wait_for_calls(2));
+}
+
 TEST(DetailSession, ClosingWhileReadingStopsTheRead) {
     TempFiles files;
     FakeReads reads;

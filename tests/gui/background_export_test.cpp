@@ -228,6 +228,7 @@ namespace {
 struct Brackets {
     int begun = 0;
     int ended = 0;
+    int ended_closing = 0;  // of `ended`, those ended because the app closed
     prism::gui::SessionExport::Begin begin() {
         return [this] {
             ++begun;
@@ -237,7 +238,10 @@ struct Brackets {
         };
     }
     prism::gui::SessionExport::End end() {
-        return [this] { ++ended; };
+        return [this](bool closing) {
+            ++ended;
+            ended_closing += closing ? 1 : 0;
+        };
     }
 };
 
@@ -338,9 +342,10 @@ TEST(SessionExport, ACancelledExportIsEndedWhenItsResultIsTaken) {
     EXPECT_EQ(result->error->kind, ErrorKind::cancelled);
     EXPECT_EQ(b.begun, 1);
     EXPECT_EQ(b.ended, 1);
+    EXPECT_EQ(b.ended_closing, 0);  // a cancel isn't closing: the read starts again
 }
 
-TEST(SessionExport, ARefusedStartIsEndedAtOnce) {
+TEST(SessionExport, ARefusedStartBeginsNothing) {
     Gate started;
     Release release;
     BackgroundExport exporter = held_export(started, release, std::nullopt);
@@ -348,14 +353,17 @@ TEST(SessionExport, ARefusedStartIsEndedAtOnce) {
     prism::gui::SessionExport exports(exporter, b.begin(), b.end());
     ASSERT_TRUE(exports.start("first.png"));
     ASSERT_TRUE(started.wait());
-    EXPECT_FALSE(exports.start("second.png"));  // one at a time
-    EXPECT_EQ(b.begun, 2);
-    EXPECT_EQ(b.ended, 1);         // the refused one, at once
-    EXPECT_TRUE(exports.begun());  // the first is still running
+    // One at a time; and the running export stays begun, so the session's read stays paused while
+    // it decodes.
+    EXPECT_FALSE(exports.start("second.png"));
+    EXPECT_EQ(b.begun, 1);
+    EXPECT_EQ(b.ended, 0);
+    EXPECT_TRUE(exports.begun());
     release.open();
     ASSERT_TRUE(exporter.wait(timeout));
     ASSERT_TRUE(exports.poll());
-    EXPECT_EQ(b.ended, 2);
+    EXPECT_EQ(b.ended, 1);
+    EXPECT_EQ(b.ended_closing, 0);
     EXPECT_FALSE(exports.begun());
 }
 
@@ -372,6 +380,7 @@ TEST(SessionExport, ClosingMidExportCancelsAndEndsIt) {
     }  // the app closes: the export is stopped (the gate is never released) and ended
     EXPECT_EQ(b.begun, 1);
     EXPECT_EQ(b.ended, 1);
+    EXPECT_EQ(b.ended_closing, 1);  // as closing: the session starts no read
     EXPECT_FALSE(exporter.busy());
 }
 

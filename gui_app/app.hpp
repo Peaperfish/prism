@@ -347,7 +347,7 @@ private:
     // Declared after exporter_ and session_, so it is destroyed first: closing mid-export cancels
     // the export and ends it while both still exist.
     gui::SessionExport exports_{exporter_, [this] { return session_.begin_export(); },
-                                [this] { session_.end_export(); }};
+                                [this](bool closing) { session_.end_export(!closing); }};
     // What the photo was last saved with, by export or as a recipe, to tell unsaved edits from
     // none.
     gui::SavedBaseline baseline_;

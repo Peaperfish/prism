@@ -76,9 +76,10 @@ private:
 // session stops its background read of the full-size photo while an export decodes, and starts it
 // again after. Every begin is matched by exactly one end, whichever way the export goes:
 //
-//   start() refused (an export already running)   ended at once, in start()
+//   start() refused (an export already running)   nothing is begun, so nothing is ended
 //   finished, failed or cancelled                 ended when poll() hands out the result
-//   still running when this is destroyed          cancelled, waited for, then ended
+//   still running when this is destroyed          cancelled, waited for, then ended as closing
+//                                                 (End's argument true: no read is started)
 //
 //   UI thread:            exports.start(output);
 //   UI thread, per frame: if (auto result = exports.poll()) report(*result);
@@ -89,7 +90,8 @@ private:
 class SessionExport {
 public:
     using Begin = std::function<ExportJob()>;
-    using End = std::function<void()>;
+    // `closing`: the export is ended because this is being destroyed (the app is closing).
+    using End = std::function<void(bool closing)>;
 
     SessionExport(BackgroundExport& exporter, Begin begin, End end);
     ~SessionExport();
@@ -97,8 +99,9 @@ public:
     SessionExport(const SessionExport&) = delete;
     SessionExport& operator=(const SessionExport&) = delete;
 
-    // Begins an export and starts it to `output`. False if it didn't start (one is running): the
-    // export begun for it is ended before this returns.
+    // Begins an export and starts it to `output`. False, with nothing begun, while one is running
+    // (the running one stays begun: a second begin would let the session read the full-size photo
+    // while the first export decodes it).
     bool start(std::filesystem::path output);
     // As BackgroundExport::poll; when it hands out a result, the export is ended first.
     [[nodiscard]] std::optional<ExportResult> poll();

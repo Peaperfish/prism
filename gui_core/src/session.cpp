@@ -457,11 +457,13 @@ ExportJob Session::begin_export() {
     return job;
 }
 
-void Session::end_export() {
+void Session::end_export(bool start_read) {
     exporting_ = false;
     if (detail_reader_) {
         (void)poll_detail_base();
-        start_detail_read();
+        if (start_read) {
+            start_detail_read();
+        }
     }
 }
 

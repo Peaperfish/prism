@@ -280,8 +280,9 @@ public:
     // detail base stays (export still decodes the file itself). No read starts until end_export().
     [[nodiscard]] ExportJob begin_export();
     // The export from begin_export() has finished (or failed, or was cancelled): a read that was
-    // stopped for it, or is now wanted, starts again.
-    void end_export();
+    // stopped for it, or is now wanted, starts again, unless `start_read` is false (the app is
+    // closing: a full-size decode would only be started to be stopped).
+    void end_export(bool start_read = true);
 
 private:
     // Decodes the file again if the preview base was made with another RAW camera matrix, then

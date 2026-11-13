@@ -77,16 +77,19 @@ SessionExport::~SessionExport() {
     exporter_.cancel();
     while (!exporter_.wait(std::chrono::seconds(1))) {
     }
-    (void)poll();
+    if (exporter_.poll()) {
+        begun_ = false;
+        end_(true);
+    }
 }
 
 bool SessionExport::start(std::filesystem::path output) {
-    // Begun first even when an export is running, so a refused start is ended like any other: the
-    // app never starts one then (it checks busy()), and if it did the session's read would only
-    // stop and start again.
+    if (exporter_.busy()) {
+        return false;  // nothing begun, nothing to end
+    }
     ExportJob job = begin_();
     if (!exporter_.start(std::move(job), std::move(output))) {
-        end_();  // the one running stays begun, and is ended with its result
+        end_(false);  // can't happen while not busy, but a begin is always ended
         return false;
     }
     begun_ = true;
@@ -97,7 +100,7 @@ std::optional<ExportResult> SessionExport::poll() {
     std::optional<ExportResult> result = exporter_.poll();
     if (result && begun_) {
         begun_ = false;
-        end_();
+        end_(false);
     }
     return result;
 }
