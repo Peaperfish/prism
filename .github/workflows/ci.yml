@@ -125,7 +125,7 @@ jobs:
       # --config and -C pick the configuration on multi-config generators (Visual Studio);
       # single-config ones (Makefiles on Linux and macOS) ignore them.
       - name: Build
-        run: cmake --build build --config ${{ matrix.build_type }} --parallel
+        run: cmake --build build --config ${{ matrix.build_type }} --parallel 4
 
       # LibRaw must stay a separate DLL (its LGPL/CDDL terms): check that prism.exe and the tests
       # import libraw_r.dll rather than containing LibRaw, and that the build copied the DLL next
@@ -216,7 +216,7 @@ jobs:
           fi
 
       - name: Build prism_gui and its headless tests
-        run: cmake --build build --config Release --target prism_gui prism_gui_app_tests --parallel
+        run: cmake --build build --config Release --target prism_gui prism_gui_app_tests --parallel 4
 
       # The widget code against a headless Dear ImGui: no window, display or SDL backend needed.
       - name: Test the GUI widgets headlessly
