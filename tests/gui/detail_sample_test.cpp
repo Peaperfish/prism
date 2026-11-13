@@ -390,13 +390,31 @@ TEST(DetailBrush, AStrokesPlaceOnThePhotoDoesNotDependOnTheZoom) {
     // A small brush, whose spacing is the one-pixel floor: a preview pixel at Fit, a file pixel at
     // 100%.
     const float radius = 0.001f;
-    const FieldStroke at_fit = stroke_of(
-        path, prism::min_point_spacing(radius, brush_spacing_long_side(canvas, false, full)),
-        canvas);
-    const FieldStroke at_100 = stroke_of(
-        path, prism::min_point_spacing(radius, brush_spacing_long_side(canvas, true, full)),
-        canvas);
+    const float fit_spacing =
+        prism::min_point_spacing(radius, brush_spacing_long_side(canvas, false, full));
+    const float spacing_100 =
+        prism::min_point_spacing(radius, brush_spacing_long_side(canvas, true, full));
+    const FieldStroke at_fit = stroke_of(path, fit_spacing, canvas);
+    const FieldStroke at_100 = stroke_of(path, spacing_100, canvas);
     ASSERT_GT(at_100.points.size(), at_fit.points.size());
+    // Each stroke's points are its own spacing apart (to within one step of the drag): the zoom
+    // sets how close the points are, never where they are.
+    const double step = std::hypot(1500.0 / 6000.0, 700.0 / 6000.0) / 2560.0;  // long-side units
+    const auto spaced = [&](const FieldStroke& stroke, float spacing) {
+        for (std::size_t i = 1; i + 1 < stroke.points.size(); ++i) {
+            const double du = static_cast<double>(stroke.points[i].u) - stroke.points[i - 1].u;
+            const double dv = (static_cast<double>(stroke.points[i].v) - stroke.points[i - 1].v) /
+                              static_cast<double>(prism::aspect_of(full.width, full.height));
+            const double d = std::hypot(du, dv);
+            if (d < spacing * 0.999 || d > spacing + step * 1.01) {
+                ADD_FAILURE() << "point " << i << " is " << d << " from the last, spacing "
+                              << spacing;
+                return;
+            }
+        }
+    };
+    spaced(at_fit, fit_spacing);
+    spaced(at_100, spacing_100);
     // Each point is where the cursor was on the photo, whatever the spacing: the first and last
     // are the same, and every point lies on the line.
     EXPECT_EQ(at_fit.points.front(), at_100.points.front());
