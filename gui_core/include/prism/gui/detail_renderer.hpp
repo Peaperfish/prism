@@ -84,6 +84,10 @@ struct DetailFrame {
     std::uint64_t generation = 0;  // submit()'s number for the request
     DetailKey key;
     FrameBox region;  // the file pixels it shows, in pixels of the whole framed picture
+    // The size of that whole framed picture: plan_export_frame(settings.frame, base size).size for
+    // the request's settings and base. A frame made before the frame (crop or turn) changed is in
+    // another picture, and the canvas must not place it on this one. 0 x 0 on an error frame.
+    PixelSize picture{0, 0};
     // width x height: the region itself at 100% and above, smaller below (the request's output).
     PixelSize size;
     // size.width * size.height * 3 bytes of 8-bit sRGB, row-major, encoded by encode_srgb8 as the

@@ -152,6 +152,8 @@ std::optional<DetailFrame> DetailRenderer::render(const Job& job, std::stop_toke
     frame.generation = job.generation;
     frame.key = r.key;
     frame.region = r.request.region;
+    frame.picture =
+        plan_export_frame(r.settings.frame, r.base->image.width, r.base->image.height).size;
     if (r.output != PixelSize{pixels->width, pixels->height}) {
         // Below 100%: shrink to what the canvas covers, as detail_output_size worked it out.
         *pixels = downscale(*pixels, std::max(r.output.width, r.output.height), threads_);

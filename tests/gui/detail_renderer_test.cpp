@@ -799,3 +799,20 @@ TEST(DetailRenderer, RegionsOfTheRawFileAreExportsPixels) {
 }
 
 }  // namespace
+
+namespace {
+
+TEST(DetailRenderer, AFrameSaysWhichFramedPictureItsRegionIsIn) {
+    const auto base = std::make_shared<Photo>(make_photo(640, 430));
+    DetailRenderer renderer(1);
+    EditSettings whole;
+    EditSettings turned;
+    turned.frame = turned_7();
+    const PixelSize turned_size = prism::plan_export_frame(turned.frame, 640, 430).size;
+    ASSERT_NE(turned_size, (PixelSize{640, 430}));
+    const FrameBox region{10, 20, 100, 60};
+    EXPECT_EQ(rendered(renderer, base, whole, region, {100, 60}).picture, (PixelSize{640, 430}));
+    EXPECT_EQ(rendered(renderer, base, turned, region, {100, 60}).picture, turned_size);
+}
+
+}  // namespace
