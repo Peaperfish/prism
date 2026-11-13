@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <limits>
 #include <optional>
+#include <ostream>
 #include <stdexcept>
 #include <string>
 #include <tuple>
@@ -18,6 +19,13 @@
 #include "prism/image.hpp"
 #include "prism/parallel.hpp"
 #include "prism/resize.hpp"
+
+namespace prism {
+// How GoogleTest prints a box in a failure message.
+void PrintTo(const FrameBox& box, std::ostream* out) {
+    *out << box.width << " x " << box.height << " at (" << box.x0 << ", " << box.y0 << ")";
+}
+}  // namespace prism
 
 namespace {
 
