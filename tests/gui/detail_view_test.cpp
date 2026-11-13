@@ -201,43 +201,77 @@ TEST(DetailView, FitOnALargeRetinaCanvasKeepsThePreview) {
     const std::optional<FrameBox> r = visible_file_region(ViewState{}, g, file_60mp);
     ASSERT_TRUE(r);
     EXPECT_EQ(*r, (FrameBox{0, 0, file_60mp.width, file_60mp.height}));
-    EXPECT_EQ(region_budget(*r), RegionBudget::never);
-    EXPECT_FALSE(region_renders_now(region_budget(*r), false));
+    for (const bool idle : {false, true}) {
+        const DetailRequest request = detail_request(*r, file_60mp, idle);
+        EXPECT_EQ(request.region, *r);
+        EXPECT_EQ(request.budget, RegionBudget::never);
+        EXPECT_FALSE(region_renders_now(request.budget, !idle));
+    }
 }
 
 TEST(DetailView, DetailRegionSnapsToCellsWithAMarginWhenIdle) {
     const PixelSize full{2000, 1000};
     // [300, 700) x [200, 400) snaps out to [256, 768) x [128, 512).
     const FrameBox visible{300, 200, 400, 200};
-    EXPECT_EQ(detail_region(visible, full, false), (FrameBox{256, 128, 512, 384}));
+    EXPECT_EQ(detail_request(visible, full, false).region, (FrameBox{256, 128, 512, 384}));
     // Idle: one more cell on each side.
-    EXPECT_EQ(detail_region(visible, full, true), (FrameBox{128, 0, 768, 640}));
+    EXPECT_EQ(detail_request(visible, full, true).region, (FrameBox{128, 0, 768, 640}));
     // Edges already on a cell stay there.
-    EXPECT_EQ(detail_region({256, 128, 256, 128}, full, false), (FrameBox{256, 128, 256, 128}));
+    EXPECT_EQ(detail_request({256, 128, 256, 128}, full, false).region,
+              (FrameBox{256, 128, 256, 128}));
     // Clamped at every edge: the top left and the bottom right, idle and not.
-    EXPECT_EQ(detail_region({10, 10, 20, 20}, full, true), (FrameBox{0, 0, 256, 256}));
-    EXPECT_EQ(detail_region({1990, 990, 10, 10}, full, false), (FrameBox{1920, 896, 80, 104}));
-    EXPECT_EQ(detail_region({1990, 990, 10, 10}, full, true), (FrameBox{1792, 768, 208, 232}));
+    EXPECT_EQ(detail_request({10, 10, 20, 20}, full, true).region, (FrameBox{0, 0, 256, 256}));
+    EXPECT_EQ(detail_request({1990, 990, 10, 10}, full, false).region,
+              (FrameBox{1920, 896, 80, 104}));
+    EXPECT_EQ(detail_request({1990, 990, 10, 10}, full, true).region,
+              (FrameBox{1792, 768, 208, 232}));
+}
+
+// The budget of a request for the whole of a `full` picture, which its snapping and margin can't
+// grow: so its size is exactly the picture's. The same idle or not.
+RegionBudget whole_budget(PixelSize full) {
+    const RegionBudget gesture =
+        detail_request({0, 0, full.width, full.height}, full, false).budget;
+    EXPECT_EQ(detail_request({0, 0, full.width, full.height}, full, true).budget, gesture);
+    return gesture;
 }
 
 TEST(DetailView, BudgetIsLiveUpToEightMegapixels) {
-    EXPECT_EQ(region_budget({0, 0, 4000, 2000}), RegionBudget::live);  // exactly 8 MP
-    EXPECT_EQ(region_budget({0, 0, 8'000'001, 1}), RegionBudget::on_release);
-    EXPECT_EQ(region_budget({0, 0, 1, 1}), RegionBudget::live);
-    EXPECT_EQ(region_budget({0, 0, 0, 0}), RegionBudget::live);
+    EXPECT_EQ(whole_budget({4000, 2000}), RegionBudget::live);  // exactly 8 MP
+    EXPECT_EQ(whole_budget({8'000'001, 1}), RegionBudget::on_release);
+    EXPECT_EQ(whole_budget({1, 1}), RegionBudget::live);
+    EXPECT_EQ(whole_budget({0, 0}), RegionBudget::live);
     EXPECT_TRUE(region_renders_now(RegionBudget::live, true));
     EXPECT_TRUE(region_renders_now(RegionBudget::live, false));
 }
 
 TEST(DetailView, BudgetRendersOnReleaseUpToThirtyMegapixels) {
-    EXPECT_EQ(region_budget({0, 0, 6000, 5000}), RegionBudget::on_release);  // exactly 30 MP
-    EXPECT_EQ(region_budget({0, 0, 30'000'001, 1}), RegionBudget::never);
-    // 2^31 - 1 squared doesn't overflow.
-    EXPECT_EQ(region_budget({0, 0, 2147483647, 2147483647}), RegionBudget::never);
+    EXPECT_EQ(whole_budget({6000, 5000}), RegionBudget::on_release);  // exactly 30 MP
+    EXPECT_EQ(whole_budget({30'000'001, 1}), RegionBudget::never);
+    // 2^31 - 1 squared doesn't overflow, nor does moving its edge out a cell.
+    EXPECT_EQ(whole_budget({2147483647, 2147483647}), RegionBudget::never);
     EXPECT_FALSE(region_renders_now(RegionBudget::on_release, true));
     EXPECT_TRUE(region_renders_now(RegionBudget::on_release, false));
     EXPECT_FALSE(region_renders_now(RegionBudget::never, true));
     EXPECT_FALSE(region_renders_now(RegionBudget::never, false));
+}
+
+TEST(DetailView, BudgetIsOfTheRequestedRegionNotTheVisibleOne) {
+    const PixelSize full{20000, 20000};
+    // Visible 3999 x 2000 = 7,998,000 pixels, under 8 MP; during a gesture it snaps out to
+    // [0, 4224) x [0, 2176), 9,191,424 pixels: rendered on release only.
+    const FrameBox under_8{100, 100, 3999, 2000};
+    const DetailRequest live = detail_request(under_8, full, false);
+    EXPECT_EQ(live.region, (FrameBox{0, 0, 4224, 2176}));
+    EXPECT_EQ(live.budget, RegionBudget::on_release);
+    EXPECT_FALSE(region_renders_now(live.budget, true));
+    // Visible 5999 x 5000 = 29,995,000 pixels, under 30 MP; idle, with its margin, it is
+    // [768, 7168) x [768, 6144), 34,406,400 pixels: never rendered.
+    const FrameBox under_30{1000, 1000, 5999, 5000};
+    const DetailRequest idle = detail_request(under_30, full, true);
+    EXPECT_EQ(idle.region, (FrameBox{768, 768, 6400, 5376}));
+    EXPECT_EQ(idle.budget, RegionBudget::never);
+    EXPECT_FALSE(region_renders_now(idle.budget, false));
 }
 
 TEST(DetailView, BelowHundredPercentTheRegionShrinksToItsDevicePixels) {
@@ -376,7 +410,6 @@ TEST(DetailView, Words) {
     EXPECT_EQ(real_pixels_menu_item().find("Actual"), std::string_view::npos);
     EXPECT_LE(real_pixels_explain().size(), prism::gui::explain_detail_max);
 }
-
 
 TEST(DetailView, NoScreenOrANaNGivesNoNonsense) {
     const FileScale k = file_scale(file_60mp, preview_of(file_60mp));

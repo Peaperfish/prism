@@ -104,16 +104,15 @@ struct PreviewRect {
 [[nodiscard]] std::optional<FrameBox> visible_file_region(const ViewState& s, const ViewGeometry& g,
                                                           PixelSize framed_full) noexcept;
 
-// The design's region snapping (#37 section 5): the region a detail render asks for is the visible
-// one with its edges moved outward to the nearest multiple of detail_cell file pixels, so a pan of
-// a few pixels needs no new render; when no gesture is under way one more cell on each side, so a
-// small pan is sharp at once. Clamped to the framed picture. The budget below is measured on the
-// visible region, not on this one: the snapping and margin add at most 2 or 4 cells across.
+// The design's region snapping (#37 section 5): a detail render asks for the visible region with
+// its edges moved outward to the nearest multiple of detail_cell file pixels, so a pan of a few
+// pixels needs no new render; when no gesture is under way one more cell on each side, so a small
+// pan is sharp at once. Clamped to the framed picture.
 inline constexpr int detail_cell = 128;
-[[nodiscard]] FrameBox detail_region(const FrameBox& visible, PixelSize framed_full,
-                                     bool idle) noexcept;
 
-// How many file pixels a region of real pixels may have. Megapixels are millions of pixels.
+// How many file pixels a requested region may have: the caps bound what is rendered, so they are
+// measured on the requested region, snapping and margin included. Megapixels are millions of
+// pixels.
 inline constexpr std::int64_t region_live_max_pixels = 8'000'000;  // rendered while dragging
 inline constexpr std::int64_t region_max_pixels = 30'000'000;      // rendered at all
 
@@ -123,8 +122,15 @@ enum class RegionBudget {
     never,       // over 30 MP: not rendered; the preview stays
 };
 
-// The budget of a region of `region.width` x `region.height` file pixels (an empty one is live).
-[[nodiscard]] RegionBudget region_budget(const FrameBox& region) noexcept;
+// What a detail render asks for, from the visible region (visible_file_region): the snapped
+// region, with the margin when `idle`, and the budget of that region (an empty one is live). The
+// budget is only worked out here, so it can't be measured on the visible region by mistake.
+struct DetailRequest {
+    FrameBox region;
+    RegionBudget budget = RegionBudget::live;
+};
+[[nodiscard]] DetailRequest detail_request(const FrameBox& visible, PixelSize framed_full,
+                                           bool idle) noexcept;
 
 // Whether a region of this budget is rendered now, with or without a gesture under way.
 [[nodiscard]] bool region_renders_now(RegionBudget budget, bool gesture) noexcept;

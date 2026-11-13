@@ -52,12 +52,35 @@ int clamped_pixel(double v, int limit) noexcept {
     return static_cast<int>(std::clamp(v, 0.0, static_cast<double>(limit)));
 }
 
-int cells_down(int v, int cells) noexcept {
-    return v / detail_cell * detail_cell - cells * detail_cell;
+// In 64 bits, so an edge near the largest int can be moved a cell out without overflowing.
+std::int64_t cells_down(std::int64_t v, int cells) noexcept {
+    return v / detail_cell * detail_cell - std::int64_t{cells} * detail_cell;
 }
 
-int cells_up(int v, int cells) noexcept {
-    return (v + detail_cell - 1) / detail_cell * detail_cell + cells * detail_cell;
+std::int64_t cells_up(std::int64_t v, int cells) noexcept {
+    return (v + detail_cell - 1) / detail_cell * detail_cell + std::int64_t{cells} * detail_cell;
+}
+
+FrameBox detail_region(const FrameBox& visible, PixelSize framed_full, bool idle) noexcept {
+    const int margin = idle ? 1 : 0;
+    const std::int64_t x0 = std::max<std::int64_t>(0, cells_down(visible.x0, margin));
+    const std::int64_t y0 = std::max<std::int64_t>(0, cells_down(visible.y0, margin));
+    const std::int64_t x1 = std::min<std::int64_t>(
+        framed_full.width, cells_up(std::int64_t{visible.x0} + visible.width, margin));
+    const std::int64_t y1 = std::min<std::int64_t>(
+        framed_full.height, cells_up(std::int64_t{visible.y0} + visible.height, margin));
+    return {static_cast<int>(x0), static_cast<int>(y0),
+            static_cast<int>(std::max<std::int64_t>(0, x1 - x0)),
+            static_cast<int>(std::max<std::int64_t>(0, y1 - y0))};
+}
+
+RegionBudget region_budget(const FrameBox& region) noexcept {
+    const std::int64_t pixels = static_cast<std::int64_t>(std::max(0, region.width)) *
+                                static_cast<std::int64_t>(std::max(0, region.height));
+    if (pixels <= region_live_max_pixels) {
+        return RegionBudget::live;
+    }
+    return pixels <= region_max_pixels ? RegionBudget::on_release : RegionBudget::never;
 }
 
 }  // namespace
@@ -91,22 +114,9 @@ std::optional<FrameBox> visible_file_region(const ViewState& s, const ViewGeomet
     return file_region({a.x, a.y, b.x, b.y}, {g.image_width, g.image_height}, framed_full);
 }
 
-FrameBox detail_region(const FrameBox& visible, PixelSize framed_full, bool idle) noexcept {
-    const int margin = idle ? 1 : 0;
-    const int x0 = std::max(0, cells_down(visible.x0, margin));
-    const int y0 = std::max(0, cells_down(visible.y0, margin));
-    const int x1 = std::min(framed_full.width, cells_up(visible.x0 + visible.width, margin));
-    const int y1 = std::min(framed_full.height, cells_up(visible.y0 + visible.height, margin));
-    return {x0, y0, std::max(0, x1 - x0), std::max(0, y1 - y0)};
-}
-
-RegionBudget region_budget(const FrameBox& region) noexcept {
-    const std::int64_t pixels = static_cast<std::int64_t>(std::max(0, region.width)) *
-                                static_cast<std::int64_t>(std::max(0, region.height));
-    if (pixels <= region_live_max_pixels) {
-        return RegionBudget::live;
-    }
-    return pixels <= region_max_pixels ? RegionBudget::on_release : RegionBudget::never;
+DetailRequest detail_request(const FrameBox& visible, PixelSize framed_full, bool idle) noexcept {
+    const FrameBox region = detail_region(visible, framed_full, idle);
+    return {region, region_budget(region)};
 }
 
 bool region_renders_now(RegionBudget budget, bool gesture) noexcept {
