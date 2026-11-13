@@ -65,4 +65,45 @@ bool BackgroundExport::wait(std::chrono::milliseconds timeout) {
     return done_.wait_for(lock, timeout, [&] { return result_.has_value() || !busy_; });
 }
 
+SessionExport::SessionExport(BackgroundExport& exporter, Begin begin, End end)
+    : exporter_(exporter), begin_(std::move(begin)), end_(std::move(end)) {}
+
+SessionExport::~SessionExport() {
+    if (!begun_) {
+        return;
+    }
+    // Closing mid-export: stop it, wait for its thread to write nothing, and end it here, so the
+    // session hears of every export it began.
+    exporter_.cancel();
+    while (!exporter_.wait(std::chrono::seconds(1))) {
+    }
+    (void)poll();
+}
+
+bool SessionExport::start(std::filesystem::path output) {
+    // Begun first even when an export is running, so a refused start is ended like any other: the
+    // app never starts one then (it checks busy()), and if it did the session's read would only
+    // stop and start again.
+    ExportJob job = begin_();
+    if (!exporter_.start(std::move(job), std::move(output))) {
+        end_();  // the one running stays begun, and is ended with its result
+        return false;
+    }
+    begun_ = true;
+    return true;
+}
+
+std::optional<ExportResult> SessionExport::poll() {
+    std::optional<ExportResult> result = exporter_.poll();
+    if (result && begun_) {
+        begun_ = false;
+        end_();
+    }
+    return result;
+}
+
+void SessionExport::cancel() {
+    exporter_.cancel();
+}
+
 }  // namespace prism::gui

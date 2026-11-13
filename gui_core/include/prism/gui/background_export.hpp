@@ -72,4 +72,47 @@ private:
     std::jthread worker_;
 };
 
+// An export through the session's own bracket (Session::begin_export / end_export, #37): the
+// session stops its background read of the full-size photo while an export decodes, and starts it
+// again after. Every begin is matched by exactly one end, whichever way the export goes:
+//
+//   start() refused (an export already running)   ended at once, in start()
+//   finished, failed or cancelled                 ended when poll() hands out the result
+//   still running when this is destroyed          cancelled, waited for, then ended
+//
+//   UI thread:            exports.start(output);
+//   UI thread, per frame: if (auto result = exports.poll()) report(*result);
+//
+// `begin` and `end` are the session's (tests pass their own to count them); they run on the
+// calling thread, never on the export's. Destroy this before the session it calls and before
+// `exporter`, which it only borrows.
+class SessionExport {
+public:
+    using Begin = std::function<ExportJob()>;
+    using End = std::function<void()>;
+
+    SessionExport(BackgroundExport& exporter, Begin begin, End end);
+    ~SessionExport();
+
+    SessionExport(const SessionExport&) = delete;
+    SessionExport& operator=(const SessionExport&) = delete;
+
+    // Begins an export and starts it to `output`. False if it didn't start (one is running): the
+    // export begun for it is ended before this returns.
+    bool start(std::filesystem::path output);
+    // As BackgroundExport::poll; when it hands out a result, the export is ended first.
+    [[nodiscard]] std::optional<ExportResult> poll();
+    // Asks the running export to stop; poll() then hands out its cancelled result and ends it.
+    void cancel();
+    [[nodiscard]] bool busy() const noexcept { return exporter_.busy(); }
+    // Whether an export was begun and not yet ended. For tests.
+    [[nodiscard]] bool begun() const noexcept { return begun_; }
+
+private:
+    BackgroundExport& exporter_;
+    Begin begin_;
+    End end_;
+    bool begun_ = false;  // a begin not yet matched by an end
+};
+
 }  // namespace prism::gui

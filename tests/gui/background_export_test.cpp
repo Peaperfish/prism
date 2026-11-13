@@ -219,3 +219,174 @@ TEST(BackgroundExport, AnExceptionBecomesAnError) {
     EXPECT_EQ(result->error->kind, ErrorKind::save_failed);
     EXPECT_EQ(result->error->details, "disk on fire");
 }
+
+// --- SessionExport: every begin_export ended exactly once (#37) ---------------------------------
+
+namespace {
+
+// Counts the session's brackets, as Session::begin_export and end_export would see them.
+struct Brackets {
+    int begun = 0;
+    int ended = 0;
+    prism::gui::SessionExport::Begin begin() {
+        return [this] {
+            ++begun;
+            ExportJob job;
+            job.source = "photo.png";
+            return job;
+        };
+    }
+    prism::gui::SessionExport::End end() {
+        return [this] { ++ended; };
+    }
+};
+
+// What the held export waits for: opened by the test, or the export's stop.
+class Release {
+public:
+    void open() {
+        {
+            std::lock_guard lock(mutex_);
+            open_ = true;
+        }
+        cv_.notify_all();
+    }
+    // True if opened; false if stopped first (or after the timeout, which only a broken test hits).
+    bool wait(std::stop_token stop) {
+        std::unique_lock lock(mutex_);
+        cv_.wait_for(lock, stop, timeout, [&] { return open_; });
+        return open_;
+    }
+
+private:
+    std::mutex mutex_;
+    std::condition_variable_any cv_;
+    bool open_ = false;
+};
+
+// An export that waits for `release` (or for its stop), then gives `outcome`, or
+// ErrorKind::cancelled once stopped; nothing is written.
+BackgroundExport held_export(Gate& started, Release& release, MaybeError outcome) {
+    return BackgroundExport([&started, &release, outcome](const ExportJob& job, const fs::path&,
+                                                          std::stop_token stop) -> MaybeError {
+        EXPECT_EQ(job.source, fs::path("photo.png"));  // the job begin() made
+        started.open();
+        if (!release.wait(stop)) {
+            return Error{ErrorKind::cancelled, "cancelled", ""};
+        }
+        return outcome;
+    });
+}
+
+}  // namespace
+
+TEST(SessionExport, ASuccessIsEndedWhenItsResultIsTaken) {
+    Gate started;
+    Release release;
+    BackgroundExport exporter = held_export(started, release, std::nullopt);
+    Brackets b;
+    prism::gui::SessionExport exports(exporter, b.begin(), b.end());
+    ASSERT_TRUE(exports.start("out.png"));
+    ASSERT_TRUE(started.wait());
+    EXPECT_EQ(b.begun, 1);
+    EXPECT_EQ(b.ended, 0);  // still running
+    EXPECT_FALSE(exports.poll());
+    EXPECT_EQ(b.ended, 0);
+    release.open();
+    ASSERT_TRUE(exporter.wait(timeout));
+    const auto result = exports.poll();
+    ASSERT_TRUE(result);
+    EXPECT_FALSE(result->error);
+    EXPECT_EQ(b.ended, 1);
+    EXPECT_FALSE(exports.poll());
+    EXPECT_EQ(b.ended, 1);  // once
+    EXPECT_FALSE(exports.begun());
+}
+
+TEST(SessionExport, AFailureIsEndedWhenItsResultIsTaken) {
+    Gate started;
+    Release release;
+    BackgroundExport exporter =
+        held_export(started, release, Error{ErrorKind::save_failed, "no room", ""});
+    Brackets b;
+    prism::gui::SessionExport exports(exporter, b.begin(), b.end());
+    ASSERT_TRUE(exports.start("out.png"));
+    release.open();
+    ASSERT_TRUE(exporter.wait(timeout));
+    const auto result = exports.poll();
+    ASSERT_TRUE(result);
+    ASSERT_TRUE(result->error);
+    EXPECT_EQ(result->error->kind, ErrorKind::save_failed);
+    EXPECT_EQ(b.begun, 1);
+    EXPECT_EQ(b.ended, 1);
+}
+
+TEST(SessionExport, ACancelledExportIsEndedWhenItsResultIsTaken) {
+    Gate started;
+    Release release;
+    BackgroundExport exporter = held_export(started, release, std::nullopt);
+    Brackets b;
+    prism::gui::SessionExport exports(exporter, b.begin(), b.end());
+    ASSERT_TRUE(exports.start("out.png"));
+    ASSERT_TRUE(started.wait());
+    exports.cancel();
+    EXPECT_EQ(b.ended, 0);  // ended with its result, not by the cancel
+    ASSERT_TRUE(exporter.wait(timeout));
+    const auto result = exports.poll();
+    ASSERT_TRUE(result);
+    ASSERT_TRUE(result->error);
+    EXPECT_EQ(result->error->kind, ErrorKind::cancelled);
+    EXPECT_EQ(b.begun, 1);
+    EXPECT_EQ(b.ended, 1);
+}
+
+TEST(SessionExport, ARefusedStartIsEndedAtOnce) {
+    Gate started;
+    Release release;
+    BackgroundExport exporter = held_export(started, release, std::nullopt);
+    Brackets b;
+    prism::gui::SessionExport exports(exporter, b.begin(), b.end());
+    ASSERT_TRUE(exports.start("first.png"));
+    ASSERT_TRUE(started.wait());
+    EXPECT_FALSE(exports.start("second.png"));  // one at a time
+    EXPECT_EQ(b.begun, 2);
+    EXPECT_EQ(b.ended, 1);         // the refused one, at once
+    EXPECT_TRUE(exports.begun());  // the first is still running
+    release.open();
+    ASSERT_TRUE(exporter.wait(timeout));
+    ASSERT_TRUE(exports.poll());
+    EXPECT_EQ(b.ended, 2);
+    EXPECT_FALSE(exports.begun());
+}
+
+TEST(SessionExport, ClosingMidExportCancelsAndEndsIt) {
+    Gate started;
+    Release release;
+    BackgroundExport exporter = held_export(started, release, std::nullopt);
+    Brackets b;
+    {
+        prism::gui::SessionExport exports(exporter, b.begin(), b.end());
+        ASSERT_TRUE(exports.start("out.png"));
+        ASSERT_TRUE(started.wait());
+        EXPECT_EQ(b.ended, 0);
+    }  // the app closes: the export is stopped (the gate is never released) and ended
+    EXPECT_EQ(b.begun, 1);
+    EXPECT_EQ(b.ended, 1);
+    EXPECT_FALSE(exporter.busy());
+}
+
+TEST(SessionExport, ClosingWithNothingRunningEndsNothing) {
+    Gate started;
+    Release release;
+    BackgroundExport exporter = held_export(started, release, std::nullopt);
+    Brackets b;
+    {
+        prism::gui::SessionExport exports(exporter, b.begin(), b.end());
+        ASSERT_TRUE(exports.start("out.png"));
+        release.open();
+        ASSERT_TRUE(exporter.wait(timeout));
+        ASSERT_TRUE(exports.poll());
+    }
+    EXPECT_EQ(b.begun, 1);
+    EXPECT_EQ(b.ended, 1);
+}
