@@ -264,6 +264,11 @@ TEST(DetailView, AtOrAboveHundredPercentTheOutputIsTheRegion) {
                 << percent << "% at " << density << "x";
         }
     }
+    // Within the tolerance below 100% on a region long enough for it to show (20000 * 0.99995 would
+    // round to 19999): still the region.
+    EXPECT_EQ(detail_output_size({0, 0, 20000, 1000},
+                                 view_scale_for_file_percent(100.0 - 0.5e-2, 2.0, k), 2.0, k),
+              (PixelSize{20000, 1000}));
     // Just below 100% by more than the tolerance: shrunk.
     EXPECT_EQ(detail_output_size(r, view_scale_for_file_percent(99.0, 1.0, k), 1.0, k),
               (PixelSize{3366, 2178}));
