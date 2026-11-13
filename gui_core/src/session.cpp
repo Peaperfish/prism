@@ -343,7 +343,9 @@ Image copy_part(const Image& img, const FrameBox& part) {
 // to `long_side`), then the stages on the framed picture's grid. The one list of these steps:
 // finish_export and render_region both run it.
 //
-// With `part`, only that part of the full-size framed picture is made (no reduction): the frame
+// Without `part`, `decoded` must be export's own decode (an Image), which the frame or the
+// reduction frees, or which becomes the result. With `part`, only that part of the full-size
+// framed picture is made (no reduction) and `decoded` is only read: the frame
 // works out just those pixels (apply_frame's part) and every stage then runs on them with the
 // part's place in the whole framed picture, so the result is bit-identical to the same pixels of
 // the whole. `part` must already be checked against the framed size.
@@ -368,10 +370,10 @@ std::variant<Image, Error> run_after_decode(DecodedImage decoded,
                                ? apply_frame(image_of(decoded), *framed.frame.fitted, threads, part)
                                : copy_part(image_of(decoded), *part);
         } else {
-            Image whole = std::holds_alternative<Image>(decoded)
-                              ? std::move(std::get<Image>(decoded))
-                              : *std::get<const Image*>(decoded);
-            framed = frame_and_reduce(std::move(whole), settings.frame, long_side, threads);
+            // Only export's own decode comes here (render_region always has a part): moved, never
+            // copied.
+            framed = frame_and_reduce(std::move(std::get<Image>(decoded)), settings.frame,
+                                      long_side, threads);
         }
     } catch (const std::bad_alloc&) {
         return Error{ErrorKind::out_of_memory,
@@ -465,6 +467,7 @@ Image render_region(const Photo& base, const EditSettings& settings, const Frame
         if (e->kind == ErrorKind::out_of_memory) {
             throw std::bad_alloc();
         }
+        // Not reached: with no stop token nothing is cancelled.
         throw std::runtime_error("render_region: " + e->message);
     }
     return std::move(std::get<Image>(result));

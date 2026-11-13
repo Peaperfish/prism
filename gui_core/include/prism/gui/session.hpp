@@ -247,7 +247,8 @@ private:
                                       std::stop_token stop = {},
                                       const StageCallback& on_stage = {});
 
-// export_image is these three steps, then save_image: decode_for_export, finish_export, encode.
+// After checking the output and the settings, export_image runs decode_for_export, then
+// finish_export, then save_image (the encode).
 
 // The decode an export starts from, exactly as export_image makes it: `source` checked as open_file
 // checks it, then read at full size, or for a RAW file at half size when settings.raw_half_size,
@@ -264,9 +265,11 @@ private:
 
 // What export_image does with `decoded` before encoding it: frame and reduce to `long_side`
 // (frame_and_reduce), then run the stages for `settings` on the result, with the strokes placed on
-// the framed picture. The finished picture, linear, not yet encoded. `decoded` is moved in and
-// freed by the frame or the reduction. Fails with ErrorKind::out_of_memory, or
-// ErrorKind::cancelled once `stop` is triggered (checked after the frame and between the stages).
+// the framed picture. The finished picture, linear, not yet encoded. `decoded` is moved in, never
+// copied: framing or reducing frees it, and otherwise its pixels become the result. `settings`
+// must pass validate (export_image checks them first); an invalid frame throws
+// std::invalid_argument. Fails with ErrorKind::out_of_memory, or ErrorKind::cancelled once `stop`
+// is triggered (checked after the frame and between the stages).
 [[nodiscard]] std::variant<Image, Error> finish_export(Photo decoded, const EditSettings& settings,
                                                       std::optional<int> long_side, int threads,
                                                       std::stop_token stop = {},
