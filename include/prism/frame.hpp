@@ -209,10 +209,31 @@ private:
 // every pixel stays at or above it. Pixels past the photo's edge (the frame is not fitted here)
 // repeat the nearest edge pixel.
 //
-// `threads` as for the pipeline stages, decided by the framed image's size; the result is
-// bit-identical for any value. Throws std::invalid_argument with validate_frame's messages if `f`
-// is invalid, if `img` is empty, or if its pixel buffer does not match width * height * 3.
-[[nodiscard]] Image apply_frame(const Image& img, const Frame& f, int threads = 0);
+// With `part`, only that part of the framed picture is worked out: `part` is in framed-image
+// pixels (columns [part.x0, part.x0 + part.width) of the framed_box's width, and the same for
+// rows), and the result is part.width x part.height pixels, bit-identical to the same pixels of the
+// whole framed picture. Each pixel is worked out from its place in the whole framed picture, by the
+// same code, and reads the whole photo, so a part needs no margin around it.
+//
+// `threads` as for the pipeline stages, decided by the size of what is worked out (the part, or
+// the framed image); the result is bit-identical for any value. Throws std::invalid_argument with
+// validate_frame's messages if `f` is invalid, if `img` is empty, if its pixel buffer does not
+// match width * height * 3, or if `part` is empty or not inside the framed image.
+[[nodiscard]] Image apply_frame(const Image& img, const Frame& f, int threads = 0,
+                                const std::optional<FrameBox>& part = std::nullopt);
+
+// The photo pixels apply_frame reads for `part` (as above) of a `width` x `height` photo framed by
+// `f`, as a box of photo pixels: columns [x0, x0 + width), rows [y0, y0 + height). Reading only
+// these gives the same part, so a caller holding the photo in pieces knows which to have ready.
+//
+// At an angle of exactly 0 it is the part's own pixels, moved by the framed_box's corner. Turned,
+// it is the box around the photo positions of the part's four corner pixels, widened by the
+// Catmull-Rom taps (one pixel before, two after, on each axis) and held inside the photo, as the
+// taps are, so it is never empty. It holds exactly the pixels between the lowest and the highest
+// tap: no more. Throws as apply_frame for an invalid `f` or `part`, and if width or height is
+// below 1.
+[[nodiscard]] FrameBox frame_source_rect(const Frame& f, int width, int height,
+                                         const FrameBox& part);
 
 // What an export does with the frame, for a decode of `width` x `height`.
 struct ExportFrame {

@@ -320,32 +320,62 @@ FramePoint photo_to_frame(const Frame& f, int width, int height, PhotoPoint q) {
     return FrameMap(f, width, height).to_frame(q);
 }
 
-Image apply_frame(const Image& img, const Frame& f, int threads) {
+namespace {
+
+// Throws std::invalid_argument unless `part` is a non-empty part of the framed image `box`
+// (columns [0, box.width), rows [0, box.height)).
+void require_part(const FrameBox& box, const FrameBox& part, const char* who) {
+    if (part.width < 1 || part.height < 1) {
+        throw std::invalid_argument(std::string(who) + ": the part must be at least 1 x 1 pixel");
+    }
+    // In long long, so a part near INT_MAX can't overflow the sums.
+    if (part.x0 < 0 || part.y0 < 0 ||
+        static_cast<long long>(part.x0) + part.width > box.width ||
+        static_cast<long long>(part.y0) + part.height > box.height) {
+        std::ostringstream message;
+        message << who << ": the part " << part.width << " x " << part.height << " at ("
+                << part.x0 << ", " << part.y0 << ") is not inside the framed image, "
+                << box.width << " x " << box.height;
+        throw std::invalid_argument(message.str());
+    }
+}
+
+}  // namespace
+
+Image apply_frame(const Image& img, const Frame& f, int threads,
+                  const std::optional<FrameBox>& part) {
     detail::require_consistent(img, "apply_frame");
     require_valid(f, img.width, img.height, "apply_frame");
     const FrameMap map(f, img.width, img.height);
     const FrameBox& box = map.box();
+    // The framed pixels to compute, in framed-image pixels: all of them unless a part is asked for.
+    const FrameBox want = part ? *part : FrameBox{0, 0, box.width, box.height};
+    require_part(box, want, "apply_frame");
 
     Image out;
-    out.width = box.width;
-    out.height = box.height;
+    out.width = want.width;
+    out.height = want.height;
     out.pixels.resize(detail::sample_count(out.width, out.height));
 
-    // The work grows with the framed image, so that decides whether to use several threads. Each
-    // thread writes only its own output rows and reads only the photo.
+    // The work grows with the pixels computed, so that decides whether to use several threads.
+    // Each thread writes only its own output rows and reads only the photo.
     const int n = threads_for_pixels(
         static_cast<std::size_t>(out.width) * static_cast<std::size_t>(out.height), threads);
     const std::size_t src_row = detail::sample_count(img.width, 1);
     const std::size_t dst_row = detail::sample_count(out.width, 1);
 
+    // Output pixel (ii, jj) is framed pixel (i, j) = (want.x0 + ii, want.y0 + jj), and is worked
+    // out from that (i, j) alone, so a part holds exactly the same values as the same pixels of
+    // the whole framed image.
     if (f.angle == 0.0f) {
         // Straightened axes are the photo's: framed pixel (i, j) is photo pixel (x0 + i, y0 + j).
         parallel_for_rows(out.height, n, [&](int begin, int end) {
-            for (int j = begin; j < end; ++j) {
+            for (int jj = begin; jj < end; ++jj) {
+                const int j = want.y0 + jj;
                 const float* src = img.pixels.data() +
                                    static_cast<std::size_t>(box.y0 + j) * src_row +
-                                   detail::sample_count(box.x0, 1);
-                std::memcpy(out.pixels.data() + static_cast<std::size_t>(j) * dst_row, src,
+                                   detail::sample_count(box.x0 + want.x0, 1);
+                std::memcpy(out.pixels.data() + static_cast<std::size_t>(jj) * dst_row, src,
                             dst_row * sizeof(float));
             }
         });
@@ -356,11 +386,13 @@ Image apply_frame(const Image& img, const Frame& f, int threads) {
     const int h = img.height;
     const float* pixels = img.pixels.data();
     parallel_for_rows(out.height, n, [&](int begin, int end) {
-        for (int j = begin; j < end; ++j) {
-            float* dst = out.pixels.data() + static_cast<std::size_t>(j) * dst_row;
-            for (int i = 0; i < out.width; ++i) {
+        for (int jj = begin; jj < end; ++jj) {
+            const int j = want.y0 + jj;
+            float* dst = out.pixels.data() + static_cast<std::size_t>(jj) * dst_row;
+            for (int ii = 0; ii < out.width; ++ii) {
+                const int i = want.x0 + ii;
                 // Each pixel from its own (i, j): no position is carried from one pixel to the
-                // next, so a row range's start never changes a value.
+                // next, so neither a row range's start nor the part's corner changes a value.
                 const FramePoint p = map.to_photo_pixels({i + 0.5, j + 0.5});
                 // Photo pixel centres sit at whole numbers in these coordinates.
                 const double sx = p.x - 0.5;
@@ -402,7 +434,7 @@ Image apply_frame(const Image& img, const Frame& f, int threads) {
                                  detail::sample_count(xs[1], 1);
                 const float* d = pixels + static_cast<std::size_t>(ys[2]) * src_row +
                                  detail::sample_count(xs[2], 1);
-                float* o = dst + detail::sample_count(i, 1);
+                float* o = dst + detail::sample_count(ii, 1);
                 for (int ch = 0; ch < 3; ++ch) {
                     const float lo = std::min(std::min(a[ch], b[ch]), std::min(c[ch], d[ch]));
                     const float hi = std::max(std::max(a[ch], b[ch]), std::max(c[ch], d[ch]));
@@ -412,6 +444,47 @@ Image apply_frame(const Image& img, const Frame& f, int threads) {
         }
     });
     return out;
+}
+
+FrameBox frame_source_rect(const Frame& f, int width, int height, const FrameBox& part) {
+    require_valid(f, width, height, "frame_source_rect");
+    const FrameMap map(f, width, height);
+    const FrameBox& box = map.box();
+    require_part(box, part, "frame_source_rect");
+    if (f.angle == 0.0f) {
+        // apply_frame copies: the part's own pixels, moved by the box's corner.
+        return {box.x0 + part.x0, box.y0 + part.y0, part.width, part.height};
+    }
+    // apply_frame samples framed pixel centres. Its photo positions only grow (or only shrink)
+    // along a row or a column, rounding included (cos > 0 within 45 degrees, and rounding never
+    // reverses an order), so the extremes are at the four corner pixels' centres. Taken exactly as
+    // apply_frame takes them, then widened by the taps -1 and +2 and held inside the photo as taps
+    // are.
+    double lo_x = 0.0;
+    double hi_x = 0.0;
+    double lo_y = 0.0;
+    double hi_y = 0.0;
+    bool first = true;
+    for (const int i : {part.x0, part.x0 + part.width - 1}) {
+        for (const int j : {part.y0, part.y0 + part.height - 1}) {
+            const FramePoint p = map.to_photo_pixels({i + 0.5, j + 0.5});
+            const double fx = std::floor(p.x - 0.5);
+            const double fy = std::floor(p.y - 0.5);
+            lo_x = first ? fx : std::min(lo_x, fx);
+            hi_x = first ? fx : std::max(hi_x, fx);
+            lo_y = first ? fy : std::min(lo_y, fy);
+            hi_y = first ? fy : std::max(hi_y, fy);
+            first = false;
+        }
+    }
+    const auto held = [](double v, int n) {
+        return static_cast<int>(std::clamp(v, 0.0, static_cast<double>(n - 1)));
+    };
+    const int x0 = held(lo_x - 1.0, width);
+    const int x1 = held(hi_x + 2.0, width);
+    const int y0 = held(lo_y - 1.0, height);
+    const int y1 = held(hi_y + 2.0, height);
+    return {x0, y0, x1 - x0 + 1, y1 - y0 + 1};
 }
 
 ExportFrame plan_export_frame(const std::optional<Frame>& frame, int width, int height) {
