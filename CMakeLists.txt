@@ -31,6 +31,19 @@ option(PRISM_SANITIZE_ADDRESS
        "Build everything with AddressSanitizer and UndefinedBehaviorSanitizer to detect memory errors and undefined behaviour"
        OFF)
 
+# The Visual Studio generator compiles the files of one project (target) one after the other unless
+# cl.exe gets /MP; --parallel only runs different projects at the same time. With /MP a target's
+# files compile in parallel too, which matters most for the big ones (prism_lib, the tests, LibRaw
+# built from source). Only for the Visual Studio generator: Ninja and Makefiles already run one
+# compile per file. Capped at 4, the vCPUs of a GitHub windows-latest runner: a bare /MP means "one process per
+# logical CPU", and since msbuild also builds up to --parallel 4 projects at once, the worst case is
+# projects x processes cl.exe at a time, which would grow with the square of the core count (and
+# each cl.exe needs a good deal of memory). Set before anything is added, so the third-party targets
+# (LibRaw, GoogleTest, SDL) get it as well. Never /fp:fast: output must stay bit-for-bit the same.
+if(MSVC AND CMAKE_GENERATOR MATCHES "Visual Studio")
+  add_compile_options(/MP4)
+endif()
+
 # PRISM_RELEASE=ON is the configuration the downloadable apps are built with
 # (.github/workflows/release.yml). It builds LibRaw from its pinned source tarball and links it
 # statically and unmodified (Prism uses LibRaw under CDDL 1.0), refuses anything that would use a

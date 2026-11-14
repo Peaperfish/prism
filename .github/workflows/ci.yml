@@ -61,6 +61,8 @@ jobs:
             asan: 'ON'
           # MSVC with the default Visual Studio generator, which is multi-config: it ignores
           # CMAKE_BUILD_TYPE, so Build and Test pass the configuration explicitly (see below).
+          # CMakeLists.txt adds /MP4 for this generator, so each project's files compile in
+          # parallel too (--parallel 4 only runs different projects together).
           # Windows has no system LibRaw, so this job builds the pinned release from source as
           # libraw_r.dll (cmake/LibRaw.cmake).
           - name: Windows MSVC + LibRaw (source)
