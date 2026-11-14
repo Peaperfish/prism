@@ -347,14 +347,60 @@ std::string average_text(const SampleScale& scale) {
            ", so a small clipped highlight can hide in it.";
 }
 
-}  // namespace
-
-namespace {
-
 // One pixel (`one`, 1 x 1) run through the stages of `process_settings`, recording each stage's
 // values, at (x, y) of its picture.
 PixelTrace trace_one(Image one, const EditSettings& settings,
-                     const ProcessSettings& process_settings, int x, int y);
+                     const ProcessSettings& process_settings, int x, int y) {
+    PixelTrace trace;
+    trace.x = x;
+    trace.y = y;
+    trace.curve = settings.curve == CurveKind::none ? std::string()
+                                                    : stage_value_text(settings, StageId::curve);
+    const auto keep = [&](StageId stage) {
+        SampleStage& at = trace.stages[static_cast<std::size_t>(stage)];
+        std::copy_n(one.pixels.begin(), Image::channels, at.rgb.begin());
+        at.ran = true;
+    };
+    keep(StageId::decode);
+    const StageCallback after_stage = [&](const StageTime& t) {
+        if (const std::optional<StageId> stage = stage_from_name(t.name)) {
+            keep(*stage);
+        }
+    };
+    const BeforeStageCallback before_stage = [&](std::string_view name, const Image& input) {
+        const std::optional<StageId> stage = stage_from_name(name);
+        if (stage && !trace.negatives_clamped_at && stage_clamps(*stage, ClipDirection::shadows)) {
+            trace.negatives_clamped_at = stage;
+            trace.before_clamp = pixel_range(input.pixels.data());
+        }
+    };
+    // The stroke field at this pixel, from the very field and grid the stage uses on it.
+    if (!process_settings.dodge_burn.field.strokes.empty()) {
+        float field = 0.0f;
+        rasterise_field(process_settings.dodge_burn.field, process_settings.dodge_burn.grid, 0, 1,
+                        std::span<float>(&field, 1));
+        trace.dodge_burn_stops = field;
+    }
+    (void)process(one, process_settings, 1, {}, after_stage, before_stage);
+    keep(StageId::encode);
+    const std::vector<std::uint8_t> bytes = encode_srgb8(one, 1);
+    std::copy_n(bytes.begin(), Image::channels, trace.srgb8.begin());
+
+    // A stage that did not run passes its input on; the mask remembers what was clamped.
+    for (std::size_t i = 0; i < trace.stages.size(); ++i) {
+        SampleStage& at = trace.stages[i];
+        const auto stage = static_cast<StageId>(i);
+        if (!at.ran) {
+            at.rgb = trace.stages[i - 1].rgb;
+        }
+        at.range = pixel_range(at.rgb.data());
+        at.mask = clip_mask_bits(at.range, stage == StageId::decode);
+        if (trace.negatives_clamped_at && !before(stage, *trace.negatives_clamped_at)) {
+            at.mask |= clip_mask_lost_bits(trace.before_clamp);
+        }
+    }
+    return trace;
+}
 
 }  // namespace
 
@@ -426,63 +472,6 @@ std::optional<PixelTrace> sample_photo_trace(const Photo& photo, const EditSetti
     }
     return trace_one(std::move(one), settings, process_settings, x, y);
 }
-
-namespace {
-
-PixelTrace trace_one(Image one, const EditSettings& settings,
-                     const ProcessSettings& process_settings, int x, int y) {
-    PixelTrace trace;
-    trace.x = x;
-    trace.y = y;
-    trace.curve = settings.curve == CurveKind::none ? std::string()
-                                                    : stage_value_text(settings, StageId::curve);
-    const auto keep = [&](StageId stage) {
-        SampleStage& at = trace.stages[static_cast<std::size_t>(stage)];
-        std::copy_n(one.pixels.begin(), Image::channels, at.rgb.begin());
-        at.ran = true;
-    };
-    keep(StageId::decode);
-    const StageCallback after_stage = [&](const StageTime& t) {
-        if (const std::optional<StageId> stage = stage_from_name(t.name)) {
-            keep(*stage);
-        }
-    };
-    const BeforeStageCallback before_stage = [&](std::string_view name, const Image& input) {
-        const std::optional<StageId> stage = stage_from_name(name);
-        if (stage && !trace.negatives_clamped_at && stage_clamps(*stage, ClipDirection::shadows)) {
-            trace.negatives_clamped_at = stage;
-            trace.before_clamp = pixel_range(input.pixels.data());
-        }
-    };
-    // The stroke field at this pixel, from the very field and grid the stage uses on it.
-    if (!process_settings.dodge_burn.field.strokes.empty()) {
-        float field = 0.0f;
-        rasterise_field(process_settings.dodge_burn.field, process_settings.dodge_burn.grid, 0, 1,
-                        std::span<float>(&field, 1));
-        trace.dodge_burn_stops = field;
-    }
-    (void)process(one, process_settings, 1, {}, after_stage, before_stage);
-    keep(StageId::encode);
-    const std::vector<std::uint8_t> bytes = encode_srgb8(one, 1);
-    std::copy_n(bytes.begin(), Image::channels, trace.srgb8.begin());
-
-    // A stage that did not run passes its input on; the mask remembers what was clamped.
-    for (std::size_t i = 0; i < trace.stages.size(); ++i) {
-        SampleStage& at = trace.stages[i];
-        const auto stage = static_cast<StageId>(i);
-        if (!at.ran) {
-            at.rgb = trace.stages[i - 1].rgb;
-        }
-        at.range = pixel_range(at.rgb.data());
-        at.mask = clip_mask_bits(at.range, stage == StageId::decode);
-        if (trace.negatives_clamped_at && !before(stage, *trace.negatives_clamped_at)) {
-            at.mask |= clip_mask_lost_bits(trace.before_clamp);
-        }
-    }
-    return trace;
-}
-
-}  // namespace
 
 EditSettings sample_settings(const EditSettings& s, const std::optional<TestStrip>& strip,
                              StageId viewed, int width, int height, int x, int y) {

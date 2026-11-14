@@ -200,8 +200,7 @@ struct DetailFramePlan {
 // pixels per preview pixel (ViewGeometry::file_scale).
 [[nodiscard]] bool detail_shows_pixels(float zoom, float file_scale) noexcept;
 
-// --- The zoom chip and 100%
-// -----------------------------------------------------------------------
+// --- The zoom chip and 100% ----------------------------------------------------------------------
 
 // The zoom in percent of the file for the view: 100 x device pixels per file pixel.
 [[nodiscard]] double view_file_percent(const ViewState& s, const ViewGeometry& g) noexcept;
@@ -218,8 +217,7 @@ struct DetailFramePlan {
 // more (a photo smaller than the canvas in device pixels).
 [[nodiscard]] bool view_actual_size_available(const ViewGeometry& g) noexcept;
 
-// --- Sample and Pick on real pixels (#37, session 7)
-// -----------------------------------------------
+// --- Sample and Pick on real pixels (#37, session 7) ---------------------------------------------
 
 // A pixel of the framed picture at full size (the detail base's framed picture).
 struct FilePixel {
@@ -301,8 +299,7 @@ struct SampleReads {
 // axis.
 [[nodiscard]] FilePixel file_pixel_rescaled(FilePixel pixel, PixelSize from, PixelSize to) noexcept;
 
-// --- Pick's footprint: the same photo area at every zoom
-// ------------------------------------------------------
+// --- Pick's footprint: the same photo area at every zoom -----------------------------------------
 
 // How many photo pixels across Pick's square is: the preview's 5 x 5 patch (pick_patch_size) as
 // photo pixels. 5 x the photo pixels per preview pixel (scale.shown), rounded to the nearest whole
@@ -351,8 +348,7 @@ struct PickFootprint {
 [[nodiscard]] SampleMarker file_pixel_marker(const ViewState& s, const ViewGeometry& g,
                                              PixelSize framed_full, FilePixel pixel) noexcept;
 
-// --- The brush on real pixels
-// ---------------------------------------------------------------------
+// --- The brush on real pixels --------------------------------------------------------------------
 
 // The long side, in pixels, the brush's point spacing is measured on (min_point_spacing): the whole
 // photo's long side on the canvas (brush_long_side), or while real pixels are drawn (`real_pixels`)

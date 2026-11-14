@@ -279,8 +279,7 @@ TEST(DetailSample, APhotoPixelsTraceIsKeptUntilSomethingItDependsOnChanges) {
     EXPECT_EQ(other.use_count(), 1);  // let go
 }
 
-// --- Which pixel, and from where
-// ------------------------------------------------------------------
+// --- Which pixel, and from where -----------------------------------------------------------------
 
 constexpr PixelSize full_7{8138, 5424};
 constexpr PixelSize preview_7{2177, 1453};
@@ -431,8 +430,7 @@ TEST(DetailSampleSource, PicksRingIsAroundThePhotoPixelsItAverages) {
     EXPECT_GT(fit.patch.width(), 1.0f);
 }
 
-// --- Pick's footprint: the same photo area at every zoom
-// ----------------------------------------------------------------------
+// --- Pick's footprint: the same photo area at every zoom -----------------------------------------
 
 TEST(DetailPickFootprint, SizeIsTheFivePixelPatchInPhotoPixelsAndOdd) {
     const auto size_for = [](double k) { return pick_footprint_size(FileScale{k, k, k}); };
@@ -564,8 +562,7 @@ TEST(DetailSampleSource, AFilePixelsMarkerIsItsOwnSquare) {
                      .shows_square);
 }
 
-// --- The brush
-// --------------------------------------------------------------------------------------
+// --- The brush -----------------------------------------------------------------------------------
 
 TEST(DetailBrush, PointsAreAFilePixelApartWhileRealPixelsAreDrawn) {
     BrushCanvas canvas;

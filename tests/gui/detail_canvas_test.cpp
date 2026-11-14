@@ -727,8 +727,7 @@ TEST(DetailCanvasGesture, AWheelCountsForAMomentAfterItsLastEvent) {
 
 namespace {
 
-// --- The zoom chip and 100%
-// -----------------------------------------------------------------------
+// --- The zoom chip and 100% ----------------------------------------------------------------------
 
 TEST(DetailCanvasChip, TheChipReadsPercentOfTheFile) {
     const ViewGeometry g = canvas();  // fit 1.17 device pixels per preview pixel
