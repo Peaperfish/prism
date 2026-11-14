@@ -331,24 +331,64 @@ TEST(PreviewRenderer, SubmitsFasterThanARenderStillPublishFramesWithRisingGenera
 }
 
 TEST(PreviewRenderer, AfterAFastBurstOfSubmitsTheLastFrameMatchesTheLatestSettings) {
-    // The real render on a small image, with 40 requests in a row.
-    PreviewRenderer renderer(1);
+    // The real render (render_preview, one thread) on a small image, with 40 requests in a row.
+    // Each render waits at a Stepper before it starts, so the test decides the order. The UI
+    // polls every frame, so the latest frame can be taken by a poll during the burst or by one
+    // after the worker is idle: both orders are forced here. A frame is delivered once; the
+    // latest one is the newest frame the polls saw, wherever it was taken. (The old version of
+    // this test assumed the latest frame was always still waiting after wait_until_idle, and
+    // failed whenever its own poll during the burst had already taken it: #84.)
+    constexpr int requests = 40;
     const auto base = make_base(64, 48);
-    std::uint64_t last = 0;
-    std::uint64_t previous = 0;
-    for (int i = 1; i <= 40; ++i) {
-        last = renderer.submit(base, with_exposure(static_cast<float>(i) / 10));
-        if (const std::optional<PreviewFrame> f = renderer.poll()) {
-            EXPECT_GT(f->generation, previous);
-            previous = f->generation;
+    for (const bool take_last_during_burst : {true, false}) {
+        SCOPED_TRACE(take_last_during_burst ? "latest frame taken during the burst"
+                                            : "latest frame taken after the worker is idle");
+        Stepper step;
+        std::atomic<int> renders{0};
+        PreviewRenderer renderer(
+            [&](const prism::Image& b, const EditSettings& s, std::stop_token stop) {
+                const int n = ++renders;
+                step.started();
+                EXPECT_TRUE(step.wait_released(n));
+                return prism::gui::render_preview(b, s, 1, stop);
+            });
+        const auto exposure = [](int i) { return with_exposure(static_cast<float>(i) / 10); };
+
+        // Render 1 is held while the other 39 requests arrive: nothing can be published yet.
+        std::uint64_t last = renderer.submit(base, exposure(1));
+        ASSERT_TRUE(step.wait_started(1));
+        for (int i = 2; i <= requests; ++i) {
+            last = renderer.submit(base, exposure(i));
+            EXPECT_EQ(renderer.poll(), std::nullopt) << "request " << i;
         }
+        ASSERT_EQ(last, static_cast<std::uint64_t>(requests));
+
+        // Render 1 finishes and is published, older than the latest request.
+        step.release(1);
+        const std::optional<PreviewFrame> first = next_frame(renderer);
+        ASSERT_TRUE(first);
+        EXPECT_EQ(first->generation, 1u);
+        EXPECT_EQ(first->rgb8, expected_bytes(*base, exposure(1)));
+
+        // The next render is the latest request: the 38 in between were replaced, never run.
+        ASSERT_TRUE(step.wait_started(2));
+        EXPECT_EQ(renderer.poll(), std::nullopt) << "render 2 is still held";
+        step.release(2);
+        std::optional<PreviewFrame> latest;
+        if (take_last_during_burst) {
+            latest = next_frame(renderer);  // a UI poll takes it as soon as it is published
+            ASSERT_TRUE(renderer.wait_until_idle(timeout));
+            EXPECT_EQ(renderer.poll(), std::nullopt) << "a frame is delivered only once";
+        } else {
+            ASSERT_TRUE(renderer.wait_until_idle(timeout));
+            latest = renderer.poll();
+        }
+        ASSERT_TRUE(latest);
+        EXPECT_EQ(latest->generation, last);
+        EXPECT_GT(latest->generation, first->generation);
+        EXPECT_EQ(latest->rgb8, expected_bytes(*base, exposure(requests)));
+        EXPECT_EQ(renders, 2);
     }
-    ASSERT_TRUE(renderer.wait_until_idle(timeout));
-    const std::optional<PreviewFrame> frame = renderer.poll();
-    ASSERT_TRUE(frame);
-    EXPECT_EQ(frame->generation, last);
-    EXPECT_GT(frame->generation, previous);
-    EXPECT_EQ(frame->rgb8, expected_bytes(*base, with_exposure(4.0f)));
 }
 
 TEST(PreviewRenderer, DestroyingItWhileRenderingStopsAndJoinsTheWorker) {
