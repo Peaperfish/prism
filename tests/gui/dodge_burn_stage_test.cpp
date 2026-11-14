@@ -319,10 +319,11 @@ class DodgeBurnAgreement : public ::testing::TestWithParam<Size> {};
 }  // namespace
 
 // The sizes are 1.5 x the library's multi-threaded threshold (a landscape one and a portrait one,
-// whose test strip bands run along the other axis), with sides 3 doesn't divide; threads 0 uses
+// whose test strip bands run along the other axis), with sides that leave rows over for 3 and 12
+// threads (1007 is 2 over a multiple of 3 and 11 over one of 12); threads 0 uses
 // every core. Each test asserts the size.
 INSTANTIATE_TEST_SUITE_P(Sizes, DodgeBurnAgreement,
-                         ::testing::Values(Size{1601, 1009}, Size{1009, 1601}),
+                         ::testing::Values(Size{1601, 1007}, Size{1007, 1601}),
                          [](const ::testing::TestParamInfo<Size>& info) {
                              return std::to_string(info.param.w) + "x" +
                                     std::to_string(info.param.h);
