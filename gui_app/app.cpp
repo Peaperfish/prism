@@ -2543,19 +2543,25 @@ void App::leave_pick() {
 // pixels clicked are the base's.
 void App::pick_at(gui::ViewPoint cursor) {
     const std::shared_ptr<const Image> base = session_.preview_base();
-    const std::optional<gui::ViewPixel> pixel = gui::view_pixel_at(view_, view_geometry_, cursor);
-    if (!base || !pixel || base->width != texture_.width() || base->height != texture_.height()) {
+    if (!base || base->width != texture_.width() || base->height != texture_.height()) {
         return;
     }
-    // Real pixels (#37): where they are on the canvas, the patch is the photo's own pixels.
+    // The same piece of the photo at every zoom (#37): where real pixels are on the canvas it is
+    // averaged from the photo's own pixels, elsewhere from the preview.
+    const std::optional<gui::PickFootprint> fp =
+        gui::pick_footprint_at(view_, view_geometry_, framed_full_size(), cursor);
+    if (!fp) {
+        return;
+    }
     const std::shared_ptr<const prism::Photo> photo = session_.detail_base();
-    const std::optional<gui::FilePixel> file =
-        gui::file_pixel_at(view_, view_geometry_, framed_full_size(), cursor);
     const gui::NeutralPick pick =
-        photo && reads_photo_at(file)
-            ? gui::pick_neutral_photo(*photo, session_.settings().frame, file->x, file->y,
-                                      gui::as_shot_white_of(photo->info))
-            : gui::pick_neutral(*base, pixel->x, pixel->y, session_.as_shot_white());
+        photo && reads_photo_at(fp->centre)
+            ? gui::pick_neutral_photo(*photo, session_.settings().frame, fp->centre.x, fp->centre.y,
+                                      gui::as_shot_white_of(photo->info), fp->size)
+            : gui::pick_neutral_area(
+                  *base,
+                  gui::pick_footprint_in_preview(fp->box, {base->width, base->height}, fp->full),
+                  session_.as_shot_white());
     if (pick.outcome == gui::PickOutcome::unavailable) {
         return;
     }
@@ -2570,7 +2576,6 @@ void App::pick_at(gui::ViewPoint cursor) {
 
 void App::update_pick_cursor() {
     pick_hover_.reset();
-    pick_hover_file_.reset();
     if (!pick_.on()) {
         return;
     }
@@ -2580,12 +2585,8 @@ void App::update_pick_cursor() {
         return;
     }
     const ImVec2 mouse = ImGui::GetIO().MousePos;
-    if (const std::optional<gui::ViewPixel> pixel =
-            gui::view_pixel_at(view_, view_geometry_, {mouse.x, mouse.y})) {
-        pick_hover_ = gui::SamplePin{pixel->x, pixel->y};
-        pick_hover_file_ =
-            gui::file_pixel_at(view_, view_geometry_, framed_full_size(), {mouse.x, mouse.y});
-    }
+    pick_hover_ =
+        gui::pick_footprint_at(view_, view_geometry_, framed_full_size(), {mouse.x, mouse.y});
 }
 
 // The ring around the patch a click would average (white on a dark edge, like the sampler's marker,
@@ -2597,12 +2598,9 @@ void App::draw_pick_overlay(ImDrawList* draw) {
     const float scale = ui_scale();
     const float line = std::max(1.0f, std::round(scale));
     if (pick_hover_ && gui::pick_available(viewed_stage_, compare_stage_)) {
-        // Around the patch a click averages: the photo's pixels where it reads them (#37).
-        const gui::PickMarker m = reads_photo_at(pick_hover_file_)
-                                      ? gui::file_pick_marker(view_, view_geometry_,
-                                                              framed_full_size(), *pick_hover_file_)
-                                      : gui::pick_marker(view_, view_geometry_, *pick_hover_,
-                                                         texture_.width(), texture_.height());
+        // Around the piece of the photo a click averages: the same at every zoom (#37).
+        const gui::PickMarker m = gui::file_pick_marker(view_, view_geometry_, pick_hover_->full,
+                                                        pick_hover_->centre, pick_hover_->size);
         if (m.on_canvas) {
             // At least as big as a ring can be seen at.
             const float least = 9.0f * scale;

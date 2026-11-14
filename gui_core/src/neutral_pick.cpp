@@ -11,17 +11,19 @@
 
 namespace prism::gui {
 
-std::optional<PatchBounds> pick_patch_bounds(int width, int height, int x, int y) noexcept {
-    if (width <= 0 || height <= 0 || x < 0 || y < 0 || x >= width || y >= height) {
+std::optional<PatchBounds> pick_patch_bounds(int width, int height, int x, int y,
+                                             int size) noexcept {
+    if (width <= 0 || height <= 0 || x < 0 || y < 0 || x >= width || y >= height || size < 1) {
         return std::nullopt;
     }
-    constexpr int reach = pick_patch_size / 2;
+    const int reach = size / 2;
     return PatchBounds{std::max(0, x - reach), std::max(0, y - reach),
                        std::min(width - 1, x + reach), std::min(height - 1, y + reach)};
 }
 
-std::optional<PickPatch> pick_patch(const Image& base, int x, int y) noexcept {
-    const std::optional<PatchBounds> bounds = pick_patch_bounds(base.width, base.height, x, y);
+std::optional<PickPatch> pick_patch(const Image& base, int x, int y, int size) noexcept {
+    const std::optional<PatchBounds> bounds =
+        pick_patch_bounds(base.width, base.height, x, y, size);
     if (!bounds || base.pixels.size() != static_cast<std::size_t>(base.width) *
                                              static_cast<std::size_t>(base.height) * Image::channels) {
         return std::nullopt;
@@ -47,6 +49,59 @@ std::optional<PickPatch> pick_patch(const Image& base, int x, int y) noexcept {
     return patch;
 }
 
+std::optional<PickPatch> pick_patch_area(const Image& base, const PatchArea& area) noexcept {
+    if (base.width < 1 || base.height < 1 ||
+        base.pixels.size() != static_cast<std::size_t>(base.width) *
+                                  static_cast<std::size_t>(base.height) * Image::channels ||
+        !(area.x1 > area.x0) || !(area.y1 > area.y0)) {
+        return std::nullopt;
+    }
+    const double x0 = std::max(0.0, area.x0);
+    const double y0 = std::max(0.0, area.y0);
+    const double x1 = std::min(static_cast<double>(base.width), area.x1);
+    const double y1 = std::min(static_cast<double>(base.height), area.y1);
+    if (!(x1 > x0) || !(y1 > y0)) {
+        return std::nullopt;
+    }
+    // How much of the unit pixel at `index` the span [lo, hi) covers.
+    const auto cover = [](int index, double lo, double hi) {
+        return std::max(0.0, std::min(hi, index + 1.0) - std::max(lo, static_cast<double>(index)));
+    };
+    constexpr float ceiling = 1.0f - file_ceiling_epsilon;
+    PickPatch patch;
+    std::array<double, 3> sum{};
+    double weight = 0.0;
+    const int first_row = static_cast<int>(std::floor(y0));
+    const int last_row = std::min(base.height - 1, static_cast<int>(std::ceil(y1)) - 1);
+    const int first_column = static_cast<int>(std::floor(x0));
+    const int last_column = std::min(base.width - 1, static_cast<int>(std::ceil(x1)) - 1);
+    for (int row = first_row; row <= last_row; ++row) {
+        const double wy = cover(row, y0, y1);
+        for (int column = first_column; column <= last_column; ++column) {
+            const double w = wy * cover(column, x0, x1);
+            if (!(w > 0.0)) {
+                continue;
+            }
+            const float* p = base.pixels.data() +
+                             (static_cast<std::size_t>(row) * static_cast<std::size_t>(base.width) +
+                              static_cast<std::size_t>(column)) * Image::channels;
+            for (int c = 0; c < 3; ++c) {
+                sum[static_cast<std::size_t>(c)] += w * p[c];
+                patch.clipped = patch.clipped || p[c] >= ceiling;
+            }
+            weight += w;
+            ++patch.pixels;
+        }
+    }
+    if (!(weight > 0.0)) {
+        return std::nullopt;
+    }
+    for (std::size_t c = 0; c < 3; ++c) {
+        patch.mean[c] = sum[c] / weight;
+    }
+    return patch;
+}
+
 std::optional<Chromaticity> neutral_light_xy(const std::array<double, 3>& c,
                                              Chromaticity as_shot) {
     const Vec3 xyz = multiply(bradford(white_d65, as_shot), multiply(srgb_to_xyz(), c));
@@ -57,10 +112,12 @@ std::optional<Chromaticity> neutral_light_xy(const std::array<double, 3>& c,
     return Chromaticity{xyz[0] / sum, xyz[1] / sum};
 }
 
-NeutralPick pick_neutral(const Image& base, int x, int y,
-                         const std::optional<Chromaticity>& as_shot) noexcept {
+namespace {
+
+// The light the patch says was neutral, as pick_neutral and pick_neutral_area report it.
+NeutralPick pick_from_patch(const std::optional<PickPatch>& patch,
+                            const std::optional<Chromaticity>& as_shot) noexcept {
     NeutralPick result;
-    const std::optional<PickPatch> patch = pick_patch(base, x, y);
     if (!patch) {
         return result;
     }
@@ -98,6 +155,18 @@ NeutralPick pick_neutral(const Image& base, int x, int y,
     return result;
 }
 
+}  // namespace
+
+NeutralPick pick_neutral(const Image& base, int x, int y,
+                         const std::optional<Chromaticity>& as_shot, int size) noexcept {
+    return pick_from_patch(pick_patch(base, x, y, size), as_shot);
+}
+
+NeutralPick pick_neutral_area(const Image& base, const PatchArea& area,
+                              const std::optional<Chromaticity>& as_shot) noexcept {
+    return pick_from_patch(pick_patch_area(base, area), as_shot);
+}
+
 std::string pick_message(const NeutralPick& pick) {
     switch (pick.outcome) {
         case PickOutcome::picked:
@@ -123,7 +192,7 @@ void apply_pick(EditSettings& s, const NeutralPick& pick) noexcept {
 }
 
 NeutralPick pick_neutral_photo(const Photo& photo, const std::optional<Frame>& frame, int x, int y,
-                               const std::optional<Chromaticity>& as_shot) {
+                               const std::optional<Chromaticity>& as_shot, int size) {
     const int w = photo.image.width;
     const int h = photo.image.height;
     if (w < 1 || h < 1) {
@@ -131,7 +200,7 @@ NeutralPick pick_neutral_photo(const Photo& photo, const std::optional<Frame>& f
     }
     const ExportFrame plan = plan_export_frame(frame, w, h);
     const std::optional<PatchBounds> bounds =
-        pick_patch_bounds(plan.size.width, plan.size.height, x, y);
+        pick_patch_bounds(plan.size.width, plan.size.height, x, y, size);
     if (!bounds) {
         return {};
     }
@@ -157,7 +226,7 @@ NeutralPick pick_neutral_photo(const Photo& photo, const std::optional<Frame>& f
                                 first + static_cast<std::ptrdiff_t>(part.width) * Image::channels);
         }
     }
-    return pick_neutral(patch, x - part.x0, y - part.y0, as_shot);
+    return pick_neutral(patch, x - part.x0, y - part.y0, as_shot, size);
 }
 
 }  // namespace prism::gui

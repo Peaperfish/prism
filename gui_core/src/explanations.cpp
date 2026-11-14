@@ -250,8 +250,9 @@ constexpr Explanation templates[] = {
 
     // --- Pick neutral --------------------------------------------------------------------------
     {"pick", "Click something grey to set the white balance (W).",
-     "Click a patch that should be neutral. Prism averages 5 by 5 pixels there and sets Kelvin and "
-     "tint so it comes out grey. A spot that is too dark or clipped is refused. Esc leaves."},
+     "Click something neutral. Prism averages the same small piece of the photo at "
+     "every zoom (5 by 5 preview pixels), from the photo's pixels at 100% and above, and sets "
+     "Kelvin and tint to make it grey. Esc leaves."},
 
     // --- Dodge & burn --------------------------------------------------------------------------
     {"dodge_burn.switch", "Turn the dodging and burning off and on.",

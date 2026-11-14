@@ -317,23 +317,6 @@ CanvasTools tools_after_key(CanvasTools tools, ToolKey key, bool pick_ok, bool s
     return tools;
 }
 
-PickMarker pick_marker(const ViewState& s, const ViewGeometry& g, SamplePin pixel, int width,
-                       int height) noexcept {
-    PickMarker marker;
-    const std::optional<PatchBounds> bounds = pick_patch_bounds(width, height, pixel.x, pixel.y);
-    if (!bounds) {
-        return marker;
-    }
-    marker.patch = {view_image_to_screen(s, g, {static_cast<float>(bounds->x0),
-                                                static_cast<float>(bounds->y0)}),
-                    view_image_to_screen(s, g, {static_cast<float>(bounds->x1 + 1),
-                                                static_cast<float>(bounds->y1 + 1)})};
-    const ViewPoint centre = view_image_to_screen(
-        s, g, {static_cast<float>(pixel.x) + 0.5f, static_cast<float>(pixel.y) + 0.5f});
-    marker.on_canvas = view_pixel_at(s, g, centre).has_value();
-    return marker;
-}
-
 PinchScale pinch_scale_of(PointerPlatform platform) noexcept {
     switch (platform) {
         case PointerPlatform::wayland:

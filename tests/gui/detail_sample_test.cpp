@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -22,6 +23,7 @@
 #include "prism/gui/settings.hpp"
 #include "prism/image.hpp"
 #include "prism/raw.hpp"
+#include "prism/resize.hpp"
 #include "prism/stroke_field.hpp"
 
 // The tools on real pixels (#37, session 7): Sample and Pick read the photo's own pixel where real
@@ -222,14 +224,17 @@ TEST(DetailSample, APhotoPickIsThePickOnTheFramedFullSizePicture) {
             plan.fitted ? prism::apply_frame(photo.image, *plan.fitted, 1) : photo.image;
         ASSERT_EQ(whole.width, plan.size.width);
         const std::optional<prism::Chromaticity> as_shot = as_shot_white_of(photo.info);
-        for (const FilePixel p : pixels_of(plan.size)) {
-            SCOPED_TRACE(std::to_string(p.x) + ", " + std::to_string(p.y));
-            const NeutralPick want = pick_neutral(whole, p.x, p.y, as_shot);
-            const NeutralPick got = pick_neutral_photo(photo, frame, p.x, p.y, as_shot);
-            EXPECT_EQ(got.outcome, want.outcome);
-            EXPECT_EQ(got.light.kelvin, want.light.kelvin);
-            EXPECT_EQ(got.light.tint, want.light.tint);
-            EXPECT_EQ(got.limited, want.limited);
+        for (const int size : {5, 11, 19}) {
+            for (const FilePixel p : pixels_of(plan.size)) {
+                SCOPED_TRACE(std::to_string(size) + ": " + std::to_string(p.x) + ", " +
+                             std::to_string(p.y));
+                const NeutralPick want = pick_neutral(whole, p.x, p.y, as_shot, size);
+                const NeutralPick got = pick_neutral_photo(photo, frame, p.x, p.y, as_shot, size);
+                EXPECT_EQ(got.outcome, want.outcome);
+                EXPECT_EQ(got.light.kelvin, want.light.kelvin);
+                EXPECT_EQ(got.light.tint, want.light.tint);
+                EXPECT_EQ(got.limited, want.limited);
+            }
         }
         EXPECT_EQ(pick_neutral_photo(photo, frame, plan.size.width, 0, as_shot).outcome,
                   PickOutcome::unavailable);
@@ -400,20 +405,150 @@ TEST(DetailSampleSource, APixelOfAnEstimatedSizeMovesToTheRealOne) {
 TEST(DetailSampleSource, PicksRingIsAroundThePhotoPixelsItAverages) {
     const ViewGeometry g = canvas_7();
     const ViewState s = at_percent(g, 800.0, 1000.0f, 700.0f);
-    const PickMarker m = file_pick_marker(s, g, full_7, {3740, 2610});
+    const int size = pick_footprint_size(file_scale(full_7, preview_7));
+    ASSERT_EQ(size, 19);
+    const PickMarker m = file_pick_marker(s, g, full_7, {3740, 2610}, size);
     ASSERT_TRUE(m.on_canvas);
-    // Five photo pixels across, eight device pixels each at 800%: 20 points on a 2x screen.
-    EXPECT_NEAR(m.patch.width(), 20.0f, 0.51f);
-    EXPECT_NEAR(m.patch.height(), 20.0f, 0.51f);
-    const ViewRect patch = detail_screen_rect(s, g, full_7, FrameBox{3738, 2608, 5, 5});
+    // 19 photo pixels across, eight device pixels each at 800%: 76 points on a 2x screen.
+    EXPECT_NEAR(m.patch.width(), 76.0f, 0.51f);
+    EXPECT_NEAR(m.patch.height(), 76.0f, 0.51f);
+    const ViewRect patch = detail_screen_rect(s, g, full_7, FrameBox{3731, 2601, 19, 19});
     EXPECT_FLOAT_EQ(m.patch.min.x, patch.min.x);
     EXPECT_FLOAT_EQ(m.patch.min.y, patch.min.y);
     // Cut off at the picture's edge, as the patch is.
     const ViewState corner = at_percent(g, 800.0, 0.0f, 0.0f);
-    const PickMarker edge = file_pick_marker(corner, g, full_7, {0, 1});
-    EXPECT_NEAR(edge.patch.width(), 12.0f, 0.51f);   // pixels 0 to 2
-    EXPECT_NEAR(edge.patch.height(), 16.0f, 0.51f);  // pixels 0 to 3
-    EXPECT_FALSE(file_pick_marker(corner, g, full_7, {8138, 0}).on_canvas);
+    const PickMarker edge = file_pick_marker(corner, g, full_7, {0, 1}, size);
+    EXPECT_NEAR(edge.patch.width(), 40.0f, 0.51f);   // pixels 0 to 9
+    EXPECT_NEAR(edge.patch.height(), 44.0f, 0.51f);  // pixels 0 to 10
+    EXPECT_FALSE(file_pick_marker(corner, g, full_7, {8138, 0}, size).on_canvas);
+    // The same ring is drawn at Fit: the same piece of the photo, smaller.
+    const PickMarker fit = file_pick_marker(ViewState{}, g, full_7, {3740, 2610}, size);
+    EXPECT_TRUE(fit.on_canvas);
+    EXPECT_LT(fit.patch.width(), 12.0f);
+    EXPECT_GT(fit.patch.width(), 1.0f);
+}
+
+// --- Pick's footprint: the same photo area at every zoom
+// ----------------------------------------------------------------------
+
+TEST(DetailPickFootprint, SizeIsTheFivePixelPatchInPhotoPixelsAndOdd) {
+    const auto size_for = [](double k) { return pick_footprint_size(FileScale{k, k, k}); };
+    EXPECT_EQ(size_for(1.0), 5);   // the preview is the photo
+    EXPECT_EQ(size_for(1.04), 5);  // 5.2 rounds to 5
+    EXPECT_EQ(size_for(1.1), 7);   // 5.5 rounds to 6, even, so 7
+    EXPECT_EQ(size_for(1.5), 9);   // 7.5 rounds to 8, even, so 9
+    EXPECT_EQ(size_for(2.0), 11);  // 10 is even, so 11
+    EXPECT_EQ(size_for(2.2), 11);  // 11 is odd
+    EXPECT_EQ(size_for(3.0), 15);  // 15 is odd
+    // Never below 5, whatever the scale (a preview larger than the photo, or no scale).
+    EXPECT_EQ(size_for(0.4), 5);
+    EXPECT_EQ(size_for(0.0), 5);
+    EXPECT_EQ(size_for(std::numeric_limits<double>::quiet_NaN()), 5);
+    EXPECT_EQ(size_for(std::numeric_limits<double>::infinity()), 5);
+    for (double k = 1.0; k < 12.0; k += 0.037) {
+        EXPECT_EQ(size_for(k) % 2, 1) << k;
+        EXPECT_GE(size_for(k), 5) << k;
+    }
+}
+
+TEST(DetailPickFootprint, ASevenR5PhotoOnTheRealPreviewIsNineteenAcross) {
+    // The Sony A7R V's photos are 9564 pixels wide (6376 high, 3:2); the preview is made at the
+    // session's own long side.
+    const int preview_long_side = SessionOptions{}.preview_long_side;
+    ASSERT_EQ(preview_long_side, 2560);
+    const PixelSize full{9564, 6376};
+    const PixelSize preview = prism::downscaled_size(full.width, full.height, preview_long_side);
+    ASSERT_EQ(preview.width, 2560);
+    const FileScale k = file_scale(full, preview);
+    EXPECT_NEAR(k.shown, 9564.0 / 2560.0, 1e-12);
+    // 5 x 3.7359 = 18.68: 19, which is odd.
+    EXPECT_EQ(pick_footprint_size(k), 19);
+}
+
+TEST(DetailPickFootprint, IsCentredAndCutOffAtThePicturesEdges) {
+    const PixelSize full{100, 80};
+    EXPECT_EQ(pick_footprint(full, 19, {50, 40}), (FrameBox{41, 31, 19, 19}));
+    EXPECT_EQ(pick_footprint(full, 5, {50, 40}), (FrameBox{48, 38, 5, 5}));
+    EXPECT_EQ(pick_footprint(full, 1, {50, 40}), (FrameBox{50, 40, 1, 1}));
+    // Its middle pixel is the centre: as many on each side.
+    const std::optional<FrameBox> mid = pick_footprint(full, 19, {30, 20});
+    ASSERT_TRUE(mid);
+    EXPECT_EQ(30 - mid->x0, mid->x0 + mid->width - 1 - 30);
+    EXPECT_EQ(20 - mid->y0, mid->y0 + mid->height - 1 - 20);
+    // Cut off at each edge.
+    EXPECT_EQ(pick_footprint(full, 19, {0, 0}), (FrameBox{0, 0, 10, 10}));
+    EXPECT_EQ(pick_footprint(full, 19, {99, 79}), (FrameBox{90, 70, 10, 10}));
+    EXPECT_EQ(pick_footprint(full, 19, {3, 79}), (FrameBox{0, 70, 13, 10}));
+    EXPECT_EQ(pick_footprint(full, 19, {99, 5}), (FrameBox{90, 0, 10, 15}));
+    // Off the picture, or no picture: nothing.
+    EXPECT_FALSE(pick_footprint(full, 19, {100, 0}));
+    EXPECT_FALSE(pick_footprint(full, 19, {0, -1}));
+    EXPECT_FALSE(pick_footprint({0, 0}, 19, {0, 0}));
+}
+
+TEST(DetailPickFootprint, AFitAndA100PercentClickCoverTheSamePhotoRectangle) {
+    const ViewGeometry g = canvas_7();
+    // A point of the photo, in preview pixels, not on the edge of a photo pixel.
+    const ViewPoint at_image{1000.37f, 700.61f};
+    std::optional<PickFootprint> first;
+    for (const double percent : {0.0, 100.0, 400.0, 800.0}) {
+        SCOPED_TRACE(percent);
+        const ViewState s = percent == 0.0 ? ViewState{}
+                                           : at_percent(g, percent, 1000.0f, 700.0f);
+        const ViewPoint screen = view_image_to_screen(s, g, at_image);
+        const std::optional<PickFootprint> fp = pick_footprint_at(s, g, full_7, screen);
+        ASSERT_TRUE(fp);
+        EXPECT_EQ(fp->full, full_7);
+        EXPECT_EQ(fp->size, 19);
+        EXPECT_EQ(fp->box.width, 19);
+        EXPECT_EQ(fp->box.height, 19);
+        if (!first) {
+            first = fp;
+        }
+        EXPECT_EQ(fp->centre, first->centre);
+        EXPECT_EQ(fp->box, first->box);
+    }
+    ASSERT_TRUE(first);
+    // The photo pixel under the point: 1000.37 x 3.738, 700.61 x 3.733.
+    const FileScale k = file_scale(full_7, preview_7);
+    EXPECT_EQ(first->centre, (FilePixel{static_cast<int>(1000.37 * k.x),
+                                        static_cast<int>(700.61 * k.y)}));
+}
+
+TEST(DetailPickFootprint, ThePreviewAreaIsTheSameBoxInPreviewPixels) {
+    const ViewGeometry g = canvas_7();
+    const ViewPoint screen = view_image_to_screen(ViewState{}, g, {1000.37f, 700.61f});
+    const std::optional<PickFootprint> fp = pick_footprint_at(ViewState{}, g, full_7, screen);
+    ASSERT_TRUE(fp);
+    const PatchArea area = pick_footprint_in_preview(fp->box, preview_7, full_7);
+    const FileScale k = file_scale(full_7, preview_7);
+    // Back to photo pixels, it is the box.
+    EXPECT_NEAR(area.x0 * k.x, fp->box.x0, 1e-9);
+    EXPECT_NEAR(area.y0 * k.y, fp->box.y0, 1e-9);
+    EXPECT_NEAR(area.x1 * k.x, fp->box.x0 + fp->box.width, 1e-9);
+    EXPECT_NEAR(area.y1 * k.y, fp->box.y0 + fp->box.height, 1e-9);
+    // About 5 preview pixels across: the 5 x 5 patch, to the rounding of an odd size.
+    EXPECT_NEAR(area.x1 - area.x0, 5.0, 0.35);
+    EXPECT_NEAR(area.y1 - area.y0, 5.0, 0.35);
+    // Cut off at the picture's edge: the area is too.
+    const PatchArea corner = pick_footprint_in_preview({0, 0, 10, 10}, preview_7, full_7);
+    EXPECT_EQ(corner.x0, 0.0);
+    EXPECT_EQ(corner.y0, 0.0);
+    // Empty sizes: an empty area.
+    const PatchArea none = pick_footprint_in_preview({0, 0, 10, 10}, {0, 0}, full_7);
+    EXPECT_EQ(none.x1, none.x0);
+}
+
+TEST(DetailPickFootprint, WithoutAFullSizePhotoItIsTheFiveByFivePatchOnThePreview) {
+    const ViewGeometry g = canvas_7();
+    const ViewPoint screen = view_image_to_screen(ViewState{}, g, {1000.37f, 700.61f});
+    const std::optional<PickFootprint> fp = pick_footprint_at(ViewState{}, g, {0, 0}, screen);
+    ASSERT_TRUE(fp);
+    EXPECT_EQ(fp->full, preview_7);
+    EXPECT_EQ(fp->size, 5);
+    EXPECT_EQ(fp->box, (FrameBox{998, 698, 5, 5}));
+    // Off the canvas: nothing.
+    EXPECT_FALSE(pick_footprint_at(ViewState{}, g, full_7, {g.x - 5.0f, g.y + 10.0f}));
 }
 
 TEST(DetailSampleSource, AFilePixelsMarkerIsItsOwnSquare) {

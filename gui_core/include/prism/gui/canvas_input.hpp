@@ -380,15 +380,12 @@ enum class ToolKey {
 [[nodiscard]] CanvasTools tools_after_key(CanvasTools tools, ToolKey key, bool pick_ok,
                                           bool strip_ok, bool brush_ok = false) noexcept;
 
-// Where Pick mode's patch goes on the screen: the square of pixels it averages around `pixel` in a
-// width x height picture, cut off at the picture's edges.
+// Where Pick mode's ring goes on the screen: around the piece of the photo a click averages
+// (file_pick_marker in detail_canvas.hpp).
 struct PickMarker {
     bool on_canvas = false;  // the pixel's middle is on the canvas: otherwise there is nothing to draw
     ViewRect patch;
 };
-
-[[nodiscard]] PickMarker pick_marker(const ViewState& s, const ViewGeometry& g, SamplePin pixel,
-                                     int width, int height) noexcept;
 
 // What a pinch's scale means. SDL's header says each event carries the change since the one before,
 // which is what its macOS backend sends; its Wayland backend passes on the protocol's scale "relative

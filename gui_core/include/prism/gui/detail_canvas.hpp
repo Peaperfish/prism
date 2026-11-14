@@ -264,11 +264,49 @@ enum class PixelSource {
 // axis.
 [[nodiscard]] FilePixel file_pixel_rescaled(FilePixel pixel, PixelSize from, PixelSize to) noexcept;
 
-// The ring Pick shows on real pixels: around the pick_patch_size patch of file pixels that a click
-// at `pixel` averages (pick_neutral_photo), cut off at the picture's edges, on whole device pixels.
-// Not on the canvas if the pixel's middle isn't, or the pixel is off the picture.
+// --- Pick's footprint: the same photo area at every zoom
+// ------------------------------------------------------
+
+// How many photo pixels across Pick's square is: the preview's 5 x 5 patch (pick_patch_size) as
+// photo pixels. 5 x the photo pixels per preview pixel (scale.shown), rounded to the nearest whole
+// number, plus 1 if that is even so the square has a middle pixel, and never below 5. A photo the
+// preview shows whole (1 : 1) gives 5; a 9564 px wide photo on the 2560 px preview gives 19.
+[[nodiscard]] int pick_footprint_size(FileScale scale) noexcept;
+
+// The square of `size` (odd) photo pixels across centred on `centre`, in a `framed_full` picture,
+// cut off at its edges, as a region. Nothing for a centre off the picture or an empty picture.
+[[nodiscard]] std::optional<FrameBox> pick_footprint(PixelSize framed_full, int size,
+                                                     FilePixel centre) noexcept;
+
+// What a click at a screen point averages, whatever the zoom: the footprint around the photo pixel
+// under the point. `full` is the framed picture at full size, or the preview's own size when there
+// is none (framed_full empty); `size` is pick_footprint_size of the scale from the preview to it.
+struct PickFootprint {
+    PixelSize full;
+    int size = pick_patch_size;
+    FilePixel centre;
+    FrameBox box;  // pick_footprint(full, size, centre)
+};
+
+// Nothing off the picture or the canvas (file_pixel_at). The view's image is the framed preview
+// (g.image_width x g.image_height).
+[[nodiscard]] std::optional<PickFootprint> pick_footprint_at(const ViewState& s,
+                                                             const ViewGeometry& g,
+                                                             PixelSize framed_full,
+                                                             ViewPoint screen) noexcept;
+
+// The footprint's box in the preview's pixels (the framed preview of `framed_preview`), by the
+// per-axis scale from `framed_preview` to `full`: where Pick averages the preview below 100%
+// (pick_neutral_area). Edges fall inside preview pixels. Empty if either size is.
+[[nodiscard]] PatchArea pick_footprint_in_preview(const FrameBox& box, PixelSize framed_preview,
+                                                  PixelSize full) noexcept;
+
+// The ring Pick shows, at every zoom: around the footprint of `pixel` (`size` photo pixels across,
+// pick_footprint), cut off at the picture's edges, on whole device pixels. Not on the canvas if the
+// pixel's middle isn't, or the pixel is off the picture.
 [[nodiscard]] PickMarker file_pick_marker(const ViewState& s, const ViewGeometry& g,
-                                          PixelSize framed_full, FilePixel pixel) noexcept;
+                                          PixelSize framed_full, FilePixel pixel,
+                                          int size) noexcept;
 
 // Where a file pixel's marker goes on the screen: its square (detail_screen_rect of the 1 x 1
 // region), the centre, whether the centre is on the canvas, and shows_square past 200% of the file

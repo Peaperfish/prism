@@ -223,17 +223,60 @@ FilePixel file_pixel_rescaled(FilePixel pixel, PixelSize from, PixelSize to) noe
     return file_pixel_of(pixel.x, pixel.y, from, to);  // file_pixel_of maps a pixel by its middle
 }
 
+int pick_footprint_size(FileScale scale) noexcept {
+    const double k = std::isfinite(scale.shown) && scale.shown > 0.0 ? scale.shown : 1.0;
+    // Clamped before the cast, so a huge scale can't overflow it.
+    int size = static_cast<int>(std::lround(std::min(pick_patch_size * k, 1.0e6)));
+    if (size % 2 == 0) {
+        ++size;
+    }
+    return std::max(pick_patch_size, size);
+}
+
+std::optional<FrameBox> pick_footprint(PixelSize framed_full, int size, FilePixel centre) noexcept {
+    const std::optional<PatchBounds> b =
+        pick_patch_bounds(framed_full.width, framed_full.height, centre.x, centre.y, size);
+    if (!b) {
+        return std::nullopt;
+    }
+    return FrameBox{b->x0, b->y0, b->x1 - b->x0 + 1, b->y1 - b->y0 + 1};
+}
+
+std::optional<PickFootprint> pick_footprint_at(const ViewState& s, const ViewGeometry& g,
+                                               PixelSize framed_full, ViewPoint screen) noexcept {
+    const PixelSize preview{g.image_width, g.image_height};
+    const PixelSize full = framed_full.width > 0 && framed_full.height > 0 ? framed_full : preview;
+    const std::optional<FilePixel> centre = file_pixel_at(s, g, full, screen);
+    if (!centre) {
+        return std::nullopt;
+    }
+    const int size = pick_footprint_size(file_scale(full, preview));
+    const std::optional<FrameBox> box = pick_footprint(full, size, *centre);
+    if (!box) {
+        return std::nullopt;
+    }
+    return PickFootprint{full, size, *centre, *box};
+}
+
+PatchArea pick_footprint_in_preview(const FrameBox& box, PixelSize framed_preview,
+                                    PixelSize full) noexcept {
+    if (framed_preview.width < 1 || framed_preview.height < 1 || full.width < 1 ||
+        full.height < 1) {
+        return {};
+    }
+    const FileScale k = file_scale(full, framed_preview);
+    return {box.x0 / k.x, box.y0 / k.y, (static_cast<double>(box.x0) + box.width) / k.x,
+            (static_cast<double>(box.y0) + box.height) / k.y};
+}
+
 PickMarker file_pick_marker(const ViewState& s, const ViewGeometry& g, PixelSize framed_full,
-                            FilePixel pixel) noexcept {
+                            FilePixel pixel, int size) noexcept {
     PickMarker m;
-    const std::optional<PatchBounds> bounds =
-        pick_patch_bounds(framed_full.width, framed_full.height, pixel.x, pixel.y);
-    if (!bounds) {
+    const std::optional<FrameBox> box = pick_footprint(framed_full, size, pixel);
+    if (!box) {
         return m;
     }
-    m.patch = detail_screen_rect(
-        s, g, framed_full,
-        FrameBox{bounds->x0, bounds->y0, bounds->x1 - bounds->x0 + 1, bounds->y1 - bounds->y0 + 1});
+    m.patch = detail_screen_rect(s, g, framed_full, *box);
     m.on_canvas = file_pixel_marker(s, g, framed_full, pixel).on_canvas;
     return m;
 }

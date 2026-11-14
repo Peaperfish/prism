@@ -74,7 +74,10 @@ TEST(Explanations, ThePickerExplainsItselfWithItsKeyAndHowToLeave) {
     EXPECT_LE(e->detail.size(), explain_detail_max);
     EXPECT_NE(e->summary.find("(W)"), std::string_view::npos);
     EXPECT_NE(e->detail.find("Esc"), std::string_view::npos);
-    EXPECT_NE(e->detail.find("5 by 5"), std::string_view::npos);
+    EXPECT_NE(e->detail.find("the same small piece of the photo at every zoom"),
+              std::string_view::npos);
+    EXPECT_NE(e->detail.find("5 by 5 preview pixels"), std::string_view::npos);
+    EXPECT_NE(e->detail.find("the photo's pixels at 100% and above"), std::string_view::npos);
     for (const std::string_view text : {e->summary, e->detail}) {
         EXPECT_EQ(std::string(text).find("rightness"), std::string::npos);
     }

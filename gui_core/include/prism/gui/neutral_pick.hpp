@@ -13,11 +13,15 @@ namespace prism::gui {
 // The white balance picker (#21): click something that should be grey, and the White balance stage
 // is set to the light that makes it so. No ImGui here, so all of it is tested without a window.
 
-// The picker averages a square of this many pixels across, centred on the pixel clicked.
+// The picker averages a square of this many pixels across, centred on the pixel clicked, on the
+// preview. On the photo's own pixels the square is the same piece of the photo, measured in photo
+// pixels (pick_footprint_size in detail_canvas.hpp); the functions below take its size, odd, with
+// this as the default.
 inline constexpr int pick_patch_size = 5;
 
-// The pixels of a width x height picture the patch around (x, y) covers: x0 to x1 and y0 to y1,
-// both ends included, cut off at the picture's edges. Nothing for a pixel off the picture.
+// The pixels of a width x height picture the patch of `size` pixels across (odd) around (x, y)
+// covers: x0 to x1 and y0 to y1, both ends included, cut off at the picture's edges. Nothing for a
+// pixel off the picture.
 struct PatchBounds {
     int x0 = 0;
     int y0 = 0;
@@ -26,7 +30,8 @@ struct PatchBounds {
 
     bool operator==(const PatchBounds&) const = default;
 };
-[[nodiscard]] std::optional<PatchBounds> pick_patch_bounds(int width, int height, int x, int y) noexcept;
+[[nodiscard]] std::optional<PatchBounds> pick_patch_bounds(int width, int height, int x, int y,
+                                                           int size = pick_patch_size) noexcept;
 
 // What the patch holds: its mean per channel (linear, as decoded: before any white balance, so that
 // picking again gives the same answer), and whether any of its pixels is at the file's ceiling or
@@ -40,7 +45,25 @@ struct PickPatch {
 };
 
 // Nothing for a pixel off the picture, an empty image, or pixels that don't match its size.
-[[nodiscard]] std::optional<PickPatch> pick_patch(const Image& base, int x, int y) noexcept;
+[[nodiscard]] std::optional<PickPatch> pick_patch(const Image& base, int x, int y,
+                                                  int size = pick_patch_size) noexcept;
+
+// A rectangle of an image, in its pixels, continuous: [x0, x1) x [y0, y1). A pixel is the unit
+// square from (column, row).
+struct PatchArea {
+    double x0 = 0.0;
+    double y0 = 0.0;
+    double x1 = 0.0;
+    double y1 = 0.0;
+};
+
+// The patch over `area` of `base`, where the area's edges may fall inside pixels: the mean is
+// weighted by how much of each pixel the area covers, and `pixels` counts the pixels it touches.
+// With an area on whole pixels this is pick_patch's mean over those pixels. Nothing for an empty
+// area, one outside the image, an empty image, or pixels that don't match its size. The area is cut
+// off at the image's edges.
+[[nodiscard]] std::optional<PickPatch> pick_patch_area(const Image& base,
+                                                       const PatchArea& area) noexcept;
 
 // The patch mean below this share of white's light is too dark to say what colour the light was.
 inline constexpr double pick_dark_limit = 0.005;
@@ -69,16 +92,24 @@ struct NeutralPick {
 // Picks at pixel (x, y) of `base`: the light from the patch around it. `as_shot` is the photo's
 // as-shot light, or none for the 6500 K / tint 0 that photos without one are taken to have.
 [[nodiscard]] NeutralPick pick_neutral(const Image& base, int x, int y,
-                                       const std::optional<Chromaticity>& as_shot) noexcept;
+                                       const std::optional<Chromaticity>& as_shot,
+                                       int size = pick_patch_size) noexcept;
+
+// Picks from the light of `area` of `base` (pick_patch_area): what pick_neutral says of a patch
+// that is not on whole pixels. This is Pick on the preview below 100%, over the piece of the photo
+// that the photo's own pixels would average at 100%.
+[[nodiscard]] NeutralPick pick_neutral_area(const Image& base, const PatchArea& area,
+                                            const std::optional<Chromaticity>& as_shot) noexcept;
 
 // Real pixels (#37): pick_neutral at pixel (x, y) of the framed picture at full size, from `photo`
 // (the full-size decode, Session::detail_base) framed by `frame` as an export frames it: the patch
-// is pick_patch_size pixels of that picture across, cut off at its edges. `as_shot` as for
-// pick_neutral. Unavailable for a pixel off the framed picture; throws std::invalid_argument for an
-// invalid frame.
+// is `size` pixels of that picture across (odd), cut off at its edges, and averaged from the
+// pixels an export makes. `as_shot` as for pick_neutral. Unavailable for a pixel off the framed
+// picture; throws std::invalid_argument for an invalid frame.
 [[nodiscard]] NeutralPick pick_neutral_photo(const Photo& photo, const std::optional<Frame>& frame,
                                              int x, int y,
-                                             const std::optional<Chromaticity>& as_shot);
+                                             const std::optional<Chromaticity>& as_shot,
+                                             int size = pick_patch_size);
 
 // The chip's words: "Neutral here: 5180 K, tint +4" (plus " (limited to the slider's range)"), or the
 // reason nothing changed: "Too dark to judge; click a lighter grey" or "Clipped; click a grey that

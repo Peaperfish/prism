@@ -434,8 +434,9 @@ private:
     gui::StrokePainter stroke_painter_;  // the stroke it is painting, one undo step
     gui::BrushCanvas stroke_canvas_;     // the picture the stroke under way is drawn on
     gui::SampleClick pick_click_;
-    std::optional<gui::SamplePin> pick_hover_;  // the pixel under the cursor this frame
-    std::optional<gui::FilePixel> pick_hover_file_;  // its photo pixel (#37)
+    // What a click would average, from the cursor this frame: the same piece of the photo at every
+    // zoom (#37).
+    std::optional<gui::PickFootprint> pick_hover_;
     std::string pick_message_;                  // the chip: what the last pick did, or why not
     double pick_message_until_ = 0.0;           // ImGui::GetTime() at which the chip goes
     std::optional<gui::SamplePin> sample_hover_;  // the pixel under the cursor this frame

@@ -67,8 +67,9 @@ std::array<double, 3> ramp_mean(int x0, int y0, int x1, int y1) {
     return sum;
 }
 
-void expect_mean(const Image& img, int x, int y, std::array<double, 3> want, int pixels) {
-    const auto patch = pick_patch(img, x, y);
+void expect_mean(const Image& img, int x, int y, std::array<double, 3> want, int pixels,
+                 int size = pick_patch_size) {
+    const auto patch = pick_patch(img, x, y, size);
     ASSERT_TRUE(patch) << x << "," << y;
     EXPECT_EQ(patch->pixels, pixels) << x << "," << y;
     for (std::size_t c = 0; c < 3; ++c) {
@@ -162,6 +163,80 @@ TEST(NeutralPickPatch, ClippedMeansAnyPixelAtTheCeilingOrAboveWhite) {
     wide.pixels[8 * 3] = 1.0f;
     EXPECT_FALSE(pick_patch(wide, 4, 0)->clipped);
     EXPECT_TRUE(pick_patch(wide, 6, 0)->clipped);
+}
+
+TEST(NeutralPickPatch, ASizeGivesThatManyPixelsAcrossAndOddOnesAreCentred) {
+    EXPECT_EQ(pick_patch_bounds(40, 30, 20, 15, 19), (PatchBounds{11, 6, 29, 24}));
+    EXPECT_EQ(pick_patch_bounds(40, 30, 20, 15, 1), (PatchBounds{20, 15, 20, 15}));
+    EXPECT_EQ(pick_patch_bounds(40, 30, 2, 15, 19), (PatchBounds{0, 6, 11, 24}));
+    EXPECT_FALSE(pick_patch_bounds(40, 30, 20, 15, 0));
+    const Image img = ramp(40, 30);
+    expect_mean(img, 20, 15, ramp_mean(11, 6, 29, 24), 19 * 19, 19);
+    const auto patch = pick_patch(img, 2, 15, 19);
+    ASSERT_TRUE(patch);
+    EXPECT_EQ(patch->pixels, 12 * 19);
+}
+
+TEST(NeutralPickPatch, AnAreaOnWholePixelsIsThePatchOverThoseOnes) {
+    const Image img = ramp(40, 30);
+    const auto whole = pick_patch(img, 20, 15, 19);
+    const auto area = pick_patch_area(img, {11.0, 6.0, 30.0, 25.0});
+    ASSERT_TRUE(whole);
+    ASSERT_TRUE(area);
+    EXPECT_EQ(area->pixels, whole->pixels);
+    for (std::size_t c = 0; c < 3; ++c) {
+        EXPECT_NEAR(area->mean[c], whole->mean[c], 1e-9);
+    }
+    EXPECT_EQ(pick_neutral_area(img, {11.0, 6.0, 30.0, 25.0}, std::nullopt).outcome,
+              pick_neutral(img, 20, 15, std::nullopt, 19).outcome);
+}
+
+TEST(NeutralPickPatch, AnAreaWeighsEachPixelByTheShareItCovers) {
+    // One row: pixel 0 is 0, pixel 1 is 0.2, pixel 2 is 0.6. [0.5, 2.25) takes half of the first,
+    // all of the second and a quarter of the third: (0.5 x 0 + 1 x 0.2 + 0.25 x 0.6) / 1.75.
+    Image row = image_of(3, 1, {{0.0f, 0.0f, 0.0f}, {0.2f, 0.2f, 0.2f}, {0.6f, 0.6f, 0.6f}});
+    const auto patch = pick_patch_area(row, {0.5, 0.0, 2.25, 1.0});
+    ASSERT_TRUE(patch);
+    EXPECT_EQ(patch->pixels, 3);
+    EXPECT_NEAR(patch->mean[0], (0.2 + 0.25 * 0.6) / 1.75, 1e-7);
+    // An edge exactly on a pixel's edge touches nothing past it.
+    EXPECT_EQ(pick_patch_area(row, {1.0, 0.0, 2.0, 1.0})->pixels, 1);
+    // Rows weigh the same way, and a weight is the product of the two.
+    const Image tall = ramp(2, 2);
+    const auto quarter = pick_patch_area(tall, {0.5, 0.5, 1.5, 1.5});
+    ASSERT_TRUE(quarter);
+    EXPECT_EQ(quarter->pixels, 4);
+    const std::array<double, 3> want = {0.005, 0.005, 0.01};  // each of the four counts a quarter
+    for (std::size_t c = 0; c < 3; ++c) {
+        EXPECT_NEAR(quarter->mean[c], want[c], 1e-6);
+    }
+}
+
+TEST(NeutralPickPatch, AnAreaIsCutAtTheEdgesAndRefusedWhereThereIsNothing) {
+    const Image img = ramp(10, 10);
+    const auto cut = pick_patch_area(img, {-5.0, -5.0, 2.0, 2.0});
+    ASSERT_TRUE(cut);
+    EXPECT_EQ(cut->pixels, 4);
+    EXPECT_NEAR(cut->mean[0], ramp_mean(0, 0, 1, 1)[0], 1e-9);
+    const auto far = pick_patch_area(img, {8.0, 8.0, 40.0, 40.0});
+    ASSERT_TRUE(far);
+    EXPECT_EQ(far->pixels, 4);
+    EXPECT_FALSE(pick_patch_area(img, {3.0, 3.0, 3.0, 4.0}));    // no width
+    EXPECT_FALSE(pick_patch_area(img, {4.0, 3.0, 3.0, 4.0}));    // backwards
+    EXPECT_FALSE(pick_patch_area(img, {10.0, 0.0, 12.0, 2.0}));  // beside the image
+    EXPECT_FALSE(pick_patch_area(img, {-3.0, 0.0, 0.0, 2.0}));
+    EXPECT_FALSE(pick_patch_area(Image{}, {0.0, 0.0, 1.0, 1.0}));
+    EXPECT_FALSE(pick_patch_area(img, {std::nan(""), 0.0, 4.0, 4.0}));
+    Image bad = ramp(4, 4);
+    bad.pixels.pop_back();
+    EXPECT_FALSE(pick_patch_area(bad, {0.0, 0.0, 2.0, 2.0}));
+}
+
+TEST(NeutralPickPatch, AnAreaIsClippedWhenAnyPixelItTouchesIs) {
+    Image row = image_of(4, 1, std::vector<std::array<float, 3>>(4, {0.3f, 0.3f, 0.3f}));
+    row.pixels[3 * 3] = 1.0f;
+    EXPECT_FALSE(pick_patch_area(row, {0.0, 0.0, 3.0, 1.0})->clipped);
+    EXPECT_TRUE(pick_patch_area(row, {0.0, 0.0, 3.5, 1.0})->clipped);  // touches half of it
 }
 
 // --- The light --------------------------------------------------------------------------------

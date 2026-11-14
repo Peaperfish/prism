@@ -645,24 +645,6 @@ TEST(PickAvailable, NotWhileViewingDecodeAndWhereWhiteBalanceIsShown) {
     EXPECT_FALSE(pick_available(StageId::decode, StageId::decode));
 }
 
-TEST(PickMarkerPlace, IsThePatchAroundThePixelCutAtTheEdges) {
-    const ViewGeometry g = sample_geometry();
-    ViewState s = view_zoomed_to(ViewState{}, g, 4.0f);
-    PickMarker m = pick_marker(s, g, {20, 15}, 40, 30);
-    EXPECT_TRUE(m.on_canvas);
-    EXPECT_FLOAT_EQ(m.patch.max.x - m.patch.min.x, 20.0f);  // 5 pixels of 4 screen units
-    EXPECT_FLOAT_EQ(m.patch.max.y - m.patch.min.y, 20.0f);
-    const SampleMarker pixel = sample_marker(s, g, {20, 15});
-    EXPECT_FLOAT_EQ(m.patch.min.x + 8.0f, pixel.square.min.x);  // two pixels in from the left
-    EXPECT_FLOAT_EQ(m.patch.min.y + 8.0f, pixel.square.min.y);
-    // In a corner it is 3 across, and the pixel is its corner.
-    s = view_zoomed_to(ViewState{}, g, 1.0f);
-    m = pick_marker(s, g, {0, 0}, 40, 30);
-    EXPECT_FLOAT_EQ(m.patch.max.x - m.patch.min.x, 3.0f * 2.5f);
-    EXPECT_FLOAT_EQ(m.patch.max.y - m.patch.min.y, 3.0f * 2.5f);
-    EXPECT_FALSE(pick_marker(s, g, {40, 0}, 40, 30).on_canvas);
-}
-
 }  // namespace
 }  // namespace prism::gui
 
