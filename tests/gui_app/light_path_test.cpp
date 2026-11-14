@@ -597,18 +597,22 @@ TEST_F(LightPathHeadless, DraggingContrastLandsOnHalfGradesAsOneGesture) {
 }
 
 TEST_F(LightPathHeadless, DrawingAnOffGridContrastChangesNothing) {
-    settings_.contrast = gui::contrast_for_grade(2.7f);
+    // Grade 3.1 is drawn at the nearest half grade, 3: where slider_of presses (a press elsewhere
+    // would move the slider, and report a value below).
+    settings_.contrast = gui::contrast_for_grade(3.1f);
+    ASSERT_EQ(gui::grade_slider_position(settings_.contrast), 6.0f);
     for (int i = 0; i < 4; ++i) {
         frame();
     }
     EXPECT_TRUE(contrast_frames_.empty());
-    EXPECT_EQ(settings_.contrast, gui::contrast_for_grade(2.7f));
-    // Pressing the knob where it is drawn (nearest half grade, 2.5) is not a move either.
+    EXPECT_EQ(settings_.contrast, gui::contrast_for_grade(3.1f));
+    // Pressing the knob where it is drawn is not a move either: no value, not grade 3's.
     const std::vector<LightPathRowRect> rects = frame();
     click_at(slider_of(row_of(rects, gui::StageId::contrast)));
+    ASSERT_FALSE(contrast_frames_.empty());  // the press reached the slider
     for (const ContrastCall& call : contrast_frames_) {
-        EXPECT_FALSE(call.frame.changed && call.contrast &&
-                     *call.contrast == gui::contrast_for_grade(2.7f));
+        EXPECT_FALSE(call.frame.changed);
+        EXPECT_FALSE(call.contrast.has_value()) << *call.contrast;
     }
 }
 
