@@ -11,6 +11,7 @@
 #include "prism/color.hpp"
 #include "prism/histogram.hpp"
 #include "prism/image.hpp"
+#include "prism/parallel.hpp"
 
 namespace {
 
@@ -106,18 +107,24 @@ TEST(Histogram, EmptyImageGivesZeroPercent) {
 }
 
 TEST(Histogram, FromEncodedBytesMatchesFromImage) {
-    // A 1200x1000 image is over the multithreading threshold; the values cover the full range
-    // and beyond, so every bin and the clamping paths are exercised.
+    // A 1301x1213 image is split on 4 and 7 threads (1.5 x the threshold), with rows left over
+    // for both; the values cover the full range and beyond, so every bin and the clamping paths
+    // are exercised.
     prism::Image img;
-    img.width = 1200;
-    img.height = 1000;
+    img.width = 1301;
+    img.height = 1213;
+    const std::size_t pixels = static_cast<std::size_t>(img.width) * img.height;
+    ASSERT_GE(pixels, prism::parallel_min_pixels * 3 / 2);
+    ASSERT_EQ(prism::threads_for_pixels(pixels, 7), 7);
     std::uint32_t state = 7;
-    for (std::size_t i = 0; i < std::size_t{1200} * 1000 * 3; ++i) {
+    for (std::size_t i = 0; i < pixels * 3; ++i) {
         state = state * 1664525u + 1013904223u;
         img.pixels.push_back(static_cast<float>(state >> 8) / 16777216.0f * 1.4f - 0.2f);
     }
     const std::vector<std::uint8_t> bytes = prism::encode_srgb8(img);
-    for (int threads : {1, 4}) {
+    const prism::Histogram one = prism::compute_histogram(img, 1);
+    EXPECT_EQ(one.pixel_count, pixels);
+    for (int threads : {1, 4, 7}) {
         const prism::Histogram a = prism::compute_histogram(img, threads);
         const prism::Histogram b = prism::compute_histogram(bytes, img.width, img.height, threads);
         EXPECT_EQ(a.red, b.red) << threads;
@@ -125,6 +132,10 @@ TEST(Histogram, FromEncodedBytesMatchesFromImage) {
         EXPECT_EQ(a.blue, b.blue) << threads;
         EXPECT_EQ(a.luma, b.luma) << threads;
         EXPECT_EQ(a.pixel_count, b.pixel_count) << threads;
+        // Both paths share the split, so each is also held to the single-threaded count.
+        EXPECT_EQ(a.red, one.red) << threads;
+        EXPECT_EQ(a.luma, one.luma) << threads;
+        EXPECT_EQ(a.pixel_count, one.pixel_count) << threads;
     }
 }
 
