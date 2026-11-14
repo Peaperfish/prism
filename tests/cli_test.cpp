@@ -1109,6 +1109,16 @@ TEST(CliFrame, ARawHalfSizeDecodeIsFramedByTheSameFractions) {
               prism::encode_srgb8(prism::apply_frame(half, fitted)));
 }
 
+TEST(CliHelp, SaysWhatKelvinDoesToThePictureAndHowSmallIsSmall) {
+    const RunResult r = run_prism("--help");
+    EXPECT_EQ(r.exit_code, 0) << r.output;
+    const std::string help = plain(r.output);
+    EXPECT_TRUE(contains(help, "higher\n                      makes the picture warmer.")) << help;
+    EXPECT_FALSE(contains(help, "higher is")) << help;
+    EXPECT_TRUE(contains(help, "images under about 1 MP always use 1)")) << help;
+    EXPECT_FALSE(contains(help, "~1 MP")) << help;
+}
+
 TEST(CliFrame, HelpDescribesTheFrameFlags) {
     const RunResult r = run_prism("--help");
     EXPECT_EQ(r.exit_code, 0) << r.output;

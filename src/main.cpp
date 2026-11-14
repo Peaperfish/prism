@@ -82,9 +82,10 @@ void print_usage(const char* program) {
               << "  --recipe <file>     apply a recipe (.prism file); each option below that you\n"
               << "                      also give replaces that stage of the recipe\n"
               << "  --exposure <stops>  stops of light to add (positive) or take away (negative)\n"
-              << "  --kelvin <K>        the light the photo was lit by, 2000 to 15000: higher is\n"
-              << "                      warmer. For RAW the edit is relative to the camera's as-shot\n"
-              << "                      light; for other photos 6500 changes nothing\n"
+              << "  --kelvin <K>        the light the photo was lit by, 2000 to 15000: higher\n"
+              << "                      makes the picture warmer. For RAW the edit is relative to\n"
+              << "                      the camera's as-shot light; for other photos 6500 changes\n"
+              << "                      nothing\n"
               << "  --tint <n>          green-magenta tint of that light, −100 to 100: positive (a\n"
               << "                      greener light) is more magenta; for photos without an as-shot\n"
               << "                      light 0 changes nothing. Either of --kelvin and --tint alone\n"
@@ -102,7 +103,7 @@ void print_usage(const char* program) {
               << "                      the percentage of clipped pixels per channel\n"
               << "  --threads <n>       use up to n threads (default: " << prism::hardware_threads()
               << ", one per hardware thread;\n"
-              << "                      1 = single-threaded; images under ~1 MP always use 1)\n"
+              << "                      1 = single-threaded; images under about 1 MP always use 1)\n"
               << "  --time              print how long each stage took\n"
               << "  -h, --help          show this help\n"
               << "  --version           print the version and exit\n";
