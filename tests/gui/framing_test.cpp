@@ -1059,17 +1059,22 @@ TEST(FramingCanvas, TheZoomableViewFitsLikeFramingViewAndZoomsInPhotoPixels) {
         EXPECT_NEAR(fit.centre.x, reference.centre.x + 100.0, 1.0) << angle;
         EXPECT_NEAR(fit.centre.y, reference.centre.y + 50.0, 1.0) << angle;
         EXPECT_EQ(fit.angle, angle);
-        // At 100%: one photo pixel on one device pixel, half a screen unit at density 2.
+        // At 100%: one photo pixel on one device pixel, half a screen unit at density 2. 100% is
+        // only zoomed in on a photo larger than the canvas: the small one fits above 100%.
+        ASSERT_GT(prism::gui::view_fit_zoom(g), 1.0f);
+        constexpr int big_w = 3000;
+        constexpr int big_h = 2000;
+        const prism::gui::ViewGeometry big =
+            prism::gui::framing_geometry(canvas, angle, big_w, big_h, 20.0f);
+        ASSERT_LT(prism::gui::view_fit_zoom(big), 1.0f) << angle;
+        const PixelSize big_box = prism::gui::framing_box_size(angle, big_w, big_h);
         prism::gui::ViewState actual;
         actual.fit = false;
         actual.zoom = 1.0f;
-        actual.centre_x = static_cast<float>(box.width) / 2.0f;
-        actual.centre_y = static_cast<float>(box.height) / 2.0f;
-        const FramingView zoomed =
-            prism::gui::framing_view_placed(angle, photo_w, photo_h, actual, g);
-        if (prism::gui::view_fit_zoom(g) < 1.0f) {
-            EXPECT_NEAR(zoomed.scale, 0.5, 1e-6) << angle;
-        }
+        actual.centre_x = static_cast<float>(big_box.width) / 2.0f;
+        actual.centre_y = static_cast<float>(big_box.height) / 2.0f;
+        const FramingView zoomed = prism::gui::framing_view_placed(angle, big_w, big_h, actual, big);
+        EXPECT_NEAR(zoomed.scale, 0.5, 1e-6) << angle;
     }
     // Upright, the box is the photo exactly.
     EXPECT_EQ(prism::gui::framing_box_size(0.0f, photo_w, photo_h), (PixelSize{photo_w, photo_h}));
