@@ -100,6 +100,39 @@ jobs:
           path: .deps
           key: deps-${{ matrix.os }}-${{ matrix.name }}-${{ hashFiles('tests/CMakeLists.txt', 'cmake/LibRaw.cmake') }}
 
+      # Compiler output is cached with ccache, so a push that changes a few files recompiles only
+      # those: restored from the newest run of this job, saved under this commit's key. Not on
+      # Windows: that job uses MSVC with the Visual Studio generator.
+      - name: Cache ccache
+        if: runner.os != 'Windows'
+        uses: actions/cache@v6
+        with:
+          path: .ccache
+          key: ccache-${{ matrix.name }}-${{ matrix.cxx }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ matrix.name }}-${{ matrix.cxx }}-
+
+      # CMake's first Configure reads the CMAKE_*_COMPILER_LAUNCHER environment variables (SDL is
+      # C, and Objective-C on macOS). -z zeroes the counters, so the statistics printed after the
+      # build are this run's.
+      - name: Install ccache
+        if: runner.os != 'Windows'
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            sudo apt-get install -y ccache || { sudo apt-get update && sudo apt-get install -y ccache; }
+          else
+            HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 brew install ccache
+          fi
+          {
+            echo "CCACHE_DIR=$GITHUB_WORKSPACE/.ccache"
+            echo "CCACHE_MAXSIZE=500M"
+            echo "CMAKE_C_COMPILER_LAUNCHER=ccache"
+            echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache"
+            echo "CMAKE_OBJC_COMPILER_LAUNCHER=ccache"
+          } >> "$GITHUB_ENV"
+          CCACHE_DIR="$GITHUB_WORKSPACE/.ccache" ccache -z
+          ccache --version | head -n 1
+
       - name: Configure
         run: >
           cmake -S . -B build
@@ -128,6 +161,10 @@ jobs:
       # single-config ones (Makefiles on Linux and macOS) ignore them.
       - name: Build
         run: cmake --build build --config ${{ matrix.build_type }} --parallel 4
+
+      - name: ccache statistics
+        if: ${{ !cancelled() && runner.os != 'Windows' }}
+        run: ccache -s
 
       # LibRaw must stay a separate DLL (its LGPL/CDDL terms): check that prism.exe and the tests
       # import libraw_r.dll rather than containing LibRaw, and that the build copied the DLL next
@@ -193,6 +230,37 @@ jobs:
           path: .deps
           key: deps-gui-${{ matrix.os }}-${{ hashFiles('cmake/GuiDependencies.cmake') }}
 
+      # ccache again, as in the build job above.
+      - name: Cache ccache
+        if: runner.os != 'Windows'
+        uses: actions/cache@v6
+        with:
+          path: .ccache
+          key: ccache-gui-${{ matrix.name }}-c++-${{ github.sha }}
+          restore-keys: |
+            ccache-gui-${{ matrix.name }}-c++-
+
+      # CMake's first Configure reads the CMAKE_*_COMPILER_LAUNCHER environment variables (SDL is
+      # C, and Objective-C on macOS). -z zeroes the counters, so the statistics printed after the
+      # build are this run's.
+      - name: Install ccache
+        if: runner.os != 'Windows'
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            sudo apt-get install -y ccache || { sudo apt-get update && sudo apt-get install -y ccache; }
+          else
+            HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 brew install ccache
+          fi
+          {
+            echo "CCACHE_DIR=$GITHUB_WORKSPACE/.ccache"
+            echo "CCACHE_MAXSIZE=500M"
+            echo "CMAKE_C_COMPILER_LAUNCHER=ccache"
+            echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache"
+            echo "CMAKE_OBJC_COMPILER_LAUNCHER=ccache"
+          } >> "$GITHUB_ENV"
+          CCACHE_DIR="$GITHUB_WORKSPACE/.ccache" ccache -z
+          ccache --version | head -n 1
+
       - name: Configure
         run: >
           cmake -S . -B build
@@ -219,6 +287,10 @@ jobs:
 
       - name: Build prism_gui and its headless tests
         run: cmake --build build --config Release --target prism_gui prism_gui_app_tests --parallel 4
+
+      - name: ccache statistics
+        if: ${{ !cancelled() && runner.os != 'Windows' }}
+        run: ccache -s
 
       # The widget code against a headless Dear ImGui: no window, display or SDL backend needed.
       - name: Test the GUI widgets headlessly
