@@ -197,6 +197,9 @@ TEST(FramedEstimatedExportSize, TheSheetMeasuresTheFrameOnTheEstimate) {
     const PixelSize file{6000, 4000};
     const PixelSize framed = prism::gui::framed_export_size(frame, file);
     EXPECT_EQ(framed, prism::framed_size(prism::fit_frame(frame, 6000, 4000), 6000, 4000));
+    // By hand: 2 degrees leaves this crop inside the turned photo, so it is 0.75 x 6000 by
+    // 0.85 x 4000.
+    EXPECT_EQ(framed, (PixelSize{4500, 3400}));
     ASSERT_LT(framed.width, 6000);
     const std::string times =
         std::to_string(framed.width) + " \xC3\x97 " + std::to_string(framed.height);
@@ -210,15 +213,18 @@ TEST(FramedEstimatedExportSize, TheSheetMeasuresTheFrameOnTheEstimate) {
     ASSERT_TRUE(plan.reduced());
     EXPECT_EQ(*plan.long_side,
               prism::long_side_for_percent(framed.width, framed.height, 50));
+    EXPECT_EQ(*plan.long_side, 2250);
     const PixelSize reduced =
         prism::downscaled_size(framed.width, framed.height, *plan.long_side);
     EXPECT_EQ(export_result_text(half, plan, false, true),
               "Exports at about " + std::to_string(reduced.width) + " \xC3\x97 " +
                   std::to_string(reduced.height));
+    EXPECT_EQ(export_result_text(half, plan, false, true), "Exports at about 2250 \xC3\x97 1700");
 
     // With half-size decoding the export starts from the frame on the half-size decode.
     const PixelSize start = prism::gui::framed_export_size(frame, {3000, 2000});
     EXPECT_EQ(start, prism::framed_size(prism::fit_frame(frame, 3000, 2000), 3000, 2000));
+    EXPECT_EQ(start, (PixelSize{2250, 1700}));
     EXPECT_EQ(plan_export(ExportSize{}, framed, start).size, start);
     // No frame, or the whole photo: the size itself.
     EXPECT_EQ(prism::gui::framed_export_size(std::nullopt, file), file);
