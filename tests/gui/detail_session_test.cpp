@@ -225,8 +225,14 @@ public:
             std::unique_lock lock(mutex_);
             calls_.push_back(Call{source, settings, stop});
             changed_.notify_all();
-            changed_.wait(lock, stop, [&] { return released_; });
-            changed_.wait(lock, [&] { return !held_ || finished_; });
+            // Bounded, so a read that is never released or stopped fails the test, not hangs it.
+            if (!changed_.wait_for(lock, stop, timeout, [&] { return released_; }) &&
+                !stop.stop_requested()) {
+                ADD_FAILURE() << "the read was neither released nor stopped within the timeout";
+            }
+            if (!changed_.wait_for(lock, timeout, [&] { return !held_ || finished_; })) {
+                ADD_FAILURE() << "the held read was not finished within the timeout";
+            }
             lock.unlock();
             return prism::gui::decode_for_export(source, kind, settings, threads);
         };
