@@ -13,6 +13,7 @@
 #include "prism/gui/preview_renderer.hpp"
 #include "prism/gui/settings.hpp"
 #include "prism/image.hpp"
+#include "prism/parallel.hpp"
 
 using prism::gui::ChannelClips;
 using prism::gui::StageHistogram;
@@ -161,9 +162,13 @@ TEST(StageHistogram, OutOfRangeValuesCountAsUnderBlackAndOverWhiteSeparateFromBi
 }
 
 TEST(StageHistogram, FusedEncodeAndHistogramMatchesSeparateCallsAcrossThreads) {
+    // Big enough to be split (1.5 x parallel_min_pixels), with a height 4 and 7 don't divide.
     prism::Image img;
-    img.width = 1200;
-    img.height = 1000;
+    img.width = 1301;
+    img.height = 1213;
+    const std::size_t pixels = static_cast<std::size_t>(img.width) * img.height;
+    ASSERT_GE(pixels, prism::parallel_min_pixels * 3 / 2);
+    ASSERT_EQ(prism::threads_for_pixels(pixels, 7), 7);
     img.pixels.resize(static_cast<std::size_t>(img.width) * img.height * 3);
     std::uint32_t state = 42;
     for (float& v : img.pixels) {
@@ -174,7 +179,7 @@ TEST(StageHistogram, FusedEncodeAndHistogramMatchesSeparateCallsAcrossThreads) {
     const std::vector<std::uint8_t> expected_rgb8 = prism::encode_srgb8(img, 1);
     const StageHistogram expected_hist = prism::gui::compute_stage_histogram(img, 1);
 
-    for (const int threads : {1, 4}) {
+    for (const int threads : {1, 4, 7}) {
         std::vector<std::uint8_t> rgb8;
         StageHistogram hist;
         prism::gui::encode_srgb8_with_histogram(img, threads, rgb8, hist);
@@ -330,9 +335,13 @@ TEST(StageHistogramAnyChannel, TheCodeValuesAtTheEndsDoNotCount) {
 }
 
 TEST(StageHistogramAnyChannel, TheCountsAreTheSameAtAnyThreadCount) {
+    // Big enough to be split (1.5 x parallel_min_pixels), with a height no thread count divides.
     prism::Image img;
-    img.width = 301;
-    img.height = 211;
+    img.width = 1301;
+    img.height = 1213;
+    const std::size_t pixels = static_cast<std::size_t>(img.width) * img.height;
+    ASSERT_GE(pixels, prism::parallel_min_pixels * 3 / 2);
+    ASSERT_EQ(prism::threads_for_pixels(pixels, 16), 16);
     img.pixels.resize(static_cast<std::size_t>(img.width) * img.height * 3);
     for (std::size_t i = 0; i < img.pixels.size(); ++i) {
         img.pixels[i] = static_cast<float>(static_cast<int>((i * 2654435761u) % 3001u)) / 1000.0f - 1.0f;
