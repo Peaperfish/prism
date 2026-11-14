@@ -11,6 +11,7 @@
 #include "prism/gui/clipping.hpp"
 #include "prism/gui/history.hpp"
 #include "prism/gui/neutral_pick.hpp"
+#include "prism/gui/preview_renderer.hpp"
 #include "prism/gui/stage_controls.hpp"
 #include "prism/image.hpp"
 #include "prism/white_balance.hpp"
@@ -322,11 +323,25 @@ TEST(NeutralPickLight, ThePatchIsAveragedNotTheCentrePixel) {
 }
 
 TEST(NeutralPickLight, RepeatedPicksAreStable) {
-    // The patch is of the decoded base, so picking again after the stage is on changes nothing.
+    // The patch is of the decoded base, so picking again after the stage is on changes nothing:
+    // the pick turns the stage on with the light that makes the patch grey, and a second pick of
+    // the same base gives the same settings.
     const Image img = image_of(1, 1, {colour_lit_by({4200, 12}, prism::white_of(prism::default_as_shot), 0.3)});
+    EditSettings s;
+    s.white_balance_on = false;
     const NeutralPick first = pick_neutral(img, 0, 0, std::nullopt);
-    const NeutralPick second = pick_neutral(img, 0, 0, std::nullopt);
-    EXPECT_EQ(first.light, second.light);
+    ASSERT_EQ(first.outcome, PickOutcome::picked);
+    prism::gui::apply_pick(s, first);
+    EXPECT_TRUE(s.white_balance_on);
+    EXPECT_EQ(s.white_balance, first.light);
+    const std::optional<Image> balanced =
+        prism::gui::render_stage_image(img, s, StageId::white_balance, 1);
+    ASSERT_TRUE(balanced.has_value());
+    EXPECT_NEAR(balanced->pixels[0], balanced->pixels[1], 1e-3f);
+    EXPECT_NEAR(balanced->pixels[2], balanced->pixels[1], 1e-3f);
+    const EditSettings after_first = s;
+    prism::gui::apply_pick(s, pick_neutral(img, 0, 0, std::nullopt));
+    EXPECT_EQ(s, after_first);
 }
 
 // --- Rejections -------------------------------------------------------------------------------
