@@ -56,6 +56,7 @@ Both include RAW support, and nothing needs installing beside them. The apps are
 - [x] Scopes in the GUI: a filled histogram, parade, waveform and vectorscope, with clip triangles and a readout of what is below black and above white
 - [x] Looks as readable recipes, and recipes you can save and load
 - [x] A test strip, zoom and pan, and a plain-language explanation of every control
+- [x] Zoom to the photo's own pixels in the GUI: past the preview, the full-size photo is drawn through the frame and every adjustment, so at 100% and above each pixel is the one an export makes there; the zoom is a percentage of the photo, up to 800%, and Sample and Pick neutral read real pixels too
 - [ ] SIMD processing
 
 ## Usage
@@ -314,10 +315,10 @@ v0.1.0 was a pre-release of the desktop app, and v0.2.0 is its first full releas
 - [Crop and straighten](https://github.com/Peaperfish/prism/issues/58) on the easel, with blades, aspect shapes and a straighten slider *(done)*
 - `--rotate`, `--crop` and `--aspect` on the command line *(done)*
 
-[**0.7.0 – Real pixels**](https://github.com/Peaperfish/prism/milestone/8), in progress, not released yet: zoom in to the photo's own pixels.
+[**0.7.0 – Real pixels**](https://github.com/Peaperfish/prism/milestone/8): zoom in to the photo's own pixels.
 
-- [Zoom to the photo's real pixels](https://github.com/Peaperfish/prism/issues/37), up to 800%: 100% is one pixel of the photo on each pixel of your screen *(in progress)*
-- Sample colour and Pick neutral read the photo's own pixels where real pixels are on the canvas *(in progress)*
+- [Zoom to the photo's real pixels](https://github.com/Peaperfish/prism/issues/37), up to 800%: 100% is one pixel of the photo on each pixel of your screen *(done)*
+- Sample colour and Pick neutral read the photo's own pixels where real pixels are on the canvas *(done)*
 
 [**0.7.1 – Polish**](https://github.com/Peaperfish/prism/milestone/9): small fixes after 0.7.0.
 
