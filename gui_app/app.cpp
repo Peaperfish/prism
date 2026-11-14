@@ -3508,9 +3508,8 @@ void App::draw_zoom_chip() {
     const gui::TokenColours& tokens = token_colours();
     const auto rgba4 = [](const gui::Rgba& c) { return ImVec4(c.r, c.g, c.b, c.a); };
     // Percent of the file (#37), with "· preview" while enlarged preview pixels are shown for a
-    // reason that lasts (only ever in the normal canvas's picture view).
-    const gui::PreviewChip reason = framing_.on() ? gui::PreviewChip::none : detail_plan_.chip;
-    const std::string label = gui::canvas_zoom_chip(view_, view_geometry_, reason);
+    // reason that lasts, or because the view is drawn from the preview.
+    const std::string label = gui::canvas_zoom_chip(view_, view_geometry_, detail_plan_.chip);
     // The choice the view is at is lit; clicking it does nothing. 100% can't be chosen where Fit
     // already shows the photo at 100% or more.
     const bool fit_current = view_.fit;
@@ -3673,10 +3672,8 @@ App::ExplainText App::explain_text() const {
         context.preview_long_side = std::max(texture_.width(), texture_.height());
         context.file_long_side = measure.file_long_side;
         context.measures_frame = measure.framed;
-        if (!framing_.on()) {
-            context.view_state = detail_plan_.draw ? gui::real_pixels_shown_explain()
-                                                   : gui::preview_chip_explain(detail_plan_.chip);
-        }
+        context.view_state = detail_plan_.draw ? gui::real_pixels_shown_explain()
+                                               : gui::preview_chip_explain(detail_plan_.chip);
     }
     context.file_size_exact = session_.file_size_exact();
     context.file_width = session_.file_width();

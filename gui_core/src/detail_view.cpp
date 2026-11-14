@@ -165,6 +165,10 @@ PreviewChip preview_chip(bool enlarged, bool at_fit, DetailBaseState base, Regio
     return PreviewChip::none;
 }
 
+PreviewChip preview_only_chip(bool needed, bool at_fit, bool preview_is_photo) noexcept {
+    return needed && !at_fit && !preview_is_photo ? PreviewChip::preview_only : PreviewChip::none;
+}
+
 std::string file_zoom_chip(double percent, PreviewChip chip) {
     const std::string label = file_zoom_label(percent);
     return chip == PreviewChip::none ? label : label + " · preview";
@@ -200,6 +204,8 @@ std::string_view preview_chip_explain(PreviewChip chip) noexcept {
         case PreviewChip::region_too_big:
             return "Showing the preview, enlarged: the part on screen is over 30 megapixels. Zoom "
                    "in to see real pixels.";
+        case PreviewChip::preview_only:
+            return "Showing the preview, enlarged: this view is drawn from the preview.";
         case PreviewChip::region_too_big_live:
             return "Showing the preview while you adjust: the part on screen is over 8 megapixels, "
                    "so real pixels come when you let go.";

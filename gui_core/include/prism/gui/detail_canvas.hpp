@@ -162,8 +162,9 @@ struct DetailFramePlan {
 // The canvas's rule for real pixels (#37):
 //
 // - Only for CanvasView::picture, with the view zoomed in (not Fit) so far that the preview is
-//   enlarged (real_pixels_needed). Otherwise nothing is asked for, nothing drawn, no chip: Fit and
-//   every preview-only view look exactly as in 0.6.0; and anything asked for or shown is cleared.
+//   enlarged (real_pixels_needed). Otherwise nothing is asked for and nothing drawn, and anything
+//   asked for or shown is cleared. Fit has no chip; a preview-only view that is enlarged has
+//   PreviewChip::preview_only (preview_only_chip), at no zoom limit.
 // - Without a usable detail base (none, or not ready): nothing is asked for or drawn, anything of
 //   an old base is cleared, and the chip says why (preview_chip).
 // - The request is detail_request for the visible file region, with the margin only when no

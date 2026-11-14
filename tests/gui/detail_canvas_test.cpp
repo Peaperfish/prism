@@ -100,20 +100,19 @@ TEST(DetailCanvasView, EachFlagGivesItsViewAndNoneGivesThePicture) {
     EXPECT_EQ(canvas_view(true, true, true, true, true, true), CanvasView::framing);
 }
 
-TEST(DetailCanvasPlan, EachPreviewOnlyViewAsksForNothingAndDrawsNothingWithNoChip) {
-    for (const CanvasView mode :
-         {CanvasView::framing, CanvasView::test_strip, CanvasView::compare,
-          CanvasView::earlier_stage, CanvasView::clip_overlay, CanvasView::stroke_mask}) {
+constexpr CanvasView preview_only_views[] = {CanvasView::framing,        CanvasView::test_strip,
+                                             CanvasView::compare,        CanvasView::earlier_stage,
+                                             CanvasView::clip_overlay,   CanvasView::stroke_mask};
+
+TEST(DetailCanvasPlan, EachPreviewOnlyViewAsksForNothingAndDrawsNothingAtAnyZoom) {
+    for (const CanvasView mode : preview_only_views) {
         SCOPED_TRACE(static_cast<int>(mode));
         DetailFrameInput in = input(400.0);
-        in.base_state =
-            DetailBaseState::reading;  // a reason the chip would give in the picture view
         in.mode = mode;
         DetailFramePlan plan = plan_detail_frame(in);
         EXPECT_FALSE(plan.submit);
         EXPECT_FALSE(plan.draw);
         EXPECT_FALSE(plan.clear);  // nothing to clear
-        EXPECT_EQ(plan.chip, PreviewChip::none);
 
         // Entering the view with real pixels shown clears them.
         DetailFrameInput shown = settled_after(input(400.0));
@@ -122,8 +121,87 @@ TEST(DetailCanvasPlan, EachPreviewOnlyViewAsksForNothingAndDrawsNothingWithNoChi
         EXPECT_TRUE(plan.clear);
         EXPECT_FALSE(plan.submit);
         EXPECT_FALSE(plan.draw);
-        EXPECT_EQ(plan.chip, PreviewChip::none);
     }
+}
+
+TEST(DetailCanvasPlan, PreviewOnlyViewsHaveNoChipAtFit) {
+    for (const CanvasView mode : preview_only_views) {
+        SCOPED_TRACE(static_cast<int>(mode));
+        DetailFrameInput in = input();
+        in.view = ViewState{};
+        in.mode = mode;
+        EXPECT_EQ(plan_detail_frame(in).chip, PreviewChip::none);
+
+        // A large Retina canvas, where Fit enlarges the preview: still Fit, still no chip.
+        DetailFrameInput big = in;
+        big.geometry = canvas(preview_60mp, full_60mp, 3000.0f, 2000.0f, 2.0f);
+        ASSERT_GT(view_fit_zoom(big.geometry), 2.0f);
+        EXPECT_EQ(plan_detail_frame(big).chip, PreviewChip::none);
+    }
+}
+
+TEST(DetailCanvasPlan, PreviewOnlyViewsHaveNoChipWhileThePreviewIsNotEnlarged) {
+    for (const CanvasView mode : preview_only_views) {
+        SCOPED_TRACE(static_cast<int>(mode));
+        DetailFrameInput in = input(100.0);
+        in.geometry = canvas(preview_60mp, full_60mp, 600.0f, 400.0f, 1.0f);
+        in.view = at_percent(in.geometry, 26.0);  // under one device pixel per preview pixel
+        ASSERT_FALSE(in.view.fit);
+        in.mode = mode;
+        EXPECT_EQ(plan_detail_frame(in).chip, PreviewChip::none);
+    }
+}
+
+TEST(DetailCanvasPlan, PreviewOnlyViewsSayPreviewWhenEnlargedWhateverTheBase) {
+    for (const CanvasView mode : preview_only_views) {
+        for (const DetailBaseState state :
+             {DetailBaseState::ready, DetailBaseState::reading,
+              DetailBaseState::failed, DetailBaseState::too_big, DetailBaseState::off}) {
+            // 400% and 1600%: no zoom limit applies.
+            for (const double percent : {400.0, 1600.0}) {
+                SCOPED_TRACE(static_cast<int>(mode));
+                DetailFrameInput in = input(percent);
+                in.base_state = state;
+                in.mode = mode;
+                EXPECT_EQ(plan_detail_frame(in).chip, PreviewChip::preview_only);
+            }
+        }
+    }
+}
+
+TEST(DetailCanvasPlan, PreviewOnlyViewsOfAPhotoNoBiggerThanThePreviewHaveNoChipAtAnyZoom) {
+    // A 1600 x 1067 photo whose preview is the whole of it (DetailBaseState::not_needed).
+    const PixelSize whole{1600, 1067};
+    for (const CanvasView mode : preview_only_views) {
+        for (const double percent : {100.0, 400.0, 800.0}) {
+            SCOPED_TRACE(static_cast<int>(mode));
+            SCOPED_TRACE(percent);
+            DetailFrameInput in = input(percent, whole, whole);
+            in.base_state = DetailBaseState::not_needed;
+            in.mode = mode;
+            ASSERT_TRUE(real_pixels_needed(
+                static_cast<double>(view_zoom(in.view, in.geometry)) / in.geometry.density,
+                in.geometry.density));
+            EXPECT_EQ(plan_detail_frame(in).chip, PreviewChip::none);
+        }
+    }
+    // The same views on the 60 MP photo, at the same zoom, still say so.
+    for (const CanvasView mode : preview_only_views) {
+        SCOPED_TRACE(static_cast<int>(mode));
+        DetailFrameInput in = input(400.0);
+        in.mode = mode;
+        EXPECT_EQ(plan_detail_frame(in).chip, PreviewChip::preview_only);
+    }
+}
+
+TEST(DetailCanvasPlan, ThePictureViewKeepsItsOwnReasonsNotThePreviewOnlyOne) {
+    DetailFrameInput in = input(400.0);
+    in.base_state = DetailBaseState::reading;
+    EXPECT_EQ(plan_detail_frame(in).chip, PreviewChip::reading);
+    in.base_state = DetailBaseState::ready;
+    EXPECT_EQ(plan_detail_frame(in).chip, PreviewChip::none);
+    in.view = ViewState{};
+    EXPECT_EQ(plan_detail_frame(in).chip, PreviewChip::none);
 }
 
 TEST(DetailCanvasPlan, ThePictureViewZoomedInAsksForRealPixels) {

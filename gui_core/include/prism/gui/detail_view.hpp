@@ -160,6 +160,8 @@ enum class PreviewChip {
     too_big,   // the full-size photo would take more than a quarter of the memory
     region_too_big,       // the requested region is over 30 MP (RegionBudget::never)
     region_too_big_live,  // it is over 8 MP during a gesture (RegionBudget::on_release then)
+    preview_only,         // a view drawn from the preview (J, M, Compare, an earlier stage, the
+                          // easel, the test strip): it has no real pixels, whatever the base
 };
 
 // The chip's rule. `enlarged` is real_pixels_needed for the view; `at_fit` is ViewState::fit;
@@ -171,6 +173,15 @@ enum class PreviewChip {
 // budget's.
 [[nodiscard]] PreviewChip preview_chip(bool enlarged, bool at_fit, DetailBaseState base,
                                        RegionBudget budget, bool gesture) noexcept;
+
+// The chip's rule for the views that stay on the preview (preview_only). `needed` is
+// real_pixels_needed for the view and `at_fit` is ViewState::fit: the preview is enlarged when it
+// is needed and the view is not at Fit, as the normal view decides (plan_detail_frame). No zoom
+// limit applies. Not for a photo no bigger than the preview (`preview_is_photo`: the preview is the
+// whole photo, DetailBaseState::not_needed): there is nothing more to show, as in the normal view.
+// PreviewChip::preview_only then, else none.
+[[nodiscard]] PreviewChip preview_only_chip(bool needed, bool at_fit,
+                                            bool preview_is_photo) noexcept;
 
 // The chip: "N%" (file_zoom_label), or "N% · preview" when `chip` gives a reason.
 [[nodiscard]] std::string file_zoom_chip(double percent, PreviewChip chip);

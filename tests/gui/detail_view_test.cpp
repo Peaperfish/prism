@@ -433,15 +433,28 @@ TEST(DetailView, Words) {
     EXPECT_EQ(preview_chip_explain(PreviewChip::region_too_big_live),
               "Showing the preview while you adjust: the part on screen is over 8 megapixels, so "
               "real pixels come when you let go.");
+    EXPECT_EQ(preview_chip_explain(PreviewChip::preview_only),
+              "Showing the preview, enlarged: this view is drawn from the preview.");
     // Prism's words: no "Actual Pixels", and each Explain line fits Explain's detail limit.
     for (const PreviewChip chip :
          {PreviewChip::not_kept, PreviewChip::reading, PreviewChip::failed, PreviewChip::too_big,
-          PreviewChip::region_too_big, PreviewChip::region_too_big_live}) {
+          PreviewChip::region_too_big, PreviewChip::region_too_big_live,
+          PreviewChip::preview_only}) {
         EXPECT_FALSE(preview_chip_explain(chip).empty());
         EXPECT_LE(preview_chip_explain(chip).size(), prism::gui::explain_detail_max);
     }
     EXPECT_EQ(real_pixels_menu_item().find("Actual"), std::string_view::npos);
     EXPECT_LE(real_pixels_explain().size(), prism::gui::explain_detail_max);
+}
+
+TEST(DetailView, PreviewOnlyChipNeedsAnEnlargedPreviewAwayFromFit) {
+    EXPECT_EQ(preview_only_chip(true, false, false), PreviewChip::preview_only);
+    EXPECT_EQ(preview_only_chip(true, true, false), PreviewChip::none);    // at Fit
+    EXPECT_EQ(preview_only_chip(false, false, false), PreviewChip::none);  // not enlarged
+    EXPECT_EQ(preview_only_chip(false, true, false), PreviewChip::none);
+    // The preview is the whole photo: nothing more to show, so no chip at any zoom.
+    EXPECT_EQ(preview_only_chip(true, false, true), PreviewChip::none);
+    EXPECT_EQ(file_zoom_chip(400.0, PreviewChip::preview_only), "400% · preview");
 }
 
 TEST(DetailView, NoScreenOrANaNGivesNoNonsense) {

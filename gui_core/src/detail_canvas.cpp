@@ -91,9 +91,14 @@ DetailFramePlan plan_detail_frame(const DetailFrameInput& in) {
     const float zoom = view_zoom(view, in.geometry);
     const double density = in.geometry.density;
     const double points = density > 0.0 ? zoom / density : 0.0;
-    const bool enlarged = !view.fit && real_pixels_needed(points, density);
+    const bool needed = real_pixels_needed(points, density);
+    const bool enlarged = !view.fit && needed;
     if (in.mode != CanvasView::picture || !enlarged) {
-        return clear_all();  // Fit, not enlarged, or a preview-only view: as in 0.6.0
+        // Fit, not enlarged, or a preview-only view: nothing asked for. A preview-only view that
+        // is enlarged says so on the chip (the picture view here is not enlarged: no chip).
+        plan.chip =
+            preview_only_chip(needed, view.fit, in.base_state == DetailBaseState::not_needed);
+        return clear_all();
     }
 
     const bool base_usable =
