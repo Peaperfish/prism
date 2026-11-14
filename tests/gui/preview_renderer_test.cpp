@@ -441,19 +441,39 @@ TEST(PreviewRenderer, DestroyingItWithARequestWaitingIsFine) {
 }
 
 TEST(PreviewRenderer, TheDeliveredBytesDoNotDependOnTheThreadCount) {
-    // Over ~1 MP (parallel_min_pixels), so several threads really split each stage.
-    const auto base = make_base(1100, 1000);
+    // At least 1.5 x parallel_min_pixels, so the image still splits if the threshold is raised a
+    // little, and every explicit count really splits each stage. 1051 rows is prime: every count
+    // from 2 up leaves rows over, so a split that loses or doubles the leftover rows shows up
+    // whatever the machine's hardware_threads() (threads 0) happens to be.
+    constexpr int width = 1500;
+    constexpr int height = 1051;
+    constexpr std::size_t pixels = static_cast<std::size_t>(width) * height;
+    static_assert(pixels * 2 >= prism::parallel_min_pixels * 3);
+    const std::vector<int> counts = {1, 2, 3, 4, 7, 0};
+    for (const int n : counts) {
+        if (n > 0) {
+            ASSERT_EQ(prism::threads_for_pixels(pixels, n), n) << "threads " << n;
+        }
+        if (n > 1) {
+            ASSERT_NE(height % n, 0) << "threads " << n << " must leave rows over";
+        }
+    }
+    const auto base = make_base(width, height);
+    ASSERT_EQ(base->pixels.size(), pixels * prism::Image::channels);
     std::vector<std::vector<std::uint8_t>> results;
-    for (const int threads : {1, 4, 0}) {
+    for (const int threads : counts) {
         PreviewRenderer renderer(threads);
         renderer.submit(base, every_stage());
         ASSERT_TRUE(renderer.wait_until_idle(timeout));
         std::optional<PreviewFrame> frame = renderer.poll();
         ASSERT_TRUE(frame);
+        ASSERT_EQ(frame->width, width);
+        ASSERT_EQ(frame->height, height);
         results.push_back(std::move(frame->rgb8));
     }
-    EXPECT_EQ(results[0], results[1]);
-    EXPECT_EQ(results[0], results[2]);
+    for (std::size_t i = 1; i < results.size(); ++i) {
+        EXPECT_EQ(results[0], results[i]) << "threads " << counts[i] << " differ from threads 1";
+    }
 }
 
 TEST(PreviewRenderer, ARenderErrorArrivesAsAFrameWithAMessage) {
