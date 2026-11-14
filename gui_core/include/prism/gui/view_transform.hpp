@@ -159,10 +159,6 @@ struct ViewPixel {
 // someone looking at what one holds, rather than as a blur.
 [[nodiscard]] bool view_shows_pixels(float zoom) noexcept;
 
-// The zoom as the canvas shows it: "75% of preview" while the preview has fewer pixels than the file,
-// because 100% then isn't the file at full size, and plain "75%" when it holds them all.
-[[nodiscard]] std::string view_zoom_label(float zoom, int preview_long_side, int file_long_side);
-
 // Where the zoom's chip of this size goes: the canvas's bottom right corner, `margin_x` from its
 // right edge and `margin_y` from its bottom, moved up past anything of `taken` in its way (keeping
 // those margins from it). Nothing if it doesn't fit without covering them. With one `margin` it is

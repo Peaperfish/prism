@@ -246,11 +246,6 @@ bool view_shows_pixels(float zoom) noexcept {
     return zoom > 2.0f && !view_same_zoom(zoom, 2.0f);
 }
 
-std::string view_zoom_label(float zoom, int preview_long_side, int file_long_side) {
-    const std::string percent = std::to_string(std::lround(zoom * 100.0f)) + "%";
-    return preview_long_side < file_long_side ? percent + " of preview" : percent;
-}
-
 std::optional<ViewPoint> view_chip_position(const ViewRect& canvas, float width, float height,
                                             float margin_x, float margin_y,
                                             std::span<const ViewRect> taken) noexcept {

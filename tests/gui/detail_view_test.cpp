@@ -29,6 +29,12 @@ PixelSize preview_of(PixelSize file) {
     return prism::downscaled_size(file.width, file.height, 2560);
 }
 
+// The view scale (points per preview pixel) that shows `percent` of the file on a screen of
+// `density`: `percent` / 100 file pixels per device pixel, a preview pixel being k.shown of them.
+double scale_at(double percent, double density, FileScale k) {
+    return percent / 100.0 * k.shown / density;
+}
+
 // The framed sizes of `frame` on the file and on its preview, as Session works them out: each
 // fitted on its own decode.
 PixelSize framed(const Frame& frame, PixelSize size) {
@@ -48,20 +54,6 @@ TEST(DetailView, FileScaleIsPerAxis) {
     EXPECT_DOUBLE_EQ(empty.shown, 1.0);
 }
 
-TEST(DetailView, HundredPercentIsOneFilePixelOnOneDevicePixel) {
-    const FileScale k = file_scale(file_60mp, preview_of(file_60mp));
-    // 1x screen: a preview pixel is k.shown points across at 100%.
-    EXPECT_NEAR(file_zoom_percent(k.shown, 1.0, k), 100.0, 1e-9);
-    EXPECT_NEAR(view_scale_for_file_percent(100.0, 1.0, k), k.shown, 1e-12);
-    // 2x screen: half that, so a file pixel is half a point.
-    EXPECT_NEAR(file_zoom_percent(k.shown / 2.0, 2.0, k), 100.0, 1e-9);
-    EXPECT_NEAR(view_scale_for_file_percent(100.0, 2.0, k), k.shown / 2.0, 1e-12);
-    // And the preview at one device pixel per preview pixel is the preview's own share of the file.
-    EXPECT_NEAR(file_zoom_percent(0.5, 2.0, k), 100.0 * 2560.0 / 9504.0, 1e-9);
-    // Round trip at a step.
-    EXPECT_NEAR(file_zoom_percent(view_scale_for_file_percent(33.0, 2.0, k), 2.0, k), 33.0, 1e-9);
-}
-
 TEST(DetailView, ATurnedFrameReadsEachAxisOnItsOwnScale) {
     const Frame turned{-12.0f, 0.1f, 0.15f, 0.85f, 0.9f};  // 7167 x 4778 over 1918 x 1279
     const PixelSize file{9564, 6376};
@@ -73,12 +65,8 @@ TEST(DetailView, ATurnedFrameReadsEachAxisOnItsOwnScale) {
     EXPECT_DOUBLE_EQ(k.x, static_cast<double>(full.width) / static_cast<double>(preview.width));
     EXPECT_DOUBLE_EQ(k.y, static_cast<double>(full.height) / static_cast<double>(preview.height));
     ASSERT_GT(preview.width, preview.height);
-    // The percent is along x, the frame's longer side: at 100% x has exactly one device pixel per
-    // file pixel, and y is off by the ratio of the two scales.
-    const double s = view_scale_for_file_percent(100.0, 2.0, k);
-    EXPECT_NEAR(s * 2.0 / k.x, 1.0, 1e-12);
-    EXPECT_NE(s * 2.0 / k.y, 1.0);
-    EXPECT_NEAR(file_zoom_percent(s, 2.0, k), 100.0, 1e-9);
+    // The percent is read along x, the frame's longer side.
+    EXPECT_DOUBLE_EQ(k.shown, k.x);
 }
 
 TEST(DetailView, LabelRoundsToWholePercent) {
@@ -87,9 +75,9 @@ TEST(DetailView, LabelRoundsToWholePercent) {
     EXPECT_EQ(file_zoom_label(35.5), "36%");
     EXPECT_EQ(file_zoom_label(99.6), "100%");
     EXPECT_EQ(file_zoom_label(800.0), "800%");
-    // The same rounding as view_zoom_label, without " of preview".
-    EXPECT_EQ(file_zoom_label(12.5), view_zoom_label(0.125f, 100, 100));
-    EXPECT_EQ(file_zoom_label(37.5), view_zoom_label(0.375f, 100, 100));
+    // Halves go away from zero.
+    EXPECT_EQ(file_zoom_label(12.5), "13%");
+    EXPECT_EQ(file_zoom_label(37.5), "38%");
 }
 
 TEST(DetailView, FitOnASixtyMegapixelPhotoNeedsNoRealPixels) {
@@ -208,12 +196,12 @@ TEST(DetailView, FitOnALargeRetinaCanvasKeepsThePreview) {
     // (6912 x 4480 during a gesture, 7168 x 4736 idle), so the chip says why the preview shows.
     const FileScale k = file_scale(file_60mp, preview);
     const double fit_points = static_cast<double>(view_fit_zoom(g)) / g.density;
-    const double fit_percent = file_zoom_percent(fit_points, g.density, k);
+    const double fit_percent = 100.0 * fit_points * g.density / k.shown;
     const double step_percent =
         100.0 * static_cast<double>(view_step_zoom(static_cast<float>(fit_percent / 100.0),
                                                    static_cast<float>(fit_percent / 100.0), 1));
     EXPECT_DOUBLE_EQ(step_percent, 50.0);
-    const double step_points = view_scale_for_file_percent(step_percent, g.density, k);
+    const double step_points = scale_at(step_percent, g.density, k);
     const ViewState stepped =
         view_zoomed_to(ViewState{}, g, static_cast<float>(step_points * g.density));
     ASSERT_FALSE(stepped.fit);
@@ -296,14 +284,14 @@ TEST(DetailView, BudgetIsOfTheRequestedRegionNotTheVisibleOne) {
 TEST(DetailView, BelowHundredPercentTheRegionShrinksToItsDevicePixels) {
     const FileScale k = file_scale(file_60mp, preview_of(file_60mp));
     // 50% on a 2x screen: a 6800 x 4400 region covers 3400 x 2200 device pixels.
-    const double half = view_scale_for_file_percent(50.0, 2.0, k);
+    const double half = scale_at(50.0, 2.0, k);
     EXPECT_EQ(detail_output_size({0, 0, 6800, 4400}, half, 2.0, k), (PixelSize{3400, 2200}));
     // The long side is rounded to the nearest pixel, halves up: 1001 * 0.5 = 500.5 -> 501, and the
     // short side is downscale's: 401 * 501 / 1001 = 200.7 -> 201.
     EXPECT_EQ(detail_output_size({0, 0, 1001, 401}, half, 2.0, k), (PixelSize{501, 201}));
     EXPECT_EQ(detail_output_size({0, 0, 401, 1001}, half, 2.0, k), (PixelSize{201, 501}));
     // 25% at 1x: 4000 x 3000 -> 1000 x 750.
-    const double quarter = view_scale_for_file_percent(25.0, 1.0, k);
+    const double quarter = scale_at(25.0, 1.0, k);
     EXPECT_EQ(detail_output_size({17, 9, 4000, 3000}, quarter, 1.0, k), (PixelSize{1000, 750}));
 }
 
@@ -312,25 +300,22 @@ TEST(DetailView, AtOrAboveHundredPercentTheOutputIsTheRegion) {
     const FrameBox r{100, 200, 3400, 2200};
     for (const double percent : {100.0, 100.0 - 0.5e-2, 150.0, 800.0}) {
         for (const double density : {1.0, 2.0}) {
-            EXPECT_EQ(
-                detail_output_size(r, view_scale_for_file_percent(percent, density, k), density, k),
-                (PixelSize{3400, 2200}))
+            EXPECT_EQ(detail_output_size(r, scale_at(percent, density, k), density, k),
+                      (PixelSize{3400, 2200}))
                 << percent << "% at " << density << "x";
         }
     }
     // Within the tolerance below 100% on a region long enough for it to show (20000 * 0.99995 would
     // round to 19999): still the region.
-    EXPECT_EQ(detail_output_size({0, 0, 20000, 1000},
-                                 view_scale_for_file_percent(100.0 - 0.5e-2, 2.0, k), 2.0, k),
+    EXPECT_EQ(detail_output_size({0, 0, 20000, 1000}, scale_at(100.0 - 0.5e-2, 2.0, k), 2.0, k),
               (PixelSize{20000, 1000}));
     // Just below 100% by more than the tolerance: shrunk.
-    EXPECT_EQ(detail_output_size(r, view_scale_for_file_percent(99.0, 1.0, k), 1.0, k),
-              (PixelSize{3366, 2178}));
+    EXPECT_EQ(detail_output_size(r, scale_at(99.0, 1.0, k), 1.0, k), (PixelSize{3366, 2178}));
 }
 
 TEST(DetailView, OutputIsNeverEmpty) {
     const FileScale k = file_scale(file_60mp, preview_of(file_60mp));
-    const double tiny = view_scale_for_file_percent(0.01, 1.0, k);
+    const double tiny = scale_at(0.01, 1.0, k);
     EXPECT_EQ(detail_output_size({0, 0, 3000, 2000}, tiny, 1.0, k), (PixelSize{1, 1}));
     EXPECT_EQ(detail_output_size({0, 0, 1, 1}, tiny, 1.0, k), (PixelSize{1, 1}));
     EXPECT_EQ(detail_output_size({0, 0, 0, 0}, tiny, 1.0, k), (PixelSize{1, 1}));
@@ -450,9 +435,6 @@ TEST(DetailView, PreviewOnlyChipNeedsAnEnlargedPreviewAwayFromFit) {
 TEST(DetailView, NoScreenOrANaNGivesNoNonsense) {
     const FileScale k = file_scale(file_60mp, preview_of(file_60mp));
     const double nan = std::numeric_limits<double>::quiet_NaN();
-    // No density: no view scale.
-    EXPECT_EQ(view_scale_for_file_percent(100.0, 0.0, k), 0.0);
-    EXPECT_EQ(view_scale_for_file_percent(100.0, nan, k), 0.0);
     // A NaN edge: no region.
     EXPECT_FALSE(file_region({nan, 10.0, 20.0, 20.0}, small_preview, small_full));
     EXPECT_FALSE(file_region({10.0, 10.0, 20.0, nan}, small_preview, small_full));

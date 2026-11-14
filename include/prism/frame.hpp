@@ -223,19 +223,6 @@ private:
 [[nodiscard]] Image apply_frame(const Image& img, const Frame& f, int threads = 0,
                                 const std::optional<FrameBox>& part = std::nullopt);
 
-// The photo pixels apply_frame reads for `part` (as above) of a `width` x `height` photo framed by
-// `f`, as a box of photo pixels: columns [x0, x0 + width), rows [y0, y0 + height). Reading only
-// these gives the same part, so a caller holding the photo in pieces knows which to have ready.
-//
-// At an angle of exactly 0 it is the part's own pixels, moved by the framed_box's corner. Turned,
-// it is the box around the photo positions of the part's four corner pixels, widened by the
-// Catmull-Rom taps (one pixel before, two after, on each axis) and held inside the photo, as the
-// taps are, so it is never empty. It holds exactly the pixels between the lowest and the highest
-// tap: no more. Throws as apply_frame for an invalid `f` or `part`, and if width or height is
-// below 1.
-[[nodiscard]] FrameBox frame_source_rect(const Frame& f, int width, int height,
-                                         const FrameBox& part);
-
 // What an export does with the frame, for a decode of `width` x `height`.
 struct ExportFrame {
     // The frame to apply, fitted (fit_frame); nothing when the export takes today's path: no frame,

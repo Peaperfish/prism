@@ -17,18 +17,6 @@ FileScale file_scale(PixelSize framed_full, PixelSize framed_preview) noexcept {
     return {x, y, framed_preview.width >= framed_preview.height ? x : y};
 }
 
-double file_zoom_percent(double points_per_preview_pixel, double density,
-                         FileScale scale) noexcept {
-    return 100.0 * points_per_preview_pixel * density / scale.shown;
-}
-
-double view_scale_for_file_percent(double percent, double density, FileScale scale) noexcept {
-    if (!(density > 0.0)) {
-        return 0.0;  // no screen to measure against (view_transform's has_picture case), or NaN
-    }
-    return percent / 100.0 * scale.shown / density;
-}
-
 std::string file_zoom_label(double percent) {
     return std::to_string(std::lround(percent)) + "%";
 }

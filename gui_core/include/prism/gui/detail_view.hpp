@@ -44,20 +44,8 @@ struct FileScale {
 // The scale from `framed_preview` up to `framed_full`. 1 on both axes if either size is empty.
 [[nodiscard]] FileScale file_scale(PixelSize framed_full, PixelSize framed_preview) noexcept;
 
-// The zoom in percent of the file for a view showing `points_per_preview_pixel` on a screen of
-// `density`: 100 * points_per_preview_pixel * density / scale.shown.
-[[nodiscard]] double file_zoom_percent(double points_per_preview_pixel, double density,
-                                       FileScale scale) noexcept;
-
-// The view's scale (points per preview pixel) that shows `percent` of the file: the inverse of
-// file_zoom_percent; 0 if density isn't above 0. For "100% (real pixels)" and for the zoom steps,
-// which step in file percent: view_step_zoom(percent / 100, fit_percent / 100, direction) * 100
-// gives the next stop, its top stop being 800%.
-[[nodiscard]] double view_scale_for_file_percent(double percent, double density,
-                                                 FileScale scale) noexcept;
-
-// The chip's number: "N%", N rounded to the nearest whole percent, halves away from zero, as
-// view_zoom_label rounds. No " of preview": the percent is of the file.
+// The chip's number: "N%", N rounded to the nearest whole percent, halves away from zero. No
+// " of preview": the percent is of the file.
 [[nodiscard]] std::string file_zoom_label(double percent);
 
 // How far two device-pixels-per-preview-pixel zooms may differ and still count as the same: the

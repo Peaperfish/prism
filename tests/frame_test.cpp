@@ -1006,82 +1006,6 @@ TEST(Frame, APartIsBitIdenticalOnOneAndEightThreads) {
     }
 }
 
-// The lowest and highest photo pixel apply_frame's taps reach for `part`, worked out pixel by
-// pixel, as the kernel does: floor of the centre's position, then -1 .. +2, held inside the photo.
-FrameBox tap_bounds(const Frame& f, int w, int h, const FrameBox& part) {
-    const FrameMap map(f, w, h);
-    int lo_x = w;
-    int hi_x = -1;
-    int lo_y = h;
-    int hi_y = -1;
-    for (int j = part.y0; j < part.y0 + part.height; ++j) {
-        for (int i = part.x0; i < part.x0 + part.width; ++i) {
-            const FramePoint p = map.to_photo_pixels({i + 0.5, j + 0.5});
-            const int fx = static_cast<int>(std::floor(p.x - 0.5));
-            const int fy = static_cast<int>(std::floor(p.y - 0.5));
-            lo_x = std::min(lo_x, std::clamp(fx - 1, 0, w - 1));
-            hi_x = std::max(hi_x, std::clamp(fx + 2, 0, w - 1));
-            lo_y = std::min(lo_y, std::clamp(fy - 1, 0, h - 1));
-            hi_y = std::max(hi_y, std::clamp(fy + 2, 0, h - 1));
-        }
-    }
-    return {lo_x, lo_y, hi_x - lo_x + 1, hi_y - lo_y + 1};
-}
-
-TEST(Frame, SourceRectHoldsEveryTapAPartReads) {
-    constexpr int W = 97;
-    constexpr int H = 71;
-    const Image img = patterned(W, H);
-    // Some turned parts must be held in by the photo's edge and some not, so both are checked.
-    bool held_by_edge = false;
-    bool inside = false;
-    for (const Frame& f : part_frames(W, H)) {
-        const FrameBox box = prism::framed_box(f, W, H);
-        for (const FrameBox& part : parts_of(box.width, box.height)) {
-            const FrameBox rect = prism::frame_source_rect(f, W, H, part);
-            const std::string where = "angle " + std::to_string(f.angle) + ", part at (" +
-                                      std::to_string(part.x0) + ", " + std::to_string(part.y0) +
-                                      ") " + std::to_string(part.width) + " x " +
-                                      std::to_string(part.height);
-            if (f.angle == 0.0f) {
-                EXPECT_EQ(rect, (FrameBox{box.x0 + part.x0, box.y0 + part.y0, part.width,
-                                          part.height}))
-                    << where;
-            } else {
-                EXPECT_EQ(rect, tap_bounds(f, W, H, part)) << where;
-                if (rect.x0 == 0 || rect.y0 == 0 || rect.x0 + rect.width == W ||
-                    rect.y0 + rect.height == H) {
-                    held_by_edge = true;
-                }
-                if (rect.x0 > 0 && rect.y0 > 0 && rect.x0 + rect.width < W &&
-                    rect.y0 + rect.height < H) {
-                    inside = true;
-                }
-            }
-            // And reading only those pixels gives the same part: every other photo pixel is NaN,
-            // which reaches the result through any tap, even one of weight 0.
-            Image poisoned = img;
-            for (int y = 0; y < H; ++y) {
-                for (int x = 0; x < W; ++x) {
-                    if (x < rect.x0 || x >= rect.x0 + rect.width || y < rect.y0 ||
-                        y >= rect.y0 + rect.height) {
-                        const std::size_t at =
-                            static_cast<std::size_t>(y) * W + static_cast<std::size_t>(x);
-                        float* q = poisoned.pixels.data() + at * 3;
-                        q[0] = q[1] = q[2] = std::numeric_limits<float>::quiet_NaN();
-                    }
-                }
-            }
-            EXPECT_EQ(first_bit_difference(prism::apply_frame(poisoned, f, 1, part),
-                                           prism::apply_frame(img, f, 1, part)),
-                      -1)
-                << where;
-        }
-    }
-    EXPECT_TRUE(held_by_edge);
-    EXPECT_TRUE(inside);
-}
-
 TEST(Frame, APartOutsideTheFramedImageOrEmptyIsRefused) {
     constexpr int W = 40;
     constexpr int H = 30;
@@ -1103,19 +1027,10 @@ TEST(Frame, APartOutsideTheFramedImageOrEmptyIsRefused) {
             EXPECT_THROW((void)prism::apply_frame(img, f, 1, part), std::invalid_argument)
                 << "angle " << angle << ", part " << part.width << " x " << part.height
                 << " at (" << part.x0 << ", " << part.y0 << ")";
-            EXPECT_THROW((void)prism::frame_source_rect(f, W, H, part), std::invalid_argument)
-                << "angle " << angle << ", part " << part.width << " x " << part.height
-                << " at (" << part.x0 << ", " << part.y0 << ")";
         }
         // The whole box and the last pixel are inside.
         EXPECT_NO_THROW((void)prism::apply_frame(img, f, 1, FrameBox{0, 0, W, H}));
-        EXPECT_NO_THROW((void)prism::frame_source_rect(f, W, H, FrameBox{W - 1, H - 1, 1, 1}));
     }
-    // An invalid frame is still named first.
-    EXPECT_THROW((void)prism::frame_source_rect(frame_of(50.0f, 0, 0, 1, 1), W, H, {0, 0, 1, 1}),
-                 std::invalid_argument);
-    EXPECT_THROW((void)prism::frame_source_rect(frame_of(0.0f, 0, 0, 1, 1), 0, H, {0, 0, 1, 1}),
-                 std::invalid_argument);
 }
 
 }  // namespace

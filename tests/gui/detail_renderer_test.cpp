@@ -662,7 +662,7 @@ DetailFrame rendered(DetailRenderer& renderer, const std::shared_ptr<const Photo
 // `density`, with the preview at a quarter of the file.
 constexpr FileScale quarter{4.0, 4.0, 4.0};
 double view_at(double percent, double density) {
-    return prism::gui::view_scale_for_file_percent(percent, density, quarter);
+    return percent / 100.0 * quarter.shown / density;
 }
 
 Image finished(Photo base, const EditSettings& s) {

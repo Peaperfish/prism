@@ -446,48 +446,6 @@ Image apply_frame(const Image& img, const Frame& f, int threads,
     return out;
 }
 
-FrameBox frame_source_rect(const Frame& f, int width, int height, const FrameBox& part) {
-    require_valid(f, width, height, "frame_source_rect");
-    const FrameMap map(f, width, height);
-    const FrameBox& box = map.box();
-    require_part(box, part, "frame_source_rect");
-    if (f.angle == 0.0f) {
-        // apply_frame copies: the part's own pixels, moved by the box's corner.
-        return {box.x0 + part.x0, box.y0 + part.y0, part.width, part.height};
-    }
-    // apply_frame samples framed pixel centres. Along a row or a column its photo positions only
-    // grow or only shrink, rounding included (each step of the sum is a product by a fixed number
-    // or an addition, and rounding never reverses an order), so the extremes are at the four
-    // corner pixels' centres. Taken exactly as
-    // apply_frame takes them, then widened by the taps -1 and +2 and held inside the photo as taps
-    // are.
-    double lo_x = 0.0;
-    double hi_x = 0.0;
-    double lo_y = 0.0;
-    double hi_y = 0.0;
-    bool first = true;
-    for (const int i : {part.x0, part.x0 + part.width - 1}) {
-        for (const int j : {part.y0, part.y0 + part.height - 1}) {
-            const FramePoint p = map.to_photo_pixels({i + 0.5, j + 0.5});
-            const double fx = std::floor(p.x - 0.5);
-            const double fy = std::floor(p.y - 0.5);
-            lo_x = first ? fx : std::min(lo_x, fx);
-            hi_x = first ? fx : std::max(hi_x, fx);
-            lo_y = first ? fy : std::min(lo_y, fy);
-            hi_y = first ? fy : std::max(hi_y, fy);
-            first = false;
-        }
-    }
-    const auto held = [](double v, int n) {
-        return static_cast<int>(std::clamp(v, 0.0, static_cast<double>(n - 1)));
-    };
-    const int x0 = held(lo_x - 1.0, width);
-    const int x1 = held(hi_x + 2.0, width);
-    const int y0 = held(lo_y - 1.0, height);
-    const int y1 = held(hi_y + 2.0, height);
-    return {x0, y0, x1 - x0 + 1, y1 - y0 + 1};
-}
-
 ExportFrame plan_export_frame(const std::optional<Frame>& frame, int width, int height) {
     if (!frame) {
         if (width < 1 || height < 1) {

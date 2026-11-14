@@ -512,17 +512,6 @@ TEST(ViewTransform, PixelsShowOnlyAbove200Percent) {
     EXPECT_TRUE(view_shows_pixels(8.0f));
 }
 
-TEST(ViewZoomLabel, SaysOfPreviewWhileThePreviewIsSmallerThanTheFile) {
-    EXPECT_EQ(view_zoom_label(1.0f, 2560, 9566), "100% of preview");
-    EXPECT_EQ(view_zoom_label(0.742f, 2560, 6000), "74% of preview");
-    EXPECT_EQ(view_zoom_label(4.0f, 2560, 2561), "400% of preview");
-}
-
-TEST(ViewZoomLabel, IsPlainWhenThePreviewIsTheWholeFile) {
-    EXPECT_EQ(view_zoom_label(1.0f, 2560, 2560), "100%");
-    EXPECT_EQ(view_zoom_label(1.6f, 800, 800), "160%");
-}
-
 const ViewRect chip_canvas{{100.0f, 50.0f}, {900.0f, 650.0f}};
 
 TEST(ViewChip, GoesInTheBottomRightCorner) {
