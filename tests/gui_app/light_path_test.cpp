@@ -732,6 +732,8 @@ TEST_F(LightPathHeadless, TypedFactorOnSaturationIsAFactorNotAPosition) {
 
 TEST_F(LightPathHeadless, TypedTextTheRowRejectsLeavesTheValue) {
     PRISM_TYPED_OPEN(contrast);
+    ASSERT_TRUE(ImGui::GetIO().WantTextInput);  // the field is open
+    ASSERT_TRUE(contrast_frames_.empty());
     ImGui::GetIO().AddInputCharactersUTF8("lots");
     frame();
     ImGui::GetIO().AddKeyEvent(ImGuiKey_Enter, true);
@@ -739,6 +741,8 @@ TEST_F(LightPathHeadless, TypedTextTheRowRejectsLeavesTheValue) {
     ImGui::GetIO().AddKeyEvent(ImGuiKey_Enter, false);
     frame();
     frame();
+    // Contrast reports through its own callback, not the other rows' slider.
+    EXPECT_TRUE(contrast_frames_.empty());
     EXPECT_TRUE(slider_frames_.empty());
     EXPECT_FALSE(ImGui::GetIO().WantTextInput);
 }
@@ -761,6 +765,7 @@ TEST_F(LightPathHeadless, TypedClickingAwayAfterAnEditKeepsIt) {
 TEST_F(LightPathHeadless, TypedEscapeLeavesTheValue) {
     {
         PRISM_TYPED_OPEN(exposure);
+        ASSERT_TRUE(ImGui::GetIO().WantTextInput);  // the field is open
         ImGui::GetIO().AddInputCharactersUTF8("2");
         frame();
         ImGui::GetIO().AddKeyEvent(ImGuiKey_Escape, true);
