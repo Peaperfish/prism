@@ -81,16 +81,6 @@ TEST(DetailView, ATurnedFrameReadsEachAxisOnItsOwnScale) {
     EXPECT_NEAR(file_zoom_percent(s, 2.0, k), 100.0, 1e-9);
 }
 
-TEST(DetailView, ZoomStopsAtEightHundredPercentOfTheFile) {
-    const FileScale k = file_scale(file_60mp, preview_of(file_60mp));
-    const double fit = 0.3;  // points per preview pixel
-    EXPECT_NEAR(file_zoom_percent(max_view_scale(fit, 2.0, k), 2.0, k), 800.0, 1e-9);
-    EXPECT_NEAR(file_zoom_percent(max_view_scale(fit, 1.0, k), 1.0, k), 800.0, 1e-9);
-    // A tiny photo whose fit is beyond 800% stays at its fit.
-    const FileScale same = file_scale({40, 30}, {40, 30});
-    EXPECT_DOUBLE_EQ(max_view_scale(20.0, 1.0, same), 20.0);
-}
-
 TEST(DetailView, LabelRoundsToWholePercent) {
     EXPECT_EQ(file_zoom_label(100.0), "100%");
     EXPECT_EQ(file_zoom_label(35.49), "35%");
@@ -460,10 +450,9 @@ TEST(DetailView, PreviewOnlyChipNeedsAnEnlargedPreviewAwayFromFit) {
 TEST(DetailView, NoScreenOrANaNGivesNoNonsense) {
     const FileScale k = file_scale(file_60mp, preview_of(file_60mp));
     const double nan = std::numeric_limits<double>::quiet_NaN();
-    // No density: no view scale, so the largest is the fit's.
+    // No density: no view scale.
     EXPECT_EQ(view_scale_for_file_percent(100.0, 0.0, k), 0.0);
     EXPECT_EQ(view_scale_for_file_percent(100.0, nan, k), 0.0);
-    EXPECT_EQ(max_view_scale(0.3, 0.0, k), 0.3);
     // A NaN edge: no region.
     EXPECT_FALSE(file_region({nan, 10.0, 20.0, 20.0}, small_preview, small_full));
     EXPECT_FALSE(file_region({10.0, 10.0, 20.0, nan}, small_preview, small_full));

@@ -29,12 +29,6 @@ double view_scale_for_file_percent(double percent, double density, FileScale sca
     return percent / 100.0 * scale.shown / density;
 }
 
-double max_view_scale(double fit_points_per_preview_pixel, double density,
-                      FileScale scale) noexcept {
-    return std::max(view_scale_for_file_percent(file_zoom_max_percent, density, scale),
-                    fit_points_per_preview_pixel);
-}
-
 std::string file_zoom_label(double percent) {
     return std::to_string(std::lround(percent)) + "%";
 }

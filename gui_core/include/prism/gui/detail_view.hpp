@@ -44,9 +44,6 @@ struct FileScale {
 // The scale from `framed_preview` up to `framed_full`. 1 on both axes if either size is empty.
 [[nodiscard]] FileScale file_scale(PixelSize framed_full, PixelSize framed_preview) noexcept;
 
-// The closest the view goes: 800% of the file, eight device pixels per file pixel.
-inline constexpr double file_zoom_max_percent = 800.0;
-
 // The zoom in percent of the file for a view showing `points_per_preview_pixel` on a screen of
 // `density`: 100 * points_per_preview_pixel * density / scale.shown.
 [[nodiscard]] double file_zoom_percent(double points_per_preview_pixel, double density,
@@ -58,13 +55,6 @@ inline constexpr double file_zoom_max_percent = 800.0;
 // gives the next stop, its top stop being 800%.
 [[nodiscard]] double view_scale_for_file_percent(double percent, double density,
                                                  FileScale scale) noexcept;
-
-// The largest view scale allowed: 800% of the file, or the fit's scale if that is larger (a tiny
-// photo whose fit is beyond 800% stays at its fit, as view_zoom_max says for the preview). Not yet
-// enforced: view_settled and view_zoomed_to still clamp at view_zoom_max preview pixels (about 215%
-// of a 60 MP file) until the canvas takes this as its limit.
-[[nodiscard]] double max_view_scale(double fit_points_per_preview_pixel, double density,
-                                    FileScale scale) noexcept;
 
 // The chip's number: "N%", N rounded to the nearest whole percent, halves away from zero, as
 // view_zoom_label rounds. No " of preview": the percent is of the file.
