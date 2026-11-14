@@ -334,16 +334,18 @@ TEST(PreviewRenderer, SubmitsFasterThanARenderStillPublishFramesWithRisingGenera
 TEST(PreviewRenderer, AfterAFastBurstOfSubmitsTheLastFrameMatchesTheLatestSettings) {
     // The real render (render_preview, one thread) on a small image, with 40 requests in a row.
     // Each render waits at a Stepper before it starts, so the test decides the order. The UI
-    // polls every frame, so the latest frame can be taken by a poll during the burst or by one
-    // after the worker is idle: both orders are forced here. A frame is delivered once; the
-    // latest one is the newest frame the polls saw, wherever it was taken. (The old version of
-    // this test assumed the latest frame was always still waiting after wait_until_idle, and
-    // failed whenever its own poll during the burst had already taken it: #84.)
+    // polls every frame, so the latest frame can be taken by a poll as soon as it is published,
+    // before anything waits for the worker to be idle, or by one after wait_until_idle: both
+    // orders are forced here. poll() hands out a frame at most
+    // once (one slot, newest wins), so the latest frame is the newest one any poll saw, wherever
+    // it was taken. (The old version of this test assumed the latest frame was always still
+    // waiting after wait_until_idle, and failed whenever its own last poll in the loop had
+    // already taken it: #84.)
     constexpr int requests = 40;
     const auto base = make_base(64, 48);
-    for (const bool take_last_during_burst : {true, false}) {
-        SCOPED_TRACE(take_last_during_burst ? "latest frame taken during the burst"
-                                            : "latest frame taken after the worker is idle");
+    for (const bool poll_before_idle_wait : {true, false}) {
+        SCOPED_TRACE(poll_before_idle_wait ? "latest frame taken by a poll before wait_until_idle"
+                                           : "latest frame taken by a poll after wait_until_idle");
         Stepper step;
         std::atomic<int> renders{0};
         PreviewRenderer renderer(
@@ -376,7 +378,7 @@ TEST(PreviewRenderer, AfterAFastBurstOfSubmitsTheLastFrameMatchesTheLatestSettin
         EXPECT_EQ(renderer.poll(), std::nullopt) << "render 2 is still held";
         step.release(2);
         std::optional<PreviewFrame> latest;
-        if (take_last_during_burst) {
+        if (poll_before_idle_wait) {
             latest = next_frame(renderer);  // a UI poll takes it as soon as it is published
             ASSERT_TRUE(renderer.wait_until_idle(timeout));
             EXPECT_EQ(renderer.poll(), std::nullopt) << "a frame is delivered only once";
