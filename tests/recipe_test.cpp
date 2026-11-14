@@ -1021,6 +1021,45 @@ TEST(RecipeWhiteBalance, ReadsBackWhatWasWritten) {
               "5600.5\ntint = -12.25\non = false\n");
 }
 
+// #62: the comment after kelvin says what --help says (CliHelp.SaysWhatKelvinDoesToThePicture...).
+TEST(RecipeWhiteBalance, TheKelvinCommentSaysWhatHelpSays) {
+    const std::string text = prism::write_recipe(white_balance_recipe());
+    EXPECT_NE(text.find("\nkelvin = 5600.5  # the light the photo was lit by; higher makes the "
+                        "picture warmer\n"),
+              std::string::npos)
+        << text;
+    EXPECT_EQ(text.find("higher is"), std::string::npos) << text;
+}
+
+// A recipe saved before #62 has the old comment after kelvin; it reads as before, with no issues,
+// and saving it again writes the new comment.
+TEST(RecipeWhiteBalance, ARecipeWithTheOldKelvinCommentStillReads) {
+    const std::string old =
+        "# Prism recipe: edit settings in plain text. Prism rewrites these comments when it saves.\n"
+        "# What each line means: https://github.com/Peaperfish/prism/blob/main/docs/RECIPES.md\n"
+        "prism_recipe = 2  # recipe format version\n"
+        "\n"
+        "[exposure]\n"
+        "stops = +0.5  # 1.41x the light\n"
+        "\n"
+        "[white_balance]\n"
+        "kelvin = 5600.5  # the light the photo was lit by; higher is warmer\n"
+        "tint = -12.25  # positive is a greener light, which makes the photo more magenta\n"
+        "on = false  # off: Prism skips this stage but keeps its values\n";
+    EXPECT_TRUE(issues_of(old).empty());
+    const Recipe r = prism::parse_recipe(old);
+    ASSERT_TRUE(r.white_balance);
+    EXPECT_EQ(*r.white_balance, (prism::RecipeWhiteBalance{5600.5f, -12.25f, false}));
+    ASSERT_TRUE(r.exposure);
+    EXPECT_EQ(*r.exposure, (prism::RecipeExposure{0.5f, true}));
+    const std::string saved = prism::write_recipe(r);
+    EXPECT_NE(saved.find("\nkelvin = 5600.5  # the light the photo was lit by; higher makes the "
+                         "picture warmer\n"),
+              std::string::npos)
+        << saved;
+    EXPECT_EQ(saved.find("higher is warmer"), std::string::npos) << saved;
+}
+
 TEST(RecipeWhiteBalance, TintAndOnTakeTheirDefaults) {
     const Recipe r = prism::parse_recipe("prism_recipe = 2\n[white_balance]\nkelvin = 4200\n");
     ASSERT_TRUE(r.white_balance);

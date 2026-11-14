@@ -201,7 +201,7 @@ std::string write_recipe(const Recipe& recipe, const RecipeWriteOptions& options
     if (const auto& wb = recipe.white_balance) {
         w.section("white_balance");
         w.setting("kelvin", number_text(wb->kelvin),
-                  "the light the photo was lit by; higher is warmer");
+                  "the light the photo was lit by; higher makes the picture warmer");
         w.setting("tint", number_text(wb->tint),
                   "positive is a greener light, which makes the photo more magenta");
         w.switch_off_if(wb->on);
