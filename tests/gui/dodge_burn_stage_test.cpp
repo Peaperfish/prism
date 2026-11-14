@@ -31,6 +31,7 @@
 #include "prism/gui/session.hpp"
 #include "prism/gui/settings.hpp"
 #include "prism/gui/test_strip.hpp"
+#include "prism/parallel.hpp"
 #include "prism/image.hpp"
 #include "prism/process.hpp"
 #include "prism/recipe.hpp"
@@ -317,10 +318,11 @@ class DodgeBurnAgreement : public ::testing::TestWithParam<Size> {};
 
 }  // namespace
 
-// The sizes are above the library's multi-threaded threshold (a landscape one and a portrait one,
-// whose test strip bands run along the other axis); threads 0 uses every core.
+// The sizes are 1.5 x the library's multi-threaded threshold (a landscape one and a portrait one,
+// whose test strip bands run along the other axis), with sides 3 doesn't divide; threads 0 uses
+// every core. Each test asserts the size.
 INSTANTIATE_TEST_SUITE_P(Sizes, DodgeBurnAgreement,
-                         ::testing::Values(Size{1501, 701}, Size{733, 1409}),
+                         ::testing::Values(Size{1601, 1009}, Size{1009, 1601}),
                          [](const ::testing::TestParamInfo<Size>& info) {
                              return std::to_string(info.param.w) + "x" +
                                     std::to_string(info.param.h);
@@ -328,6 +330,7 @@ INSTANTIATE_TEST_SUITE_P(Sizes, DodgeBurnAgreement,
 
 TEST_P(DodgeBurnAgreement, TheClipReportSamplesTheFullRendersPixels) {
     const auto [w, h] = GetParam();
+    ASSERT_GE(static_cast<std::size_t>(w) * h, prism::parallel_min_pixels * 3 / 2);
     const Image base = make_image(w, h);
     const EditSettings s = edited(make_strokes(w, h));
     const ClipReport whole = prism::gui::compute_clip_report(base, s);
@@ -355,6 +358,7 @@ TEST_P(DodgeBurnAgreement, TheClipReportSamplesTheFullRendersPixels) {
 
 TEST_P(DodgeBurnAgreement, TheSampleGridIsOnTheSamePixelsAsTheFullImage) {
     const auto [w, h] = GetParam();
+    ASSERT_GE(static_cast<std::size_t>(w) * h, prism::parallel_min_pixels * 3 / 2);
     const Image base = make_image(w, h);
     const EditSettings s = edited(make_strokes(w, h));
     const Image full = stage_image(base, s, StageId::dodge_burn);
@@ -386,6 +390,7 @@ TEST_P(DodgeBurnAgreement, TheSampleGridIsOnTheSamePixelsAsTheFullImage) {
 
 TEST_P(DodgeBurnAgreement, TheSamplerReadsTheFullRendersPixels) {
     const auto [w, h] = GetParam();
+    ASSERT_GE(static_cast<std::size_t>(w) * h, prism::parallel_min_pixels * 3 / 2);
     const Image base = make_image(w, h);
     const EditSettings s = edited(make_strokes(w, h));
     const Image dodged = stage_image(base, s, StageId::dodge_burn);
@@ -421,6 +426,7 @@ TEST_P(DodgeBurnAgreement, TheSamplerReadsTheFullRendersPixels) {
 
 TEST_P(DodgeBurnAgreement, ATestStripBandIsTheFullRenderAtItsOwnExposure) {
     const auto [w, h] = GetParam();
+    ASSERT_GE(static_cast<std::size_t>(w) * h, prism::parallel_min_pixels * 3 / 2);
     const Image base = make_image(w, h);
     const EditSettings s = edited(make_strokes(w, h));
     const prism::gui::TestStrip strip{prism::gui::StripStep::half, 5};

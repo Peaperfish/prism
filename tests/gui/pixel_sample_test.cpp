@@ -151,9 +151,9 @@ TEST(PixelSample, ARenderOnEightThreadsMatchesToo) {
     const Image tile = varied_image(tile_width, tile_height);
     Image big;
     big.width = tile_width * tile_width;
-    big.height = 768;
-    ASSERT_GE(static_cast<std::size_t>(big.width) * big.height, parallel_min_pixels);
-    ASSERT_GT(threads_for_pixels(static_cast<std::size_t>(big.width) * big.height, 8), 1);
+    big.height = 1151;  // prime: 8 threads leave rows over, so the chunks are unequal
+    ASSERT_GE(static_cast<std::size_t>(big.width) * big.height, parallel_min_pixels * 3 / 2);
+    ASSERT_EQ(threads_for_pixels(static_cast<std::size_t>(big.width) * big.height, 8), 8);
     big.pixels.resize(static_cast<std::size_t>(big.width) * big.height * Image::channels);
     for (int y = 0; y < big.height; ++y) {
         for (int x = 0; x < big.width; ++x) {
