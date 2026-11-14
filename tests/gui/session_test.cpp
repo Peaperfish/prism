@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <array>
 #include <bit>
 #include <cstddef>
 #include <cstdint>
@@ -504,6 +505,13 @@ TEST(Session, ExportsJpegToo) {
     Session session;
     ASSERT_EQ(session.open_file(png), std::nullopt);
     ASSERT_EQ(prism::gui::export_image(session.export_job(), out), std::nullopt);
+    // A JPEG, not a PNG under a .JPG name (load_image reads either): its start of image marker.
+    std::array<unsigned char, 3> head{};
+    {
+        std::ifstream in(out, std::ios::binary);
+        in.read(reinterpret_cast<char*>(head.data()), static_cast<std::streamsize>(head.size()));
+    }
+    EXPECT_EQ(head, (std::array<unsigned char, 3>{0xFF, 0xD8, 0xFF}));
     EXPECT_EQ(prism::load_image(out).width, 50);
     fs::remove(png);
     fs::remove(out);

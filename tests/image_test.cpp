@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <stdexcept>
 
 #include "prism/color.hpp"
@@ -51,6 +53,15 @@ TEST(Image, JpegRoundTripKeepsSize) {
     const prism::Image original = make_test_image();
     const fs::path path = temp_path("prism_roundtrip.JPG");  // also checks case-insensitivity
     prism::save_image(path, original);
+
+    // A JPEG, not another format under a .JPG name (stb_image would load either): its start
+    // of image marker.
+    std::array<unsigned char, 3> head{};
+    {
+        std::ifstream in(path, std::ios::binary);
+        in.read(reinterpret_cast<char*>(head.data()), static_cast<std::streamsize>(head.size()));
+    }
+    EXPECT_EQ(head, (std::array<unsigned char, 3>{0xFF, 0xD8, 0xFF}));
 
     const prism::Image loaded = prism::load_image(path);
     fs::remove(path);
