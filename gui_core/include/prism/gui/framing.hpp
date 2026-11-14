@@ -353,7 +353,8 @@ enum class FramingEvent {
 // Whether a tool key (W, B, I or T) leaves framing, given the tools before it and after it
 // (tools_after_key): only when the key really turns its own tool on. A key for a tool the viewed
 // stage doesn't have (B before Dodge & burn, W where white balance isn't visible) changes nothing,
-// and framing stays on (#58). False while framing is off.
+// and framing stays on (#58). False while framing is off. The app asks it for W and B; I and T
+// call framing_leaves themselves, only once they know their tool turns on.
 [[nodiscard]] bool tool_key_leaves_framing(bool framing, ToolKey key, CanvasTools before,
                                            CanvasTools after) noexcept;
 

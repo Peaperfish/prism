@@ -369,7 +369,7 @@ enum class ToolKey {
     pick,    // W
     sample,  // I
     strip,   // T
-    brush,   // the Brush button
+    brush,   // B, or the Brush button
 };
 
 // What the tools are after a key: a key toggles its tool, and turning one on turns the others off

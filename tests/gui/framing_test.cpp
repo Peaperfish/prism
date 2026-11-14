@@ -858,21 +858,22 @@ TEST(FramingEntry, ToolsComparisonsAndANewPhotoLeaveFramingViewingAndUndoDoNot) 
 }
 
 TEST(FramingToolKeys, BOrWOnAStageWithoutTheirToolKeepFramingOn) {
-    // Session 6 review of #58: B before Dodge & burn, or W where white balance isn't visible,
-    // turns nothing on, so framing must stay on.
+    // #58: B before Dodge & burn, or W where white balance isn't visible, turns nothing on, so
+    // framing must stay on.
     using prism::gui::CanvasTools;
     using prism::gui::ToolKey;
     using prism::gui::tool_key_leaves_framing;
     using prism::gui::tools_after_key;
     const CanvasTools none{};
     const CanvasTools after_w = tools_after_key(none, ToolKey::pick, false, true, true);
-    ASSERT_EQ(after_w, none);  // W did nothing: the branch under test
+    ASSERT_EQ(after_w, none);  // W did nothing, as on that stage in the app
     EXPECT_FALSE(tool_key_leaves_framing(true, ToolKey::pick, none, after_w));
     const CanvasTools after_b = tools_after_key(none, ToolKey::brush, true, true, false);
     ASSERT_EQ(after_b, none);
     EXPECT_FALSE(tool_key_leaves_framing(true, ToolKey::brush, none, after_b));
     // Unchanged with the key's own tool already on (not reachable from framing, which turns every
-    // tool off, but the rule is "changed nothing", not "nothing is on").
+    // tool off, but the rule is "changed nothing", not "nothing is on"). Only these two pin the
+    // unchanged-tools check: with none -> none the key's tool is off either way.
     const CanvasTools picking{false, true, false, false};
     const CanvasTools brushing{false, false, false, true};
     EXPECT_FALSE(tool_key_leaves_framing(true, ToolKey::pick, picking, picking));
@@ -912,8 +913,8 @@ TEST(FramingToolKeys, AToolKeyLeavesFramingOnlyWhenItTurnsItsOwnToolOn) {
 }
 
 TEST(FramingViewInput, TheWheelAndPinchMoveTheViewOnlyWithNoGestureUnderWay) {
-    // Session 6 review of #58: zooming in the middle of a framing drag would move the view under
-    // a drag that maps the pointer through the view at its press.
+    // #58: zooming in the middle of a framing drag would move the view under a drag that maps the
+    // pointer through the view at its press.
     using prism::gui::FramingGesture;
     using prism::gui::framing_view_takes_input;
     EXPECT_TRUE(framing_view_takes_input(FramingGesture::none));
