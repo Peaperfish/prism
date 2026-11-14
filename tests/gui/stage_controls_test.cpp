@@ -445,7 +445,9 @@ TEST(Escape, PickModeYieldsToPopupsTextEditsDragsAndFocusedWindows) {
         c.popup_open = which == 1;
         c.item_active = which == 2;
         c.window_focused = which == 3;
-        EXPECT_NE(escape_action(c), EscapeAction::leave_pick) << which;
+        // What ImGui owns takes the Esc itself; a focused window is closed.
+        EXPECT_EQ(escape_action(c), which == 3 ? EscapeAction::close_window : EscapeAction::none)
+            << which;
     }
 }
 
