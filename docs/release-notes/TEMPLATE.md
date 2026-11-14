@@ -5,8 +5,8 @@ Prism's desktop app, for macOS and Windows.
 - Opens PNG, JPEG, HEIC/HEIF (macOS only) and camera RAW files (.arw, .dng, .cr2, .cr3, .nef, .raf), from File > Open
   or by dropping a file on the window.
 - Shows a live preview that follows every slider as you drag it.
-- Zoom and pan: zoom about the cursor, move the picture, fit it to the window or go to 100%.
-  Above 200% you see the pixels as squares.
+- Zoom to the photo's own pixels: 100% is one pixel of the photo on each pixel of your screen,
+  up to 800%. Past 200% you see the pixels as squares.
 - Reads any pixel: the linear values, its share "of white's light" and how many stops it is
   above or below middle grey, at the stage you are viewing.
 - Looks: a built-in look for RAW and one for PNG/JPEG, from the Look menu. A look sets Exposure,
