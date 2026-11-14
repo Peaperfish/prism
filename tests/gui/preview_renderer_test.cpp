@@ -15,6 +15,7 @@
 #include <thread>
 #include <vector>
 
+#include "prism/gui/histogram.hpp"
 #include "prism/gui/preview_renderer.hpp"
 #include "prism/gui/settings.hpp"
 #include "prism/gui/test_strip.hpp"
@@ -442,9 +443,10 @@ TEST(PreviewRenderer, DestroyingItWithARequestWaitingIsFine) {
 
 TEST(PreviewRenderer, TheDeliveredBytesDoNotDependOnTheThreadCount) {
     // At least 1.5 x parallel_min_pixels, so the image still splits if the threshold is raised a
-    // little, and every explicit count really splits each stage. 1051 rows is prime: every count
-    // from 2 up leaves rows over, so a split that loses or doubles the leftover rows shows up
-    // whatever the machine's hardware_threads() (threads 0) happens to be.
+    // little, and every explicit count really splits each stage. 1051 rows is prime: every
+    // explicit count above 1 leaves rows over, so a split that loses or doubles the leftover rows
+    // shows up whatever the machine's hardware_threads() (threads 0) happens to be. The histogram
+    // is merged from one partial per chunk, so it is compared too.
     constexpr int width = 1500;
     constexpr int height = 1051;
     constexpr std::size_t pixels = static_cast<std::size_t>(width) * height;
@@ -461,6 +463,7 @@ TEST(PreviewRenderer, TheDeliveredBytesDoNotDependOnTheThreadCount) {
     const auto base = make_base(width, height);
     ASSERT_EQ(base->pixels.size(), pixels * prism::Image::channels);
     std::vector<std::vector<std::uint8_t>> results;
+    std::vector<prism::gui::StageHistogram> histograms;
     for (const int threads : counts) {
         PreviewRenderer renderer(threads);
         renderer.submit(base, every_stage());
@@ -470,9 +473,12 @@ TEST(PreviewRenderer, TheDeliveredBytesDoNotDependOnTheThreadCount) {
         ASSERT_EQ(frame->width, width);
         ASSERT_EQ(frame->height, height);
         results.push_back(std::move(frame->rgb8));
+        histograms.push_back(frame->histogram);
     }
     for (std::size_t i = 1; i < results.size(); ++i) {
         EXPECT_EQ(results[0], results[i]) << "threads " << counts[i] << " differ from threads 1";
+        EXPECT_EQ(histograms[0], histograms[i])
+            << "threads " << counts[i] << ": histogram differs from threads 1";
     }
 }
 
