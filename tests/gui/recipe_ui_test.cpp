@@ -225,6 +225,19 @@ TEST(RecipeNameDefault, UnchangedSinceLoadingGivesTheRecipesNameAndDescription) 
 }
 
 TEST(RecipeNameDefault, ChangedSinceLoadingAddsModifiedOnce) {
+    // A plain name gains "(modified)" once changed.
+    {
+        History history(EditSettings{});
+        Recipe r = complete_recipe();
+        r.name = "Vivid";
+        const LoadedRecipe loaded = load_into(history, r, "v.prism");
+        EditSettings edited = history.current();
+        edited.contrast = 1.3f;
+        history.set(edited);
+        const RecipeNameDefault d = suggest_recipe_name(&loaded, InputKind::raw, history.current());
+        EXPECT_EQ(d.name, "Vivid (modified)");
+    }
+    // One that has it already doesn't gain it twice.
     History history(EditSettings{});
     Recipe r = complete_recipe();
     r.name = "Vivid (modified)";  // saved earlier from a modified look
