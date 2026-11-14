@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "prism/image.hpp"
+#include "prism/parallel.hpp"
 #include "prism/pipeline.hpp"
 #include "prism/process.hpp"
 #include "prism/white_balance.hpp"
@@ -160,18 +161,25 @@ TEST(Process, OrderMatters) {
 }
 
 TEST(Process, ThreadCountDoesNotChangeTheResult) {
-    // Big enough (> parallel_min_pixels) that several threads really are used.
+    // Big enough (1.5 x parallel_min_pixels) that several threads really are used, with a
+    // height neither 4 nor 7 divides, so the chunks are unequal.
     prism::Image one;
-    one.width = 1100;
-    one.height = 1000;
-    one.pixels.resize(static_cast<std::size_t>(one.width) * one.height * 3);
+    one.width = 1301;
+    one.height = 1213;
+    const std::size_t pixels = static_cast<std::size_t>(one.width) * one.height;
+    ASSERT_GE(pixels, prism::parallel_min_pixels * 3 / 2);
+    ASSERT_EQ(prism::threads_for_pixels(pixels, 7), 7);
+    one.pixels.resize(pixels * 3);
     for (std::size_t i = 0; i < one.pixels.size(); ++i) {
         one.pixels[i] = static_cast<float>(i % 1000) / 500.0f;
     }
-    prism::Image many = one;
+    const prism::Image base = one;
     EXPECT_EQ(prism::process(one, all_stages(), 1), prism::ProcessResult::completed);
-    EXPECT_EQ(prism::process(many, all_stages(), 4), prism::ProcessResult::completed);
-    EXPECT_EQ(bits(one), bits(many));
+    for (const int threads : {4, 7}) {
+        prism::Image many = base;
+        EXPECT_EQ(prism::process(many, all_stages(), threads), prism::ProcessResult::completed);
+        EXPECT_EQ(bits(one), bits(many)) << threads << " threads";
+    }
 }
 
 // --- white balance ---------------------------------------------------------------------------
