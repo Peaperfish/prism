@@ -256,16 +256,24 @@ public:
         cv_.notify_all();
     }
     // True if opened; false if stopped first (or after the timeout, which only a broken test hits).
+    // Whether it ended by a stop is kept for stopped(), so a timeout can't pass for one.
     bool wait(std::stop_token stop) {
         std::unique_lock lock(mutex_);
         cv_.wait_for(lock, stop, timeout, [&] { return open_; });
+        stopped_ = !open_ && stop.stop_requested();
         return open_;
+    }
+    // True if the last wait returned because the export was stopped, not opened and not timed out.
+    bool stopped() {
+        std::lock_guard lock(mutex_);
+        return stopped_;
     }
 
 private:
     std::mutex mutex_;
     std::condition_variable_any cv_;
     bool open_ = false;
+    bool stopped_ = false;
 };
 
 // An export that waits for `release` (or for its stop), then gives `outcome`, or
@@ -382,6 +390,8 @@ TEST(SessionExport, ClosingMidExportCancelsAndEndsIt) {
     EXPECT_EQ(b.ended, 1);
     EXPECT_EQ(b.ended_closing, 1);  // as closing: the session starts no read
     EXPECT_FALSE(exporter.busy());
+    // Stopped by the destructor's cancel, not left to the wait's timeout.
+    EXPECT_TRUE(release.stopped());
 }
 
 TEST(SessionExport, ClosingWithNothingRunningEndsNothing) {
