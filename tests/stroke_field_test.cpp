@@ -391,6 +391,11 @@ TEST(StrokeField, SoftnessOneFadesFromTheCentre) {
     }
     // Halfway out, smoothstep gives exactly one half.
     EXPECT_NEAR(row[50 + 15], 1.0 - 0.5 * 0.5 * (3 - 2 * 0.5), 0.05);
+    // Off the middle the shape shows: 8 and 22 pixels out are t = 8 / 30.3 and 22 / 30.3 of the
+    // radius, where 1 - t^2 (3 - 2t) is 0.8277 and 0.1840 (a straight fade would give 0.7360 and
+    // 0.2739).
+    EXPECT_NEAR(row[50 + 8], 0.827681, 1e-4);
+    EXPECT_NEAR(row[50 + 22], 0.184000, 1e-4);
 }
 
 TEST(StrokeField, StrokeWhollyOffTheImageGivesAZeroField) {
