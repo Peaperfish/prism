@@ -150,8 +150,8 @@ TEST(Cli, HistogramWithoutOutputReflectsProcessing) {
 
 TEST(Cli, OutputAndHistogramTogetherMatchRunningThemSeparately) {
     // With both options the image is encoded once and the bytes serve both; that must not change
-    // either result. A ramp across and down, part of it clipped, so every row differs: a uniform
-    // grey would hide counting the wrong pixels.
+    // either result. A ramp across and down, so every row differs (a uniform grey would hide
+    // counting the wrong pixels); +2.5 stops clips its bright end.
     prism::Image ramp;
     ramp.width = 37;
     ramp.height = 23;

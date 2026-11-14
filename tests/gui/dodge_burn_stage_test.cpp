@@ -31,8 +31,8 @@
 #include "prism/gui/session.hpp"
 #include "prism/gui/settings.hpp"
 #include "prism/gui/test_strip.hpp"
-#include "prism/parallel.hpp"
 #include "prism/image.hpp"
+#include "prism/parallel.hpp"
 #include "prism/process.hpp"
 #include "prism/recipe.hpp"
 #include "prism/stroke_field.hpp"
@@ -121,8 +121,12 @@ std::array<std::uint8_t, 3> pixel_bytes(const PreviewFrame& f, int x, int y) {
     return {f.rgb8[i], f.rgb8[i + 1], f.rgb8[i + 2]};
 }
 
+// Renders split on 12 threads by default, not threads 0 (every core): the same on every machine,
+// and 12 leaves rows over on the agreement sizes below.
+constexpr int split_threads = 12;
+
 PreviewFrame preview(const Image& base, const EditSettings& s, StageId stage,
-                     PreviewOptions options = {}, int threads = 0) {
+                     PreviewOptions options = {}, int threads = split_threads) {
     std::optional<PreviewFrame> frame =
         prism::gui::render_preview(base, s, threads, {}, {}, stage, options);
     EXPECT_TRUE(frame.has_value());
@@ -130,7 +134,8 @@ PreviewFrame preview(const Image& base, const EditSettings& s, StageId stage,
     return frame ? std::move(*frame) : PreviewFrame{};
 }
 
-Image stage_image(const Image& base, const EditSettings& s, StageId stage, int threads = 0) {
+Image stage_image(const Image& base, const EditSettings& s, StageId stage,
+                  int threads = split_threads) {
     std::optional<Image> img = prism::gui::render_stage_image(base, s, stage, threads);
     EXPECT_TRUE(img.has_value());
     return img ? std::move(*img) : Image{};
@@ -320,8 +325,8 @@ class DodgeBurnAgreement : public ::testing::TestWithParam<Size> {};
 
 // The sizes are 1.5 x the library's multi-threaded threshold (a landscape one and a portrait one,
 // whose test strip bands run along the other axis), with sides that leave rows over for 3 and 12
-// threads (1007 is 2 over a multiple of 3 and 11 over one of 12); threads 0 uses
-// every core. Each test asserts the size.
+// threads (1007 is 2 over a multiple of 3 and 11 over one of 12; 1601 is 2 and 5 over). The
+// renders split on split_threads. Each test asserts the size.
 INSTANTIATE_TEST_SUITE_P(Sizes, DodgeBurnAgreement,
                          ::testing::Values(Size{1601, 1007}, Size{1007, 1601}),
                          [](const ::testing::TestParamInfo<Size>& info) {

@@ -1082,8 +1082,9 @@ TEST(PreviewStripConcurrent, BandsAreBitIdenticalForEveryThreadCount) {
 
 TEST(PreviewStripConcurrent, BandsBigEnoughForThreadsGiveTheSameResult) {
     // Bands of 1060x1501 pixels, 1.5 x parallel_min_pixels: each band also splits its own work.
-    // The five bands share the threads, so 10 and 15 give each band 2 and 3, and 1501 rows leave
-    // rows over for both.
+    // The five bands share the threads: 4 gives each band 1 although it could split alone, 10, 12
+    // and 15 give it 2, 2 and 3 (12 with threads left over), and 1501 rows leave rows over for
+    // each.
     auto base = std::make_shared<prism::Image>();
     base->width = 5300;
     base->height = 1501;
@@ -1102,7 +1103,7 @@ TEST(PreviewStripConcurrent, BandsBigEnoughForThreadsGiveTheSameResult) {
     const auto opts = strip_options(prism::gui::StripStep::third, false, true);
     const auto one = prism::gui::render_preview(*base, s, 1, {}, {}, StageId::contrast, opts);
     ASSERT_TRUE(one);
-    for (const int threads : {10, 15, 0}) {
+    for (const int threads : {4, 10, 12, 15, 0}) {
         const auto many = prism::gui::render_preview(*base, s, threads, {}, {}, StageId::contrast, opts);
         ASSERT_TRUE(many);
         EXPECT_EQ(many->rgb8, one->rgb8) << threads;

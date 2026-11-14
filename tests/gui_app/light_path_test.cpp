@@ -597,23 +597,35 @@ TEST_F(LightPathHeadless, DraggingContrastLandsOnHalfGradesAsOneGesture) {
 }
 
 TEST_F(LightPathHeadless, DrawingAnOffGridContrastChangesNothing) {
-    // Grade 3.1 is drawn at the nearest half grade, 3: where slider_of presses (a press elsewhere
-    // would move the slider, and report a value below).
-    settings_.contrast = gui::contrast_for_grade(3.1f);
-    ASSERT_EQ(gui::grade_slider_position(settings_.contrast), 6.0f);
+    // First, which half grade a press at slider_of lands on: it moves the knob there from grade 2
+    // (or leaves it, if it is there already).
+    const ImVec2 press = slider_of(row_of(frame(), gui::StageId::contrast));
+    click_at(press);
+    float landed = 2.0f;
+    for (const ContrastCall& call : contrast_frames_) {
+        if (call.contrast) {
+            landed = std::round(gui::grade_for_contrast(*call.contrast).grade * 2.0f) / 2.0f;
+        }
+    }
+    contrast_frames_.clear();
+    // A tenth of a grade above it is off the grid and drawn there, at the nearest half grade.
+    const float off_grid = gui::contrast_for_grade(landed + 0.1f);
+    settings_.contrast = off_grid;
+    ASSERT_EQ(gui::grade_slider_position(off_grid), landed * 2.0f);
     for (int i = 0; i < 4; ++i) {
         frame();
     }
     EXPECT_TRUE(contrast_frames_.empty());
-    EXPECT_EQ(settings_.contrast, gui::contrast_for_grade(3.1f));
-    // Pressing the knob where it is drawn is not a move either: no value, not grade 3's.
-    const std::vector<LightPathRowRect> rects = frame();
-    click_at(slider_of(row_of(rects, gui::StageId::contrast)));
-    ASSERT_FALSE(contrast_frames_.empty());  // the press reached the slider
+    EXPECT_EQ(settings_.contrast, off_grid);
+    // Pressing the knob where it is drawn is not a move either: no value, not the half grade's.
+    click_at(press);
+    int activated = 0;
     for (const ContrastCall& call : contrast_frames_) {
+        activated += call.frame.activated ? 1 : 0;
         EXPECT_FALSE(call.frame.changed);
         EXPECT_FALSE(call.contrast.has_value()) << *call.contrast;
     }
+    EXPECT_EQ(activated, 1);  // the press reached the slider
 }
 
 TEST_F(LightPathHeadless, ADragThatLeavesTheRowStaysTheSlidersAndIsOneGesture) {

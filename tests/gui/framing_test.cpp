@@ -1061,7 +1061,7 @@ TEST(FramingCanvas, TheZoomableViewFitsLikeFramingViewAndZoomsInPhotoPixels) {
         EXPECT_EQ(fit.angle, angle);
         // At 100%: one photo pixel on one device pixel, half a screen unit at density 2. 100% is
         // only zoomed in on a photo larger than the canvas: the small one fits above 100%.
-        ASSERT_GT(prism::gui::view_fit_zoom(g), 1.0f);
+        ASSERT_GT(prism::gui::view_fit_zoom(g), 1.0f) << angle;
         constexpr int big_w = 3000;
         constexpr int big_h = 2000;
         const prism::gui::ViewGeometry big =

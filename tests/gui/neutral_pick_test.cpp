@@ -12,6 +12,7 @@
 #include "prism/gui/history.hpp"
 #include "prism/gui/neutral_pick.hpp"
 #include "prism/gui/preview_renderer.hpp"
+#include "prism/gui/settings.hpp"
 #include "prism/gui/stage_controls.hpp"
 #include "prism/image.hpp"
 #include "prism/white_balance.hpp"
