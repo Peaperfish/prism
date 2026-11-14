@@ -678,13 +678,21 @@ TEST(DetailBaseNumber, ANewNumberForAnotherBaseOrAnotherPhoto) {
     EXPECT_GT(n.update(b, false), second);    // back: a new number all the same
 }
 
-TEST(DetailBaseNumber, AFreedBaseReplacedByAnotherIsAnotherNumber) {
+TEST(DetailBaseNumber, ANewObjectAtTheSameAddressIsAnotherNumber) {
+    // One photo seen through two owners with no-op deleters: the same address, a control block
+    // each. This is the address reuse a freed base followed by a new one can give, made certain.
+    // The first owner is kept, so the seen base is not expired and only the comparison of the
+    // control blocks can tell the two apart.
+    prism::Photo photo;
+    const auto none = [](const prism::Photo*) {};
+    const std::shared_ptr<const prism::Photo> a(&photo, none);
+    const std::shared_ptr<const prism::Photo> b(&photo, none);
+    ASSERT_EQ(a.get(), b.get());
+    ASSERT_TRUE(a.owner_before(b) || b.owner_before(a));
     DetailBaseNumber n;
-    auto a = std::make_shared<const prism::Photo>();
     const std::uint64_t first = n.update(a, false);
-    a.reset();  // the session let go of it; another may be made at its address
-    auto b = std::make_shared<const prism::Photo>();
-    EXPECT_GT(n.update(b, false), first);
+    EXPECT_EQ(n.update(a, false), first);  // the same owner: the same number
+    EXPECT_GT(n.update(b, false), first);  // another owner of the same address: another number
 }
 
 TEST(DetailCanvasGesture, AnyActivityIsAGesture) {
