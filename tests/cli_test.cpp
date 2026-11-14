@@ -150,8 +150,19 @@ TEST(Cli, HistogramWithoutOutputReflectsProcessing) {
 
 TEST(Cli, OutputAndHistogramTogetherMatchRunningThemSeparately) {
     // With both options the image is encoded once and the bytes serve both; that must not change
-    // either result.
-    const fs::path input = write_grey_input();
+    // either result. A ramp across and down, part of it clipped, so every row differs: a uniform
+    // grey would hide counting the wrong pixels.
+    prism::Image ramp;
+    ramp.width = 37;
+    ramp.height = 23;
+    for (int y = 0; y < ramp.height; ++y) {
+        for (int x = 0; x < ramp.width; ++x) {
+            const float v = static_cast<float>(x + 2 * y) / 60.0f;
+            ramp.pixels.insert(ramp.pixels.end(), {v * 0.2f, v * 0.25f, v * 0.3f});
+        }
+    }
+    const fs::path input = temp_file("ramp.png");
+    prism::save_image(input, ramp);
     const fs::path both_out = temp_file("both.png");
     const fs::path both_hist = temp_file("both_hist.png");
     const fs::path only_out = temp_file("only.png");
