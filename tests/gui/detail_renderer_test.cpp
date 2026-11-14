@@ -223,7 +223,9 @@ TEST(DetailRenderer, APanOutStopsTheRunningRenderWhichPostsNothing) {
     EXPECT_TRUE(fake.calls()[0].stop.stop_requested());
 
     // The stopped render returned a whole image all the same; the next one has started, so the
-    // stopped one is over, and it posted nothing.
+    // stopped one is over. A stale frame is never posted: the renderer's own check before the
+    // stopped render returns and the one under the lock both refuse it, and this asks only that
+    // neither lets it out.
     ASSERT_TRUE(fake.wait_for_calls(2));
     EXPECT_FALSE(renderer.poll(1).has_value());
 

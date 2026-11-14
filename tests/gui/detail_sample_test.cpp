@@ -309,7 +309,6 @@ ViewState at_percent(const ViewGeometry& g, double percent, float cx, float cy) 
 
 TEST(DetailSampleSource, TheFilePixelUnderTheCursorIsFoundAlongEachAxis) {
     const ViewGeometry g = canvas_7();
-    const FileScale k = file_scale(full_7, preview_7);
     for (const double percent : {100.0, 400.0, 800.0}) {
         SCOPED_TRACE(percent);
         const ViewState s = at_percent(g, percent, 2177.0f, 1453.0f);  // the bottom right corner
@@ -329,10 +328,14 @@ TEST(DetailSampleSource, TheFilePixelUnderTheCursorIsFoundAlongEachAxis) {
     EXPECT_FALSE(file_pixel_at(s, g, full_7, {p.at.x + p.shown.x + 5.0f, p.at.y + 5.0f}));
     EXPECT_FALSE(file_pixel_at(s, g, full_7, {g.x - 1.0f, g.y + 10.0f}));
     // A preview pixel's middle, in file pixels.
-    EXPECT_EQ(file_pixel_of(0, 0, preview_7, full_7),
-              (FilePixel{static_cast<int>(0.5 * k.x), static_cast<int>(0.5 * k.y)}));
-    EXPECT_EQ(file_pixel_of(2176, 1452, preview_7, full_7),
-              (FilePixel{static_cast<int>(2176.5 * k.x), static_cast<int>(1452.5 * k.y)}));
+    // The scale is 8138 / 2177 = 3.738 across and 5424 / 1453 = 3.733 down, so the middle of the
+    // first pixel is at 1.87 and 1.87, and of the last at 8135.9 and 5422.0.
+    EXPECT_EQ(file_pixel_of(0, 0, preview_7, full_7), (FilePixel{1, 1}));
+    EXPECT_EQ(file_pixel_of(2176, 1452, preview_7, full_7), (FilePixel{8136, 5422}));
+    // A pixel past either edge of the preview is held inside the photo: its middle maps to 8139.8
+    // and 5426.6 (past the last photo pixel), or to -1.9 (before the first).
+    EXPECT_EQ(file_pixel_of(2177, 1453, preview_7, full_7), (FilePixel{8137, 5423}));
+    EXPECT_EQ(file_pixel_of(-1, -1, preview_7, full_7), (FilePixel{0, 0}));
 }
 
 TEST(DetailSampleSource, ThePhotoIsReadOnlyWhereItsCurrentPixelsAreDrawn) {
@@ -394,8 +397,8 @@ TEST(DetailSampleSource, ThePlanSaysWhenEachPhotoPixelIsDrawnWhole) {
 TEST(DetailSampleSource, APixelOfAnEstimatedSizeMovesToTheRealOne) {
     // A pin taken on an estimated 8000 x 5333 picture; the photo read is 8138 x 5424.
     const FilePixel p = file_pixel_rescaled({7999, 2666}, {8000, 5333}, full_7);
-    EXPECT_EQ(p, (FilePixel{static_cast<int>(7999.5 * 8138.0 / 8000.0),
-                            static_cast<int>(2666.5 * 5424.0 / 5333.0)}));
+    // The middles, 7999.5 and 2666.5, become 8137.4 and 2712.0 on the real size.
+    EXPECT_EQ(p, (FilePixel{8137, 2712}));
     EXPECT_EQ(p.x, 8137);  // the last pixel stays the last
     // The same size, or a size that can't be used: unchanged.
     EXPECT_EQ(file_pixel_rescaled({5, 6}, full_7, full_7), (FilePixel{5, 6}));
@@ -509,10 +512,8 @@ TEST(DetailPickFootprint, AFitAndA100PercentClickCoverTheSamePhotoRectangle) {
         EXPECT_EQ(fp->box, first->box);
     }
     ASSERT_TRUE(first);
-    // The photo pixel under the point: 1000.37 x 3.738, 700.61 x 3.733.
-    const FileScale k = file_scale(full_7, preview_7);
-    EXPECT_EQ(first->centre, (FilePixel{static_cast<int>(1000.37 * k.x),
-                                        static_cast<int>(700.61 * k.y)}));
+    // The photo pixel under the point: 1000.37 x 3.738 = 3739.6, 700.61 x 3.733 = 2615.4.
+    EXPECT_EQ(first->centre, (FilePixel{3739, 2615}));
 }
 
 TEST(DetailPickFootprint, ThePreviewAreaIsTheSameBoxInPreviewPixels) {

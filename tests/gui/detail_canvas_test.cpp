@@ -106,7 +106,7 @@ constexpr CanvasView preview_only_views[] = {CanvasView::framing,        CanvasV
 
 TEST(DetailCanvasPlan, EachPreviewOnlyViewAsksForNothingAndDrawsNothingAtAnyZoom) {
     for (const CanvasView mode : preview_only_views) {
-        SCOPED_TRACE(static_cast<int>(mode));
+        SCOPED_TRACE("mode " + std::to_string(static_cast<int>(mode)) + ", real pixels at 400%");
         DetailFrameInput in = input(400.0);
         in.mode = mode;
         DetailFramePlan plan = plan_detail_frame(in);
@@ -126,7 +126,7 @@ TEST(DetailCanvasPlan, EachPreviewOnlyViewAsksForNothingAndDrawsNothingAtAnyZoom
 
 TEST(DetailCanvasPlan, PreviewOnlyViewsHaveNoChipAtFit) {
     for (const CanvasView mode : preview_only_views) {
-        SCOPED_TRACE(static_cast<int>(mode));
+        SCOPED_TRACE("mode " + std::to_string(static_cast<int>(mode)) + ", at Fit");
         DetailFrameInput in = input();
         in.view = ViewState{};
         in.mode = mode;
@@ -142,7 +142,7 @@ TEST(DetailCanvasPlan, PreviewOnlyViewsHaveNoChipAtFit) {
 
 TEST(DetailCanvasPlan, PreviewOnlyViewsHaveNoChipWhileThePreviewIsNotEnlarged) {
     for (const CanvasView mode : preview_only_views) {
-        SCOPED_TRACE(static_cast<int>(mode));
+        SCOPED_TRACE("mode " + std::to_string(static_cast<int>(mode)) + ", 26%, not at Fit");
         DetailFrameInput in = input(100.0);
         in.geometry = canvas(preview_60mp, full_60mp, 600.0f, 400.0f, 1.0f);
         in.view = at_percent(in.geometry, 26.0);  // under one device pixel per preview pixel
@@ -159,7 +159,9 @@ TEST(DetailCanvasPlan, PreviewOnlyViewsSayPreviewWhenEnlargedWhateverTheBase) {
               DetailBaseState::failed, DetailBaseState::too_big, DetailBaseState::off}) {
             // 400% and 1600%: no zoom limit applies.
             for (const double percent : {400.0, 1600.0}) {
-                SCOPED_TRACE(static_cast<int>(mode));
+                SCOPED_TRACE("mode " + std::to_string(static_cast<int>(mode)) + ", base state " +
+                             std::to_string(static_cast<int>(state)) + ", " +
+                             std::to_string(static_cast<int>(percent)) + "%");
                 DetailFrameInput in = input(percent);
                 in.base_state = state;
                 in.mode = mode;
@@ -187,7 +189,7 @@ TEST(DetailCanvasPlan, PreviewOnlyViewsOfAPhotoNoBiggerThanThePreviewHaveNoChipA
     }
     // The same views on the 60 MP photo, at the same zoom, still say so.
     for (const CanvasView mode : preview_only_views) {
-        SCOPED_TRACE(static_cast<int>(mode));
+        SCOPED_TRACE("mode " + std::to_string(static_cast<int>(mode)) + ", real pixels at 400%");
         DetailFrameInput in = input(400.0);
         in.mode = mode;
         EXPECT_EQ(plan_detail_frame(in).chip, PreviewChip::preview_only);

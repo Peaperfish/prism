@@ -161,8 +161,9 @@ MaybeError Session::open_file(const fs::path& path) {
     raw.half_size = true;
     raw.full_size = &full;
     // The old photo's detail base goes before this decode, which for a PNG, JPEG or HEIC file is
-    // at full size: two full-size photos are never held at once. If the open fails, the old
-    // photo's base is read again.
+    // at full size: two full-size photos are never held at once, except while a stopped read
+    // finishes beside the new photo's open (a decode already under way runs to its end, and only
+    // then frees its photo; #82). If the open fails, the old photo's base is read again.
     drop_detail_base();
     std::variant<Photo, Error> decoded = decode(path, kind, raw, options_.threads);
     if (Error* e = std::get_if<Error>(&decoded)) {

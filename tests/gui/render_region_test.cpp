@@ -322,8 +322,9 @@ TEST(RenderRegion, OneAndEightThreadsGiveTheSamePart) {
 
 // --- Stopping ------------------------------------------------------------------------------------
 
-// A stopped render gives nothing, never a partial image, framed (the check after apply_frame's
-// part) or not (the copy of the part); one not stopped gives render_region's own pixels.
+// A stop requested before the call gives nothing, never a partial image, with a frame or without
+// one; a render not stopped gives render_region's own pixels. Which of render_region's checks
+// sees the stop is not asked: only that none lets an image out.
 TEST(RenderRegion, AStoppedRenderGivesNothing) {
     const int w = 160;
     const int h = 120;
