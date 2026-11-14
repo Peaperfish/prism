@@ -486,7 +486,7 @@ TEST(WhiteBalanceSettings, AChoiceOutsideTheRangesIsInvalidAlsoWhenOff) {
     const std::vector<std::string> problems = prism::gui::validate(s);
     EXPECT_EQ(problems.size(), 2u);
     EXPECT_TRUE(mentions(problems, "Kelvin must be from 2000 to 15000 (it is 1500)"));
-    EXPECT_TRUE(mentions(problems, "Tint must be from -100 to 100 (it is 120)"));
+    EXPECT_TRUE(mentions(problems, "Tint must be from −100 to 100 (it is 120)"));
     EXPECT_THROW((void)prism::gui::to_process_settings(s), std::invalid_argument);
 
     s.white_balance = prism::WhiteBalance{std::numeric_limits<double>::quiet_NaN(), 0};

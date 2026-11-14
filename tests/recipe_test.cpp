@@ -585,13 +585,13 @@ const ErrorCase error_cases[] = {
     {"SaturationAboveRange", with_section("saturation", "amount = 12\n"), 4,
      "[saturation] amount must be from 0 to 10 (it is 12)"},
     {"SaturationBelowRange", with_section("saturation", "amount = -0.5\n"), 4,
-     "[saturation] amount must be from 0 to 10 (it is -0.5)"},
+     "[saturation] amount must be from 0 to 10 (it is −0.5)"},
     {"ContrastBelowRange", with_section("contrast", "amount = 0.05\n"), 4,
      "[contrast] amount must be from 0.1 to 10 (it is 0.05)"},
     {"GammaZero", with_section("curve", "shape = \"gamma\"\ngamma = 0\n"), 5,
      "[curve] gamma must be a number above 0 (it is 0)"},
     {"WhiteNegative", with_section("curve", "shape = \"reinhard\"\nwhite = -4\n"), 5,
-     "[curve] white must be a number above 0 (it is -4)"},
+     "[curve] white must be a number above 0 (it is −4)"},
     {"UnitAfterASpace", with_section("exposure", "stops = +1 stop\n"), 4,
      "'+1 stop' is not a number: write the number alone, without a unit"},
     {"UnitAttached", with_section("contrast", "amount = 1.2x\n"), 4,
@@ -1051,10 +1051,10 @@ TEST(RecipeWhiteBalance, RangesAndTheRequiredKeyAreChecked) {
                   {3, "[white_balance] kelvin must be from 2000 to 15000 (it is 15001)"}}));
     EXPECT_EQ(issues_of(head + "kelvin = 5000\ntint = 100.5\n"),
               (std::vector<prism::RecipeIssue>{
-                  {4, "[white_balance] tint must be from -100 to 100 (it is 100.5)"}}));
+                  {4, "[white_balance] tint must be from −100 to 100 (it is 100.5)"}}));
     EXPECT_EQ(issues_of(head + "kelvin = 5000\ntint = -101\n"),
               (std::vector<prism::RecipeIssue>{
-                  {4, "[white_balance] tint must be from -100 to 100 (it is -101)"}}));
+                  {4, "[white_balance] tint must be from −100 to 100 (it is −101)"}}));
     EXPECT_EQ(issues_of(head + "tint = 5\n"),
               (std::vector<prism::RecipeIssue>{{2, "[white_balance] needs 'kelvin'"}}));
     EXPECT_TRUE(issues_of(head + "kelvin = 2000\ntint = -100\n").empty());

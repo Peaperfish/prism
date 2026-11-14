@@ -1380,10 +1380,7 @@ std::string describe_values(const RecipeKeySpec& spec) {
         case ValueType::version: return "whole number from 1";
         case ValueType::number: {
             if (spec.range) {
-                std::ostringstream text;
-                text << static_cast<float>(spec.range->min) << " to "
-                     << static_cast<float>(spec.range->max);
-                return text.str();
+                return range_text(*spec.range);
             }
             return spec.positive ? "above 0" : "any number";
         }

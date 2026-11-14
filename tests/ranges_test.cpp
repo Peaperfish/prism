@@ -28,5 +28,18 @@ TEST(Ranges, PositiveMeansFiniteAndAboveZero) {
 TEST(Ranges, MessagesInPlainWords) {
     EXPECT_EQ(prism::range_message("Contrast", 12.5f, prism::contrast_range),
               "Contrast must be from 0.1 to 10 (it is 12.5)");
-    EXPECT_EQ(prism::positive_message("Gamma", -1.0f), "Gamma must be a number above 0 (it is -1)");
+    EXPECT_EQ(prism::positive_message("Gamma", -1.0f), "Gamma must be a number above 0 (it is −1)");
+}
+
+// Issue #76: what people read has a real minus sign (U+2212), never the hyphen.
+TEST(Ranges, NegativeNumbersShowARealMinusSign) {
+    EXPECT_EQ(prism::shown_number(-101.0f), "−101");
+    EXPECT_EQ(prism::shown_number(-0.5f), "−0.5");
+    EXPECT_EQ(prism::shown_number(12.5f), "12.5");
+    EXPECT_EQ(prism::shown_number(-0.0f), "0");
+    EXPECT_EQ(prism::range_text(prism::tint_range), "−100 to 100");
+    EXPECT_EQ(prism::range_text(prism::frame_angle_range), "−45 to 45");
+    EXPECT_EQ(prism::range_text(prism::contrast_range), "0.1 to 10");
+    EXPECT_EQ(prism::range_message("Tint", -101.0f, prism::tint_range),
+              "Tint must be from −100 to 100 (it is −101)");
 }

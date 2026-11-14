@@ -333,7 +333,7 @@ TEST(FrameSettings, AnInvalidFrameIsRefusedWithItsMessage) {
     const prism::gui::MaybeError error = o.session.set_settings(s);
     ASSERT_TRUE(error.has_value());
     EXPECT_EQ(error->kind, prism::gui::ErrorKind::invalid_settings);
-    EXPECT_NE(error->details.find("Frame angle must be from -45 to 45"), std::string::npos)
+    EXPECT_NE(error->details.find("Frame angle must be from −45 to 45"), std::string::npos)
         << error->details;
     EXPECT_FALSE(o.session.settings().frame.has_value());
 }

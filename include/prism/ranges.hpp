@@ -42,8 +42,15 @@ inline constexpr float reinhard_white_default = 4.0f;
 // Whether v is finite and above 0, as gamma and the white point must be.
 [[nodiscard]] bool is_positive(float v) noexcept;
 
+// A number as Prism shows it to people: a negative one starts with a real minus sign, "−101"
+// (U+2212), never the hyphen "-". Minus zero is shown as "0".
+[[nodiscard]] std::string shown_number(float v);
+
+// A range as Prism shows it to people, e.g. "−100 to 100" and "0.1 to 10".
+[[nodiscard]] std::string range_text(ValueRange r);
+
 // The messages for a value outside its range, e.g. "Saturation must be from 0 to 10 (it is 12)"
-// and "Gamma must be a number above 0 (it is -1)". `name` starts the sentence as given.
+// and "Gamma must be a number above 0 (it is −1)". `name` starts the sentence as given.
 [[nodiscard]] std::string range_message(std::string_view name, float v, ValueRange r);
 [[nodiscard]] std::string positive_message(std::string_view name, float v);
 

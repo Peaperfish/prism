@@ -645,7 +645,7 @@ TEST(Frame, ValidateFrameRejectsBadValues) {
     const float inf = std::numeric_limits<float>::infinity();
     const auto problems = [](const Frame& f) { return prism::validate_frame(f); };
 
-    EXPECT_TRUE(mentions(problems(frame_of(nan, 0, 0, 1, 1)), "Frame angle must be from -45 to 45"));
+    EXPECT_TRUE(mentions(problems(frame_of(nan, 0, 0, 1, 1)), "Frame angle must be from −45 to 45"));
     EXPECT_TRUE(mentions(problems(frame_of(inf, 0, 0, 1, 1)), "Frame angle"));
     EXPECT_TRUE(mentions(problems(frame_of(45.0001f, 0, 0, 1, 1)), "(it is 45.0001)"));
     EXPECT_TRUE(mentions(problems(frame_of(-90, 0, 0, 1, 1)), "Frame angle"));

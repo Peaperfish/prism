@@ -79,7 +79,7 @@ A stage that is switched off is saved with `on = false` and keeps its values, so
 | `[exposure]` | `stops` | stops | any number | required | 1 |
 | `[exposure]` | `on` | switch | `true` or `false` | `true` | 1 |
 | `[white_balance]` | `kelvin` | kelvin | 2000 to 15000 | required | 2 |
-| `[white_balance]` | `tint` | tint | -100 to 100 | 0 | 2 |
+| `[white_balance]` | `tint` | tint | −100 to 100 | 0 | 2 |
 | `[white_balance]` | `on` | switch | `true` or `false` | `true` | 2 |
 | `[matrix]` | `red` | weights of input R, G, B | 3 numbers | required | 1 |
 | `[matrix]` | `green` | weights of input R, G, B | 3 numbers | required | 1 |
