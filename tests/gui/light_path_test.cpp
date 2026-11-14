@@ -346,7 +346,7 @@ TEST(LightPathRows, ValuesAreInUnits) {
     s.saturation = 0.0f;
     EXPECT_EQ(row_for(StageId::saturation, s).value, "black and white");
     s.exposure_stops = -0.5f;
-    EXPECT_EQ(row_for(StageId::exposure, s).value, "-0.50 stops");
+    EXPECT_EQ(row_for(StageId::exposure, s).value, "−0.50 stops");
 }
 
 TEST(LightPathRows, AStageThatIsOffKeepsItsValueAndItsSliderGoesNeutral) {

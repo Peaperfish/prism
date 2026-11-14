@@ -1708,7 +1708,7 @@ TEST_F(MinimumWidthHeadless, EveryWorstCaseTextIsDrawnInFullAtTheMinimumWidth) {
                                      << fit.shown << "', " << fit.width << " wide in " << fit.room;
         }
         // The worst cases were there to be checked.
-        EXPECT_TRUE(seen("Value", "-10.00 stops")) << scale;
+        EXPECT_TRUE(seen("Value", "−10.00 stops")) << scale;
         EXPECT_TRUE(seen("Value", "+10.00 stops")) << scale;
         EXPECT_TRUE(seen("Value", "+10.00 stops when on")) << scale;
         EXPECT_TRUE(seen("Beyond the slider", std::string(gui::light_path_text::beyond_slider))) << scale;

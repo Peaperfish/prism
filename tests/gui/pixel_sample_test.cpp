@@ -620,7 +620,7 @@ TEST(SampleReadout, ASaturatedFlowerAfterColourMatrix) {
     const PixelTrace flower = trace_of(one_pixel(0.9f, 0.4f, 0.05f), s, 0, 0);
     EXPECT_EQ(
         describe_sample(flower, StageId::matrix, std::nullopt, {2560, 9566}),
-        "R 0.900 G 0.400 B -0.220 (linear, 1.00 = white) · 46% of white's light, 1.4 stops "
+        "R 0.900 G 0.400 B −0.220 (linear, 1.00 = white) · 46% of white's light, 1.4 stops "
         "above middle grey · Too saturated for sRGB: blue is below 0. Still recoverable until "
         "Saturation, which clips it, so the hue may shift. · One preview pixel averages about "
         "3.7×3.7 file pixels, so a small clipped highlight can hide in it.");
@@ -733,6 +733,14 @@ TEST(SampleReadout, ValuesThatAreNotNumbersSaySo) {
     const std::string infinite = describe_sample(
         trace_of(one_pixel(inf, 0.5f, 0.5f), EditSettings{}, 0, 0), StageId::encode);
     EXPECT_NE(infinite.find("In the scene far over white"), std::string::npos) << infinite;
+}
+
+// #76: a channel below 0 reads with a real minus sign, also when it is minus infinity.
+TEST(SampleReadout, HeadlessNegativeChannelsHaveARealMinusSign) {
+    const float inf = std::numeric_limits<float>::infinity();
+    const std::string text = describe_sample(
+        trace_of(one_pixel(0.5f, -inf, -0.25f), EditSettings{}, 0, 0), StageId::exposure);
+    EXPECT_EQ(text.rfind("R 0.500 G −∞ B −0.250", 0), 0u) << text;
 }
 
 TEST(SampleReadout, AComparisonShowsBothStagesTheViewedOneFirst) {

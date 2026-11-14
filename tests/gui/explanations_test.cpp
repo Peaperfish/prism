@@ -209,7 +209,7 @@ TEST(Explanations, ChangingALookChangesTheNumbersInItsText) {
     EXPECT_EQ(expand_look_text("{raw.vivid.exposure}, {raw.vivid.saturation}, {raw.vivid.contrast}, "
                                "{image.vivid.contrast}.",
                                raw, image),
-              "-0.50 stops, ×3.00, ×2.50, ×0.75.");
+              "−0.50 stops, ×3.00, ×2.50, ×0.75.");
     EXPECT_EQ(expand_look_text("No tokens.", raw, image), "No tokens.");
     for (const std::string_view bad : {"{raw.nothing.contrast}", "{raw.vivid.nothing}",
                                        "{other.vivid.contrast}", "{vivid}", "{raw.vivid.contrast"}) {
@@ -228,7 +228,7 @@ EditSettings with_exposure_at(float position) {
 TEST(LiveLines, ExposureIsStopsAndTheFactorOnTheLight) {
     EXPECT_EQ(live_line("stage.exposure", with_exposure_at(35)), "+0.70 stops, 1.62× the light");
     EXPECT_EQ(live_line("stage.exposure", with_exposure_at(50)), "+1.00 stops, 2.00× the light");
-    EXPECT_EQ(live_line("stage.exposure", with_exposure_at(-50)), "-1.00 stops, 0.50× the light");
+    EXPECT_EQ(live_line("stage.exposure", with_exposure_at(-50)), "−1.00 stops, 0.50× the light");
     EXPECT_EQ(live_line("stage.exposure", EditSettings{}), "+0.00 stops, 1.00× the light");
 }
 

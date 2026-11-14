@@ -194,11 +194,11 @@ TEST(TypedValue, ContrastHasNoSliderPositionOnTheOldScale) {
 // Typed value -> field -> value line: the line shows what was typed, to the line's two places.
 TEST(TypedValue, TheValueLineShowsWhatWasTyped) {
     EXPECT_EQ(line_after_typing(SimpleControl::brightness, "0.7"), "+0.70 stops");
-    EXPECT_EQ(line_after_typing(SimpleControl::brightness, "-1.25 stops"), "-1.25 stops");
+    EXPECT_EQ(line_after_typing(SimpleControl::brightness, "-1.25 stops"), "−1.25 stops");
     EXPECT_EQ(line_after_typing(SimpleControl::brightness, "+1,5"), "+1.50 stops");
     EXPECT_EQ(line_after_typing(SimpleControl::brightness, "0"), "+0.00 stops");
     EXPECT_EQ(line_after_typing(SimpleControl::brightness, "2"), "+2.00 stops");
-    EXPECT_EQ(line_after_typing(SimpleControl::brightness, "-2.00"), "-2.00 stops");
+    EXPECT_EQ(line_after_typing(SimpleControl::brightness, "-2.00"), "−2.00 stops");
     EXPECT_EQ(line_after_typing(SimpleControl::brightness, "9"), "+2.00 stops");  // clamped
 
     EXPECT_EQ(line_after_typing(SimpleControl::colour, "1.2"), "\xC3\x97" "1.20");
@@ -235,9 +235,12 @@ TEST(TypedValue, EveryTwoPlaceValueTypedComesBackOnTheLine) {
     }
     for (int hundredths = -200; hundredths <= 200; ++hundredths) {  // Exposure's, in stops
         const int a = std::abs(hundredths);
-        const std::string text = std::string(hundredths < 0 ? "-" : "+") + std::to_string(a / 100) +
-                                 "." + (a % 100 < 10 ? "0" : "") + std::to_string(a % 100);
-        EXPECT_EQ(line_after_typing(SimpleControl::brightness, text), text + " stops") << text;
+        const std::string digits =
+            std::to_string(a / 100) + "." + (a % 100 < 10 ? "0" : "") + std::to_string(a % 100);
+        // Typed with the hyphen people's keyboards have; the line shows a real minus sign.
+        const std::string text = (hundredths < 0 ? "-" : "+") + digits;
+        const std::string line = (hundredths < 0 ? "−" : "+") + digits + " stops";
+        EXPECT_EQ(line_after_typing(SimpleControl::brightness, text), line) << text;
     }
 }
 

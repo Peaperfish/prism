@@ -134,12 +134,12 @@ TEST(StageSlider, StageAndSimpleSlidersAgreeBecauseTheyAreOneFunction) {
 
 TEST(StageFormat, Exposure) {
     EXPECT_EQ(prism::gui::format_exposure(0.7f), "+0.70 stops");
-    EXPECT_EQ(prism::gui::format_exposure(-1.0f), "-1.00 stops");
+    EXPECT_EQ(prism::gui::format_exposure(-1.0f), "−1.00 stops");
     EXPECT_EQ(prism::gui::format_exposure(0.0f), "+0.00 stops");
     EXPECT_EQ(prism::gui::format_exposure(-0.0f), "+0.00 stops");
     EXPECT_EQ(prism::gui::format_exposure(-0.001f), "+0.00 stops");  // never "-0.00"
     EXPECT_EQ(prism::gui::format_exposure(2.0f), "+2.00 stops");
-    EXPECT_EQ(prism::gui::format_exposure(-2.0f), "-2.00 stops");
+    EXPECT_EQ(prism::gui::format_exposure(-2.0f), "−2.00 stops");
     EXPECT_EQ(prism::gui::format_exposure(12.5f), "+12.50 stops");  // from outside the slider
 }
 

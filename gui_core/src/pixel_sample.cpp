@@ -229,7 +229,7 @@ std::string fixed(float v, int places) {
                                                  std::chars_format::fixed, places);
     const std::string digits = r.ec == std::errc{} ? std::string(buffer, r.ptr) : std::string("?");
     const bool zero = digits.find_first_not_of("0.") == std::string::npos;
-    return (std::signbit(v) && !zero ? "-" : "") + digits;
+    return (std::signbit(v) && !zero ? "−" : "") + digits;
 }
 
 // A channel: three decimals, or what it is instead of a number.
@@ -238,7 +238,7 @@ std::string value_text(float v) {
         return "NaN";
     }
     if (std::isinf(v)) {
-        return v > 0.0f ? "∞" : "-∞";
+        return v > 0.0f ? "∞" : "−∞";
     }
     const std::string text = fixed(v, 3);
     // A channel under white never reads as white: 0.99995 would round to 1.000, which is the

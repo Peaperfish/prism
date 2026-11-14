@@ -56,7 +56,7 @@ StageId stage_of(SimpleControl control) noexcept {
 std::string format_exposure(float stops) {
     std::string digits = two_places(std::fabs(stops));
     const bool negative = std::signbit(stops) && digits != "0.00";
-    return (negative ? "-" : "+") + digits + " stops";
+    return (negative ? "−" : "+") + digits + " stops";
 }
 
 std::string format_multiplier(float value) {
