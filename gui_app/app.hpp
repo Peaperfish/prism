@@ -169,6 +169,7 @@ private:
     void toggle_sample();
     void clear_sample();
     void update_sample_cursor();
+    void update_sample_reads();
     void update_sample_traces();
     void draw_sample_markers(ImDrawList* draw) const;
     void draw_sample_block();

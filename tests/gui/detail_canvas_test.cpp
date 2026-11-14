@@ -750,4 +750,120 @@ TEST(DetailCanvasChip, HundredPercentIsOfTheFile) {
     EXPECT_FALSE(view_actual_size_available(small));
 }
 
+// --- Sample's markers decide from this frame's plan ----------------------------------------------
+
+// A sample read of `in` (a frame's input and the plan made from it), with the pin and the cursor's
+// pixel both at the file pixel in the middle of the view.
+SampleReads reads_in(const DetailFrameInput& in, bool have_photo = true, bool strip = false) {
+    const DetailFramePlan plan = plan_detail_frame(in);
+    const FilePixel middle{full_60mp.width / 2, full_60mp.height / 2};
+    SampleReadInput read;
+    read.have_photo = have_photo;
+    read.strip = strip;
+    read.plan = plan;
+    read.shown = in.shown;
+    read.base = in.base;
+    read.settings = in.settings;
+    read.has_pin = true;
+    read.pin_file = middle;
+    read.hovering = true;
+    read.hover_file = middle;
+    return sample_reads(read);
+}
+
+TEST(DetailCanvasSample, EachFramesMarkersFollowThatFramesPlanNotTheLastOne) {
+    // Frame 1: zoomed to 400%, the region asked for, nothing drawn yet: the preview's pixel.
+    const DetailFrameInput first = input(400.0);
+    ASSERT_FALSE(plan_detail_frame(first).draw);
+    EXPECT_EQ(reads_in(first), (SampleReads{false, false}));
+    // Frame 2: the frame has arrived and is drawn. The markers of this very frame are the photo
+    // pixel's, not the preview's of frame 1.
+    const DetailFrameInput second = settled_after(first);
+    ASSERT_TRUE(plan_detail_frame(second).draw);
+    EXPECT_EQ(reads_in(second), (SampleReads{true, true}));
+    // Frame 3: back to Fit, where nothing is drawn. This frame's markers are the preview's at once.
+    DetailFrameInput third = second;
+    third.view = ViewState{};
+    ASSERT_FALSE(plan_detail_frame(third).draw);
+    EXPECT_EQ(reads_in(third), (SampleReads{false, false}));
+    // Frame 4: a slider moved, so the frame shown is of other settings and the request is refused
+    // while it is dragged: no photo pixel is read either, the same frame.
+    DetailFrameInput fourth = second;
+    fourth.settings = 6;
+    fourth.shown->key.settings = 5;
+    fourth.gesture = true;
+    fourth.submitted->admitted = false;
+    fourth.submitted->hold = true;
+    EXPECT_EQ(reads_in(fourth), (SampleReads{false, false}));
+}
+
+TEST(DetailCanvasSample, APhotoPixelIsReadOnlyWithAPhotoNoStripAndWholePixels) {
+    const DetailFrameInput drawn = settled_after(input(400.0));
+    ASSERT_EQ(reads_in(drawn), (SampleReads{true, true}));
+    EXPECT_EQ(reads_in(drawn, false), (SampleReads{false, false}));      // no photo kept
+    EXPECT_EQ(reads_in(drawn, true, true), (SampleReads{false, false}));  // the strip is on
+    // Below 100% a device pixel shows several photo pixels, none of them whole: the preview's.
+    DetailFrameInput below = input();
+    below.geometry = canvas(preview_60mp, full_60mp, 600.0f, 400.0f, 1.0f);
+    below.view = at_percent(below.geometry, 40.0);  // 1.5 device pixels per preview pixel
+    below = settled_after(below);
+    const DetailFramePlan plan = plan_detail_frame(below);
+    ASSERT_TRUE(plan.draw);
+    ASSERT_FALSE(plan.whole_pixels);
+    EXPECT_EQ(reads_in(below), (SampleReads{false, false}));
+}
+
+TEST(DetailCanvasSample, EachSlotDecidesOnItsOwnPixelAndPresence) {
+    const DetailFrameInput drawn = settled_after(input(400.0));
+    const DetailFramePlan plan = plan_detail_frame(drawn);
+    ASSERT_TRUE(plan.draw);
+    SampleReadInput in;
+    in.have_photo = true;
+    in.plan = plan;
+    in.shown = drawn.shown;
+    in.base = drawn.base;
+    in.settings = drawn.settings;
+    const FilePixel inside{drawn.shown->region.x0 + 1, drawn.shown->region.y0 + 1};
+    const FilePixel outside{drawn.shown->region.x0 - 1, drawn.shown->region.y0 + 1};
+    in.has_pin = true;
+    in.pin_file = inside;
+    in.hovering = true;
+    in.hover_file = outside;  // not on the region drawn: the preview's
+    EXPECT_EQ(sample_reads(in), (SampleReads{true, false}));
+    in.pin_file = outside;
+    in.hover_file = inside;
+    EXPECT_EQ(sample_reads(in), (SampleReads{false, true}));
+    in.has_pin = false;  // no pin: it reads nothing, whatever pixel it was given
+    in.pin_file = inside;
+    EXPECT_EQ(sample_reads(in), (SampleReads{false, true}));
+    in.hovering = false;
+    in.pin_file.reset();
+    in.hover_file = inside;
+    EXPECT_EQ(sample_reads(in), (SampleReads{false, false}));
+    // A slot with no photo pixel found yet reads the preview.
+    in.has_pin = true;
+    in.hovering = true;
+    in.hover_file.reset();
+    EXPECT_EQ(sample_reads(in), (SampleReads{false, false}));
+}
+
+TEST(DetailCanvasSample, ASlotsMarkerIsThePhotoPixelsSquareOnlyWhileItReadsThePhoto) {
+    const ViewGeometry g = canvas();
+    const ViewState s = at_percent(g, 800.0);
+    const FilePixel file{4782, 3188};
+    const SamplePin preview{1280, 853};
+    const SampleMarker photo = sample_slot_marker(s, g, full_60mp, preview, true, file);
+    const SampleMarker want = file_pixel_marker(s, g, full_60mp, file);
+    EXPECT_EQ(photo.square.min.x, want.square.min.x);
+    EXPECT_EQ(photo.square.max.y, want.square.max.y);
+    const SampleMarker from_preview = sample_slot_marker(s, g, full_60mp, preview, false, file);
+    const SampleMarker want_preview = sample_marker(s, g, preview);
+    EXPECT_EQ(from_preview.square.min.x, want_preview.square.min.x);
+    EXPECT_EQ(from_preview.square.max.x, want_preview.square.max.x);
+    EXPECT_GT(from_preview.square.width(), photo.square.width());  // a preview pixel is larger
+    // Reading the photo but its pixel not found: the preview's.
+    const SampleMarker none = sample_slot_marker(s, g, full_60mp, preview, true, std::nullopt);
+    EXPECT_EQ(none.square.min.x, want_preview.square.min.x);
+}
+
 }  // namespace

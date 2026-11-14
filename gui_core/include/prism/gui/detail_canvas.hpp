@@ -259,6 +259,43 @@ enum class PixelSource {
                                         const std::optional<ShownDetail>& shown, std::uint64_t base,
                                         std::uint64_t settings, FilePixel pixel) noexcept;
 
+// What the canvas's Sample markers and block do about the photo's own pixels this frame, decided
+// from this frame's plan (plan_detail_frame) before the markers are drawn: a marker drawn from a
+// decision of the frame before would show a preview pixel's square for one frame after the real
+// pixels arrive or leave, and the other way round.
+struct SampleReadInput {
+    bool have_photo = false;  // Session::detail_base() is there
+    bool strip = false;       // the test strip is on: its bands are not the photo's pixels
+    DetailFramePlan plan;     // this frame's
+    std::optional<ShownDetail> shown;
+    std::uint64_t base = 0;      // DetailBaseNumber::current()
+    std::uint64_t settings = 0;  // Session::settings_generation()
+    // The pin, if there is one, and its photo pixel (none until it has one).
+    bool has_pin = false;
+    std::optional<FilePixel> pin_file;
+    // The cursor's pixel: `hovering` if the cursor is on the picture, or no pin holds the block and
+    // the last pixel read is still shown; and its photo pixel.
+    bool hovering = false;
+    std::optional<FilePixel> hover_file;
+};
+
+struct SampleReads {
+    bool pin_photo = false;    // the pin reads (and is marked at) the photo's pixel
+    bool hover_photo = false;  // the cursor's pixel does
+    bool operator==(const SampleReads&) const = default;
+};
+
+// A slot reads the photo's pixel where sample_source says so (real pixels of it, whole, of the
+// current base and settings, on the canvas now), with a photo and no test strip; the preview's
+// pixel everywhere else, as in 0.6.0.
+[[nodiscard]] SampleReads sample_reads(const SampleReadInput& in) noexcept;
+
+// Where a Sample slot's marker goes: the photo pixel's square if the slot reads the photo (`photo`)
+// and has its photo pixel, the preview pixel's otherwise (sample_marker).
+[[nodiscard]] SampleMarker sample_slot_marker(const ViewState& s, const ViewGeometry& g,
+                                              PixelSize framed_full, SamplePin preview, bool photo,
+                                              const std::optional<FilePixel>& file) noexcept;
+
 // `pixel` of a `from` picture taken to a `to` picture of another size (the file's size was an
 // estimate until the full-size photo arrived): the pixel at the same place, by its middle, per
 // axis.

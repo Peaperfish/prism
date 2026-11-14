@@ -216,6 +216,23 @@ PixelSource sample_source(const DetailFramePlan& plan, const std::optional<Shown
     return inside ? PixelSource::photo : PixelSource::preview;
 }
 
+SampleReads sample_reads(const SampleReadInput& in) noexcept {
+    const auto reads = [&](bool present, const std::optional<FilePixel>& file) {
+        return present && in.have_photo && !in.strip && file &&
+               sample_source(in.plan, in.shown, in.base, in.settings, *file) == PixelSource::photo;
+    };
+    return {reads(in.has_pin, in.pin_file), reads(in.hovering, in.hover_file)};
+}
+
+SampleMarker sample_slot_marker(const ViewState& s, const ViewGeometry& g, PixelSize framed_full,
+                                SamplePin preview, bool photo,
+                                const std::optional<FilePixel>& file) noexcept {
+    if (photo && file) {
+        return file_pixel_marker(s, g, framed_full, *file);
+    }
+    return sample_marker(s, g, preview);
+}
+
 FilePixel file_pixel_rescaled(FilePixel pixel, PixelSize from, PixelSize to) noexcept {
     if (from.width < 1 || from.height < 1 || to.width < 1 || to.height < 1 || from == to) {
         return pixel;

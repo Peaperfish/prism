@@ -1930,6 +1930,7 @@ void App::draw_canvas() {
         }
         update_hand_drag();
         update_sample_cursor();
+        update_sample_reads();  // before the markers: this frame's state, not the last one's
         draw_sample_markers(draw);
         update_pick_cursor();
         draw_pick_overlay(draw);
@@ -2658,7 +2659,10 @@ void App::update_sample_cursor() {
     }
 }
 
-void App::update_sample_traces() {
+// Before the markers are drawn: which of the pin and the cursor's pixel read the photo's own pixel
+// this frame (gui::sample_reads, of this frame's plan), and the pin's photo pixel. The traces are
+// read after the frame (update_sample_traces), from what is decided here.
+void App::update_sample_reads() {
     if (!sample_.on()) {
         return;
     }
@@ -2670,24 +2674,6 @@ void App::update_sample_traces() {
     if (base->width != texture_.width() || base->height != texture_.height()) {
         return;  // the picture on screen isn't of this base yet: its pixels mean something else
     }
-    const std::optional<gui::StageId> compare =
-        strip_ ? std::nullopt : gui::effective_compare(viewed_stage_, compare_stage_);
-    const auto read = [&](gui::SampleCache& cache, gui::SamplePin pixel) {
-        (void)cache.read(base, session_.settings(), strip_, viewed_stage_, compare, pixel.x, pixel.y,
-                         session_.as_shot_white(), session_.preview_framing());
-    };
-    // Real pixels (#37): a slot reads the photo's own pixel where real pixels of it are on the
-    // canvas, and the preview's elsewhere, as in 0.6.0.
-    const std::shared_ptr<const prism::Photo> photo = session_.detail_base();
-    const auto read_photo = [&](gui::PhotoSampleCache& cache,
-                                const std::optional<gui::FilePixel>& file) {
-        if (!photo || !reads_photo_at(file)) {
-            cache.clear();
-            return false;
-        }
-        return cache.read(photo, session_.settings(), file->x, file->y,
-                          gui::as_shot_white_of(photo->info)) != nullptr;
-    };
     if (sample_.pin() != sample_pin_file_for_) {
         // A pin placed or moved where its photo pixel wasn't taken from the cursor: the photo pixel
         // in the middle of its preview pixel.
@@ -2706,16 +2692,58 @@ void App::update_sample_traces() {
             gui::file_pixel_rescaled(*sample_pin_file_, sample_pin_file_size_, framed_full_size());
         sample_pin_file_size_ = framed_full_size();
     }
-    sample_pin_photo_ = sample_.pin() && read_photo(sample_pin_photo_trace_, sample_pin_file_);
+    gui::SampleReadInput in;
+    in.have_photo = session_.detail_base() != nullptr;
+    in.strip = strip_.has_value();
+    in.plan = detail_plan_;
+    in.shown = detail_shown_;
+    in.base = detail_base_number_.current();
+    in.settings = session_.settings_generation();
+    in.has_pin = sample_.pin().has_value();
+    in.pin_file = sample_pin_file_;
+    // With a pin the cursor's pixel only matters while it is on the picture. Without one the block
+    // keeps the last pixel read, so that its rows are still there to point at.
+    in.hovering = sample_hover_.has_value() || (!sample_.pin() && sample_.last_read());
+    in.hover_file = sample_hover_file_;
+    const gui::SampleReads reads = gui::sample_reads(in);
+    sample_pin_photo_ = reads.pin_photo;
+    sample_hover_photo_ = reads.hover_photo;
+}
+
+void App::update_sample_traces() {
+    update_sample_reads();  // (again, if the markers weren't drawn: no picture on the canvas)
+    if (!sample_.on()) {
+        return;
+    }
+    const std::shared_ptr<const Image> base = session_.preview_base();
+    if (!base || base->width != texture_.width() || base->height != texture_.height()) {
+        return;
+    }
+    const std::optional<gui::StageId> compare =
+        strip_ ? std::nullopt : gui::effective_compare(viewed_stage_, compare_stage_);
+    const auto read = [&](gui::SampleCache& cache, gui::SamplePin pixel) {
+        (void)cache.read(base, session_.settings(), strip_, viewed_stage_, compare, pixel.x, pixel.y,
+                         session_.as_shot_white(), session_.preview_framing());
+    };
+    // Real pixels (#37): a slot reads the photo's own pixel where update_sample_reads decided it
+    // does, and the preview's elsewhere, as in 0.6.0.
+    const std::shared_ptr<const prism::Photo> photo = session_.detail_base();
+    const auto read_photo = [&](gui::PhotoSampleCache& cache, bool reads,
+                                const std::optional<gui::FilePixel>& file) {
+        if (!reads || !photo || !file) {
+            cache.clear();
+            return;
+        }
+        (void)cache.read(photo, session_.settings(), file->x, file->y,
+                         gui::as_shot_white_of(photo->info));
+    };
+    read_photo(sample_pin_photo_trace_, sample_pin_photo_, sample_pin_file_);
     if (sample_.pin() && !sample_pin_photo_) {
         read(sample_pin_trace_, *sample_.pin());
     } else {
         sample_pin_trace_.clear();
     }
-    // With a pin the cursor's pixel only matters while it is on the picture. Without one the block
-    // keeps the last pixel read, so that its rows are still there to point at.
-    const bool hovering = sample_hover_.has_value() || (!sample_.pin() && sample_.last_read());
-    sample_hover_photo_ = hovering && read_photo(sample_hover_photo_trace_, sample_hover_file_);
+    read_photo(sample_hover_photo_trace_, sample_hover_photo_, sample_hover_file_);
     if (!sample_hover_photo_) {
         if (sample_hover_) {
             read(sample_hover_trace_, *sample_hover_);
@@ -2733,10 +2761,7 @@ bool App::reads_photo_at(const std::optional<gui::FilePixel>& pixel) const {
 
 gui::SampleMarker App::sample_marker_for(gui::SamplePin preview, bool photo,
                                          const std::optional<gui::FilePixel>& file) const {
-    if (photo && file) {
-        return gui::file_pixel_marker(view_, view_geometry_, framed_full_size(), *file);
-    }
-    return gui::sample_marker(view_, view_geometry_, preview);
+    return gui::sample_slot_marker(view_, view_geometry_, framed_full_size(), preview, photo, file);
 }
 
 const gui::PixelTrace* App::sample_hover_on_show() const {
