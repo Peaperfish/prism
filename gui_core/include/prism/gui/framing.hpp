@@ -350,6 +350,18 @@ enum class FramingEvent {
 // another stage and undo or redo keep framing on. False while framing is off.
 [[nodiscard]] bool framing_leaves(bool framing, FramingEvent event) noexcept;
 
+// Whether a tool key (W, B, I or T) leaves framing, given the tools before it and after it
+// (tools_after_key): only when the key really turns its own tool on. A key for a tool the viewed
+// stage doesn't have (B before Dodge & burn, W where white balance isn't visible) changes nothing,
+// and framing stays on (#58). False while framing is off.
+[[nodiscard]] bool tool_key_leaves_framing(bool framing, ToolKey key, CanvasTools before,
+                                           CanvasTools after) noexcept;
+
+// Whether the wheel and the pinch move the view while framing: only with no framing gesture under
+// way. A drag maps the pointer through the view at its press, so the view holds still until it
+// ends; what arrives meanwhile is dropped, not kept for later (#58).
+[[nodiscard]] bool framing_view_takes_input(FramingGesture gesture) noexcept;
+
 // Whether the render on hand (`render`, the texture's size) may be drawn on the canvas: while
 // framing only the whole photo's (the size of the whole base, `whole`), and otherwise anything but
 // a whole-photo render left over from framing while the picture is framed (`framed`, the preview

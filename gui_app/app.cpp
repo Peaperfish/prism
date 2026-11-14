@@ -2188,7 +2188,7 @@ void App::draw_framing_canvas(ImDrawList* draw, ImVec2 min, ImVec2 size) {
     view_geometry_ = gui::framing_geometry(canvas, draft.angle, photo.width, photo.height,
                                            token_metrics().canvas_margin);
     set_view_file_scale(canvas.file_scale);
-    if (framing_.gesture() == gui::FramingGesture::none) {
+    if (gui::framing_view_takes_input(framing_.gesture())) {
         apply_canvas_input();
     } else {
         // A drag maps the pointer through the view at its press: the view holds still until it ends.
@@ -2416,7 +2416,7 @@ void App::toggle_pick() {
         return;
     }
     // Only a picker that really turns on leaves framing: it needs the framed picture on screen.
-    if (after.picking && gui::framing_leaves(framing_.on(), gui::FramingEvent::tool_chosen)) {
+    if (gui::tool_key_leaves_framing(framing_.on(), gui::ToolKey::pick, before, after)) {
         leave_framing();
     }
     if (!after.picking) {
@@ -2443,7 +2443,7 @@ void App::toggle_brush() {
         return;
     }
     // Only a brush that really turns on leaves framing.
-    if (after.brushing && gui::framing_leaves(framing_.on(), gui::FramingEvent::tool_chosen)) {
+    if (gui::tool_key_leaves_framing(framing_.on(), gui::ToolKey::brush, before, after)) {
         leave_framing();
     }
     if (!after.brushing) {

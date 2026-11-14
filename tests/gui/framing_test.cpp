@@ -16,6 +16,7 @@
 #endif
 
 #include "prism/frame.hpp"
+#include "prism/gui/canvas_input.hpp"
 #include "prism/gui/framing.hpp"
 #include "prism/gui/session.hpp"
 #include "prism/gui/stage_controls.hpp"
@@ -854,6 +855,72 @@ TEST(FramingEntry, ToolsComparisonsAndANewPhotoLeaveFramingViewingAndUndoDoNot) 
                                  FramingEvent::undo_redo}) {
         EXPECT_FALSE(framing_leaves(false, e));
     }
+}
+
+TEST(FramingToolKeys, BOrWOnAStageWithoutTheirToolKeepFramingOn) {
+    // Session 6 review of #58: B before Dodge & burn, or W where white balance isn't visible,
+    // turns nothing on, so framing must stay on.
+    using prism::gui::CanvasTools;
+    using prism::gui::ToolKey;
+    using prism::gui::tool_key_leaves_framing;
+    using prism::gui::tools_after_key;
+    const CanvasTools none{};
+    const CanvasTools after_w = tools_after_key(none, ToolKey::pick, false, true, true);
+    ASSERT_EQ(after_w, none);  // W did nothing: the branch under test
+    EXPECT_FALSE(tool_key_leaves_framing(true, ToolKey::pick, none, after_w));
+    const CanvasTools after_b = tools_after_key(none, ToolKey::brush, true, true, false);
+    ASSERT_EQ(after_b, none);
+    EXPECT_FALSE(tool_key_leaves_framing(true, ToolKey::brush, none, after_b));
+    // Unchanged with the key's own tool already on (not reachable from framing, which turns every
+    // tool off, but the rule is "changed nothing", not "nothing is on").
+    const CanvasTools picking{false, true, false, false};
+    const CanvasTools brushing{false, false, false, true};
+    EXPECT_FALSE(tool_key_leaves_framing(true, ToolKey::pick, picking, picking));
+    EXPECT_FALSE(tool_key_leaves_framing(true, ToolKey::brush, brushing, brushing));
+}
+
+TEST(FramingToolKeys, AToolKeyLeavesFramingOnlyWhenItTurnsItsOwnToolOn) {
+    using prism::gui::CanvasTools;
+    using prism::gui::ToolKey;
+    using prism::gui::tool_key_leaves_framing;
+    using prism::gui::tools_after_key;
+    const CanvasTools none{};
+    const CanvasTools sampling{true, false, false, false};
+    const CanvasTools picking{false, true, false, false};
+    const CanvasTools strip{false, false, true, false};
+    const CanvasTools brushing{false, false, false, true};
+    // W and B on a stage that has the tool: it turns on, and framing ends.
+    ASSERT_EQ(tools_after_key(none, ToolKey::pick, true, true, true), picking);
+    ASSERT_EQ(tools_after_key(none, ToolKey::brush, true, true, true), brushing);
+    EXPECT_TRUE(tool_key_leaves_framing(true, ToolKey::pick, none, picking));
+    EXPECT_TRUE(tool_key_leaves_framing(true, ToolKey::brush, none, brushing));
+    EXPECT_TRUE(tool_key_leaves_framing(true, ToolKey::sample, none, sampling));
+    EXPECT_TRUE(tool_key_leaves_framing(true, ToolKey::strip, none, strip));
+    // Each key looks at its own tool: another tool coming on is not its tool turning on.
+    EXPECT_FALSE(tool_key_leaves_framing(true, ToolKey::pick, none, brushing));
+    EXPECT_FALSE(tool_key_leaves_framing(true, ToolKey::brush, none, picking));
+    EXPECT_FALSE(tool_key_leaves_framing(true, ToolKey::sample, none, strip));
+    EXPECT_FALSE(tool_key_leaves_framing(true, ToolKey::strip, none, sampling));
+    // A key turning its tool off leaves nothing.
+    EXPECT_FALSE(tool_key_leaves_framing(true, ToolKey::pick, picking, none));
+    EXPECT_FALSE(tool_key_leaves_framing(true, ToolKey::brush, brushing, none));
+    // Not framing: nothing to leave.
+    EXPECT_FALSE(tool_key_leaves_framing(false, ToolKey::pick, none, picking));
+    EXPECT_FALSE(tool_key_leaves_framing(false, ToolKey::brush, none, brushing));
+    EXPECT_FALSE(tool_key_leaves_framing(false, ToolKey::sample, none, sampling));
+    EXPECT_FALSE(tool_key_leaves_framing(false, ToolKey::strip, none, strip));
+}
+
+TEST(FramingViewInput, TheWheelAndPinchMoveTheViewOnlyWithNoGestureUnderWay) {
+    // Session 6 review of #58: zooming in the middle of a framing drag would move the view under
+    // a drag that maps the pointer through the view at its press.
+    using prism::gui::FramingGesture;
+    using prism::gui::framing_view_takes_input;
+    EXPECT_TRUE(framing_view_takes_input(FramingGesture::none));
+    EXPECT_FALSE(framing_view_takes_input(FramingGesture::handle));
+    EXPECT_FALSE(framing_view_takes_input(FramingGesture::move));
+    EXPECT_FALSE(framing_view_takes_input(FramingGesture::horizon));
+    EXPECT_FALSE(framing_view_takes_input(FramingGesture::turn));
 }
 
 TEST(FramingKeys, NothingWhileAMenuOrListIsOpen) {

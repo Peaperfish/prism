@@ -841,6 +841,32 @@ bool framing_leaves(bool framing, FramingEvent event) noexcept {
     return false;
 }
 
+bool tool_key_leaves_framing(bool framing, ToolKey key, CanvasTools before,
+                             CanvasTools after) noexcept {
+    if (after == before) {
+        return false;  // the key did nothing: its tool isn't available here
+    }
+    bool turned_on = false;
+    switch (key) {
+        case ToolKey::pick: turned_on = after.picking; break;
+        case ToolKey::sample: turned_on = after.sampling; break;
+        case ToolKey::strip: turned_on = after.strip; break;
+        case ToolKey::brush: turned_on = after.brushing; break;
+    }
+    return turned_on && framing_leaves(framing, FramingEvent::tool_chosen);
+}
+
+bool framing_view_takes_input(FramingGesture gesture) noexcept {
+    switch (gesture) {
+        case FramingGesture::none: return true;
+        case FramingGesture::handle:
+        case FramingGesture::move:
+        case FramingGesture::horizon:
+        case FramingGesture::turn: return false;
+    }
+    return false;
+}
+
 bool render_drawable(bool framing, PixelSize render, PixelSize whole, PixelSize framed) noexcept {
     const bool is_whole = render.width == whole.width && render.height == whole.height;
     if (framing) {
