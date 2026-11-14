@@ -155,7 +155,13 @@ TEST(Process, OrderMatters) {
     prism::tone_curve(curve_first, *s.curve, 1);
     prism::exposure(curve_first, 1.0f, 1);
 
+    prism::Image exposure_first = make_image();
+    prism::exposure(exposure_first, 1.0f, 1);
+    prism::tone_curve(exposure_first, *s.curve, 1);
+    ASSERT_NE(bits(exposure_first), bits(curve_first));  // the order shows in the pixels
+
     const Outcome r = run_process(s);
+    EXPECT_EQ(bits(r.img), bits(exposure_first));
     EXPECT_NE(bits(r.img), bits(curve_first));
     EXPECT_EQ(r.stages, (Names{"exposure", "curve"}));
 }
