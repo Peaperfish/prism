@@ -151,7 +151,7 @@ The files work like any other recipe, on the command line too: `prism photo.ARW 
 A recipe is a small part of [TOML](https://toml.io), a common format for settings files, so editors that know TOML colour it nicely. Prism reads it strictly, so that a typing mistake is reported instead of quietly ignored:
 
 - One setting per line, `key = value`. Spaces around `=` don't matter.
-- Numbers are written with a dot for decimals and a digit before it: `0.5`, not `,5` or `.5`. Whole numbers such as `1` are fine anywhere. No units (`1.5`, not `1.5 stops`), no `inf` or `nan`, and no hexadecimal.
+- Numbers are written with a dot for decimals and a digit before it: `0.5`, not `,5` or `.5`. Whole numbers such as `1` are fine anywhere. No units (`1.5`, not `1.5 stops`), no `inf` or `nan`, and no hexadecimal. A negative number may start with `-` or `−`.
 - Text goes in double quotes on one line: `name = "Warm low contrast"`. Inside, `\"` is a quote, `\\` a backslash and `\n` a new line.
 - `true` and `false` are written in small letters, without quotes.
 - `#` starts a comment, anywhere outside quotes.

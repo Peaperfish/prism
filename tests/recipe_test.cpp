@@ -1080,6 +1080,24 @@ TEST(RecipeWhiteBalance, AVersion1FileWithItIsRefused) {
     EXPECT_EQ(issues_of("prism_recipe = 1\n[white_balance]\nkelvin = 5000\n"), expected);
 }
 
+// A number may start with the real minus sign (U+2212) as well as "-" (RECIPES.md).
+TEST(RecipeWhiteBalance, ATintWrittenWithARealMinusSignReads) {
+    const std::string minus = "\xE2\x88\x92";  // U+2212
+    const std::string head = "prism_recipe = 2\n[white_balance]\nkelvin = 5000\n";
+    const Recipe r = prism::parse_recipe(head + "tint = " + minus + "10\n");
+    ASSERT_TRUE(r.white_balance.has_value());
+    EXPECT_EQ(r.white_balance->tint, -10.0f);
+    EXPECT_EQ(prism::parse_recipe(head + "tint = " + minus + "12.25\n").white_balance->tint,
+              -12.25f);
+    // Saved recipes keep writing the plain hyphen.
+    EXPECT_NE(prism::write_recipe(r, bare).find("\ntint = -10.0\n"), std::string::npos);
+    // Out of range still says so, with the same minus sign.
+    EXPECT_EQ(issues_of(head + "tint = " + minus + "101\n"),
+              (std::vector<prism::RecipeIssue>{
+                  {4, "[white_balance] tint must be from " + minus + "100 to 100 (it is " +
+                          minus + "101)"}}));
+}
+
 TEST(RecipeWhiteBalance, RangesAndTheRequiredKeyAreChecked) {
     const std::string head = "prism_recipe = 2\n[white_balance]\n";
     EXPECT_EQ(issues_of(head + "kelvin = 1999\n"),

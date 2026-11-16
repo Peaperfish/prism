@@ -14,6 +14,7 @@
 #include <stdexcept>
 
 #include "c_number.hpp"
+#include "prism/number_text.hpp"
 #include "prism/ranges.hpp"
 #include "prism/utf8_path.hpp"
 #include "sample_ranges.hpp"
@@ -26,7 +27,7 @@ namespace {
 // c_strtod reports where it stopped, which lets us reject trailing junk like "2.2x". A value
 // beyond what a float holds is refused too, not cast (which would overflow).
 std::optional<float> parse_float(std::string_view text) {
-    const std::string s(text);  // c_strtod needs a null-terminated string
+    const std::string s = minus_as_hyphen(text);  // null-terminated, as c_strtod needs
     if (s.empty()) {
         return std::nullopt;
     }

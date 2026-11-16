@@ -2,6 +2,7 @@
 
 #include "c_number.hpp"
 #include "prism/atomic_file.hpp"
+#include "prism/number_text.hpp"
 #include "prism/utf8_path.hpp"
 #include "prism/white_balance.hpp"
 
@@ -609,8 +610,10 @@ std::variant<Value, ValueError> read_bare(std::string_view token) {
     Value v;
     v.raw = std::string(token);
     bool integer = false;
-    if (scan_toml_number(token, integer) == token.size() && !token.empty()) {
-        auto number = to_float(token);
+    // A number may start with the real minus sign as well as "-" (RECIPES.md).
+    const std::string ascii = minus_as_hyphen(token);
+    if (scan_toml_number(ascii, integer) == ascii.size() && !ascii.empty()) {
+        auto number = to_float(ascii);
         if (const auto* error = std::get_if<ValueError>(&number)) {
             return *error;
         }

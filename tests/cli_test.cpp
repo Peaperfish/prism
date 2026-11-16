@@ -640,6 +640,24 @@ TEST(CliWhiteBalance, TintAloneKeepsTheKelvinAsShot) {
     fs::remove(input);
 }
 
+// A number may start with the real minus sign (U+2212) as well as "-".
+TEST(CliWhiteBalance, ARealMinusSignIsReadLikeAHyphen) {
+    const std::string minus = "\xE2\x88\x92";  // U+2212
+    const fs::path input = write_grey_jpeg();
+    EXPECT_EQ(run_to_bytes(input, "--tint " + minus + "10"), run_to_bytes(input, "--tint -10"));
+    EXPECT_NE(run_to_bytes(input, "--tint " + minus + "10"), run_to_bytes(input, "--tint 10"));
+    EXPECT_EQ(run_to_bytes(input, "--exposure " + minus + "0.5"),
+              run_to_bytes(input, "--exposure -0.5"));
+    EXPECT_EQ(run_to_bytes(input, "--rotate " + minus + "2"), run_to_bytes(input, "--rotate -2"));
+    const RunResult r = run_prism(quoted(input) + " --tint " + minus + "101");
+    EXPECT_EQ(r.exit_code, 2) << r.output;
+    EXPECT_NE(r.output.find("--tint needs a number from " + minus + "100 to 100, got '" + minus +
+                            "101'"),
+              std::string::npos)
+        << r.output;
+    fs::remove(input);
+}
+
 TEST(CliWhiteBalance, ARecipesWhiteBalanceIsReplacedByTheFlags) {
     const fs::path input = write_grey_jpeg();
     const fs::path recipe = temp_file("wb.prism");

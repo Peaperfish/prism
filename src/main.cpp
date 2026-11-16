@@ -22,6 +22,7 @@
 #include "prism/frame.hpp"
 #include "prism/histogram.hpp"
 #include "prism/image.hpp"
+#include "prism/number_text.hpp"
 #include "prism/parallel.hpp"
 #include "prism/pipeline.hpp"
 #include "prism/process.hpp"
@@ -151,19 +152,21 @@ struct Options {
     std::vector<std::optional<std::string>> outputs;
 };
 
-float parse_stops(const std::string& text) {
+float parse_stops(const std::string& given) {
+    const std::string text = prism::minus_as_hyphen(given);
     char* end = nullptr;
     errno = 0;
     const double value = std::strtod(text.c_str(), &end);
     if (text.empty() || end != text.c_str() + text.size() || errno == ERANGE ||
         !std::isfinite(value)) {
-        throw UsageError("--exposure needs a number, got '" + text + "'");
+        throw UsageError("--exposure needs a number, got '" + given + "'");
     }
     return static_cast<float>(value);
 }
 
 // A number for `flag` within [min, max]. The upper limits only catch typos such as 125 for 1.25.
-float parse_ranged(const std::string& text, std::string_view flag, double min, double max) {
+float parse_ranged(const std::string& given, std::string_view flag, double min, double max) {
+    const std::string text = prism::minus_as_hyphen(given);
     char* end = nullptr;
     errno = 0;
     const double value = std::strtod(text.c_str(), &end);
@@ -180,7 +183,7 @@ float parse_ranged(const std::string& text, std::string_view flag, double min, d
         };
         std::ostringstream message;
         message << flag << " needs a number from " << bound(min) << " to " << bound(max)
-                << ", got '" << text << "'";
+                << ", got '" << given << "'";
         throw UsageError(message.str());
     }
     return static_cast<float>(value);
@@ -221,8 +224,8 @@ std::array<float, 4> parse_crop(const std::string& text) {
         if ((comma == std::string::npos) != last) {
             throw UsageError(shape + ", got '" + text + "'");
         }
-        const std::string part =
-            text.substr(start, last ? std::string::npos : comma - start);
+        const std::string part = prism::minus_as_hyphen(
+            text.substr(start, last ? std::string::npos : comma - start));
         char* end = nullptr;
         errno = 0;
         const double value = std::strtod(part.c_str(), &end);
