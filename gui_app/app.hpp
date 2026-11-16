@@ -119,6 +119,8 @@ private:
     void take_drop();
     // "Recipe: <name>" under the Look menu, and what it sets, while the settings are still its.
     void draw_recipe_line();
+    // Applies a built-in look as one undo step; over a loaded recipe it takes the recipe's line.
+    void pick_look(const gui::Preset& preset);
     void take_dialog_results();
     void take_export_dialog(DialogResult& result);
     void update_preview();

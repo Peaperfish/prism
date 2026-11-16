@@ -513,7 +513,8 @@ void App::begin_save_recipe(bool for_close) {
         return;
     }
     const gui::RecipeNameDefault suggested =
-        gui::suggest_recipe_name(recipes_.current(), session_.kind(), session_.settings());
+        gui::suggest_recipe_name(recipes_.current(), session_.kind(), session_.settings(),
+                                 recipes_.active_depth());
     RecipeSheet sheet;
     copy_to_buffer(sheet.name, suggested.name);
     copy_to_buffer(sheet.description, suggested.description);
@@ -878,7 +879,7 @@ void App::draw_recipe_line() {
     if (!recipes_.line(session_.settings())) {
         return;
     }
-    const gui::LoadedRecipe& loaded = *recipes_.current();
+    const gui::LoadedRecipe& loaded = *recipes_.shown(session_.settings());
     ImGui::PushTextWrapPos(0.0f);
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
     ImGui::TextUnformatted(gui::stages_line(loaded.stages).c_str());
@@ -3694,7 +3695,7 @@ App::ExplainText App::explain_text() const {
     context.histogram = histogram_ ? &*histogram_ : nullptr;
     context.clips = gui::clip_report_to_show(note_report_, strip_.has_value());
     context.strip_step = strip_ ? strip_->step : strip_step_;
-    context.recipe = recipes_.current();
+    context.recipe = recipes_.shown(session_.settings());
     if (texture_.texture() != nullptr) {
         const gui::CanvasMeasure measure = canvas_measure();
         context.preview_long_side = std::max(texture_.width(), texture_.height());
@@ -3963,10 +3964,19 @@ void App::draw_scopes_panel() {
     draw_scopes(data, cb);
 }
 
+void App::pick_look(const gui::Preset& preset) {
+    const gui::EditSettings before = session_.settings();
+    gui::EditSettings s = before;
+    gui::apply_preset(s, preset);
+    report(session_.set_settings(s));
+    recipes_.look_picked(preset, before, session_.settings());
+}
+
 // The Look section: its header (with "Reset to <default look>" at the right while the settings
 // are not the default look), and one full-width dropdown. The dropdown shows the look's name, the
 // loaded recipe ("Recipe: name"), or "Custom"; its list holds the looks, then the recipe actions.
 void App::draw_presets() {
+    recipes_.observe(session_.settings());  // before anything below reads the recipe line
     const gui::InputKind kind = session_.kind();
     const gui::Preset* current = gui::matching_preset(kind, session_.settings());
     const gui::Preset& start = gui::default_preset(kind);
@@ -3977,19 +3987,12 @@ void App::draw_presets() {
         describe(gui::explain::look_reset, reset);
     }
     if (reset) {
-        gui::EditSettings s = session_.settings();
-        gui::apply_preset(s, start);
-        report(session_.set_settings(s));
+        pick_look(start);
     }
 
     // A loaded recipe names the button, unless the settings are exactly a built-in look the
-    // recipe is not (a look picked after loading it).
-    const std::optional<std::string> recipe = recipes_.line(session_.settings());
-    const bool recipe_shown =
-        recipe && (current == nullptr || session_.settings() == recipes_.current()->after);
-    const std::string shown = recipe_shown ? "Recipe: " + *recipe
-                              : current != nullptr ? std::string(current->name)
-                                                   : "Custom";
+    // recipe is not; a look picked over a recipe takes the recipe's place (look_button_text).
+    const std::string shown = gui::look_button_text(recipes_, current, session_.settings());
     const gui::TokenMetrics& m = token_metrics();
     ImGui::SetNextItemWidth(-FLT_MIN);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
@@ -4002,9 +4005,7 @@ void App::draw_presets() {
     if (open) {
         for (const gui::Preset& preset : gui::presets_for(kind)) {
             if (ImGui::Selectable(std::string(preset.name).c_str(), &preset == current)) {
-                gui::EditSettings s = session_.settings();
-                gui::apply_preset(s, preset);
-                report(session_.set_settings(s));  // one undo step
+                pick_look(preset);  // one undo step
             }
             describe(gui::explain_id(preset));
         }
