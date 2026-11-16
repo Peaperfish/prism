@@ -87,7 +87,7 @@ void print_usage(const char* program) {
               << "                      makes the picture warmer. For RAW the edit is relative to\n"
               << "                      the camera's as-shot light; for other photos 6500 changes\n"
               << "                      nothing\n"
-              << "  --tint <n>          green-magenta tint of that light, −100 to 100: positive (a\n"
+              << "  --tint <n>          green–magenta tint of that light, −100 to 100: positive (a\n"
               << "                      greener light) is more magenta; for photos without an as-shot\n"
               << "                      light 0 changes nothing. Either of --kelvin and --tint alone\n"
               << "                      keeps the other as shot\n"
