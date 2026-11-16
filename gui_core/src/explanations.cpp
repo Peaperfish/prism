@@ -58,9 +58,10 @@ constexpr Explanation templates[] = {
     {"recipe.load", "Apply a .prism recipe to this photo.",
      "Sets each stage the recipe has, with its switch, and leaves the others as they are. One "
      "undo step. The photo is not decoded again."},
-    {"recipe.loaded", "The recipe last loaded onto this photo.",
-     "Reads (modified) once you change a setting, and goes away if you undo past loading it. The "
-     "Look menu names a built-in look only when the numbers match one.",
+    {"recipe.loaded", "The recipe you loaded, or a look you picked over it.",
+     "Reads (modified) once you change a setting, and goes away if you undo past loading it. "
+     "Undoing a look picked over a recipe brings the recipe back. The Look menu names a built-in "
+     "look only when the numbers match one.",
      LiveKind::recipe},
     {"recipe.save", "Write these settings to a recipe you can read and reuse.",
      "Saves all five stages with their switches, and a white balance you chose, as a small .prism "
