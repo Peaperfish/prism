@@ -600,6 +600,10 @@ const ErrorCase error_cases[] = {
      "'120%' is not a number: write the number alone, without a unit"},
     {"DecimalComma", with_section("saturation", "amount = 0,9\n"), 4,
      "'0,9' is not a number: use a dot for decimals, as in 0.9"},
+    {"RealMinusAndAUnit", with_section("exposure", "stops = −1 stop\n"), 4,
+     "'−1 stop' is not a number: write the number alone, without a unit"},
+    {"RealMinusAndADecimalComma", with_section("saturation", "amount = −0,9\n"), 4,
+     "'−0,9' is not a number: use a dot for decimals, as in -0.9"},
     {"DecimalCommasInARow",
      with_section("matrix", "red = [1,05, 0,03, -0,01]\ngreen = [0, 1, 0]\nblue = [0, 0, 1]\n"), 4,
      "'[1,05, 0,03, -0,01]' seems to use commas for decimals: write each number with a dot, and a "
@@ -1096,6 +1100,13 @@ TEST(RecipeWhiteBalance, ATintWrittenWithARealMinusSignReads) {
               (std::vector<prism::RecipeIssue>{
                   {4, "[white_balance] tint must be from " + minus + "100 to 100 (it is " +
                           minus + "101)"}}));
+}
+
+TEST(RecipeWhiteBalance, ARealMinusSignReadsInsideAList) {
+    const Recipe r = prism::parse_recipe(
+        "prism_recipe = 2\n[matrix]\nred = [1, −0.5, 0]\ngreen = [0, 1, 0]\nblue = [0, 0, 1]\n");
+    ASSERT_TRUE(r.matrix.has_value());
+    EXPECT_EQ(r.matrix->values[1], -0.5f);
 }
 
 TEST(RecipeWhiteBalance, RangesAndTheRequiredKeyAreChecked) {

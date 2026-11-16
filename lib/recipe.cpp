@@ -565,20 +565,23 @@ std::string quote(std::string_view s) {
 
 // Why `token`, which is not a valid number, was probably meant as one but is written wrongly; or
 // nothing if it does not look like a number at all.
-std::optional<std::string> number_mistake(std::string_view token) {
+std::optional<std::string> number_mistake(std::string_view written) {
+    // Looked at with a plain hyphen for a real minus sign; messages quote what was written.
+    const std::string ascii = minus_as_hyphen(written);
+    const std::string_view token = ascii;
     std::string_view body = token;
     if (!body.empty() && (body.front() == '+' || body.front() == '-')) {
         body.remove_prefix(1);
     }
     if (body == "inf" || body == "nan") {
-        return quote(token) + " is not allowed: a recipe holds finite numbers only";
+        return quote(written) + " is not allowed: a recipe holds finite numbers only";
     }
     if (body.size() > 1 && body[0] == '0' &&
         (body[1] == 'x' || body[1] == 'X' || body[1] == 'o' || body[1] == 'b')) {
-        return quote(token) + " is not a number Prism reads: write it in decimal";
+        return quote(written) + " is not a number Prism reads: write it in decimal";
     }
     if (body.size() > 1 && body[0] == '.' && is_digit(body[1])) {
-        return quote(token) + " needs a digit before the dot, as in 0" + std::string(body);
+        return quote(written) + " needs a digit before the dot, as in 0" + std::string(body);
     }
     bool integer = false;
     const std::size_t length = scan_toml_number(token, integer);
@@ -587,20 +590,20 @@ std::optional<std::string> number_mistake(std::string_view token) {
     }
     const std::string_view rest = token.substr(length);
     if (rest.size() > 1 && rest[0] == ',' && is_digit(rest[1])) {
-        std::string dotted(token);
+        std::string dotted(ascii);
         dotted[length] = '.';
-        return quote(token) + " is not a number: use a dot for decimals, as in " + dotted;
+        return quote(written) + " is not a number: use a dot for decimals, as in " + dotted;
     }
     if (rest == ".") {
-        return quote(token) + " needs a digit after the dot, as in " + std::string(token) + "0";
+        return quote(written) + " needs a digit after the dot, as in " + std::string(written) + "0";
     }
     if (body.size() > 1 && body[0] == '0' && is_digit(body[1])) {
-        return quote(token) + " is not a number: write it without leading zeros";
+        return quote(written) + " is not a number: write it without leading zeros";
     }
     const std::string_view after = trim(rest);
     if (!after.empty() &&
         (is_letter(after[0]) || after[0] == '%' || static_cast<unsigned char>(after[0]) >= 0x80)) {
-        return quote(token) + " is not a number: write the number alone, without a unit";
+        return quote(written) + " is not a number: write the number alone, without a unit";
     }
     return std::nullopt;
 }

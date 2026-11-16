@@ -23,7 +23,7 @@ namespace prism::gui {
 // --- Units ---------------------------------------------------------------------------------------
 
 // "+0.70 stops", "−1.00 stops", "+0.00 stops": the sign is always shown, and a value that rounds
-// to zero is "+0.00" rather than "-0.00".
+// to zero is "+0.00" rather than "−0.00".
 [[nodiscard]] std::string format_exposure(float stops);
 
 // "×1.20": a multiplier, to two places, with the multiplication sign.
