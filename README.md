@@ -324,7 +324,7 @@ v0.1.0 was a pre-release of the desktop app, and v0.2.0 is its first full releas
 
 - Keys: [Return with keyboard focus](https://github.com/Peaperfish/prism/issues/74), [shortcuts during a brush stroke](https://github.com/Peaperfish/prism/issues/66), [brush size keys on any layout](https://github.com/Peaperfish/prism/issues/64)
 - [The panel splitter's edge](https://github.com/Peaperfish/prism/issues/61), [small UI text fixes](https://github.com/Peaperfish/prism/issues/62) and [real minus signs in RECIPES.md](https://github.com/Peaperfish/prism/issues/76)
-- [Numbers read without depending on the C locale](https://github.com/Peaperfish/prism/issues/34), and [a look's name after loading a recipe](https://github.com/Peaperfish/prism/issues/35)
+- [Numbers read the same whatever your computer's language settings](https://github.com/Peaperfish/prism/issues/34), and [a look's name after loading a recipe](https://github.com/Peaperfish/prism/issues/35)
 - [Tests that were never broken on purpose](https://github.com/Peaperfish/prism/issues/65), and [a faster macOS CI job](https://github.com/Peaperfish/prism/issues/79) *(done)*
 
 [**0.8.0 – HDR**](https://github.com/Peaperfish/prism/milestone/6): HDR photos on HDR displays, and HDR files out.
