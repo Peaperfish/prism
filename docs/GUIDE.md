@@ -170,7 +170,7 @@ Prism refuses, and changes nothing, when the spot cannot tell it the light: **"T
 | 4 | 60 | ×1.50 |
 | 5 | 50 | ×1.80 |
 
-Between two whole grades the multiplier moves by the same ratio at each step, so grade 3½ is ×1.39, the geometric mean of ×1.29 and ×1.50. The slider snaps to half grades. The row reads "Grade 3 · ×1.29", "Grade 3½ · ×1.39", or with a value between half grades, such as one from a recipe, one decimal: "Grade 2.7 · ×1.19". Past the ends it reads "Softer than grade 0 · ×0.60" or "Harder than grade 5 · ×2.00" and says **(beyond the slider)**. A value that is not on a half grade stays as it is until you move the slider.
+Between two whole grades the multiplier moves by the same ratio at each step, so grade 3½ is ×1.39, the geometric mean of ×1.29 and ×1.50. The slider snaps to half grades. Switched off, the row reads "Grade 3 when on", without the multiplier. The row reads "Grade 3 · ×1.29", "Grade 3½ · ×1.39", or with a value between half grades, such as one from a recipe, one decimal: "Grade 2.7 · ×1.19". Past the ends it reads "Softer than grade 0 · ×0.60" or "Harder than grade 5 · ×2.00" and says **(beyond the slider)**. A value that is not on a half grade stays as it is until you move the slider.
 
 Only the display is new. What Prism stores, and what the engine uses, is still the multiplier, the slope at middle grey: a [recipe](#recipes) holds it as `[contrast]` `amount`, and `--contrast` on the command line takes it. A recipe written with `amount = 1.29` shows as grade 3 in the window.
 
@@ -259,7 +259,7 @@ To straighten along something in the picture that should be level or upright (a 
 
 **Reset, keeping the frame, and undo.** **Reset** on the framing bar sets the angle back to `0°` (`upright`) and opens the blades to the largest centred frame of the current aspect lock (the whole photo for **Original** and **Free**).
 
-Every way out of framing keeps the frame: pressing `Return`, clicking **Done (Return)** on the framing bar (shortened to **Done** on a narrow canvas), pressing `C` again, pressing `Esc` when you aren't dragging, or switching to another tool (`I` or **Compare**; `T`, `B` or `W` where that tool can start — Exposure or a later stage in view for `T`, Dodge & burn or later for `B`, White balance or later for `W`; at an earlier viewed stage the key does nothing and framing stays on). Viewing another stage in the Light path, or using Undo or Redo, leaves framing on.
+Every way out of framing keeps the frame: pressing `Return` (unless a control's keyboard highlight is showing: see the notes under the shortcuts), clicking **Done (Return)** on the framing bar (shortened to **Done** on a narrow canvas), pressing `C` again, pressing `Esc` when you aren't dragging, or switching to another tool (`I` or **Compare**; `T`, `B` or `W` where that tool can start — Exposure or a later stage in view for `T`, Dodge & burn or later for `B`, White balance or later for `W`; at an earlier viewed stage the key does nothing and framing stays on). Viewing another stage in the Light path, or using Undo or Redo, leaves framing on.
 
 Each handle drag, move inside the frame, horizon line, Straighten slider drag, typed angle, aspect choice, `X` turn and **Reset** is one undo step (if it changed the frame). Pressing `Esc` in the middle of a drag (a handle, an inside move, a horizon line or the Straighten slider) cancels only that drag, puts the frame back as it was before you pressed, leaves no undo step, and keeps framing on.
 
@@ -427,6 +427,7 @@ The sheet says what is saved: all five stages, and the white balance you chose i
 - The Look menu's button reads **Recipe:** *name*, with a line under it saying what the recipe set (point at the line for the recipe's description): "Sets all five stages." or, for a recipe with only some of them, "Sets only Colour matrix, Saturation and Contrast; the other stages are unchanged." A recipe that switches a stage off says so too.
 - A recipe with a white balance sets that light on this photo too ("Sets all five stages and White balance."), whatever light this photo was shot under. A recipe without one leaves the photo's white balance as it is.
 - Change anything and the button reads *name* **(modified)**; undo back past the load and it goes away, and Redo brings it back. Opening another photo clears it.
+- A built-in look you pick over a loaded recipe takes the recipe's place: the button, the line under the menu, the Explain line and the name and description Save Recipe suggests all become the look's. Undo brings the recipe back. Change something after picking the look and the button reads **Recipe:** *look's name* **(modified)**.
 - The Look menu stays honest: it names a built-in look only when the numbers match one the loaded recipe isn't; a look you pick afterwards shows its own name.
 - A colour matrix from a recipe shows in the Colour matrix row under the file name the recipe gives, or as "From recipe" when it gives none.
 
@@ -491,6 +492,8 @@ Notes:
 
 - The keypad's `+`, `-` and `0` also work with `Cmd`/`Ctrl` for the interface size, its `+` and `-` alone for the zoom, and its `Enter` for finishing framing.
 - Undo, Redo, `C`, `J`, `T`, `I`, `W`, `B` and the zoom keys do nothing while you are dragging a slider, dragging on the easel or painting a stroke.
+- Open (`Cmd/Ctrl+O`), Load Recipe (`Cmd/Ctrl+Shift+O`) and Export (`Cmd/Ctrl+E` or `Cmd/Ctrl+S`) do nothing while you paint a brush stroke, and the press is not kept for when the stroke ends.
+- While framing, `Return` finishes and keeps the frame. If a control's keyboard highlight is showing (after you press `Tab` or an arrow key), `Return` works that control instead and framing stays on. A click with the mouse hides the highlight.
 - `C`, `J`, `T`, `I`, `W`, `B`, `X`, `Return`, the zoom keys and `Space` give way to a text field that has the keyboard, so typing a value never triggers them.
 - `Esc` is also Cancel in the "unsaved edits" window, in the recipe save sheet (inside a text field, the first `Esc` only leaves the field), in the Export sheet (also inside its number field), and in the "Saving…" window while a quit or open is waiting for the export.
 - In the menus: **File** has Open…, Export…, Load Recipe…, Save Recipe… and Quit (on Windows and Linux the menu shows `Ctrl+Q`; on macOS, Quit is in the **Prism** menu too). **Edit** has Undo, Redo and (on Windows and Linux) Preferences…. **View** has Bigger Interface, Smaller Interface, Interface Size: Auto, Test Strip, Sample Colour, Pick Neutral, Brush, Frame, Zoom In, Zoom Out, Zoom to Fit and 100% (real pixels). **Help → About Prism** is on Windows and Linux; on macOS, About and Preferences are in the **Prism** menu (**Prism → About Prism**, **Prism → Preferences…**).
