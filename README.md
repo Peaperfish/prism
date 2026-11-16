@@ -41,7 +41,7 @@ Both include RAW support, and nothing needs installing beside them. The apps are
 - [x] Framing on the easel: crop, aspect ratios (`1:1`, `4:5`, `5:7`, `3:2`, `16:9`, original, free, turned with `X`) and straightening (±45°, slider or horizon line) in the GUI; `--rotate`, `--crop` and `--aspect` on the command line
 - [x] Exposure adjustment (in stops)
 - [x] Dodge & burn with a brush, in stops (GUI)
-- [x] White balance in Kelvin and tint, with a neutral picker (GUI); `--kelvin` and `--tint` on the command line
+- [x] White balance in Kelvin and tint, with a neutral picker (GUI); `--kelvin` and `--tint` on the command line. In the GUI's Kelvin field, a number under 100 is thousands of kelvin: `5.2` is 5200 K
 - [x] 3×3 colour matrix (e.g. camera → sRGB, or creative grades)
 - [x] Saturation and contrast (luminance-preserving, gamut-limited saturation; log-space S-curve contrast), with contrast shown as a paper grade from 0 to 5
 - [x] Tone curves (gamma, filmic)
@@ -54,7 +54,8 @@ Both include RAW support, and nothing needs installing beside them. The apps are
 - [x] Colour sampler in the GUI: read any pixel's linear values at any stage, with stops from middle grey and what becomes of a clipped value
 - [x] The GUI's light path: one row per stage, in order, each with its own switch and slider (or curve tabs); click a row to see the photo after that stage, compare any two stages, and see where each one clips
 - [x] Scopes in the GUI: a filled histogram, parade, waveform and vectorscope, with clip triangles and a readout of what is below black and above white
-- [x] Looks as readable recipes, and recipes you can save and load
+- [x] Looks as readable recipes, and recipes you can save and load; a look picked over a loaded recipe takes the recipe's place, and undo brings the recipe back
+- [x] Recipe files and command-line numbers accept a real minus sign (−) as well as a hyphen
 - [x] A test strip, zoom and pan, and a plain-language explanation of every control
 - [x] Zoom to the photo's own pixels in the GUI: past the preview, the full-size photo is drawn through the frame and every adjustment, so at 100% and above each pixel is the one an export makes there; the zoom is a percentage of the photo, up to 800%, and Sample and Pick neutral read real pixels too
 - [ ] SIMD processing
@@ -322,9 +323,9 @@ v0.1.0 was a pre-release of the desktop app, and v0.2.0 is its first full releas
 
 [**0.7.1 – Polish**](https://github.com/Peaperfish/prism/milestone/9): small fixes after 0.7.0.
 
-- Keys: [Return with keyboard focus](https://github.com/Peaperfish/prism/issues/74), [shortcuts during a brush stroke](https://github.com/Peaperfish/prism/issues/66), [brush size keys on any layout](https://github.com/Peaperfish/prism/issues/64)
-- [The panel splitter's edge](https://github.com/Peaperfish/prism/issues/61), [small UI text fixes](https://github.com/Peaperfish/prism/issues/62) and [real minus signs in RECIPES.md](https://github.com/Peaperfish/prism/issues/76)
-- [Numbers read the same whatever your computer's language settings](https://github.com/Peaperfish/prism/issues/34), and [a look's name after loading a recipe](https://github.com/Peaperfish/prism/issues/35)
+- Keys: [Return with keyboard focus](https://github.com/Peaperfish/prism/issues/74) and [shortcuts during a brush stroke](https://github.com/Peaperfish/prism/issues/66) *(done)*
+- [The panel splitter's edge](https://github.com/Peaperfish/prism/issues/61), [small UI text fixes](https://github.com/Peaperfish/prism/issues/62), and [real minus signs](https://github.com/Peaperfish/prism/issues/76) in the app and docs, also read in recipe files and command-line numbers ([#93](https://github.com/Peaperfish/prism/issues/93)) *(done)*
+- [Numbers read the same whatever your computer's language settings](https://github.com/Peaperfish/prism/issues/34), and [a look's name after loading a recipe](https://github.com/Peaperfish/prism/issues/35) *(done)*
 - [Tests that were never broken on purpose](https://github.com/Peaperfish/prism/issues/65), and [a faster macOS CI job](https://github.com/Peaperfish/prism/issues/79) *(done)*
 
 [**0.8.0 – HDR**](https://github.com/Peaperfish/prism/milestone/6): HDR photos on HDR displays, and HDR files out.
@@ -349,6 +350,8 @@ v0.1.0 was a pre-release of the desktop app, and v0.2.0 is its first full releas
 - [A Linux download](https://github.com/Peaperfish/prism/issues/10), starting with a tarball of the command-line tool
 - [Signed apps](https://github.com/Peaperfish/prism/issues/11): a signed and notarized macOS app, a signed Windows app
 - [Export progress per stage](https://github.com/Peaperfish/prism/issues/12)
+- [Brush size keys on any layout](https://github.com/Peaperfish/prism/issues/64)
+- [Opening another photo while a stopped full-size read is finishing reads the photo twice](https://github.com/Peaperfish/prism/issues/82)
 
 ## Performance
 
