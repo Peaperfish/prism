@@ -170,7 +170,7 @@ Prism refuses, and changes nothing, when the spot cannot tell it the light: **"T
 | 4 | 60 | ×1.50 |
 | 5 | 50 | ×1.80 |
 
-Between two whole grades the multiplier moves by the same ratio at each step, so grade 3½ is ×1.39, the geometric mean of ×1.29 and ×1.50. The slider snaps to half grades. Switched off, the row reads "Grade 3 when on", without the multiplier. The row reads "Grade 3 · ×1.29", "Grade 3½ · ×1.39", or with a value between half grades, such as one from a recipe, one decimal: "Grade 2.7 · ×1.19". Past the ends it reads "Softer than grade 0 · ×0.60" or "Harder than grade 5 · ×2.00" and says **(beyond the slider)**. A value that is not on a half grade stays as it is until you move the slider.
+Between two whole grades the multiplier moves by the same ratio at each step, so grade 3½ is ×1.39, the geometric mean of ×1.29 and ×1.50. The slider snaps to half grades. Switched off, the row reads "Grade 3 when on", without the multiplier. The row reads "Grade 3 · ×1.29", "Grade 3½ · ×1.39", or with a value between half grades, such as one from a recipe, one decimal: "Grade 2.7 · ×1.19". Past the ends it reads "Softer than grade 0 · ×0.60" or "Harder than grade 5 · ×2.00". A value that is not on a half grade stays as it is until you move the slider.
 
 Only the display is new. What Prism stores, and what the engine uses, is still the multiplier, the slope at middle grey: a [recipe](#recipes) holds it as `[contrast]` `amount`, and `--contrast` on the command line takes it. A recipe written with `amount = 1.29` shows as grade 3 in the window.
 
