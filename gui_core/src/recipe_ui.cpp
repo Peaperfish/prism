@@ -134,7 +134,16 @@ RecipeMatch match_recipe(const LoadedRecipe& loaded, const EditSettings& current
                                                    : RecipeMatch{};
         }
         if (same_recipe(current, e->before)) {
-            return {e->earlier.get(), depth + 1, true};  // undone past a look picked over it
+            // Undone past a look picked over it. The settings may also be where the earlier
+            // entry started (a look picked before the recipe was loaded, then undone): that
+            // match comes first, and only otherwise the earlier entry stands (a look picked over
+            // a modified recipe).
+            RecipeMatch earlier = match_recipe(*e->earlier, current);
+            if (earlier.known) {
+                earlier.depth += depth + 1;
+                return earlier;
+            }
+            return {e->earlier.get(), depth + 1, true};
         }
         e = e->earlier.get();
     }

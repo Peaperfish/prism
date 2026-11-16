@@ -466,6 +466,23 @@ TEST(LookOverRecipe, AModifiedRecipeThenALookUndoesBackToTheModifiedRecipe) {
     EXPECT_EQ(tracker.line(history.current()), "Warm low contrast (modified)");
 }
 
+TEST(LookOverRecipe, ALookPickedBeforeTheLoadUndoesBackToNoRecipe) {
+    History history(EditSettings{});
+    RecipeTracker tracker;
+    tracker.loaded(load_into(history, complete_recipe(), "w.prism"));
+    ASSERT_TRUE(history.undo());  // past the load: the photo as it was opened
+    tracker.observe(history.current());
+    pick_look_into(history, tracker, presets_for(InputKind::raw)[2]);
+    EXPECT_EQ(tracker.line(history.current()), "Vivid");
+    ASSERT_TRUE(history.undo());  // past the pick: back to the photo as it was opened
+    tracker.observe(history.current());
+    EXPECT_EQ(tracker.line(history.current()), std::nullopt);
+    EXPECT_EQ(tracker.shown(history.current()), nullptr);
+    const RecipeNameDefault d = suggest_recipe_name(tracker.current(), InputKind::raw,
+                                                    history.current(), tracker.active_depth());
+    EXPECT_EQ(d.name, "Original");  // the look the settings match, not "Warm low contrast"
+}
+
 TEST(LookOverRecipe, WithoutALoadedRecipeThereIsNoLine) {
     History history(EditSettings{});
     RecipeTracker tracker;
