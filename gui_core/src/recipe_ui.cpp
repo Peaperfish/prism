@@ -1,6 +1,7 @@
 #include "prism/gui/recipe_ui.hpp"
 
 #include <algorithm>
+#include <memory>
 #include <utility>
 
 #include "prism/gui/file_types.hpp"
@@ -121,22 +122,97 @@ std::string modified_name(std::string_view name) {
     return std::string(name) + std::string(modified_suffix);
 }
 
-std::optional<std::string> recipe_line(const LoadedRecipe& loaded, const EditSettings& current) {
+RecipeMatch match_recipe(const LoadedRecipe& loaded, const EditSettings& current) {
     // Only what a recipe holds: a stroke or a frame made afterwards doesn't modify it (#58).
-    if (same_recipe(current, loaded.after)) {
-        return loaded.name;
+    const LoadedRecipe* e = &loaded;
+    for (std::size_t depth = 0;; ++depth) {
+        if (same_recipe(current, e->after)) {
+            return {e, depth, true};
+        }
+        if (!e->earlier) {
+            return same_recipe(current, e->before) ? RecipeMatch{nullptr, depth, true}
+                                                   : RecipeMatch{};
+        }
+        if (same_recipe(current, e->before)) {
+            return {e->earlier.get(), depth + 1, true};  // undone past a look picked over it
+        }
+        e = e->earlier.get();
     }
-    if (same_recipe(current, loaded.before)) {
+}
+
+const LoadedRecipe* shown_recipe(const LoadedRecipe& loaded, const EditSettings& current,
+                                 std::size_t active_depth) {
+    const RecipeMatch match = match_recipe(loaded, current);
+    if (match.known) {
+        return match.entry;
+    }
+    const LoadedRecipe* e = &loaded;
+    for (std::size_t depth = 0; depth < active_depth && e->earlier; ++depth) {
+        e = e->earlier.get();
+    }
+    return e;
+}
+
+std::optional<std::string> recipe_line(const LoadedRecipe& loaded, const EditSettings& current,
+                                       std::size_t active_depth) {
+    const LoadedRecipe* shown = shown_recipe(loaded, current, active_depth);
+    if (shown == nullptr) {
         return std::nullopt;
     }
-    return modified_name(loaded.name);
+    return same_recipe(current, shown->after) ? shown->name : modified_name(shown->name);
 }
 
 std::optional<std::string> RecipeTracker::line(const EditSettings& settings) const {
     if (!loaded_) {
         return std::nullopt;
     }
-    return recipe_line(*loaded_, settings);
+    return recipe_line(*loaded_, settings, active_);
+}
+
+const LoadedRecipe* RecipeTracker::shown(const EditSettings& settings) const {
+    return loaded_ ? shown_recipe(*loaded_, settings, active_) : nullptr;
+}
+
+void RecipeTracker::observe(const EditSettings& settings) {
+    if (loaded_) {
+        const RecipeMatch match = match_recipe(*loaded_, settings);
+        if (match.known) {
+            active_ = match.depth;
+        }
+    }
+}
+
+void RecipeTracker::look_picked(const Preset& preset, const EditSettings& before,
+                                const EditSettings& after) {
+    if (!loaded_) {
+        return;
+    }
+    // The look already shown, picked again: nothing to replace.
+    if (loaded_->is_look && loaded_->name == preset.name && same_recipe(loaded_->after, after) &&
+        same_recipe(before, after)) {
+        return;
+    }
+    LoadedRecipe look;
+    look.name = std::string(preset.name);
+    look.description = std::string(preset.description);
+    // A look sets these four and leaves the colour matrix alone (look_recipe_view).
+    look.stages.set = {StageId::exposure, StageId::saturation, StageId::contrast, StageId::curve};
+    look.before = before;
+    look.after = after;
+    look.is_look = true;
+    look.earlier = std::make_shared<const LoadedRecipe>(std::move(*loaded_));
+    loaded_ = std::move(look);
+    active_ = 0;
+}
+
+std::string look_button_text(const RecipeTracker& tracker, const Preset* current,
+                             const EditSettings& settings) {
+    const std::optional<std::string> line = tracker.line(settings);
+    const LoadedRecipe* shown = tracker.shown(settings);
+    if (line && shown != nullptr && (current == nullptr || settings == shown->after)) {
+        return shown->is_look && *line == shown->name ? *line : "Recipe: " + *line;
+    }
+    return current != nullptr ? std::string(current->name) : "Custom";
 }
 
 LookRecipeView look_recipe_view(InputKind kind, const Preset& preset) {
@@ -154,10 +230,11 @@ LookRecipeView look_recipe_view(InputKind kind, const Preset& preset) {
 }
 
 RecipeNameDefault suggest_recipe_name(const LoadedRecipe* loaded, InputKind kind,
-                                      const EditSettings& current) {
+                                      const EditSettings& current, std::size_t active_depth) {
     if (loaded != nullptr) {
-        if (std::optional<std::string> line = recipe_line(*loaded, current)) {
-            return {std::move(*line), loaded->description, recipe_name_hint};
+        if (const LoadedRecipe* shown = shown_recipe(*loaded, current, active_depth)) {
+            return {recipe_line(*loaded, current, active_depth).value_or(""), shown->description,
+                    recipe_name_hint};
         }
     }
     if (const Preset* preset = matching_preset(kind, current)) {

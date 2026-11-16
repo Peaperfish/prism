@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -50,6 +51,10 @@ struct LoadedRecipe {
     RecipeStages stages;
     EditSettings before;
     EditSettings after;
+    // Set when a built-in look was picked over a loaded recipe: the name is then the look's, and
+    // `earlier` is what the line said before, which undo past the pick brings back.
+    bool is_look = false;
+    std::shared_ptr<const LoadedRecipe> earlier;
 };
 
 // The name a recipe is shown by: its own name when it has one, else `file_name` without its
@@ -64,28 +69,73 @@ struct LoadedRecipe {
 // returned as it is.
 [[nodiscard]] std::string modified_name(std::string_view name);
 
+// Which entry of the chain (the loaded recipe, then the ones a look replaced) a state belongs to.
+struct RecipeMatch {
+    const LoadedRecipe* entry = nullptr;  // null for the state before the first load
+    std::size_t depth = 0;                // 0 is `loaded` itself, 1 the recipe it replaced, ...
+    bool known = false;                   // false: a state none of the entries produced
+};
+[[nodiscard]] RecipeMatch match_recipe(const LoadedRecipe& loaded, const EditSettings& current);
+
+// The entry whose name the recipe line shows for `current`: the one `current` belongs to, and for
+// a state made by editing, the entry at `active_depth` (the one the editing started from; the
+// tracker keeps it). Nothing when `current` is the state before the first load.
+[[nodiscard]] const LoadedRecipe* shown_recipe(const LoadedRecipe& loaded,
+                                               const EditSettings& current,
+                                               std::size_t active_depth = 0);
+
 // The recipe line under the Look menu, which follows the settings through undo and redo:
 //   current == after:   the name ("Warm low contrast");
-//   current == before:  nothing (undone past the load; redo brings it back);
+//   current == before:  nothing (undone past the load; redo brings it back), or, if a look was
+//                       picked over a recipe, that recipe's line ("Warm low contrast");
 //   anything else:      "<name> (modified)".
+// A built-in look picked over a loaded recipe takes its place: the line then says "Vivid".
 // The window shows it as "Recipe: <line>".
 [[nodiscard]] std::optional<std::string> recipe_line(const LoadedRecipe& loaded,
-                                                     const EditSettings& current);
+                                                     const EditSettings& current,
+                                                     std::size_t active_depth = 0);
 
 // The loaded recipe of the open photo, if any. Forgotten when another photo opens.
 class RecipeTracker {
 public:
-    void loaded(LoadedRecipe recipe) { loaded_ = std::move(recipe); }
-    void photo_opened() { loaded_.reset(); }
+    void loaded(LoadedRecipe recipe) {
+        loaded_ = std::move(recipe);
+        active_ = 0;
+    }
+    void photo_opened() {
+        loaded_.reset();
+        active_ = 0;
+    }
+    // Call with the settings whenever they may have changed (the window does, each frame). A
+    // state that one of the entries produced (also by undo and redo) makes that entry the one
+    // an edit from here is an edit of; an edit leaves it as it was. So undoing past a look and
+    // then editing reads "<recipe> (modified)", not "<look> (modified)".
+    void observe(const EditSettings& settings);
+    [[nodiscard]] std::size_t active_depth() const noexcept { return active_; }
     [[nodiscard]] const LoadedRecipe* current() const noexcept {
         return loaded_ ? &*loaded_ : nullptr;
     }
     // recipe_line for `settings`, or nothing when no recipe was loaded.
     [[nodiscard]] std::optional<std::string> line(const EditSettings& settings) const;
+    // shown_recipe for `settings`, or nothing when no recipe was loaded.
+    [[nodiscard]] const LoadedRecipe* shown(const EditSettings& settings) const;
+    // A built-in look was picked: `before` and `after` are the settings around the pick. If a
+    // recipe is loaded, the look takes its line, and the recipe's comes back on undoing the pick.
+    // Nothing changes when no recipe is loaded. A pick that changed no number (the settings
+    // already were that look) still takes the line.
+    void look_picked(const Preset& preset, const EditSettings& before, const EditSettings& after);
 
 private:
     std::optional<LoadedRecipe> loaded_;
+    std::size_t active_ = 0;
 };
+
+// The text of the Look menu's button: a built-in look's name, "Custom", or the recipe line as
+// "Recipe: Warm" when a recipe is loaded and the settings are still it (or it modified) and not
+// a built-in look. `current` is matching_preset for `settings`. A look picked over a recipe reads
+// as just its name, like any look.
+[[nodiscard]] std::string look_button_text(const RecipeTracker& tracker, const Preset* current,
+                                           const EditSettings& settings);
 
 // --- A built-in look as a recipe -------------------------------------------------------------------
 
@@ -118,7 +168,8 @@ inline constexpr std::string_view recipe_name_hint = "Name this look";
 //  - the look of a built-in preset (matching_preset): the preset's name and description;
 //  - otherwise empty, with the hint "Name this look".
 [[nodiscard]] RecipeNameDefault suggest_recipe_name(const LoadedRecipe* loaded, InputKind kind,
-                                                    const EditSettings& current);
+                                                    const EditSettings& current,
+                                                    std::size_t active_depth = 0);
 
 // The file name the save dialog suggests for a recipe named `name`: the name with the characters
 // that are not allowed in file names somewhere (/ \ : * ? " < > | and control characters)

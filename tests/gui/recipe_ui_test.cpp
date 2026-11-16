@@ -317,6 +317,187 @@ TEST(RecipeNameDefault, UndoneBackPastTheLoadCountsAsNoRecipe) {
     EXPECT_EQ(suggest_recipe_name(&loaded, InputKind::raw, history.current()).name, "");
 }
 
+// --- A look picked over a loaded recipe (#35) -----------------------------------------------------
+
+// Picks `preset` the way the window does: one undo step, then the tracker is told.
+void pick_look_into(History& history, RecipeTracker& tracker, const Preset& preset) {
+    history.end_gesture();
+    const EditSettings before = history.current();
+    EditSettings after = before;
+    apply_preset(after, preset);
+    history.set(after);
+    tracker.look_picked(preset, before, history.current());
+}
+
+// "Warm low contrast" loaded, then Vivid picked.
+struct LookOverRecipe {
+    History history{EditSettings{}};
+    RecipeTracker tracker;
+    const Preset& vivid = presets_for(InputKind::raw)[2];
+    LookOverRecipe() {
+        tracker.loaded(load_into(history, complete_recipe(), "w.prism"));
+        pick_look_into(history, tracker, vivid);
+    }
+};
+
+TEST(LookOverRecipe, TheLookTakesTheRecipeLine) {
+    LookOverRecipe f;
+    EXPECT_EQ(f.vivid.name, "Vivid");
+    EXPECT_EQ(f.tracker.line(f.history.current()), "Vivid");
+}
+
+TEST(LookOverRecipe, ChangingItAfterwardsReadsModified) {
+    LookOverRecipe f;
+    EditSettings edited = f.history.current();
+    edited.contrast = 1.3f;
+    f.history.set(edited);
+    EXPECT_EQ(f.tracker.line(f.history.current()), "Vivid (modified)");
+    ASSERT_TRUE(f.history.undo());
+    EXPECT_EQ(f.tracker.line(f.history.current()), "Vivid");
+}
+
+TEST(LookOverRecipe, UndoPastThePickBringsTheRecipeBackAndRedoTheLook) {
+    LookOverRecipe f;
+    ASSERT_TRUE(f.history.undo());
+    EXPECT_EQ(f.tracker.line(f.history.current()), "Warm low contrast");
+    ASSERT_TRUE(f.history.undo());  // past the load itself
+    EXPECT_EQ(f.tracker.line(f.history.current()), std::nullopt);
+    ASSERT_TRUE(f.history.redo());
+    EXPECT_EQ(f.tracker.line(f.history.current()), "Warm low contrast");
+    ASSERT_TRUE(f.history.redo());
+    EXPECT_EQ(f.tracker.line(f.history.current()), "Vivid");
+}
+
+TEST(LookOverRecipe, TheSaveSheetSuggestsTheLooksNameAndDescription) {
+    LookOverRecipe f;
+    const RecipeNameDefault d =
+        suggest_recipe_name(f.tracker.current(), InputKind::raw, f.history.current());
+    EXPECT_EQ(d.name, "Vivid");
+    EXPECT_EQ(d.description, "More colour and contrast, closer to a camera JPEG");
+    // Undone past the pick, it suggests the recipe again.
+    ASSERT_TRUE(f.history.undo());
+    const RecipeNameDefault back =
+        suggest_recipe_name(f.tracker.current(), InputKind::raw, f.history.current());
+    EXPECT_EQ(back.name, "Warm low contrast");
+    EXPECT_EQ(back.description, "Softer contrast and a warm grade");
+}
+
+TEST(LookOverRecipe, TheLineUnderTheMenuDescribesWhatIsShown) {
+    LookOverRecipe f;
+    const LoadedRecipe* shown = f.tracker.shown(f.history.current());
+    ASSERT_NE(shown, nullptr);
+    EXPECT_EQ(stages_line(shown->stages),
+              "Sets only Exposure, Saturation, Contrast and Tone curve; the other stages are "
+              "unchanged.");
+    EXPECT_EQ(shown->description, "More colour and contrast, closer to a camera JPEG");
+    ASSERT_TRUE(f.history.undo());
+    shown = f.tracker.shown(f.history.current());
+    ASSERT_NE(shown, nullptr);
+    EXPECT_EQ(shown->name, "Warm low contrast");
+    ASSERT_TRUE(f.history.undo());
+    EXPECT_EQ(f.tracker.shown(f.history.current()), nullptr);
+}
+
+TEST(LookOverRecipe, SeveralPicksUndoOneByOne) {
+    LookOverRecipe f;
+    pick_look_into(f.history, f.tracker, default_preset(InputKind::raw));
+    EXPECT_EQ(f.tracker.line(f.history.current()), "Natural");
+    ASSERT_TRUE(f.history.undo());
+    EXPECT_EQ(f.tracker.line(f.history.current()), "Vivid");
+    ASSERT_TRUE(f.history.undo());
+    EXPECT_EQ(f.tracker.line(f.history.current()), "Warm low contrast");
+}
+
+TEST(LookOverRecipe, PickingTheLookAlreadyOnChangesNothing) {
+    LookOverRecipe f;
+    const std::size_t before = f.history.generation();
+    pick_look_into(f.history, f.tracker, f.vivid);
+    EXPECT_EQ(f.history.generation(), before);
+    EXPECT_EQ(f.tracker.line(f.history.current()), "Vivid");
+    // Not stacked on itself: the entry under it is still the recipe.
+    ASSERT_NE(f.tracker.current(), nullptr);
+    ASSERT_NE(f.tracker.current()->earlier, nullptr);
+    EXPECT_FALSE(f.tracker.current()->earlier->is_look);
+    ASSERT_TRUE(f.history.undo());
+    EXPECT_EQ(f.tracker.line(f.history.current()), "Warm low contrast");
+}
+
+TEST(LookOverRecipe, SettingsThatAlreadyAreTheLookTakeItsNameWhenItIsPicked) {
+    History history(EditSettings{});
+    RecipeTracker tracker;
+    tracker.loaded(load_into(history, complete_recipe(), "w.prism"));
+    EditSettings by_hand = history.current();
+    apply_preset(by_hand, presets_for(InputKind::raw)[2]);
+    history.set(by_hand);
+    EXPECT_EQ(tracker.line(history.current()), "Warm low contrast (modified)");
+    pick_look_into(history, tracker, presets_for(InputKind::raw)[2]);
+    EXPECT_EQ(tracker.line(history.current()), "Vivid");
+}
+
+TEST(LookOverRecipe, EditingAfterUndoingPastThePickIsAnEditOfTheRecipe) {
+    LookOverRecipe f;
+    ASSERT_TRUE(f.history.undo());
+    f.tracker.observe(f.history.current());
+    EditSettings edited = f.history.current();
+    edited.contrast = 1.3f;
+    f.history.set(edited);
+    f.tracker.observe(f.history.current());
+    EXPECT_EQ(f.tracker.line(f.history.current()), "Warm low contrast (modified)");
+    const RecipeNameDefault d = suggest_recipe_name(f.tracker.current(), InputKind::raw,
+                                                    f.history.current(), f.tracker.active_depth());
+    EXPECT_EQ(d.name, "Warm low contrast (modified)");
+    EXPECT_EQ(d.description, "Softer contrast and a warm grade");
+    EXPECT_EQ(look_button_text(f.tracker, matching_preset(InputKind::raw, f.history.current()),
+                               f.history.current()),
+              "Recipe: Warm low contrast (modified)");
+}
+
+TEST(LookOverRecipe, AModifiedRecipeThenALookUndoesBackToTheModifiedRecipe) {
+    History history(EditSettings{});
+    RecipeTracker tracker;
+    tracker.loaded(load_into(history, complete_recipe(), "w.prism"));
+    EditSettings edited = history.current();
+    edited.contrast = 1.3f;
+    history.set(edited);
+    tracker.observe(history.current());
+    pick_look_into(history, tracker, presets_for(InputKind::raw)[2]);
+    EXPECT_EQ(tracker.line(history.current()), "Vivid");
+    ASSERT_TRUE(history.undo());
+    EXPECT_EQ(tracker.line(history.current()), "Warm low contrast (modified)");
+}
+
+TEST(LookOverRecipe, WithoutALoadedRecipeThereIsNoLine) {
+    History history(EditSettings{});
+    RecipeTracker tracker;
+    pick_look_into(history, tracker, presets_for(InputKind::raw)[2]);
+    EXPECT_EQ(tracker.line(history.current()), std::nullopt);
+    EXPECT_EQ(tracker.current(), nullptr);
+}
+
+TEST(LookOverRecipe, TheMenuButtonReadsTheLooksNameOrTheRecipe) {
+    History history(EditSettings{});
+    RecipeTracker tracker;
+    const auto button = [&] {
+        return look_button_text(tracker, matching_preset(InputKind::raw, history.current()),
+                                history.current());
+    };
+    EXPECT_EQ(button(), "Original");  // no recipe: the settings match the Original look
+    tracker.loaded(load_into(history, complete_recipe(), "w.prism"));
+    EXPECT_EQ(button(), "Recipe: Warm low contrast");
+    pick_look_into(history, tracker, presets_for(InputKind::raw)[2]);
+    EXPECT_EQ(button(), "Vivid");
+    EditSettings edited = history.current();
+    edited.contrast = 1.3f;
+    history.set(edited);
+    EXPECT_EQ(button(), "Recipe: Vivid (modified)");
+    edited.exposure_stops = 0.37f;
+    history.set(edited);
+    EXPECT_EQ(matching_preset(InputKind::raw, history.current()), nullptr);
+    EXPECT_EQ(button(), "Recipe: Vivid (modified)");
+    tracker.photo_opened();
+    EXPECT_EQ(button(), "Custom");
+}
+
 // --- A built-in look as a recipe -------------------------------------------------------------------
 
 TEST(LookRecipeView, ShowsTheEmbeddedFileOfEachLook) {
