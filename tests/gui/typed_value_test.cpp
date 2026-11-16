@@ -1,12 +1,13 @@
 #include <gtest/gtest.h>
 
-#include <clocale>
 #include <cmath>
+#include <cstdio>
 #include <initializer_list>
 #include <limits>
 #include <string>
 #include <string_view>
 
+#include "comma_locale.hpp"
 #include "prism/gui/paper_grade.hpp"
 #include "prism/gui/stage_controls.hpp"
 #include "prism/gui/typed_value.hpp"
@@ -140,18 +141,17 @@ TEST(TypedValue, RejectsEverythingElse) {
 }
 
 TEST(TypedValue, ReadsTheSameUnderAnotherLocale) {
-    const char* const before = std::setlocale(LC_NUMERIC, nullptr);
-    const std::string saved = before != nullptr ? before : "C";
-    // A comma locale, if this machine has one; the parser must not care either way.
-    for (const char* name : {"de_DE.UTF-8", "fr_FR.UTF-8", "de_DE", "German_Germany"}) {
-        if (std::setlocale(LC_NUMERIC, name) != nullptr) {
-            break;
-        }
+    CommaLocale locale;
+    if (!locale.active()) {
+        GTEST_SKIP() << "this machine has no locale with a decimal comma (tried de_DE, fr_FR)";
     }
+    // The locale really changed: printf now writes a comma.
+    char shown[32];
+    std::snprintf(shown, sizeof shown, "%.1f", 1.5);
+    ASSERT_STREQ(shown, "1,5");
     EXPECT_EQ(parsed("1.5"), 1.5f);
     EXPECT_EQ(parsed("1,5"), 1.5f);
     EXPECT_EQ(prism::gui::typed_field_text(EditSettings{}, SimpleControl::colour), "1.00");
-    std::setlocale(LC_NUMERIC, saved.c_str());
 }
 
 TEST(TypedValue, ExposureIsConvertedThroughTheStopsMap) {

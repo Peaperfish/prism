@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 
+#include "c_number.hpp"
 #include "prism/utf8_path.hpp"
 
 namespace prism {
@@ -499,7 +500,7 @@ private:
     }
 
     double parse_number() {
-        // Take the characters a JSON number can contain, then let strtod convert them and check
+        // Take the characters a JSON number can contain, then let c_strtod convert them and check
         // that it used all of them.
         const std::size_t start = pos_;
         while (pos_ < text_.size() &&
@@ -512,7 +513,7 @@ private:
         }
         char* end = nullptr;
         errno = 0;
-        const double value = std::strtod(token.c_str(), &end);
+        const double value = c_strtod(token.c_str(), &end);
         if (end != token.c_str() + token.size() || errno == ERANGE || !std::isfinite(value)) {
             fail("'" + token + "' is not a valid number");
         }

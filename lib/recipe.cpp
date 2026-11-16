@@ -1,5 +1,6 @@
 #include "prism/recipe.hpp"
 
+#include "c_number.hpp"
 #include "prism/atomic_file.hpp"
 #include "prism/utf8_path.hpp"
 #include "prism/white_balance.hpp"
@@ -469,11 +470,8 @@ std::optional<std::string_view> closest(std::string_view word, const Range& cand
 //
 // A number is first checked against TOML's grammar, so that what Prism accepts is exactly what
 // other TOML tools accept (minus inf, nan, hexadecimal, octal and binary), and only then turned
-// into a float, by std::strtof: straight to float, so no double rounding. std::from_chars for
-// float would avoid strtof's dependence on the C locale, but it needs macOS 26 (Prism supports
-// 13.3). Prism's own code never calls setlocale, so strtof reads a dot as the decimal point. (On
-// Linux, SDL's X11 code sets LC_ALL from the environment for a moment while it sets up the
-// keyboard or shows a message box, and then puts it back.)
+// into a float, by c_strtof (c_number.hpp): straight to float, so no double rounding, and always
+// reading a dot as the decimal point, whatever the C locale is at the moment.
 
 // Digits with single underscores between them ("1_000"), from s[i]. Returns the end, or `i` if
 // there is no digit there or an underscore is misplaced.
@@ -534,7 +532,7 @@ std::size_t scan_toml_number(std::string_view s, bool& integer) {
     return i;
 }
 
-// A valid TOML number's text as a float. Underscores are dropped first; strtof reads the rest.
+// A valid TOML number's text as a float. Underscores are dropped first; c_strtof reads the rest.
 std::variant<float, ValueError> to_float(std::string_view token) {
     std::string digits;
     for (const char c : token) {
@@ -544,9 +542,9 @@ std::variant<float, ValueError> to_float(std::string_view token) {
     }
     char* end = nullptr;
     errno = 0;
-    const float value = std::strtof(digits.c_str(), &end);
+    const float value = c_strtof(digits.c_str(), &end);
     if (end != digits.c_str() + digits.size()) {
-        // Only possible if the C locale had another decimal point (see above).
+        // Not reachable: scan_toml_number only lets through text c_strtof reads whole.
         return ValueError{"'" + std::string(token) + "' is not a number"};
     }
     if (std::isinf(value)) {

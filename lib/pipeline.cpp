@@ -12,6 +12,7 @@
 #include <sstream>
 #include <stdexcept>
 
+#include "c_number.hpp"
 #include "prism/ranges.hpp"
 #include "prism/utf8_path.hpp"
 #include "sample_ranges.hpp"
@@ -21,15 +22,15 @@ namespace prism {
 namespace {
 
 // Parses the whole of `text` as a finite number, or returns nothing.
-// std::strtod reports where it stopped, which lets us reject trailing junk like "2.2x".
+// c_strtod reports where it stopped, which lets us reject trailing junk like "2.2x".
 std::optional<float> parse_float(std::string_view text) {
-    const std::string s(text);  // strtod needs a null-terminated string
+    const std::string s(text);  // c_strtod needs a null-terminated string
     if (s.empty()) {
         return std::nullopt;
     }
     char* end = nullptr;
     errno = 0;
-    const double value = std::strtod(s.c_str(), &end);
+    const double value = c_strtod(s.c_str(), &end);
     if (end != s.c_str() + s.size() || errno == ERANGE || !std::isfinite(value)) {
         return std::nullopt;
     }

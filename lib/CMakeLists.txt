@@ -1,5 +1,6 @@
 add_library(prism_core STATIC
   atomic_file.cpp
+  c_number.cpp
   camera_profile.cpp
   color.cpp
   dng_profile.cpp

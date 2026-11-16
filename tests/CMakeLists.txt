@@ -26,6 +26,7 @@ add_executable(prism_tests
   heic_test.cpp
   histogram_test.cpp
   image_test.cpp
+  locale_numbers_test.cpp
   orientation_test.cpp
   parallel_test.cpp
   pipeline_test.cpp
