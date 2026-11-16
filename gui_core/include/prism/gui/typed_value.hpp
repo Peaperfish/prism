@@ -54,7 +54,8 @@ namespace prism::gui {
 // and snapped as a drag is (snap_kelvin, snap_tint); nothing if it is not such a number.
 //   Kelvin: a number above 0 with an optional "K" or "kelvin": "5200", "5200 K", "5200K". Spaces
 //           between the digits are ignored ("5 200"), and so is one "," or "." that groups
-//           thousands, with exactly three digits after it ("5,200").
+//           thousands, with exactly three digits after it ("5,200"). A number under 100 is
+//           thousands of kelvin: "5.2", "5.2k" and "5.2 K" are 5200 K, "15" is 15000 K.
 //   Tint:   a number with an optional sign, "-" or the minus sign U+2212: "10", "+10", "−10".
 [[nodiscard]] std::optional<double> typed_white_balance_value(WhiteBalanceControl control,
                                                               std::string_view text);

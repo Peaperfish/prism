@@ -233,7 +233,9 @@ std::optional<double> typed_white_balance_value(WhiteBalanceControl control,
     if (!kelvin || !(*kelvin > 0.0f)) {
         return std::nullopt;  // no light has a temperature of zero or below
     }
-    return snap_kelvin(*kelvin);
+    // A short number is thousands of kelvin: "5.2" and "5.2k" are 5200 K, "15" is 15000 K.
+    const double thousands = *kelvin < 100.0f ? 1000.0 : 1.0;
+    return snap_kelvin(static_cast<double>(*kelvin) * thousands);
 }
 
 std::string typed_field_text(const WhiteBalance& shown, WhiteBalanceControl control) {

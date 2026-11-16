@@ -298,7 +298,35 @@ TEST(TypedWhiteBalance, KelvinIsClampedToItsRange) {
     EXPECT_EQ(kelvin_typed("1000"), 2000.0);
     EXPECT_EQ(kelvin_typed("20000 K"), 15000.0);
     EXPECT_EQ(kelvin_typed("99999999999"), 15000.0);
-    EXPECT_EQ(kelvin_typed("5.2"), 2000.0);  // a decimal, not thousands
+    EXPECT_EQ(kelvin_typed("100"), 2000.0);  // from 100 up it is kelvin, not thousands
+    EXPECT_EQ(kelvin_typed("1999"), 2000.0);
+    EXPECT_EQ(kelvin_typed("15001"), 15000.0);
+    EXPECT_EQ(kelvin_typed("99.9"), 15000.0);  // 99900 K, clamped
+}
+
+TEST(TypedWhiteBalance, KelvinUnderOneHundredIsThousands) {
+    EXPECT_EQ(kelvin_typed("5.2"), 5200.0);
+    EXPECT_EQ(kelvin_typed("5.20"), 5200.0);
+    EXPECT_EQ(kelvin_typed("15"), 15000.0);
+    EXPECT_EQ(kelvin_typed("5.2k"), 5200.0);
+    EXPECT_EQ(kelvin_typed("5.2 K"), 5200.0);
+    EXPECT_EQ(kelvin_typed("5K"), 5000.0);
+}
+
+TEST(TypedWhiteBalance, KelvinFromTwoThousandIsKelvinWithOrWithoutItsK) {
+    EXPECT_EQ(kelvin_typed("2000"), 2000.0);
+    EXPECT_EQ(kelvin_typed("5200"), 5200.0);
+    EXPECT_EQ(kelvin_typed("5200K"), 5200.0);
+    EXPECT_EQ(kelvin_typed("5200 K"), 5200.0);
+    EXPECT_EQ(kelvin_typed("15000"), 15000.0);
+}
+
+TEST(TypedWhiteBalance, KelvinUnderOneHundredThatIsNotAPositiveNumberIsRefused) {
+    for (const std::string_view text :
+         {"0", "-5.2", "\xE2\x88\x92" "5.2", "-5", "\xE2\x88\x92" "5", "-5200", "\xE2\x88\x92" "5200",
+          "abc", "k", "K", " k "}) {
+        EXPECT_EQ(kelvin_typed(text), std::nullopt) << text;
+    }
 }
 
 TEST(TypedWhiteBalance, KelvinRejectsWhatIsNotATemperature) {
