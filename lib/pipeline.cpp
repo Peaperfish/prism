@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -22,7 +23,8 @@ namespace prism {
 namespace {
 
 // Parses the whole of `text` as a finite number, or returns nothing.
-// c_strtod reports where it stopped, which lets us reject trailing junk like "2.2x".
+// c_strtod reports where it stopped, which lets us reject trailing junk like "2.2x". A value
+// beyond what a float holds is refused too, not cast (which would overflow).
 std::optional<float> parse_float(std::string_view text) {
     const std::string s(text);  // c_strtod needs a null-terminated string
     if (s.empty()) {
@@ -31,7 +33,8 @@ std::optional<float> parse_float(std::string_view text) {
     char* end = nullptr;
     errno = 0;
     const double value = c_strtod(s.c_str(), &end);
-    if (end != s.c_str() + s.size() || errno == ERANGE || !std::isfinite(value)) {
+    if (end != s.c_str() + s.size() || errno == ERANGE || !std::isfinite(value) ||
+        std::fabs(value) > static_cast<double>(std::numeric_limits<float>::max())) {
         return std::nullopt;
     }
     return static_cast<float>(value);

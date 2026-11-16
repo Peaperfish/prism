@@ -77,3 +77,16 @@ TEST(LocaleNumbers, ProfileJsonNumbersReadTheSame) {
     EXPECT_DOUBLE_EQ(p.matrix[0][0], 1.2);
     EXPECT_DOUBLE_EQ(p.matrix[2][1], -0.8);
 }
+
+// The same without a comma locale: a number beyond a float is refused, not cast.
+TEST(LocaleNumbers, ANumberBeyondAFloatIsRefused) {
+    const fs::path path = fs::path(testing::TempDir()) / "prism_huge_matrix.txt";
+    {
+        std::ofstream out(path, std::ios::binary);
+        out << "1e300 0 0\n0 1 0\n0 0 1\n";
+    }
+    EXPECT_THROW((void)prism::load_matrix(path), std::runtime_error);
+    fs::remove(path);
+    EXPECT_THROW((void)prism::parse_curve("gamma:1e39"), std::runtime_error);
+    EXPECT_NO_THROW((void)prism::parse_curve("gamma:1e38"));
+}
