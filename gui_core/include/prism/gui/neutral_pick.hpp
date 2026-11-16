@@ -116,6 +116,15 @@ struct NeutralPick {
 // isn't blown out". Empty for `unavailable`.
 [[nodiscard]] std::string pick_message(const NeutralPick& pick);
 
+// How long the chip stays on screen after a pick, in seconds.
+inline constexpr double pick_chip_seconds = 6.0;
+
+// Whether the chip is still shown at time `now`, given the time `shown_at` of the pick (both in
+// seconds on one clock, passed in so no clock is read here). Shown from the pick up to, not
+// including, pick_chip_seconds later; hidden at exactly that time and after it. A `now` before
+// `shown_at` (a clock that stepped back) hides it, so a stale chip never waits for the clock.
+[[nodiscard]] bool pick_chip_visible(double shown_at, double now) noexcept;
+
 // Chooses the picked light, turning the stage on. Does nothing unless the pick was `picked`.
 void apply_pick(EditSettings& s, const NeutralPick& pick) noexcept;
 

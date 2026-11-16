@@ -488,3 +488,29 @@ TEST(NeutralPickApply, ARejectedPickAddsNoUndoStep) {
     history.set(next);  // what the window does only for a pick, but even then nothing changed
     EXPECT_EQ(history.undo_steps(), before);
 }
+
+// The chip's life (#62): times are literal seconds on one clock; nothing here reads a clock.
+TEST(NeutralPickChip, IsShownTheMomentItAppears) {
+    EXPECT_TRUE(pick_chip_visible(100.0, 100.0));
+    EXPECT_TRUE(pick_chip_visible(0.0, 0.0));
+}
+
+TEST(NeutralPickChip, IsShownThroughTheSixSeconds) {
+    EXPECT_TRUE(pick_chip_visible(100.0, 103.0));
+    EXPECT_TRUE(pick_chip_visible(100.0, 105.5));
+    EXPECT_TRUE(pick_chip_visible(100.0, 105.75));
+}
+
+TEST(NeutralPickChip, IsGoneAtExactlySixSeconds) {
+    EXPECT_FALSE(pick_chip_visible(100.0, 106.0));
+    EXPECT_FALSE(pick_chip_visible(0.0, 6.0));
+}
+
+TEST(NeutralPickChip, StaysGoneAfterSixSeconds) {
+    EXPECT_FALSE(pick_chip_visible(100.0, 106.25));
+    EXPECT_FALSE(pick_chip_visible(100.0, 500.0));
+}
+
+TEST(NeutralPickChip, IsHiddenWhenTheClockIsBeforeThePick) {
+    EXPECT_FALSE(pick_chip_visible(100.0, 99.75));
+}

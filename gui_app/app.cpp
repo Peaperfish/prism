@@ -1234,6 +1234,11 @@ void App::before_frame() {
         style_dirty_ = false;
         panel_text_min_dirty_ = true;
     }
+    // The chip is dropped on the first frame after its time is up (animating() keeps frames coming
+    // until then), so it goes at 6 s, not at the next event or idle wake-up.
+    if (!pick_message_.empty() && !gui::pick_chip_visible(pick_message_at_, ImGui::GetTime())) {
+        pick_message_.clear();
+    }
 }
 
 void App::handle_event(const SDL_Event& event) {
@@ -1330,7 +1335,7 @@ bool App::animating() const {
     const bool detail_busy =
         detail_plan_.chip == gui::PreviewChip::reading || detail_awaited_ != 0 ||
         gui::wheel_gesture_live(static_cast<double>(SDL_GetTicks()), last_wheel_ms_);
-    return quiet_frames_ < settle_frames || preview_.rendering() || pending_open_.has_value() ||
+    return quiet_frames_ < settle_frames || !pick_message_.empty() || preview_.rendering() || pending_open_.has_value() ||
            exporter_.busy() || close_pending_.has_value() || detail_busy;
 }
 
@@ -2567,7 +2572,7 @@ void App::pick_at(gui::ViewPoint cursor) {
         return;
     }
     pick_message_ = gui::pick_message(pick);
-    pick_message_until_ = ImGui::GetTime() + 6.0;
+    pick_message_at_ = ImGui::GetTime();
     if (pick.outcome == gui::PickOutcome::picked) {
         gui::EditSettings edited = session_.settings();
         gui::apply_pick(edited, pick);
@@ -2614,7 +2619,7 @@ void App::draw_pick_overlay(ImDrawList* draw) {
             draw->AddRect(min, max, IM_COL32(255, 255, 255, 255), 0.0f, 0, line);
         }
     }
-    if (pick_message_.empty() || ImGui::GetTime() > pick_message_until_) {
+    if (pick_message_.empty() || !gui::pick_chip_visible(pick_message_at_, ImGui::GetTime())) {
         return;
     }
     const gui::TokenMetrics& metrics = token_metrics();

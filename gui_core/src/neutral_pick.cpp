@@ -183,6 +183,11 @@ std::string pick_message(const NeutralPick& pick) {
     return {};
 }
 
+bool pick_chip_visible(double shown_at, double now) noexcept {
+    const double elapsed = now - shown_at;
+    return elapsed >= 0.0 && elapsed < pick_chip_seconds;
+}
+
 void apply_pick(EditSettings& s, const NeutralPick& pick) noexcept {
     if (pick.outcome != PickOutcome::picked) {
         return;

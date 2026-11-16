@@ -439,7 +439,7 @@ private:
     // zoom (#37).
     std::optional<gui::PickFootprint> pick_hover_;
     std::string pick_message_;                  // the chip: what the last pick did, or why not
-    double pick_message_until_ = 0.0;           // ImGui::GetTime() at which the chip goes
+    double pick_message_at_ = 0.0;              // ImGui::GetTime() when the chip appeared
     std::optional<gui::SamplePin> sample_hover_;  // the pixel under the cursor this frame
     gui::SampleCache sample_pin_trace_;
     gui::SampleCache sample_hover_trace_;
