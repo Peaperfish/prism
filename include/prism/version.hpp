@@ -4,7 +4,7 @@
 
 namespace prism {
 
-// Returns the Prism version string, e.g. "0.7.0".
+// Returns the Prism version string, e.g. "0.7.1".
 [[nodiscard]] std::string_view version() noexcept;
 
 }  // namespace prism
