@@ -234,6 +234,7 @@ namespace {
 using prism::gui::dragged_panel_pixels;
 using prism::gui::splitter_grab;
 using prism::gui::splitter_grab_hit;
+using prism::gui::splitter_grab_offset;
 using prism::gui::SplitterGrab;
 
 constexpr float edge_x = 1000.0f;
@@ -273,11 +274,36 @@ TEST(HeadlessSplitterGrab, APressDoesNotMoveThePanelAndADragFollowsTheMouse) {
     for (const float scale : {1.0f, 1.5f, 2.0f}) {
         for (const int points : {320, 360, 421}) {
             const float pixels = static_cast<float>(points) * scale;
-            const float pressed = dragged_panel_pixels(pixels, 0.0f);
+            const float offset = splitter_grab_offset(edge_x, edge_x + 3.0f);
+            const float pressed = dragged_panel_pixels(pixels, edge_x, edge_x + 3.0f, offset);
             EXPECT_FLOAT_EQ(pressed, pixels);
             EXPECT_EQ(panel_points_from_pixels(pressed, scale), points);
         }
     }
-    EXPECT_FLOAT_EQ(dragged_panel_pixels(400.0f, -30.0f), 430.0f);  // left widens the panel
-    EXPECT_FLOAT_EQ(dragged_panel_pixels(400.0f, 30.0f), 370.0f);
+    EXPECT_FLOAT_EQ(splitter_grab_offset(1000.0f, 1003.0f), 3.0f);
+    EXPECT_FLOAT_EQ(splitter_grab_offset(1000.0f, 996.0f), -4.0f);
+    // The mouse 30 left of where it took hold: the panel is 30 wider.
+    EXPECT_FLOAT_EQ(dragged_panel_pixels(400.0f, 1000.0f, 973.0f, 3.0f), 430.0f);
+    EXPECT_FLOAT_EQ(dragged_panel_pixels(400.0f, 1000.0f, 1033.0f, 3.0f), 370.0f);
+}
+
+TEST(HeadlessSplitterGrab, TheEdgeIsBackUnderTheMouseAfterTheWidthHitsItsMinimum) {
+    // The panel's right end is at 1400 and it stops at 300 wide, so its edge stops at 1100. The
+    // mouse takes hold of the edge at 1000 (panel 400 wide), goes right past the stop, and comes back.
+    const float right = 1400.0f;
+    const float offset = splitter_grab_offset(1000.0f, 1000.0f);
+    float panel = 400.0f;
+    const auto frame = [&](float mouse_x) {
+        panel = std::max(300.0f, dragged_panel_pixels(panel, right - panel, mouse_x, offset));
+    };
+    frame(1050.0f);
+    EXPECT_FLOAT_EQ(panel, 350.0f);
+    frame(1200.0f);  // 100 further than the stop allows
+    EXPECT_FLOAT_EQ(panel, 300.0f);
+    frame(1150.0f);  // still right of the edge at 1100: nothing to give
+    EXPECT_FLOAT_EQ(panel, 300.0f);
+    frame(1100.0f);  // back on the edge: the edge is under the mouse
+    EXPECT_FLOAT_EQ(panel, 300.0f);
+    frame(1080.0f);  // 20 left of it: 20 wider
+    EXPECT_FLOAT_EQ(panel, 320.0f);
 }

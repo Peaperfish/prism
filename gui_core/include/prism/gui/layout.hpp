@@ -52,9 +52,16 @@ struct SplitterGrab {
 // Whether a mouse at `mouse_x` is over the grab area: its left side counts, its right side not.
 [[nodiscard]] bool splitter_grab_hit(const SplitterGrab& grab, float mouse_x);
 
-// The panel's width in pixels while the grab area is dragged: `panel_pixels` is what it is now and
-// `mouse_dx` how far the mouse moved since the last frame, so a press (no movement) changes nothing.
-[[nodiscard]] float dragged_panel_pixels(float panel_pixels, float mouse_dx);
+// How far right of the panel's edge the mouse was when the grab area was pressed (negative: left of
+// it). The edge keeps that distance from the mouse for the whole drag.
+[[nodiscard]] float splitter_grab_offset(float edge_x, float mouse_x);
+
+// The panel's width in pixels while the grab area is dragged: `panel_pixels` is what it is now,
+// `edge_x` where its edge is now and `mouse_x` where the mouse is, with `grab_offset` from the
+// press. The edge goes to the mouse, so a press changes nothing, and after the width has stopped
+// at its smallest or largest the edge is not moved until the mouse is back where the edge is.
+[[nodiscard]] float dragged_panel_pixels(float panel_pixels, float edge_x, float mouse_x,
+                                         float grab_offset);
 
 // --- Comparing two stages in a split ---------------------------------------------------------------
 

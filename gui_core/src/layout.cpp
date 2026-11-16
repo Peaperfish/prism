@@ -49,8 +49,12 @@ bool splitter_grab_hit(const SplitterGrab& grab, float mouse_x) {
     return mouse_x >= grab.x && mouse_x < grab.x + grab.width;
 }
 
-float dragged_panel_pixels(float panel_pixels, float mouse_dx) {
-    return panel_pixels - mouse_dx;
+float splitter_grab_offset(float edge_x, float mouse_x) {
+    return mouse_x - edge_x;
+}
+
+float dragged_panel_pixels(float panel_pixels, float edge_x, float mouse_x, float grab_offset) {
+    return panel_pixels + (edge_x - (mouse_x - grab_offset));
 }
 
 std::string ellipsize_middle(std::string_view text, float max_width,

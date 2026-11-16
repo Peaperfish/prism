@@ -3645,11 +3645,16 @@ void App::draw_splitter(float canvas_width, float width, float height, float ava
         if ((ImGui::IsItemHovered() && hit) || ImGui::IsItemActive()) {
             ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
         }
+        if (ImGui::IsItemActivated()) {
+            splitter_grab_offset_ = gui::splitter_grab_offset(origin.x + width, ImGui::GetIO().MousePos.x);
+        }
         if (ImGui::IsItemActive()) {
-            // Relative to the panel as it is: a press moves nothing, and panel_width_pixels clamps
-            // the width next frame.
+            // The edge goes to the mouse, not by how far the mouse moved: a press moves nothing,
+            // and what panel_width_pixels clamps away is not owed back.
             const float current = available - canvas_width - width;
-            const float panel = gui::dragged_panel_pixels(current, ImGui::GetIO().MouseDelta.x);
+            const float panel = gui::dragged_panel_pixels(current, origin.x + width,
+                                                          ImGui::GetIO().MousePos.x,
+                                                          splitter_grab_offset_);
             prefs_.panel_width = gui::widen_panel_width(
                 gui::panel_points_from_pixels(panel, ui_scale()), ui_scale(), panel_text_min_);
         }
