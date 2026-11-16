@@ -1713,7 +1713,7 @@ TEST_F(MinimumWidthHeadless, EveryWorstCaseTextIsDrawnInFullAtTheMinimumWidth) {
         EXPECT_TRUE(seen("Value", "+10.00 stops when on")) << scale;
         EXPECT_TRUE(seen("Beyond the slider", std::string(gui::light_path_text::beyond_slider))) << scale;
         EXPECT_TRUE(seen("Value", "Softer than grade 0 \xC2\xB7 \xC3\x97" "0.60")) << scale;
-        EXPECT_TRUE(seen("Value", "Harder than grade 5 \xC2\xB7 \xC3\x97" "2.40 when on")) << scale;
+        EXPECT_TRUE(seen("Value", "Harder than grade 5 when on")) << scale;
         EXPECT_TRUE(seen_starting("Value", "Grade 2")) << scale;  // between two grades
         EXPECT_TRUE(seen("Value", "As shot")) << scale;
         EXPECT_TRUE(seen("Value", "Chosen when on")) << scale;

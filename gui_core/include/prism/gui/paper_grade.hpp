@@ -56,6 +56,10 @@ void apply_contrast(EditSettings& s, float contrast);
 // whole or half grade reads as that one.
 [[nodiscard]] std::string format_paper_grade(float contrast);
 
+// The same line without the multiplier: "Grade 3", "Grade 3½", "Softer than grade 0". The Contrast
+// row shows this, followed by "when on", while the stage is off.
+[[nodiscard]] std::string format_paper_grade_name(float contrast);
+
 // Just the grade part of that line, "3", "3½", "2.7", for the typed field to hold.
 [[nodiscard]] std::string grade_number_text(float grade);
 

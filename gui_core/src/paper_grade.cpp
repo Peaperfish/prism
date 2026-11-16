@@ -96,7 +96,7 @@ std::string grade_number_text(float grade) {
     return one_place(grade);
 }
 
-std::string format_paper_grade(float contrast) {
+std::string format_paper_grade_name(float contrast) {
     const GradeReading reading = grade_for_contrast(contrast);
     std::string line;
     switch (reading.end) {
@@ -108,7 +108,11 @@ std::string format_paper_grade(float contrast) {
             break;
         case GradeEnd::within: line = "Grade " + grade_number_text(reading.grade); break;
     }
-    return line + " · " + format_multiplier(contrast);
+    return line;
+}
+
+std::string format_paper_grade(float contrast) {
+    return format_paper_grade_name(contrast) + " · " + format_multiplier(contrast);
 }
 
 }  // namespace prism::gui

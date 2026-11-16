@@ -239,7 +239,11 @@ LightPathRow light_path_row(const LightPathInputs& in, StageId stage) {
             set_stage_enabled(stored, stage, true);
             row.value = stage_value_text(stored, stage);
             if (!row.enabled) {
-                row.value += " when on";
+                // Contrast says which grade comes back, without its multiplier.
+                row.value = (control == SimpleControl::contrast
+                                 ? format_paper_grade_name(stored.contrast)
+                                 : row.value) +
+                            " when on";
                 row.value_muted = true;
             }
             row.test_strip = stage == StageId::exposure;

@@ -278,7 +278,36 @@ TEST(PaperGradeRow, PastTheGradesIsBeyondTheSlider) {
     row = row_for(prism::gui::StageId::contrast, s);
     EXPECT_FALSE(row.beyond_slider);
     EXPECT_EQ(row.slider_position, 4.0f);
-    EXPECT_EQ(row.value, "Harder than grade 5 \xC2\xB7 \xC3\x97" "2.00 when on");
+    EXPECT_EQ(row.value, "Harder than grade 5 when on");
+}
+
+TEST(PaperGradeRow, WhenOffTheValueNamesTheGradeWithoutItsMultiplier) {
+    prism::gui::EditSettings s;
+    s.contrast_on = false;
+    s.contrast = prism::gui::contrast_for_grade(3.0f);
+    EXPECT_EQ(row_for(prism::gui::StageId::contrast, s).value, "Grade 3 when on");
+    s.contrast = prism::gui::contrast_for_grade(3.5f);
+    EXPECT_EQ(row_for(prism::gui::StageId::contrast, s).value, "Grade 3\xC2\xBD when on");
+    s.contrast = 0.6f;
+    EXPECT_EQ(row_for(prism::gui::StageId::contrast, s).value, "Softer than grade 0 when on");
+    s.contrast = 2.0f;
+    EXPECT_EQ(row_for(prism::gui::StageId::contrast, s).value, "Harder than grade 5 when on");
+}
+
+TEST(PaperGradeRow, WhenOnTheValueStillHasItsMultiplier) {
+    prism::gui::EditSettings s;
+    s.contrast = 1.0f;
+    EXPECT_EQ(row_for(prism::gui::StageId::contrast, s).value, "Grade 2 \xC2\xB7 \xC3\x97" "1.00");
+}
+
+TEST(PaperGradeRow, ExposureAndSaturationWhenOffKeepTheirValueAndWhenOn) {
+    prism::gui::EditSettings s;
+    s.exposure_stops = 1.0f;
+    s.exposure_on = false;
+    s.saturation = 0.5f;
+    s.saturation_on = false;
+    EXPECT_EQ(row_for(prism::gui::StageId::exposure, s).value, "+1.00 stops when on");
+    EXPECT_EQ(row_for(prism::gui::StageId::saturation, s).value, "\xC3\x97" "0.50 when on");
 }
 
 TEST(PaperGradeRow, ExposureAndSaturationKeepTheirSliders) {
