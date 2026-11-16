@@ -1575,6 +1575,9 @@ void App::handle_shortcuts() {
     framing_keys.text_editing = ImGui::GetIO().WantTextInput;
     framing_keys.stroking = brush_gesture_.stroking();
     framing_keys.popup_open = popup_open_last_frame_;
+    // io.NavVisible: a control holds the navigation focus and its highlight is showing. ImGui hides
+    // the highlight on a mouse click and shows it on Tab or an arrow key.
+    framing_keys.nav_focus_visible = ImGui::GetIO().NavVisible;
     const auto act_on_framing_key = [this](gui::FramingKeyAction action) {
         switch (action) {
             case gui::FramingKeyAction::begin_framing:

@@ -809,6 +809,9 @@ FramingKeyAction framing_key(FramingKey key, const FramingKeyContext& c) noexcep
             }
             return c.has_file ? FramingKeyAction::begin_framing : FramingKeyAction::none;
         case FramingKey::return_key:
+            if (c.nav_focus_visible) {
+                return FramingKeyAction::none;  // the focused control takes it
+            }
             return c.framing ? FramingKeyAction::leave_framing : FramingKeyAction::none;
         case FramingKey::escape:
             return c.framing && c.gesture ? FramingKeyAction::cancel_gesture

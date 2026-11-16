@@ -315,12 +315,16 @@ struct FramingKeyContext {
     bool text_editing = false;  // a text field has the keyboard
     bool stroking = false;      // a brush stroke is under way
     bool popup_open = false;    // a menu or a list (the aspect menu) is open: its keys are its own
+    // A control has the keyboard-navigation focus and its highlight is showing (the user got there
+    // with Tab or an arrow key, and has not clicked since). Return is then that control's.
+    bool nav_focus_visible = false;
 };
 
 // What `key` does: nothing behind a modal sheet (Return keeps its meaning there), while a text
 // field has the keyboard, during a brush stroke, or while a menu or list is open (Return picks in
-// it, Esc closes it). C enters framing with a photo open and leaves
-// it when on; Return leaves; Esc cancels a framing gesture under way (Esc otherwise goes to
+// it, Esc closes it). C enters framing with a photo open and leaves it when on. Return leaves,
+// unless a control's keyboard focus highlight is showing (Return then operates that control and
+// framing stays on). Esc cancels a framing gesture under way (Esc otherwise goes to
 // escape_action, where leaving framing comes first); X turns the aspect while framing.
 [[nodiscard]] FramingKeyAction framing_key(FramingKey key, const FramingKeyContext& c) noexcept;
 

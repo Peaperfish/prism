@@ -638,6 +638,46 @@ TEST(FramingKeys, KeysActOnlyWhenNothingElseHasThem) {
               prism::gui::CanvasTools{});
 }
 
+TEST(FramingKeys, ReturnLeavesFramingWhenNoFocusHighlightIsShowing) {
+    using prism::gui::FramingKey;
+    using prism::gui::FramingKeyAction;
+    prism::gui::FramingKeyContext c;
+    c.has_file = true;
+    c.framing = true;
+    // No control has the focus, or one has it but a mouse click hid its highlight: the same here.
+    c.nav_focus_visible = false;
+    EXPECT_EQ(prism::gui::framing_key(FramingKey::return_key, c), FramingKeyAction::leave_framing);
+}
+
+TEST(FramingKeys, ReturnGoesToTheFocusedControlWhileItsHighlightShows) {
+    using prism::gui::FramingKey;
+    using prism::gui::FramingKeyAction;
+    prism::gui::FramingKeyContext c;
+    c.has_file = true;
+    c.framing = true;
+    c.nav_focus_visible = true;
+    EXPECT_EQ(prism::gui::framing_key(FramingKey::return_key, c), FramingKeyAction::none);
+    c.framing = false;  // and with framing off it was nothing already
+    EXPECT_EQ(prism::gui::framing_key(FramingKey::return_key, c), FramingKeyAction::none);
+}
+
+TEST(FramingKeys, EscapeCAndXAreTheSameWithOrWithoutTheFocusHighlight) {
+    using prism::gui::FramingKey;
+    using prism::gui::FramingKeyAction;
+    for (const bool visible : {false, true}) {
+        prism::gui::FramingKeyContext c;
+        c.has_file = true;
+        c.framing = true;
+        c.nav_focus_visible = visible;
+        EXPECT_EQ(prism::gui::framing_key(FramingKey::escape, c), FramingKeyAction::none);
+        EXPECT_EQ(prism::gui::framing_key(FramingKey::c, c), FramingKeyAction::leave_framing);
+        EXPECT_EQ(prism::gui::framing_key(FramingKey::x, c), FramingKeyAction::turn_aspect);
+        c.gesture = true;
+        EXPECT_EQ(prism::gui::framing_key(FramingKey::escape, c),
+                  FramingKeyAction::cancel_gesture);
+    }
+}
+
 TEST(FramingGuides, ThirdsWhileDraggingAndAFinerGridWhileTurning) {
     using prism::gui::FramingGesture;
     using prism::gui::FramingGuides;
