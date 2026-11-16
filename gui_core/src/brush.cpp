@@ -234,6 +234,16 @@ MaybeError StrokePainter::apply(const BrushAction& action, const BrushStyle& sty
     return std::nullopt;
 }
 
+bool file_shortcut_acts(FileShortcut shortcut, bool stroking) noexcept {
+    switch (shortcut) {
+        case FileShortcut::open_photo:
+        case FileShortcut::open_recipe:
+        case FileShortcut::export_photo:
+            return !stroking;
+    }
+    return false;
+}
+
 bool brush_key(BrushMode& brush, BrushKey key, bool shift) noexcept {
     if (!brush.on()) {
         return false;

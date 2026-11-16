@@ -183,6 +183,17 @@ enum class BrushKey {
 // changed (not at the end of a range).
 bool brush_key(BrushMode& brush, BrushKey key, bool shift) noexcept;
 
+// The shortcuts that open a photograph or a recipe and that export.
+enum class FileShortcut {
+    open_photo,    // Cmd/Ctrl+O
+    open_recipe,   // Cmd/Ctrl+Shift+O
+    export_photo,  // Cmd/Ctrl+E (and Cmd/Ctrl+S)
+};
+
+// Whether `shortcut` acts now. Not while a brush stroke is in progress: opening would swap the
+// photograph under the stroke and exporting would write the picture without it.
+[[nodiscard]] bool file_shortcut_acts(FileShortcut shortcut, bool stroking) noexcept;
+
 // The two halves of the canvas's tone chip, which X also switches between.
 inline constexpr std::string_view brush_dodge_label = "Dodge (lighter)";
 inline constexpr std::string_view brush_burn_label = "Burn (darker)";

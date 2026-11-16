@@ -862,5 +862,17 @@ TEST(StrokePainter, ACancelWithTheSwitchOnLeavesItOn) {
     EXPECT_EQ(session.history().undo_steps(), 0u);
 }
 
+TEST(FileShortcuts, ActWhenNoStrokeIsUnderWay) {
+    EXPECT_TRUE(file_shortcut_acts(FileShortcut::open_photo, false));
+    EXPECT_TRUE(file_shortcut_acts(FileShortcut::open_recipe, false));
+    EXPECT_TRUE(file_shortcut_acts(FileShortcut::export_photo, false));
+}
+
+TEST(FileShortcuts, DoNothingDuringABrushStroke) {
+    EXPECT_FALSE(file_shortcut_acts(FileShortcut::open_photo, true));
+    EXPECT_FALSE(file_shortcut_acts(FileShortcut::open_recipe, true));
+    EXPECT_FALSE(file_shortcut_acts(FileShortcut::export_photo, true));
+}
+
 }  // namespace
 }  // namespace prism::gui

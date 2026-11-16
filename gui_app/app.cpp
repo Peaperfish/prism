@@ -1513,7 +1513,9 @@ void App::handle_shortcuts() {
     }
     // RouteGlobal: they work wherever the focus is, unless a focused widget (e.g. a text field)
     // claims the same keys.
-    if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_O, ImGuiInputFlags_RouteGlobal)) {
+    const bool stroking = brush_gesture_.stroking();
+    if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_O, ImGuiInputFlags_RouteGlobal) &&
+        gui::file_shortcut_acts(gui::FileShortcut::open_photo, stroking)) {
         show_open_dialog();
     }
     // On macOS the app menu's item takes Cmd+, itself when it is connected.
@@ -1545,11 +1547,16 @@ void App::handle_shortcuts() {
         quit.type = SDL_EVENT_QUIT;
         SDL_PushEvent(&quit);
     }
-    if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_E, ImGuiInputFlags_RouteGlobal) ||
-        ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S, ImGuiInputFlags_RouteGlobal)) {
+    // Both are read every frame (no short-circuit) so a press mid-stroke is used up, not saved for
+    // when the stroke ends.
+    const bool export_pressed = ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_E, ImGuiInputFlags_RouteGlobal);
+    const bool export_pressed_s = ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S, ImGuiInputFlags_RouteGlobal);
+    if ((export_pressed || export_pressed_s) &&
+        gui::file_shortcut_acts(gui::FileShortcut::export_photo, stroking)) {
         begin_export();
     }
-    if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_O, ImGuiInputFlags_RouteGlobal)) {
+    if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_O, ImGuiInputFlags_RouteGlobal) &&
+        gui::file_shortcut_acts(gui::FileShortcut::open_recipe, stroking)) {
         show_recipe_load_dialog();
     }
     if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S, ImGuiInputFlags_RouteGlobal)) {
