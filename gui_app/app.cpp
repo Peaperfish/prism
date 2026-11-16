@@ -1335,8 +1335,8 @@ bool App::animating() const {
     const bool detail_busy =
         detail_plan_.chip == gui::PreviewChip::reading || detail_awaited_ != 0 ||
         gui::wheel_gesture_live(static_cast<double>(SDL_GetTicks()), last_wheel_ms_);
-    return quiet_frames_ < settle_frames || !pick_message_.empty() || preview_.rendering() || pending_open_.has_value() ||
-           exporter_.busy() || close_pending_.has_value() || detail_busy;
+    return quiet_frames_ < settle_frames || !pick_message_.empty() || preview_.rendering() ||
+           pending_open_.has_value() || exporter_.busy() || close_pending_.has_value() || detail_busy;
 }
 
 void App::frame() {

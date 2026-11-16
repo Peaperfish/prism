@@ -321,7 +321,7 @@ TEST(TypedWhiteBalance, KelvinFromTwoThousandIsKelvinWithOrWithoutItsK) {
     EXPECT_EQ(kelvin_typed("15000"), 15000.0);
 }
 
-TEST(TypedWhiteBalance, KelvinUnderOneHundredThatIsNotAPositiveNumberIsRefused) {
+TEST(TypedWhiteBalance, KelvinThatIsNotAPositiveNumberIsRefused) {
     for (const std::string_view text :
          {"0", "-5.2", "\xE2\x88\x92" "5.2", "-5", "\xE2\x88\x92" "5", "-5200", "\xE2\x88\x92" "5200",
           "abc", "k", "K", " k "}) {
