@@ -181,14 +181,14 @@ Only the display is new. What Prism stores, and what the engine uses, is still t
 | Exposure | `1.5`, `+1.5` or `1.5 stops` | +1.50 stops |
 | Exposure | `-0.5`, `−0.5` (with a true minus sign) or `-0.5 stops` | −0.50 stops |
 | Exposure | `1 stop` | +1.00 stops |
-| White balance, Kelvin | `5200`, `5200 K`, `5200K` or `5 200` | 5200 K (to the nearest 10 K) |
+| White balance, Kelvin | `5200`, `5200 K`, `5200K`, `5 200`, `5.2`, `5.2k` or `5,2` | 5200 K (to the nearest 10 K) |
 | White balance, Tint | `10`, `+10`, `-10` or `−10` | tint +10, or −10 |
 | Saturation | `1.2`, `1.2×` or `1.2x` | ×1.20 |
 | Saturation | `0` | black and white |
 | Contrast | `3`, `3.5`, `3,5`, `3½` or `grade 3` | grade 3, 3½ (a number outside 0 to 5 stops at the end) |
 | Contrast | `×1.2`, `1.2x` or `1.2×` | the multiplier ×1.20 |
 
-A comma works as the decimal mark (`1,5`). The word is `stops` or `stop`, in any case, and the minus can be a hyphen or a true minus sign (−). Enter confirms, Esc cancels, and a value past the slider's end stops at the end. Text that isn't a number in the row's unit leaves the value as it was. The field opens with the current value, for example `+0.70 stops`, `1.20` or, for Contrast, `3½`. The Tone curve's own slider does not take typed values.
+A number under 100 is thousands of kelvin: `5.2` is 5200 K and `15` is 15000 K. A comma works as the decimal mark (`1,5`). The word is `stops` or `stop`, in any case, and the minus can be a hyphen or a true minus sign (−). Enter confirms, Esc cancels, and a value past the slider's end stops at the end. Text that isn't a number in the row's unit leaves the value as it was. The field opens with the current value, for example `+0.70 stops`, `1.20` or, for Contrast, `3½`. The Tone curve's own slider does not take typed values.
 
 **Resetting.** Right-click a slider for **Reset to** its default (`+0.00 stops`, `As shot`, `×1.00`, `Grade 2 · ×1.00`). Right-click a Tone curve tab for **Reset to None**. The curve's own slider has a **Reset to** menu as well.
 
