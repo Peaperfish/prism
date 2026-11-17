@@ -607,6 +607,10 @@ Camera profiles work the same way: `PRISM_TEST_DCP` and `PRISM_TEST_DNG` point a
 PRISM_TEST_DCP=~/profiles/camera.dcp PRISM_TEST_DNG=~/Pictures/photo.dng ctest --test-dir build -R RealFile
 ```
 
+### Golden SDR tests
+
+The golden tests (`GoldenSdr.*`, `Looks/GoldenSdrImage.*` and, in `prism_gui_core_tests`, `GoldenExport.*` and `Looks/GoldenExportImage.*`) hold the SDR output to 0.7.1's: the sample photo under each built-in look at a long side of 256 px, through the engine, the `prism` command line and the app's export, as PNG and JPEG, compared as decoded 8-bit pixels with the references in `tests/data/golden/`. Built for Apple arm64 they must match exactly; elsewhere within a level (PNG) or the JPEG's own tolerance. The RAW looks run only when `PRISM_TEST_RAW` is the very file the references were made from (its SHA-256 is in `tests/data/golden/raw/source.sha256`) and are skipped otherwise, as in CI. A failure means the output changed: regenerate the references with `tools/make_sdr_goldens.sh` only when that change is intended (see `tests/data/golden/README.md`).
+
 ### Code formatting
 
 The C++ style is described in `.clang-format`. Format the files you changed with `clang-format -i <files>`, or the whole tree (Prism's own code only; `third_party/` stays unmodified) with:
