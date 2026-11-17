@@ -3,6 +3,7 @@
 #include <SDL3/SDL.h>
 
 #include <cstdint>
+#include <span>
 #include <vector>
 
 #include "prism/gui/detail_renderer.hpp"
@@ -55,11 +56,12 @@ public:
     // The stage the compare picture shows.
     [[nodiscard]] gui::StageId compare_stage() const noexcept { return compare_stage_; }
 
-    // The HDR canvas's picture (#106): the frame's hdr_rgba as an RGBA64_FLOAT texture in linear
-    // light (SDL_COLORSPACE_SRGB_LINEAR, its headroom left unset so SDL never tone-maps it),
-    // drawn under the UI with SDL calls. A frame without one drops it. False (with
-    // SDL_GetError() set) if SDL couldn't.
-    bool upload_hdr(const gui::PreviewFrame& frame);
+    // The HDR canvas's picture (#106): RGBA halves, width x height (a frame's hdr_rgba, or
+    // gui::hdr_with_overlays of it), as an RGBA64_FLOAT texture in linear light
+    // (SDL_COLORSPACE_SRGB_LINEAR, its headroom left unset so SDL never tone-maps it), drawn under
+    // the UI with SDL calls. Empty `rgba` drops it. False (with SDL_GetError() set) if SDL
+    // couldn't, or if `rgba` doesn't match width x height.
+    bool upload_hdr(std::span<const std::uint16_t> rgba, int width, int height);
     void reset_hdr();
     [[nodiscard]] SDL_Texture* hdr_texture() const noexcept { return hdr_; }
 

@@ -22,6 +22,10 @@ bool hdr_canvas_on(DisplayMode mode, const EditSettings& s, StageId viewed, bool
            display_headroom > 1.0f;  // false for NaN
 }
 
+bool sdr_only_view(const CanvasViews& views) noexcept {
+    return views.real_pixels || views.split || views.easel;
+}
+
 float canvas_weight(float display_headroom, float headroom_stops) noexcept {
     GainMapMetadata m;
     m.hdr_capacity_min = 0.0f;
@@ -146,6 +150,67 @@ void into_picture(const float picture[3], const float sdr[3], const LinearRgba& 
         out[c] = srgb_to_linear(linear_to_srgb(colour[c]) * a +
                                 linear_to_srgb(std::clamp(sdr[c], 0.0f, 1.0f)) * (1.0f - a));
     }
+}
+
+LinearRgba linear_rgba_from_abgr(std::uint32_t abgr) noexcept {
+    return {srgb8_to_linear(static_cast<std::uint8_t>(abgr & 0xffu)),
+            srgb8_to_linear(static_cast<std::uint8_t>((abgr >> 8) & 0xffu)),
+            srgb8_to_linear(static_cast<std::uint8_t>((abgr >> 16) & 0xffu)),
+            static_cast<float>((abgr >> 24) & 0xffu) / 255.0f};
+}
+
+std::vector<std::uint16_t> hdr_with_overlays(std::span<const std::uint16_t> hdr_rgba,
+                                             std::span<const std::uint8_t> sdr_rgb8, int width,
+                                             int height,
+                                             std::span<const std::span<const std::uint32_t>> layers,
+                                             int threads) {
+    const std::size_t across = static_cast<std::size_t>(std::max(width, 0));
+    const std::size_t pixels = across * static_cast<std::size_t>(std::max(height, 0));
+    if (pixels == 0 || hdr_rgba.size() != pixels * 4 || sdr_rgb8.size() != pixels * 3) {
+        return {};
+    }
+    std::vector<std::span<const std::uint32_t>> used;
+    for (const std::span<const std::uint32_t> layer : layers) {
+        if (layer.size() == pixels) {
+            used.push_back(layer);
+        }
+    }
+    std::vector<std::uint16_t> out(hdr_rgba.begin(), hdr_rgba.end());
+    if (used.empty()) {
+        return out;
+    }
+    parallel_for_rows(height, threads_for_pixels(pixels, threads), [&](int begin, int end) {
+        for (std::size_t i = static_cast<std::size_t>(begin) * across;
+             i < static_cast<std::size_t>(end) * across; ++i) {
+            bool covered = false;
+            float picture[3];
+            float sdr[3];
+            for (const std::span<const std::uint32_t> layer : used) {
+                if ((layer[i] >> 24) == 0) {
+                    continue;
+                }
+                if (!covered) {
+                    for (int c = 0; c < 3; ++c) {
+                        picture[c] = float_from_half(hdr_rgba[i * 4 + c]);
+                        sdr[c] = srgb8_to_linear(sdr_rgb8[i * 3 + c]);
+                    }
+                    covered = true;
+                }
+                float blended[3];
+                into_picture(picture, sdr, linear_rgba_from_abgr(layer[i]), blended);
+                for (int c = 0; c < 3; ++c) {
+                    picture[c] = blended[c];
+                    sdr[c] = blended[c];
+                }
+            }
+            if (covered) {
+                for (int c = 0; c < 3; ++c) {
+                    out[i * 4 + c] = half_from_float(picture[c]);
+                }
+            }
+        }
+    });
+    return out;
 }
 
 void ui_over_canvas(const float canvas[3], const std::uint8_t ui_premultiplied[4],

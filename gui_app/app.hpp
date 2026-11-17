@@ -291,6 +291,11 @@ private:
     void toggle_clip_overlay();
     void update_clip_overlay_texture();
     void update_stroke_overlay_texture();
+    // Makes the HDR texture from the kept HDR picture, with the J overlay and the strokes drawn
+    // into it while they show (#106), when the frame, the overlays or the theme changed. False if
+    // there is no HDR picture or SDL couldn't (then the canvas shows the SDR picture).
+    bool update_hdr_texture();
+    void drop_hdr_picture();
     // The overlays over the viewed picture, where it is drawn from `min` to `max` with texture
     // coordinates `uv0` to `uv1`: the clipping overlay (J) and the stroke mask (hold M), the same
     // way for both.
@@ -387,6 +392,21 @@ private:
     };
     UnderUi under_ui_;
     bool hdr_canvas_shown_ = false;  // the last frame showed the HDR picture
+    // The frame's HDR picture and its 8-bit SDR picture, kept to draw the J overlay and the strokes
+    // into it (gui::hdr_with_overlays), and what the HDR texture was last made from.
+    std::vector<std::uint16_t> hdr_rgba_;
+    std::vector<std::uint8_t> hdr_sdr_rgb8_;
+    int hdr_width_ = 0;
+    int hdr_height_ = 0;
+    std::uint64_t hdr_frame_serial_ = 0;  // counts frames with an HDR picture
+    struct HdrTextureKey {
+        std::uint64_t frame = 0;
+        bool clip_overlay = false;
+        bool stroke_overlay = false;
+        gui::Theme theme{};
+        bool operator==(const HdrTextureKey&) const = default;
+    };
+    std::optional<HdrTextureKey> hdr_texture_key_;  // empty: the texture is gone or stale
     std::vector<std::uint8_t> stroke_mask_;
     int stroke_mask_width_ = 0;
     int stroke_mask_height_ = 0;

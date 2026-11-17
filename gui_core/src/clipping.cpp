@@ -398,4 +398,20 @@ std::string describe_gamut(const ClipReport& report) {
     return text + "a later stage brings them back, so nothing is lost.";
 }
 
+std::vector<std::uint32_t> clip_overlay_pixels(std::span<const std::uint8_t> mask, int width,
+                                               int height, std::uint32_t over_abgr,
+                                               std::uint32_t under_abgr, std::uint32_t gamut_abgr) {
+    const std::size_t across = static_cast<std::size_t>(std::max(width, 0));
+    const std::size_t pixels = across * static_cast<std::size_t>(std::max(height, 0));
+    if (pixels == 0 || mask.size() != pixels) {
+        return {};
+    }
+    std::vector<std::uint32_t> out(pixels);
+    for (std::size_t i = 0; i < pixels; ++i) {
+        out[i] =
+            clip_overlay_abgr(mask[i], i % across, i / across, over_abgr, under_abgr, gamut_abgr);
+    }
+    return out;
+}
+
 }  // namespace prism::gui

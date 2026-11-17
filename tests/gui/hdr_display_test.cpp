@@ -10,11 +10,14 @@
 #include <cstring>
 #include <limits>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <vector>
 
 #include "prism/color.hpp"
 #include "prism/gain_map.hpp"
+#include "prism/gui/brush.hpp"
+#include "prism/gui/clipping.hpp"
 #include "prism/gui/preview_renderer.hpp"
 #include "prism/image.hpp"
 #include "prism/process.hpp"
@@ -422,4 +425,198 @@ TEST(HdrPreview, WithEveryExtraOnlyTheHdrFieldsAndTheStageListDiffer) {
     }
     EXPECT_EQ(a, b);
     EXPECT_EQ(hdr->stages.size(), sdr->stages.size() + 1);
+}
+
+// --- Overlays drawn into the HDR picture (#106, part 2) -----------------------------------------
+
+namespace {
+
+// The J overlay's pixels as PreviewTexture::upload_overlay made them before they moved into
+// gui_core: the SDR texture must stay exactly this.
+std::vector<std::uint32_t> old_clip_overlay(const std::vector<std::uint8_t>& mask, int width,
+                                            std::uint32_t over, std::uint32_t under,
+                                            std::uint32_t gamut) {
+    std::vector<std::uint32_t> out(mask.size());
+    const std::size_t across = static_cast<std::size_t>(width);
+    for (std::size_t i = 0; i < mask.size(); ++i) {
+        const std::uint8_t m = mask[i];
+        const bool stripe = (((i % across) + (i / across)) / 4) % 2 == 0;
+        out[i] = (m & prism::gui::clip_mask_high)    ? over
+                 : (m & prism::gui::clip_mask_gamut) ? (stripe ? gamut : 0u)
+                 : (m & prism::gui::clip_mask_low)   ? under
+                                                     : 0u;
+    }
+    return out;
+}
+
+std::vector<std::uint16_t> halves(const prism::Image& img) {
+    return prism::gui::rgba_half_from(img, 1);
+}
+
+constexpr std::uint32_t over_abgr = 0x99'20'40'f0u;  // a = 0x99, b = 0x20, g = 0x40, r = 0xf0
+constexpr std::uint32_t under_abgr = 0x80'f0'60'20u;
+constexpr std::uint32_t gamut_abgr = 0xb0'e0'20'c0u;
+
+}  // namespace
+
+TEST(HdrOverlays, TheJOverlaysPixelsAreTheSdrTexturesAsBefore) {
+    const int width = 37;
+    const int height = 11;
+    std::vector<std::uint8_t> mask(static_cast<std::size_t>(width) * height);
+    for (std::size_t i = 0; i < mask.size(); ++i) {
+        mask[i] = static_cast<std::uint8_t>((i * 5 + i / 7) % 8);  // every combination of bits
+    }
+    const std::vector<std::uint32_t> got =
+        prism::gui::clip_overlay_pixels(mask, width, height, over_abgr, under_abgr, gamut_abgr);
+    EXPECT_TRUE(got == old_clip_overlay(mask, width, over_abgr, under_abgr, gamut_abgr));
+    // The stripes: the gamut colour at (0, 0), clear at (4, 0) and (0, 4), again at (8, 0).
+    EXPECT_EQ(prism::gui::clip_overlay_abgr(prism::gui::clip_mask_gamut, 0, 0, 1, 2, 3), 3u);
+    EXPECT_EQ(prism::gui::clip_overlay_abgr(prism::gui::clip_mask_gamut, 4, 0, 1, 2, 3), 0u);
+    EXPECT_EQ(prism::gui::clip_overlay_abgr(prism::gui::clip_mask_gamut, 0, 4, 1, 2, 3), 0u);
+    EXPECT_EQ(prism::gui::clip_overlay_abgr(prism::gui::clip_mask_gamut, 8, 0, 1, 2, 3), 3u);
+    EXPECT_EQ(prism::gui::clip_overlay_abgr(7, 4, 0, 1, 2, 3), 1u);  // high first
+    EXPECT_EQ(prism::gui::clip_overlay_abgr(6, 4, 0, 1, 2, 3), 0u);  // gamut, off its stripe
+    EXPECT_EQ(prism::gui::clip_overlay_abgr(2, 4, 0, 1, 2, 3), 2u);
+    EXPECT_TRUE(prism::gui::clip_overlay_pixels(mask, width, height + 1, 1, 2, 3).empty());
+    // The strokes' layer is stroke_mask_abgr per byte.
+    const std::vector<std::uint8_t> strokes = {128, 255, 1, 200, 60};
+    const std::vector<std::uint32_t> layer =
+        prism::gui::stroke_overlay_pixels(strokes, over_abgr, under_abgr);
+    ASSERT_EQ(layer.size(), strokes.size());
+    for (std::size_t i = 0; i < strokes.size(); ++i) {
+        EXPECT_EQ(layer[i], prism::gui::stroke_mask_abgr(strokes[i], over_abgr, under_abgr)) << i;
+    }
+    EXPECT_EQ(layer[0], 0u);
+}
+
+TEST(HdrOverlays, AnAbgrPixelIsItsCodesInLinearLightWithStraightAlpha) {
+    const prism::gui::LinearRgba c = prism::gui::linear_rgba_from_abgr(over_abgr);
+    EXPECT_EQ(c.r, prism::srgb8_to_linear(0xf0));
+    EXPECT_EQ(c.g, prism::srgb8_to_linear(0x40));
+    EXPECT_EQ(c.b, prism::srgb8_to_linear(0x20));
+    EXPECT_EQ(c.a, 153.0f / 255.0f);
+}
+
+TEST(HdrOverlays, ClearPixelsKeepTheHdrPictureAndCoveredOnesAreTheSdrBlend) {
+    // 3 x 2: the HDR picture is +2 stops at (1, 0); the overlay covers (1, 0) and (2, 1) only.
+    prism::Image hdr;
+    hdr.width = 3;
+    hdr.height = 2;
+    hdr.pixels = {0.1f, 0.2f, 0.3f, 4.0f, 3.5f, 2.0f, 0.5f, 0.5f,  0.5f,
+                  1.5f, 0.7f, 0.2f, 0.0f, 0.0f, 0.0f, 2.5f, 1.25f, 0.6f};
+    const std::vector<std::uint8_t> sdr = {30,  60,  90,  255, 250, 190, 180, 180, 180,
+                                           255, 200, 120, 0,   0,   0,   255, 230, 160};
+    const std::vector<std::uint16_t> tex = halves(hdr);
+    const std::vector<std::uint32_t> layer = {0, 0x80000000u, 0, 0, 0, over_abgr};
+    const std::span<const std::uint32_t> layers[] = {layer};
+    const std::vector<std::uint16_t> got = prism::gui::hdr_with_overlays(tex, sdr, 3, 2, layers, 1);
+    ASSERT_EQ(got.size(), tex.size());
+    for (const std::size_t px : {0u, 2u, 3u, 4u}) {
+        for (int c = 0; c < 4; ++c) {
+            EXPECT_EQ(got[px * 4 + c], tex[px * 4 + c]) << px << " " << c;  // bit for bit
+        }
+    }
+    // 50% black over the +2 stop pixel: the SDR picture at half its code, never the highlight.
+    for (int c = 0; c < 3; ++c) {
+        const float sdr_lin = prism::srgb8_to_linear(sdr[3 + c]);
+        float want[3];
+        const float picture[3] = {4.0f, 3.5f, 2.0f};
+        const float base[3] = {prism::srgb8_to_linear(sdr[3]), prism::srgb8_to_linear(sdr[4]),
+                               prism::srgb8_to_linear(sdr[5])};
+        prism::gui::into_picture(picture, base, {0.0f, 0.0f, 0.0f, 128.0f / 255.0f}, want);
+        EXPECT_EQ(got[4 + c], prism::gui::half_from_float(want[c])) << c;
+        EXPECT_NEAR(prism::gui::float_from_half(got[4 + c]),
+                    prism::srgb_to_linear(prism::linear_to_srgb(sdr_lin) * 127.0f / 255.0f), 2e-3f)
+            << c;
+        EXPECT_LT(prism::gui::float_from_half(got[4 + c]), 0.25f) << c;
+    }
+    EXPECT_EQ(got[4 + 3], tex[4 + 3]);  // alpha stays the picture's
+    // The J colour over the bottom-right pixel: its sRGB codes blended over the SDR codes.
+    const float a = 153.0f / 255.0f;
+    const std::uint8_t codes[3] = {0xf0, 0x40, 0x20};
+    for (int c = 0; c < 3; ++c) {
+        const float want =
+            prism::srgb_to_linear(codes[c] / 255.0f * a + sdr[15 + c] / 255.0f * (1.0f - a));
+        EXPECT_NEAR(prism::gui::float_from_half(got[5 * 4 + c]), want, want * 1e-3f + 1e-4f) << c;
+    }
+    // No layers, or a layer of the wrong size: the picture as it is. Mismatched pictures: none.
+    EXPECT_TRUE(prism::gui::hdr_with_overlays(tex, sdr, 3, 2, {}, 1) == tex);
+    const std::vector<std::uint32_t> short_layer(5, 0xff000000u);
+    const std::span<const std::uint32_t> wrong[] = {short_layer};
+    EXPECT_TRUE(prism::gui::hdr_with_overlays(tex, sdr, 3, 2, wrong, 1) == tex);
+    EXPECT_TRUE(prism::gui::hdr_with_overlays(tex, sdr, 3, 3, layers, 1).empty());
+    EXPECT_TRUE(prism::gui::hdr_with_overlays(tex, std::span<const std::uint8_t>(sdr).first(15), 3,
+                                              2, layers, 1)
+                    .empty());
+}
+
+TEST(HdrOverlays, LayersBlendBottomFirstAsTheSdrCanvasDrawsThem) {
+    prism::Image hdr;
+    hdr.width = 1;
+    hdr.height = 1;
+    hdr.pixels = {3.0f, 3.0f, 3.0f};
+    const std::vector<std::uint8_t> sdr = {250, 250, 250};
+    const std::vector<std::uint16_t> tex = halves(hdr);
+    const std::vector<std::uint32_t> j = {over_abgr};
+    const std::vector<std::uint32_t> strokes = {under_abgr};
+    const std::span<const std::uint32_t> j_then_strokes[] = {j, strokes};
+    const std::span<const std::uint32_t> strokes_then_j[] = {strokes, j};
+    const std::vector<std::uint16_t> got =
+        prism::gui::hdr_with_overlays(tex, sdr, 1, 1, j_then_strokes, 1);
+    const std::uint8_t first[3] = {0xf0, 0x40, 0x20};
+    const std::uint8_t second[3] = {0x20, 0x60, 0xf0};
+    const float a1 = 153.0f / 255.0f;
+    const float a2 = 128.0f / 255.0f;
+    for (int c = 0; c < 3; ++c) {
+        float code = 250.0f / 255.0f;
+        code = first[c] / 255.0f * a1 + code * (1.0f - a1);
+        code = second[c] / 255.0f * a2 + code * (1.0f - a2);
+        const float want = prism::srgb_to_linear(code);
+        EXPECT_NEAR(prism::gui::float_from_half(got[c]), want, want * 1e-3f + 1e-4f) << c;
+    }
+    EXPECT_FALSE(prism::gui::hdr_with_overlays(tex, sdr, 1, 1, strokes_then_j, 1) == got);
+}
+
+TEST(HdrOverlays, OneAndEightThreadsGiveTheSamePicture) {
+    // 1301 x 1213 = 1,578,113 pixels; 1213 = 8 * 151 + 5 rows, so a chunking split leaves rows
+    // over. The overlays cover pixels in every row, the last ones included.
+    const Pair p = pair(1301, 1213, 2.0f);
+    const std::vector<std::uint16_t> tex =
+        halves(prism::gui::viewer_picture(p.sdr, p.hdr, 2.0f, 4.0f, 8));
+    std::vector<std::uint8_t> clips(p.sdr.size() / 3);
+    std::vector<std::uint8_t> strokes(clips.size());
+    for (std::size_t i = 0; i < clips.size(); ++i) {
+        clips[i] = static_cast<std::uint8_t>(i % 11 == 0 ? 1 : i % 13 == 0 ? 4 : 0);
+        strokes[i] = static_cast<std::uint8_t>(i % 3 == 0 ? 128 : (i * 37) % 256);
+    }
+    for (std::size_t i = clips.size() - 1301; i < clips.size(); ++i) {
+        strokes[i] = 255;  // the last row fully dodged
+    }
+    const std::vector<std::uint32_t> j =
+        prism::gui::clip_overlay_pixels(clips, 1301, 1213, over_abgr, under_abgr, gamut_abgr);
+    const std::vector<std::uint32_t> m =
+        prism::gui::stroke_overlay_pixels(strokes, over_abgr, under_abgr);
+    const std::span<const std::uint32_t> layers[] = {j, m};
+    const std::vector<std::uint16_t> one =
+        prism::gui::hdr_with_overlays(tex, p.sdr, 1301, 1213, layers, 1);
+    const std::vector<std::uint16_t> eight =
+        prism::gui::hdr_with_overlays(tex, p.sdr, 1301, 1213, layers, 8);
+    ASSERT_EQ(one.size(), tex.size());
+    EXPECT_TRUE(one == eight);
+    // The last row is covered (by the strokes), so the 8-thread picture differs from the plain
+    // one there: every row was drawn into.
+    const std::size_t last = clips.size() - 1;
+    ASSERT_NE(m[last] >> 24, 0u);
+    EXPECT_NE(eight[last * 4], tex[last * 4]);
+    EXPECT_NE(one[last * 4], tex[last * 4]);
+}
+
+TEST(HdrOverlays, OnlyRealPixelsASplitOrTheEaselKeepTheCanvasSdr) {
+    using prism::gui::CanvasViews;
+    using prism::gui::sdr_only_view;
+    EXPECT_FALSE(sdr_only_view(CanvasViews{}));
+    EXPECT_FALSE(sdr_only_view(CanvasViews{.clip_overlay = true, .stroke_overlay = true}));
+    EXPECT_TRUE(sdr_only_view(CanvasViews{.real_pixels = true}));
+    EXPECT_TRUE(sdr_only_view(CanvasViews{.split = true}));
+    EXPECT_TRUE(sdr_only_view(CanvasViews{.easel = true}));
 }

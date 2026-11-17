@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -232,5 +233,11 @@ struct BrushRing {
 // ABGR8888 lays bytes out: R in the low byte, A in the high one).
 [[nodiscard]] std::uint32_t stroke_mask_abgr(std::uint8_t byte, std::uint32_t dodge_abgr,
                                              std::uint32_t burn_abgr) noexcept;
+
+// stroke_mask_abgr for every byte of a stroke mask, in order: the SDR overlay texture's pixels and
+// the layer the HDR canvas picture draws in (hdr_with_overlays).
+[[nodiscard]] std::vector<std::uint32_t> stroke_overlay_pixels(std::span<const std::uint8_t> mask,
+                                                               std::uint32_t dodge_abgr,
+                                                               std::uint32_t burn_abgr);
 
 }  // namespace prism::gui

@@ -42,13 +42,25 @@ enum class DisplayMode {
 // part of Output encode; earlier stages and comparisons with them stay SDR), without a test strip
 // (its bands are SDR exposures), and on a screen with room above white right now (a display
 // headroom above 1; at 1 the viewer weight is 0 and the picture would be the SDR one anyway).
-// `sdr_view` is a view this version shows in SDR only (#106 is partly done, see below): the easel
-// (the rotated picture), a split compare, a translucent overlay over the picture (the J clip
-// overlay, the brush strokes), or real pixels at 100% and closer. Those draw the 8-bit picture
-// through Dear ImGui exactly as today, inside the UI target.
+// `sdr_view` is a view this version shows in SDR only (sdr_only_view). Those draw the 8-bit
+// picture through Dear ImGui exactly as today, inside the UI target.
 [[nodiscard]] bool hdr_canvas_on(DisplayMode mode, const EditSettings& s, StageId viewed,
                                  bool test_strip, float display_headroom,
                                  bool sdr_view = false) noexcept;
+
+// What the canvas shows besides the plain picture this frame.
+struct CanvasViews {
+    bool clip_overlay = false;    // the J overlay
+    bool stroke_overlay = false;  // the Dodge & burn strokes' overlay (M)
+    bool real_pixels = false;     // real pixels drawn over the enlarged preview (#37)
+    bool split = false;           // split compare
+    bool easel = false;           // the easel (framing, #58)
+};
+
+// Whether this version shows the canvas in SDR only (hdr_canvas_on's `sdr_view`): with real
+// pixels, a split compare or the easel. The J overlay and the strokes don't: they are drawn into
+// the HDR picture (hdr_with_overlays).
+[[nodiscard]] bool sdr_only_view(const CanvasViews& views) noexcept;
 
 // The weight a viewer of the exported file gives its gain map on a screen with `display_headroom`
 // (#96 decision 10 as changed: HDRCapacityMin 0, HDRCapacityMax = N): prism::gain_map_weight with
@@ -125,6 +137,24 @@ struct LinearRgba {
 // through. Alpha is clamped to 0..1 (NaN counts as 0). Channels are r, g, b.
 void into_picture(const float picture[3], const float sdr[3], const LinearRgba& overlay,
                   float out[3]) noexcept;
+
+// An overlay pixel as the SDR canvas draws it (ABGR8888 bytes: R low, A high; straight alpha, the
+// colour in sRGB codes) as a LinearRgba: each colour code through srgb8_to_linear, alpha / 255.
+[[nodiscard]] LinearRgba linear_rgba_from_abgr(std::uint32_t abgr) noexcept;
+
+// The HDR canvas's picture with translucent overlays drawn into it (#106): `hdr_rgba` (the
+// preview's viewer picture, PreviewFrame::hdr_rgba, RGBA halves) and `sdr_rgb8` (the same frame's
+// 8-bit SDR picture), width x height; `layers` are overlay pixels in ABGR (clip_overlay_pixels,
+// stroke_overlay_pixels), bottom first, in the order the SDR canvas draws them. Where every layer
+// is clear the halves are copied bit for bit. Elsewhere each covered layer goes over the pixel
+// with into_picture: the first over the SDR picture (srgb8_to_linear of its bytes), each next one
+// over the result, so the pixel is the SDR canvas's blend of the same layers and no light above
+// white shines through. Alpha stays the picture's. A layer of the wrong size is left out. Empty
+// if `hdr_rgba` or `sdr_rgb8` doesn't match width x height (or the picture is empty).
+// Bit-identical for any thread count.
+[[nodiscard]] std::vector<std::uint16_t> hdr_with_overlays(
+    std::span<const std::uint16_t> hdr_rgba, std::span<const std::uint8_t> sdr_rgb8, int width,
+    int height, std::span<const std::span<const std::uint32_t>> layers, int threads = 0);
 
 // UI-target mode's compositing of one pixel: the UI target's texel, premultiplied 8-bit sRGB
 // (what ImGui drew into it, decoded by SDL's pixel-art path as sRGB), laid over the canvas's

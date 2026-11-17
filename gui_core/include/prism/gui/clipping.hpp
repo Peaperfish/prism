@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -300,6 +301,30 @@ inline constexpr std::uint8_t clip_mask_gamut = 4;  // Y > 0 and a channel below
 void compute_clip_mask(const Image& img, int threads, std::vector<std::uint8_t>& mask,
                        bool file_ceiling = false,
                        const std::vector<std::uint8_t>* earlier = nullptr);
+
+// One pixel of the J overlay, from the clip mask's byte `m` at picture pixel (x, y): `over_abgr`
+// with the high bit, else `gamut_abgr` with the gamut bit as diagonal stripes about 4 pixels wide
+// (on where (x + y) / 4 is even, so the colour underneath shows between them), else `under_abgr`
+// with the low bit, else transparent (0). Colours are ABGR, as stroke_mask_abgr's. The SDR
+// overlay texture and the HDR canvas picture (hdr_with_overlays) both use it.
+[[nodiscard]] constexpr std::uint32_t clip_overlay_abgr(std::uint8_t m, std::size_t x,
+                                                        std::size_t y, std::uint32_t over_abgr,
+                                                        std::uint32_t under_abgr,
+                                                        std::uint32_t gamut_abgr) noexcept {
+    const bool stripe = ((x + y) / 4) % 2 == 0;
+    return (m & clip_mask_high)    ? over_abgr
+           : (m & clip_mask_gamut) ? (stripe ? gamut_abgr : 0u)
+           : (m & clip_mask_low)   ? under_abgr
+                                   : 0u;
+}
+
+// clip_overlay_abgr for every byte of a width x height mask, row-major. Empty if the mask doesn't
+// match width x height.
+[[nodiscard]] std::vector<std::uint32_t> clip_overlay_pixels(std::span<const std::uint8_t> mask,
+                                                             int width, int height,
+                                                             std::uint32_t over_abgr,
+                                                             std::uint32_t under_abgr,
+                                                             std::uint32_t gamut_abgr);
 
 // One read-only pass over `img`, the input of a stage that clamps negatives: ORs the low and gamut
 // bits of the pixels it is about to lose into `lost` (one byte per pixel; sized and zeroed first

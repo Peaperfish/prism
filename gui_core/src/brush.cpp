@@ -318,4 +318,14 @@ std::uint32_t stroke_mask_abgr(std::uint8_t byte, std::uint32_t dodge_abgr,
     return (colour & 0x00FFFFFFu) | (scaled << 24);
 }
 
+std::vector<std::uint32_t> stroke_overlay_pixels(std::span<const std::uint8_t> mask,
+                                                 std::uint32_t dodge_abgr,
+                                                 std::uint32_t burn_abgr) {
+    std::vector<std::uint32_t> out(mask.size());
+    for (std::size_t i = 0; i < mask.size(); ++i) {
+        out[i] = stroke_mask_abgr(mask[i], dodge_abgr, burn_abgr);
+    }
+    return out;
+}
+
 }  // namespace prism::gui

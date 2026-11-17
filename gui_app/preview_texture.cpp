@@ -4,6 +4,7 @@
 #include <algorithm>
 
 #include "prism/gui/brush.hpp"
+#include "prism/gui/clipping.hpp"
 
 namespace prism::gui_app {
 
@@ -82,17 +83,8 @@ bool PreviewTexture::upload_overlay(const std::vector<std::uint8_t>& clip_mask, 
     if (!make_overlay_texture(overlay_, overlay_width_, overlay_height_, width, height)) {
         return false;
     }
-    overlay_pixels_.resize(pixels);
-    const std::size_t across = static_cast<std::size_t>(width);
-    for (std::size_t i = 0; i < pixels; ++i) {
-        const std::uint8_t m = clip_mask[i];
-        // Gamut stripes run diagonally: on where (x + y) / 4 is even.
-        const bool stripe = (((i % across) + (i / across)) / 4) % 2 == 0;
-        overlay_pixels_[i] = (m & gui::clip_mask_high)    ? over_abgr
-                             : (m & gui::clip_mask_gamut) ? (stripe ? gamut_abgr : 0u)
-                             : (m & gui::clip_mask_low)   ? under_abgr
-                                                          : 0u;
-    }
+    overlay_pixels_ =
+        gui::clip_overlay_pixels(clip_mask, width, height, over_abgr, under_abgr, gamut_abgr);
     if (!SDL_UpdateTexture(overlay_, nullptr, overlay_pixels_.data(), width * 4)) {
         reset_overlay();
         return false;
@@ -141,10 +133,7 @@ bool PreviewTexture::upload_stroke_overlay(const std::vector<std::uint8_t>& stro
                               width, height)) {
         return false;
     }
-    overlay_pixels_.resize(pixels);
-    for (std::size_t i = 0; i < pixels; ++i) {
-        overlay_pixels_[i] = gui::stroke_mask_abgr(stroke_mask[i], dodge_abgr, burn_abgr);
-    }
+    overlay_pixels_ = gui::stroke_overlay_pixels(stroke_mask, dodge_abgr, burn_abgr);
     if (!SDL_UpdateTexture(stroke_overlay_, nullptr, overlay_pixels_.data(), width * 4)) {
         reset_stroke_overlay();
         return false;
@@ -159,24 +148,25 @@ void PreviewTexture::reset_stroke_overlay() {
     }
 }
 
-bool PreviewTexture::upload_hdr(const gui::PreviewFrame& frame) {
-    if (frame.hdr_rgba.empty()) {
+bool PreviewTexture::upload_hdr(std::span<const std::uint16_t> rgba, int width, int height) {
+    if (rgba.empty()) {
         reset_hdr();
         return true;
     }
-    if (frame.hdr_rgba.size() != static_cast<std::size_t>(frame.width) * frame.height * 4) {
+    if (width <= 0 || height <= 0 ||
+        rgba.size() != static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4) {
         SDL_SetError("the HDR picture is the wrong size");
         reset_hdr();
         return false;
     }
-    if (hdr_ == nullptr || frame.width != hdr_width_ || frame.height != hdr_height_) {
+    if (hdr_ == nullptr || width != hdr_width_ || height != hdr_height_) {
         reset_hdr();
         SDL_PropertiesID p = SDL_CreateProperties();
         SDL_SetNumberProperty(p, SDL_PROP_TEXTURE_CREATE_FORMAT_NUMBER,
                               SDL_PIXELFORMAT_RGBA64_FLOAT);
         SDL_SetNumberProperty(p, SDL_PROP_TEXTURE_CREATE_ACCESS_NUMBER, SDL_TEXTUREACCESS_STATIC);
-        SDL_SetNumberProperty(p, SDL_PROP_TEXTURE_CREATE_WIDTH_NUMBER, frame.width);
-        SDL_SetNumberProperty(p, SDL_PROP_TEXTURE_CREATE_HEIGHT_NUMBER, frame.height);
+        SDL_SetNumberProperty(p, SDL_PROP_TEXTURE_CREATE_WIDTH_NUMBER, width);
+        SDL_SetNumberProperty(p, SDL_PROP_TEXTURE_CREATE_HEIGHT_NUMBER, height);
         SDL_SetNumberProperty(p, SDL_PROP_TEXTURE_CREATE_COLORSPACE_NUMBER,
                               SDL_COLORSPACE_SRGB_LINEAR);
         hdr_ = SDL_CreateTextureWithProperties(renderer_, p);
@@ -185,10 +175,10 @@ bool PreviewTexture::upload_hdr(const gui::PreviewFrame& frame) {
             return false;
         }
         SDL_SetTextureScaleMode(hdr_, SDL_SCALEMODE_LINEAR);
-        hdr_width_ = frame.width;
-        hdr_height_ = frame.height;
+        hdr_width_ = width;
+        hdr_height_ = height;
     }
-    if (!SDL_UpdateTexture(hdr_, nullptr, frame.hdr_rgba.data(), frame.width * 8)) {
+    if (!SDL_UpdateTexture(hdr_, nullptr, rgba.data(), width * 8)) {
         reset_hdr();
         return false;
     }
