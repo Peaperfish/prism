@@ -172,6 +172,17 @@ TEST(GainMap, ApplyAtHalfWeight) {
 TEST(GainMap, WeightZeroIsTheDecodedBaseExactly) {
     const prism::GainMap map = prism::make_gain_map(base, four_hdr(), 2.0f);
     EXPECT_EQ(bits(prism::apply_gain_map(base, map, 0.0f)), bits(prism::decode_srgb8(base, 4, 1)));
+    // Every 8-bit level: (c + 1/64) * 1 - 1/64 is not c for all of them, so weight 0 must not go
+    // through the formula.
+    std::vector<std::uint8_t> levels;
+    prism::Image hdr{256, 1, {}};
+    for (int c = 0; c < 256; ++c) {
+        levels.insert(levels.end(), 3, static_cast<std::uint8_t>(c));
+        hdr.pixels.insert(hdr.pixels.end(), 3, 2.0f);
+    }
+    const prism::GainMap ramp = prism::make_gain_map(levels, hdr, 2.0f);
+    EXPECT_EQ(bits(prism::apply_gain_map(levels, ramp, 0.0f)),
+              bits(prism::decode_srgb8(levels, 256, 1)));
 }
 
 TEST(GainMap, ApplyRefusesMismatchedSizes) {
