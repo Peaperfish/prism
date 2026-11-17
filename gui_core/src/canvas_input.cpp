@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <stdexcept>
 #include <string>
 
 #include "prism/gui/neutral_pick.hpp"
@@ -155,7 +156,7 @@ bool SampleClick::release(ViewPoint at) noexcept {
     return click;
 }
 
-bool sample_pin_survives_frame(const std::optional<Frame>& before,
+bool sample_read_survives_frame(const std::optional<Frame>& before,
                                const std::optional<Frame>& after) noexcept {
     return normalised_frame(before) == normalised_frame(after);
 }
@@ -213,19 +214,29 @@ void SampleMode::leave() noexcept {
 
 void SampleMode::place(SamplePin pixel, int width, int height,
                        const std::optional<PictureFrame>& framing,
-                       const std::optional<PhotoPoint>& at) {
+                       const std::optional<PhotoPoint>& at) noexcept {
     if (!on_ || pixel.x < 0 || pixel.y < 0 || pixel.x >= width || pixel.y >= height) {
         return;
     }
     canvas_ = SampleCanvas{width, height, framing};
     pin_ = pixel;
-    pin_point_ = at ? *at
-                    : sample_photo_point(static_cast<double>(pixel.x) + 0.5,
-                                         static_cast<double>(pixel.y) + 0.5, canvas_);
+    try {
+        // A point that isn't in the pixel (a click on its edge can round into the neighbour) would
+        // put the pin one pixel off after the next frame change: the centre is used then.
+        if (at && sample_pixel_at(*at, canvas_) == pixel) {
+            pin_point_ = *at;
+        } else {
+            pin_point_ = sample_photo_point(static_cast<double>(pixel.x) + 0.5,
+                                            static_cast<double>(pixel.y) + 0.5, canvas_);
+        }
+    } catch (const std::invalid_argument&) {
+        pin_.reset();  // an invalid framing: nothing on it can be pinned
+        pin_point_.reset();
+    }
 }
 
 void SampleMode::read(SamplePin pixel, int width, int height,
-                      const std::optional<PictureFrame>& framing) {
+                      const std::optional<PictureFrame>& framing) noexcept {
     if (!on_ || pixel.x < 0 || pixel.y < 0 || pixel.x >= width || pixel.y >= height) {
         return;
     }
@@ -245,12 +256,13 @@ void SampleMode::opened() noexcept {
 
 void SampleMode::frame_changed(const std::optional<Frame>& before,
                                const std::optional<Frame>& after) noexcept {
-    if (!sample_pin_survives_frame(before, after)) {
+    if (!sample_read_survives_frame(before, after)) {
         last_read_.reset();
     }
 }
 
-void SampleMode::base_changed(int width, int height, const std::optional<PictureFrame>& framing) {
+void SampleMode::base_changed(int width, int height,
+                              const std::optional<PictureFrame>& framing) noexcept {
     const SampleCanvas now{width, height, framing};
     if (now == canvas_) {
         return;
@@ -258,7 +270,11 @@ void SampleMode::base_changed(int width, int height, const std::optional<Picture
     canvas_ = now;
     last_read_.reset();
     if (pin_point_) {
-        pin_ = sample_pixel_at(*pin_point_, canvas_);
+        try {
+            pin_ = sample_pixel_at(*pin_point_, canvas_);
+        } catch (const std::invalid_argument&) {
+            pin_.reset();  // an invalid framing: the point is on no picture
+        }
         if (!pin_) {
             pin_point_.reset();
         }

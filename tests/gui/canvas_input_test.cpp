@@ -501,14 +501,14 @@ TEST(SampleModeRules, AnyFrameChangeClearsTheLastReadEvenAtTheSamePixelSize) {
     const prism::Frame right_crop{0.0f, 0.2f, 0.2f, 0.7f, 0.7f, prism::Aspect::free, false};
     const prism::Frame turned{2.0f, 0.1f, 0.1f, 0.6f, 0.6f, prism::Aspect::free, false};
 
-    EXPECT_TRUE(sample_pin_survives_frame(std::nullopt, std::nullopt));
-    EXPECT_TRUE(sample_pin_survives_frame(std::nullopt, whole));
-    EXPECT_TRUE(sample_pin_survives_frame(whole, std::nullopt));
-    EXPECT_TRUE(sample_pin_survives_frame(left_crop, left_crop));
-    EXPECT_FALSE(sample_pin_survives_frame(std::nullopt, left_crop));
-    EXPECT_FALSE(sample_pin_survives_frame(left_crop, std::nullopt));
-    EXPECT_FALSE(sample_pin_survives_frame(left_crop, right_crop));
-    EXPECT_FALSE(sample_pin_survives_frame(left_crop, turned));
+    EXPECT_TRUE(sample_read_survives_frame(std::nullopt, std::nullopt));
+    EXPECT_TRUE(sample_read_survives_frame(std::nullopt, whole));
+    EXPECT_TRUE(sample_read_survives_frame(whole, std::nullopt));
+    EXPECT_TRUE(sample_read_survives_frame(left_crop, left_crop));
+    EXPECT_FALSE(sample_read_survives_frame(std::nullopt, left_crop));
+    EXPECT_FALSE(sample_read_survives_frame(left_crop, std::nullopt));
+    EXPECT_FALSE(sample_read_survives_frame(left_crop, right_crop));
+    EXPECT_FALSE(sample_read_survives_frame(left_crop, turned));
 
     SampleMode mode;
     mode.toggle();
@@ -627,6 +627,40 @@ TEST(SamplePinPoint, APinPlacedAtAPointKeepsThatPointNotThePixelsCentre) {
     // On a base twice the size, the point is in pixel (121, 60), not (120, 60) or (121, 61).
     mode.base_changed(400, 200);
     EXPECT_EQ(mode.pin(), (SamplePin{121, 60}));
+}
+
+TEST(SamplePinPoint, APointOutsideThePinnedPixelIsNotKeptAndTheCentreIs) {
+    // A click on the left edge of framed pixel (40, 20) can come back as a point a hair inside
+    // pixel (39, 20): the pin keeps the pixel's centre, so it comes back to (40, 20) on that frame.
+    const SampleCanvas left = framed_canvas({0.0f, 0.1f, 0.1f, 0.6f, 0.6f, prism::Aspect::free,
+                                             false});
+    const SampleCanvas right = framed_canvas({0.0f, 0.2f, 0.1f, 0.7f, 0.6f, prism::Aspect::free,
+                                              false});
+    const PhotoPoint edge = sample_photo_point(40.0 - 1e-9, 20.5, left);
+    ASSERT_EQ(sample_pixel_at(edge, left), (SamplePin{39, 20}));
+    SampleMode mode;
+    mode.toggle();
+    mode.place({40, 20}, left.width, left.height, left.framing, edge);
+    ASSERT_TRUE(mode.pin_point());
+    EXPECT_EQ(sample_pixel_at(*mode.pin_point(), left), (SamplePin{40, 20}));
+    mode.base_changed(right.width, right.height, right.framing);
+    mode.base_changed(left.width, left.height, left.framing);
+    EXPECT_EQ(mode.pin(), (SamplePin{40, 20}));
+}
+
+TEST(SamplePinPoint, AnInvalidFramingClearsThePinInsteadOfThrowing) {
+    const SampleCanvas left = framed_canvas({0.0f, 0.1f, 0.1f, 0.6f, 0.6f, prism::Aspect::free,
+                                             false});
+    SampleMode mode;
+    mode.toggle();
+    mode.place({40, 20}, left.width, left.height, left.framing);
+    PictureFrame bad = *left.framing;
+    bad.fitted.left = 0.9f;  // left past right
+    mode.base_changed(left.width, left.height, bad);
+    EXPECT_FALSE(mode.pin());
+    EXPECT_FALSE(mode.pin_point());
+    mode.place({40, 20}, left.width, left.height, bad);
+    EXPECT_FALSE(mode.pin());
 }
 
 // --- Pick mode ---------------------------------------------------------------------------------

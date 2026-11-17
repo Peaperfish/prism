@@ -171,8 +171,8 @@ private:
 // when the frame is the same (a whole-photo frame counts as none). Moving the frame or turning the
 // photo at the same pixel size puts different photo points under the same pixel coordinates. The
 // pin doesn't go by this: it keeps its photo point (SampleMode).
-[[nodiscard]] bool sample_pin_survives_frame(const std::optional<Frame>& before,
-                                             const std::optional<Frame>& after) noexcept;
+[[nodiscard]] bool sample_read_survives_frame(const std::optional<Frame>& before,
+                                              const std::optional<Frame>& after) noexcept;
 
 // The picture Sample's pixels are on: the preview base, width x height, and where it sits on the
 // photo (Session::preview_framing; none when it is the whole photo). The same for the framed
@@ -215,22 +215,21 @@ public:
     void leave() noexcept;   // Esc (EscapeAction::clear_sample)
 
     // Pins `pixel` of a width x height base (framed by `framing`), replacing any pin. Its photo
-    // point is `at` if given (the point clicked, which must lie in the pixel) and the pixel's centre
-    // otherwise. Nothing if the mode is off or the pixel is off the picture.
+    // point is `at` if given and in the pixel (the point clicked) and the pixel's centre otherwise. Nothing if the mode is off or the pixel is off the picture.
     void place(SamplePin pixel, int width, int height,
                const std::optional<PictureFrame>& framing = std::nullopt,
-               const std::optional<PhotoPoint>& at = std::nullopt);
+               const std::optional<PhotoPoint>& at = std::nullopt) noexcept;
 
     // The cursor is over `pixel` of a width x height base (framed by `framing`). The same
     // conditions as place().
     void read(SamplePin pixel, int width, int height,
-              const std::optional<PictureFrame>& framing = std::nullopt);
+              const std::optional<PictureFrame>& framing = std::nullopt) noexcept;
 
     // A file was opened: the pin and the last read go, even if the new picture has the same size.
     void opened() noexcept;
 
     // The photo's frame changed from `before` to `after` (on the easel, or by undo/redo): the last
-    // read goes unless sample_pin_survives_frame(before, after). The pin waits for base_changed.
+    // read goes unless sample_read_survives_frame(before, after). The pin waits for base_changed.
     void frame_changed(const std::optional<Frame>& before,
                        const std::optional<Frame>& after) noexcept;
 
@@ -239,7 +238,7 @@ public:
     // (sample_pixel_at), or goes if the point is off the new picture. A re-decode of the same size
     // and framing (a new camera matrix) changes neither.
     void base_changed(int width, int height,
-                      const std::optional<PictureFrame>& framing = std::nullopt);
+                      const std::optional<PictureFrame>& framing = std::nullopt) noexcept;
 
 private:
     bool on_ = false;
