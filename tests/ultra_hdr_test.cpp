@@ -658,6 +658,21 @@ TEST(UltraHdrJpeg, GainMapDecodesToItsCodes) {
     }
 }
 
+// The gain map is made from the primary as a viewer decodes it (#96), not from the 8-bit SDR
+// bytes before JPEG: make_gain_map on stb's decode of the primary gives the same map.
+TEST(UltraHdrJpeg, GainMapIsMadeFromTheDecodedPrimary) {
+    const Pictures p = ramp(96, 64);
+    const prism::UltraHdrJpeg file = prism::encode_ultra_hdr_jpeg(p.sdr, p.hdr, ramp_headroom);
+    int w = 0;
+    int h = 0;
+    const Bytes primary = stb_decode(file.bytes, 3, w, h);
+    ASSERT_EQ(primary.size(), p.sdr.size());
+    ASSERT_NE(primary, p.sdr);  // the JPEG changes some pixels, or this test proves nothing
+    const prism::GainMap want = prism::make_gain_map(primary, p.hdr, ramp_headroom);
+    EXPECT_EQ(file.gain_map.codes, want.codes);
+    EXPECT_EQ(file.gain_map.metadata, want.metadata);
+}
+
 // --- Writing -----------------------------------------------------------------------------------
 
 TEST(UltraHdrJpeg, SaveWritesTheEncodedFileAndReplacesAnOldOne) {
