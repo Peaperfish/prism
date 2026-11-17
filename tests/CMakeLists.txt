@@ -45,8 +45,11 @@ add_executable(prism_tests
   unicode_path_test.cpp
   version_test.cpp
   white_balance_test.cpp)
-# stb: the golden tests decode PNG and JPEG with it directly (tests/golden.hpp).
-target_link_libraries(prism_tests PRIVATE prism_core stb prism_warnings GTest::gtest_main)
+target_link_libraries(prism_tests PRIVATE prism_core prism_warnings GTest::gtest_main)
+# The golden tests decode PNG and JPEG with stb directly (tests/golden.hpp): its headers here, its
+# code already linked through the static prism_core (linking stb again draws a duplicate warning).
+target_include_directories(prism_tests SYSTEM PRIVATE
+                           $<TARGET_PROPERTY:stb,INTERFACE_INCLUDE_DIRECTORIES>)
 # lib/ holds internal headers (e.g. tiff_reader.hpp) that are not part of the public API; only
 # the tests may include them directly.
 target_include_directories(prism_tests PRIVATE ${PROJECT_SOURCE_DIR}/lib)
@@ -97,6 +100,7 @@ add_executable(prism_gui_core_tests
   gui/file_types_test.cpp
   gui/frame_wiring_test.cpp
   gui/framing_test.cpp
+  gui/golden_export_test.cpp
   gui/histogram_paint_test.cpp
   gui/histogram_test.cpp
   gui/history_test.cpp
@@ -126,6 +130,9 @@ add_executable(prism_gui_core_tests
   gui/view_transform_test.cpp
   gui/wheel_scaling_test.cpp)
 target_link_libraries(prism_gui_core_tests PRIVATE prism_gui_core prism_warnings GTest::gtest_main)
+# stb's headers for the golden tests, as for prism_tests above.
+target_include_directories(prism_gui_core_tests SYSTEM PRIVATE
+                           $<TARGET_PROPERTY:stb,INTERFACE_INCLUDE_DIRECTORIES>)
 # The RAW tests use the synthetic DNG writer (synthetic_dng.hpp, which needs lib/tiff_reader.hpp).
 target_include_directories(prism_gui_core_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
                                                         ${PROJECT_SOURCE_DIR}/lib)
