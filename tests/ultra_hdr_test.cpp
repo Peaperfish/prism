@@ -709,12 +709,18 @@ TEST(UltraHdrJpeg, BadInputsAreRefused) {
                  std::invalid_argument);
     EXPECT_THROW((void)prism::encode_ultra_hdr_jpeg(p.sdr, p.hdr, 0.0f), std::invalid_argument);
     // A JPEG that already has an APP1 (EXIF, XMP) is not stb's: refused, not mixed in.
+    const prism::GainMapMetadata m = ramp_file().gain_map.metadata;
     Bytes base;
     ASSERT_NE(stbi_write_jpg_to_func(stb_append, &base, 37, 23, 3, p.sdr.data(), 95), 0);
     Bytes with_app1 = base;
     const Bytes app1 = {0xFF, 0xE1, 0x00, 0x04, 'x', 'y'};
-    with_app1.insert(with_app1.begin() + 2, app1.begin(), app1.end());
-    const prism::GainMapMetadata m = ramp_file().gain_map.metadata;
+    // After stb's APP0 (2 + 18 bytes), where an EXIF APP1 would sit.
+    ASSERT_EQ(with_app1[3], 0xE0);
+    with_app1.insert(with_app1.begin() + 2 + 2 + 16, app1.begin(), app1.end());
+    // Before it too.
+    Bytes app1_first = base;
+    app1_first.insert(app1_first.begin() + 2, app1.begin(), app1.end());
+    EXPECT_THROW((void)prism::assemble_ultra_hdr_jpeg(app1_first, base, m), std::invalid_argument);
     EXPECT_THROW((void)prism::assemble_ultra_hdr_jpeg(with_app1, base, m), std::invalid_argument);
     EXPECT_THROW((void)prism::assemble_ultra_hdr_jpeg(base, with_app1, m), std::invalid_argument);
     // Not a JPEG, or cut short.
