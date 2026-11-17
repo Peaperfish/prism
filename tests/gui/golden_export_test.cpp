@@ -1,12 +1,12 @@
 // SDR golden tests, the app's export (headless: no window, a Session and export_image as the Export
-// button runs them). Opening the sample photo (and, with PRISM_TEST_RAW, the maintainer's test RAW),
-// choosing each built-in look and exporting at a long side of 256 px must give the pixels 0.7.1
-// wrote, the same references the command line is held to in tests/golden_sdr_test.cpp.
+// button runs them). Opening the sample photo (and, with PRISM_TEST_RAW, the maintainer's test
+// RAW), choosing each built-in look and exporting at a long side of 256 px must give the pixels
+// 0.7.1 wrote, the same references the command line is held to in tests/golden_sdr_test.cpp.
 //
 // The references are files in tests/data/golden/ (see its README), made by
-// tools/make_sdr_goldens.sh from prism built at 0.7.1. Regenerate them only on purpose, when the SDR
-// output is meant to change, never to make these tests pass. Tolerances and why: tests/golden.hpp
-// (exact when built for Apple arm64).
+// tools/make_sdr_goldens.sh from prism built at 0.7.1. Regenerate them only on purpose, when the
+// SDR output is meant to change, never to make these tests pass. Tolerances and why:
+// tests/golden.hpp (exact when built for Apple arm64).
 //
 //   Looks/GoldenExportImage.Export/*  decode_for_export + finish_export, encoded, against the PNG
 //                                     reference; export_image as PNG must decode to exactly those
@@ -18,7 +18,9 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -69,9 +71,9 @@ const prism::gui::Preset* find_preset(InputKind kind, const std::string& id) {
 }
 
 // Chooses `look` in the open session, as clicking it in the Looks list does, and checks its export
-// against `<golden>.png` and `<golden>.jpg`. `decoded` is the photo as decode_for_export read it.
-void check_export(prism::gui::Session& session, const prism::Photo& decoded,
-                  const std::string& look, const fs::path& golden) {
+// against `<golden>.png` and `<golden>.jpg`. The photo is decoded for each look and moved into
+// finish_export, so a full-size RAW is held only once at a time.
+void check_export(prism::gui::Session& session, const std::string& look, const fs::path& golden) {
     SCOPED_TRACE(look);
     const prism::gui::Preset* preset = find_preset(session.kind(), look);
     ASSERT_NE(preset, nullptr) << "no built-in look " << look;
@@ -81,13 +83,21 @@ void check_export(prism::gui::Session& session, const prism::Photo& decoded,
     prism::gui::ExportJob job = session.export_job();
     job.long_side = long_side;
 
+    std::variant<prism::Photo, prism::gui::Error> decoded =
+        prism::gui::decode_for_export(job.source, job.kind, job.settings, job.threads, {});
+    if (const auto* e = std::get_if<prism::gui::Error>(&decoded)) {
+        FAIL() << "decode_for_export: " << e->message;
+    }
     std::variant<prism::Image, prism::gui::Error> finished =
-        prism::gui::finish_export(decoded, job.settings, job.long_side, job.threads, {}, {});
-    ASSERT_TRUE(std::holds_alternative<prism::Image>(finished));
+        prism::gui::finish_export(std::move(std::get<prism::Photo>(decoded)), job.settings,
+                                  job.long_side, job.threads, {}, {});
+    if (const auto* e = std::get_if<prism::gui::Error>(&finished)) {
+        FAIL() << "finish_export: " << e->message;
+    }
     const prism::Image& img = std::get<prism::Image>(finished);
     const std::vector<std::uint8_t> bytes = prism::encode_srgb8(img);
-    EXPECT_TRUE(matches(Pixels{img.width, img.height, bytes}, decode(fs::path(golden).concat(".png")),
-                        png_tolerance(), "finish_export"));
+    EXPECT_TRUE(matches(Pixels{img.width, img.height, bytes},
+                        decode(fs::path(golden).concat(".png")), png_tolerance(), "finish_export"));
 
     // PNG round trip: the exported file holds exactly those bytes, on every platform.
     const fs::path png = temp_file("out.png");
@@ -102,16 +112,6 @@ void check_export(prism::gui::Session& session, const prism::Photo& decoded,
     fs::remove(jpg);
 }
 
-prism::Photo decode_for_export(const prism::gui::Session& session) {
-    std::variant<prism::Photo, prism::gui::Error> decoded = prism::gui::decode_for_export(
-        session.path(), session.kind(), session.settings(), 0, {});
-    if (auto* e = std::get_if<prism::gui::Error>(&decoded)) {
-        ADD_FAILURE() << "decode_for_export: " << e->message;
-        return {};
-    }
-    return std::move(std::get<prism::Photo>(decoded));
-}
-
 class GoldenExportImage : public testing::TestWithParam<const char*> {};
 
 }  // namespace
@@ -120,8 +120,7 @@ TEST_P(GoldenExportImage, Export) {
     prism::gui::Session session;
     ASSERT_EQ(session.open_file(sample_photo()), std::nullopt);
     ASSERT_EQ(session.kind(), InputKind::image);
-    const prism::Photo decoded = decode_for_export(session);
-    check_export(session, decoded, GetParam(), golden_dir() / "image" / GetParam());
+    check_export(session, GetParam(), golden_dir() / "image" / GetParam());
 }
 
 INSTANTIATE_TEST_SUITE_P(Looks, GoldenExportImage, testing::ValuesIn(image_looks),
@@ -129,8 +128,9 @@ INSTANTIATE_TEST_SUITE_P(Looks, GoldenExportImage, testing::ValuesIn(image_looks
                              return std::string(info.param);
                          });
 
-// One test for all RAW looks: each export decodes a full-size RAW, and ctest -j running five at
-// once would need several GB.
+// One test per kind for all RAW looks: each look decodes the full-size RAW (about 730 MB of float
+// pixels for 61 MP), one at a time, so ctest -j running the three kinds at once holds about three,
+// where a test per look would hold up to fifteen.
 TEST(GoldenExport, RawLooks) {
     if (!prism::raw_support_available()) {
         GTEST_SKIP() << "this build has no RAW support";
@@ -142,8 +142,7 @@ TEST(GoldenExport, RawLooks) {
     prism::gui::Session session;
     ASSERT_EQ(session.open_file(*raw.path), std::nullopt);
     ASSERT_EQ(session.kind(), InputKind::raw);
-    const prism::Photo decoded = decode_for_export(session);
     for (const char* look : raw_looks) {
-        check_export(session, decoded, look, golden_dir() / "raw" / look);
+        check_export(session, look, golden_dir() / "raw" / look);
     }
 }

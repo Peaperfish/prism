@@ -1,6 +1,7 @@
 # SDR golden references
 
-These files pin Prism's SDR output as it was in 0.7.1 (commit and version in `SOURCE.txt`), so the
+These files pin Prism's SDR output as it was in 0.7.1 (commit and version in `SOURCE.txt` and
+`raw/SOURCE.txt`), so the
 0.8.0 HDR work can show that HDR off still gives the same pixels. `tests/golden_sdr_test.cpp`
 (engine and `prism` command line) and `tests/gui/golden_export_test.cpp` (the app's export) run
 the same processing and compare the decoded 8-bit sRGB pixels with these files.
@@ -23,7 +24,8 @@ by no more, at worst and on average, than that reference JPEG differs from its o
 ## Regenerating, only on purpose
 
 Regenerate only when a change to the SDR output is intended, never to make a failing test pass, and
-say so in the commit. Build `prism` from a clean checkout of the commit to pin, then:
+say so in the commit. Check out the commit to pin (copy `tools/make_sdr_goldens.sh` in if that
+commit predates it), build `prism` there, then:
 
 ```sh
 PRISM_TEST_RAW=/path/to/the.ARW tools/make_sdr_goldens.sh build/src/prism --overwrite

@@ -4,11 +4,12 @@
 // before HDR"). The app's export has the same tests in tests/gui/golden_export_test.cpp.
 //
 // The references are files in tests/data/golden/ (see its README), made by
-// tools/make_sdr_goldens.sh from prism built at 0.7.1. Regenerate them only on purpose, when the SDR
-// output is meant to change, never to make these tests pass. Tolerances and why: tests/golden.hpp
-// (exact when built for Apple arm64).
+// tools/make_sdr_goldens.sh from prism built at 0.7.1. Regenerate them only on purpose, when the
+// SDR output is meant to change, never to make these tests pass. Tolerances and why:
+// tests/golden.hpp (exact when built for Apple arm64).
 //
-//   Looks/GoldenSdrImage.Engine/*  load, reduce, process and encode_srgb8 in-process, as prism does;
+//   Looks/GoldenSdrImage.Engine/*  load, reduce, process and encode_srgb8 in-process, as prism
+//   does;
 //                                 then save_image as PNG must decode to exactly those bytes, and as
 //                                 JPEG to the decoded reference JPEG.
 //   Looks/GoldenSdrImage.Cli/*     the prism executable writing PNG and JPEG.
@@ -19,7 +20,9 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -96,8 +99,8 @@ void check_engine(const Reduced& reduced, const fs::path& recipe, const fs::path
     const std::vector<std::uint8_t> bytes = prism::encode_srgb8(img);
 
     const Pixels want_png = decode(fs::path(golden).concat(".png"));
-    EXPECT_TRUE(matches(Pixels{img.width, img.height, bytes}, want_png, png_tolerance(),
-                        "encode_srgb8"));
+    EXPECT_TRUE(
+        matches(Pixels{img.width, img.height, bytes}, want_png, png_tolerance(), "encode_srgb8"));
 
     // PNG round trip: the file holds exactly the bytes encode_srgb8 gave, on every platform.
     const fs::path png = temp_file("out.png");
@@ -119,10 +122,17 @@ void check_cli(const fs::path& input, const fs::path& recipe, const fs::path& go
         const fs::path out = temp_file(std::string("out") + ext);
         const fs::path log = temp_file("log.txt");
         const std::string command = "\"" + std::string(PRISM_EXE) + "\" \"" + input.string() +
-                                    "\" -o \"" + out.string() + "\" --recipe \"" +
-                                    recipe.string() + "\" --long-side " +
-                                    std::to_string(long_side) + " > \"" + log.string() + "\" 2>&1";
-        EXPECT_EQ(prism_test::run_command(command), 0) << command;
+                                    "\" -o \"" + out.string() + "\" --recipe \"" + recipe.string() +
+                                    "\" --long-side " + std::to_string(long_side) + " > \"" +
+                                    log.string() + "\" 2>&1";
+        const int exit_code = prism_test::run_command(command);
+        if (exit_code != 0) {
+            std::ifstream in(log, std::ios::binary);
+            std::stringstream output;
+            output << in.rdbuf();
+            in.close();
+            ADD_FAILURE() << command << "\nexited with " << exit_code << ":\n" << output.str();
+        }
         if (std::string(ext) == ".png") {
             EXPECT_TRUE(matches(decode(out), decode(fs::path(golden).concat(ext)), png_tolerance(),
                                 "prism .png"));
@@ -141,8 +151,8 @@ class GoldenSdrImage : public testing::TestWithParam<const char*> {};
 TEST(GoldenSdr, EveryBuiltInLookHasAReference) {
     const auto check = [](const char* folder, const auto& looks) {
         std::vector<std::string> in_folder;
-        for (const fs::directory_entry& e : fs::directory_iterator(fs::path(PRISM_RECIPES_DIR) /
-                                                                   folder)) {
+        for (const fs::directory_entry& e :
+             fs::directory_iterator(fs::path(PRISM_RECIPES_DIR) / folder)) {
             if (e.path().extension() == fs::path(".prism")) {
                 in_folder.push_back(e.path().stem().string());
             }
@@ -158,6 +168,46 @@ TEST(GoldenSdr, EveryBuiltInLookHasAReference) {
     };
     check("image", image_looks);
     check("raw", raw_looks);
+    EXPECT_TRUE(fs::is_regular_file(golden_dir() / "SOURCE.txt"));
+    EXPECT_TRUE(fs::is_regular_file(golden_dir() / "raw" / "SOURCE.txt"));
+    const std::string sha = recorded_raw_sha256();
+    EXPECT_EQ(sha.size(), 64u) << "raw/source.sha256: " << sha;
+    EXPECT_EQ(sha.find_first_not_of("0123456789abcdef"), std::string::npos) << sha;
+}
+
+// The comparison rules themselves, both platforms' on every platform, against the stored files
+// alone: each reference passes, and a wrong or slightly changed picture fails.
+TEST(GoldenSdr, TolerancesWork) {
+    for (const bool exact : {true, false}) {
+        SCOPED_TRACE(exact ? "Apple arm64 rule" : "rule elsewhere");
+        for (const char* look : image_looks) {
+            const fs::path golden = golden_dir() / "image" / look;
+            const Pixels png = decode(fs::path(golden).concat(".png"));
+            EXPECT_TRUE(matches(png, png, png_tolerance(exact), look));
+            EXPECT_TRUE(jpeg_matches(fs::path(golden).concat(".jpg"), golden, look, exact));
+        }
+        const fs::path vivid = golden_dir() / "image" / "vivid";
+        const fs::path original = golden_dir() / "image" / "original";
+        // Another look's JPEG is not this look's.
+        EXPECT_FALSE(jpeg_matches(fs::path(vivid).concat(".jpg"), original, "vivid", exact));
+        const Pixels png = decode(fs::path(original).concat(".png"));
+        ASSERT_FALSE(png.rgb.empty());
+        // One sample 2 levels off fails either PNG rule.
+        Pixels two_off = png;
+        two_off.rgb[0] = static_cast<std::uint8_t>(two_off.rgb[0] < 128 ? two_off.rgb[0] + 2
+                                                                        : two_off.rgb[0] - 2);
+        EXPECT_FALSE(matches(two_off, png, png_tolerance(exact), "2 levels"));
+        // 1 level off in 1% of the samples fails either PNG rule; in 0.1% only the exact one.
+        const auto one_off_in = [&](std::size_t every) {
+            Pixels p = png;
+            for (std::size_t i = 0; i < p.rgb.size(); i += every) {
+                p.rgb[i] = static_cast<std::uint8_t>(p.rgb[i] < 128 ? p.rgb[i] + 1 : p.rgb[i] - 1);
+            }
+            return p;
+        };
+        EXPECT_FALSE(matches(one_off_in(100), png, png_tolerance(exact), "1% off"));
+        EXPECT_EQ(bool(matches(one_off_in(1000), png, png_tolerance(exact), "0.1% off")), !exact);
+    }
 }
 
 TEST_P(GoldenSdrImage, Engine) {
@@ -166,7 +216,8 @@ TEST_P(GoldenSdrImage, Engine) {
 }
 
 TEST_P(GoldenSdrImage, Cli) {
-    check_cli(sample_photo(), recipe_path("image", GetParam()), golden_dir() / "image" / GetParam());
+    check_cli(sample_photo(), recipe_path("image", GetParam()),
+              golden_dir() / "image" / GetParam());
 }
 
 INSTANTIATE_TEST_SUITE_P(Looks, GoldenSdrImage, testing::ValuesIn(image_looks),
@@ -174,8 +225,9 @@ INSTANTIATE_TEST_SUITE_P(Looks, GoldenSdrImage, testing::ValuesIn(image_looks),
                              return std::string(info.param);
                          });
 
-// One test per kind for all RAW looks: each decodes a full-size RAW, and ctest -j running five at
-// once would need several GB.
+// One test per kind for all RAW looks: each look decodes the full-size RAW (about 730 MB of float
+// pixels for 61 MP), one at a time, so ctest -j running the three kinds at once holds about three,
+// where a test per look would hold up to fifteen.
 TEST(GoldenSdr, EngineRawLooks) {
     if (!prism::raw_support_available()) {
         GTEST_SKIP() << "this build has no RAW support";

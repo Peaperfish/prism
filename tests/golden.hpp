@@ -1,24 +1,31 @@
 #pragma once
 
-// Test helpers for the SDR golden tests (tests/golden_sdr_test.cpp, tests/gui/golden_export_test.cpp);
-// not part of Prism. The references are in tests/data/golden/ (its README says what they are and
-// how to regenerate them, only on purpose: tools/make_sdr_goldens.sh).
+// Test helpers for the SDR golden tests (tests/golden_sdr_test.cpp,
+// tests/gui/golden_export_test.cpp); not part of Prism. The references are in tests/data/golden/
+// (its README says what they are and how to regenerate them, only on purpose:
+// tools/make_sdr_goldens.sh).
 //
 // Everything is compared as decoded 8-bit sRGB pixels, never as file bytes. The tests decode with
 // stb_image (the stb target Prism itself links, used here directly), so an expected value is always
 // read from a stored file and never recomputed by the code under test.
 //
-// Tolerances. Built for Apple arm64 (the macOS CI runners, where the references were made) the
-// pixels must match exactly, PNG and JPEG. Elsewhere other compilers may round a float differently
-// at the end of the pipeline, which moves a sample by at most 1 level, rarely: a PNG may then differ
-// by 1 level in at most 0.5% of the samples. stb_image_write's JPEG encoder uses a float DCT, so its
-// bytes can differ between compilers, and one input level or one coefficient rounding the other way
-// moves a whole 8 x 8 block by several levels (a 1-level change in a quarter of the input samples
-// moved the decoded JPEG by up to 9). So elsewhere the decoded JPEG is held to the JPEG's own
-// tolerance: no further from the decoded reference JPEG, at worst and on average, than that
+// Tolerances. Built for Apple arm64 (the macOS CI runners and the maintainer's Mac, where the
+// references were made) the pixels must match exactly, PNG and JPEG. That assumes Apple's libm and
+// compiler round as on that Mac: if a macOS runner ever differs, it is the place to relax.
+// Elsewhere other compilers may round a float differently at the end of the pipeline, which moves a
+// sample by at most 1 level, rarely: a PNG may then differ by 1 level in at most 0.5% of the
+// samples. stb_image_write's JPEG encoder uses a float DCT, so its bytes can differ between
+// compilers, and one input level or one coefficient rounding the other way moves a whole 8 x 8
+// block by several levels (a 1-level change in a quarter of the input samples moved the decoded
+// JPEG by up to 9). So elsewhere the decoded JPEG is held to the JPEG's own tolerance: no further
+// from the decoded reference JPEG, at worst (plus a margin of 2 levels) and on average, than that
 // reference is from the reference PNG it encodes (6 to 18 levels at worst, 0.4 to 1.1 on average,
-// for these files). Both are computed from the stored files alone. Off Apple arm64 the PNG checks
-// carry the precision; the JPEG check catches a wrong or broken JPEG.
+// for these files). Both are computed from the stored files alone. What keeps a correct JPEG inside
+// that bound is the PNG rule's 0.5% cap: re-encoding a reference with 0.5% of its samples off by 1
+// moved it by at most its own error (by exactly that on raw/bw, hence the margin). Off Apple arm64
+// the PNG checks carry the precision; the JPEG check catches a wrong or broken JPEG (quality 92 or
+// lower, chroma subsampling, another look). GoldenSdr.TolerancesWork runs both rules on every
+// platform.
 
 #include <gtest/gtest.h>
 
@@ -50,13 +57,17 @@ inline constexpr bool exact_platform = false;
 
 inline constexpr int long_side = 256;
 
-// The built-in looks, as in recipes/image/ and recipes/raw/ (GoldenSdr.EveryBuiltInLookHasAReference
-// checks that these lists and the folders agree).
+// The built-in looks, as in recipes/image/ and recipes/raw/
+// (GoldenSdr.EveryBuiltInLookHasAReference checks that these lists and the folders agree).
 inline const std::array<const char*, 4> image_looks = {"original", "vivid", "soft", "bw"};
 inline const std::array<const char*, 5> raw_looks = {"natural", "original", "vivid", "soft", "bw"};
 
-inline fs::path golden_dir() { return fs::path(PRISM_TEST_DATA) / "golden"; }
-inline fs::path sample_photo() { return golden_dir() / "input" / "prism-window.jpg"; }
+inline fs::path golden_dir() {
+    return fs::path(PRISM_TEST_DATA) / "golden";
+}
+inline fs::path sample_photo() {
+    return golden_dir() / "input" / "prism-window.jpg";
+}
 
 struct Pixels {
     int width = 0;
@@ -65,13 +76,13 @@ struct Pixels {
 };
 
 struct Tolerance {
-    int max_difference = 0;      // per channel, in 8-bit levels
-    double max_share = 0.0;      // of all samples, that may differ at all
-    double max_mean = 255.0;     // mean absolute difference, in levels
+    int max_difference = 0;   // per channel, in 8-bit levels
+    double max_share = 0.0;   // of all samples, that may differ at all
+    double max_mean = 255.0;  // mean absolute difference, in levels
 };
 
-inline Tolerance png_tolerance() {
-    return exact_platform ? Tolerance{0, 0.0} : Tolerance{1, 0.005};
+inline Tolerance png_tolerance(bool exact = exact_platform) {
+    return exact ? Tolerance{0, 0.0} : Tolerance{1, 0.005};
 }
 
 inline std::vector<std::uint8_t> read_bytes(const fs::path& path) {
@@ -107,9 +118,9 @@ inline testing::AssertionResult matches(const Pixels& got, const Pixels& want, c
         return testing::AssertionFailure() << what << ": the reference did not decode";
     }
     if (got.width != want.width || got.height != want.height || got.rgb.size() != want.rgb.size()) {
-        return testing::AssertionFailure() << what << ": " << got.width << " × " << got.height
-                                           << ", the reference is " << want.width << " × "
-                                           << want.height;
+        return testing::AssertionFailure()
+               << what << ": " << got.width << " × " << got.height << ", the reference is "
+               << want.width << " × " << want.height;
     }
     int max_difference = 0;
     std::size_t differing = 0;
@@ -142,23 +153,24 @@ inline testing::AssertionResult matches(const Pixels& got, const Pixels& want, c
            << what << ": max difference " << max_difference << " (allowed " << t.max_difference
            << "), " << differing << " of " << got.rgb.size() << " samples differ (" << share * 100.0
            << "%, allowed " << t.max_share * 100.0 << "%), mean " << mean << " (allowed "
-           << t.max_mean << "); worst pixel (" << pixel % got.width
-           << ", " << pixel / got.width << ") is " << rgb(got.rgb) << ", the reference "
-           << rgb(want.rgb);
+           << t.max_mean << "); worst pixel (" << pixel % got.width << ", " << pixel / got.width
+           << ") is " << rgb(got.rgb) << ", the reference " << rgb(want.rgb);
 }
 
 // Checks a JPEG Prism wrote against the reference `<golden>.jpg`, both decoded: exactly on Apple
-// arm64, elsewhere within the reference's own error against `<golden>.png` (see the top).
+// arm64, elsewhere within the reference's own error against `<golden>.png` (see the top). `exact`
+// picks the rule, so a test can run the other platform's rule too.
 inline testing::AssertionResult jpeg_matches(const fs::path& jpeg, const fs::path& golden,
-                                             const std::string& what) {
+                                             const std::string& what, bool exact = exact_platform) {
     const Pixels want = decode(fs::path(golden).concat(".jpg"));
-    if (exact_platform) {
+    if (exact) {
         return matches(decode(jpeg), want, Tolerance{0, 0.0}, what);
     }
     const Pixels source = decode(fs::path(golden).concat(".png"));
     if (want.rgb.empty() || want.rgb.size() != source.rgb.size()) {
-        return testing::AssertionFailure() << what << ": the reference JPEG and PNG don't decode "
-                                                      "to the same size";
+        return testing::AssertionFailure() << what
+                                           << ": the reference JPEG and PNG don't decode "
+                                              "to the same size";
     }
     Tolerance own{0, 1.0, 0.0};
     for (std::size_t i = 0; i < want.rgb.size(); ++i) {
@@ -167,11 +179,13 @@ inline testing::AssertionResult jpeg_matches(const fs::path& jpeg, const fs::pat
         own.max_mean += d;
     }
     own.max_mean /= double(want.rgb.size());
+    own.max_difference += 2;
     return matches(decode(jpeg), want, own, what);
 }
 
 // --- SHA-256 (FIPS 180-4), for checking the test RAW is the one the references came from --------
 
+// One use per object: add() the data, then call hex() once (it pads the message).
 class Sha256 {
 public:
     void add(const std::uint8_t* data, std::size_t n) {

@@ -12,18 +12,31 @@
 #   raw/<look>.png and .jpg    from $PRISM_TEST_RAW, for every recipes/raw/*.prism, only when
 #                              PRISM_TEST_RAW is set; raw/source.sha256 records that file's SHA-256
 #                              (the RAW tests skip unless their PRISM_TEST_RAW has the same hash)
-#   SOURCE.txt                 the commit and prism version the references came from
-# Build the prism executable from a clean checkout of the commit you mean to pin.
+#   SOURCE.txt, raw/SOURCE.txt the commit and prism version the image and the RAW references
+#                              came from (raw/SOURCE.txt only changes with the RAW references)
+# Run it in a checkout of the commit you mean to pin (copy this script in if that commit predates
+# it), with prism built there: it refuses a checkout whose code or recipes have uncommitted changes.
 set -euo pipefail
 
 if [[ $# -ne 2 || "$2" != "--overwrite" ]]; then
-    sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
     exit 2
 fi
 prism="$1"
 repo="$(cd "$(dirname "$0")/.." && pwd)"
 golden="$repo/tests/data/golden"
 long_side=256
+
+if [[ -n "$(git -C "$repo" status --porcelain -- CMakeLists.txt cmake include lib src gui_core \
+                                                    recipes third_party)" ]]; then
+    echo "uncommitted changes to Prism's code or recipes: the references would not match a commit"
+    exit 1
+fi
+source_txt() {
+    echo "commit $(git -C "$repo" rev-parse HEAD)"
+    echo "$("$prism" --version 2>&1 | head -1)"
+    echo "long side $long_side"
+}
 
 sha256() {
     if command -v sha256sum > /dev/null; then sha256sum "$1" | cut -d' ' -f1
@@ -47,13 +60,10 @@ if [[ -n "${PRISM_TEST_RAW:-}" ]]; then
         render "$PRISM_TEST_RAW" "$recipe" "$golden/raw/$(basename "$recipe" .prism)"
     done
     sha256 "$PRISM_TEST_RAW" > "$golden/raw/source.sha256"
+    source_txt > "$golden/raw/SOURCE.txt"
 else
     echo "PRISM_TEST_RAW is not set: the RAW references were left as they were"
 fi
 
-{
-    echo "commit $(git -C "$repo" rev-parse HEAD)"
-    echo "$("$prism" --version 2>&1 | head -1)"
-    echo "long side $long_side"
-} > "$golden/SOURCE.txt"
+source_txt > "$golden/SOURCE.txt"
 echo "wrote $golden"
