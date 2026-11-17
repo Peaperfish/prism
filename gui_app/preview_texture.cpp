@@ -8,6 +8,59 @@
 
 namespace prism::gui_app {
 
+namespace {
+
+// An RGBA64_FLOAT texture in linear light for the HDR canvas (#106), made again only when its size
+// changes; `texture` is destroyed (and the size zeroed) on any failure or for empty `rgba`.
+bool upload_half_texture(SDL_Renderer* renderer, SDL_Texture*& texture, int& texture_width,
+                         int& texture_height, std::span<const std::uint16_t> rgba, int width,
+                         int height) {
+    const auto drop = [&] {
+        if (texture != nullptr) {
+            SDL_DestroyTexture(texture);
+            texture = nullptr;
+        }
+        texture_width = 0;
+        texture_height = 0;
+    };
+    if (rgba.empty()) {
+        drop();
+        return true;
+    }
+    if (width <= 0 || height <= 0 ||
+        rgba.size() != static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4) {
+        SDL_SetError("the HDR picture is the wrong size");
+        drop();
+        return false;
+    }
+    if (texture == nullptr || width != texture_width || height != texture_height) {
+        drop();
+        SDL_PropertiesID p = SDL_CreateProperties();
+        SDL_SetNumberProperty(p, SDL_PROP_TEXTURE_CREATE_FORMAT_NUMBER,
+                              SDL_PIXELFORMAT_RGBA64_FLOAT);
+        SDL_SetNumberProperty(p, SDL_PROP_TEXTURE_CREATE_ACCESS_NUMBER, SDL_TEXTUREACCESS_STATIC);
+        SDL_SetNumberProperty(p, SDL_PROP_TEXTURE_CREATE_WIDTH_NUMBER, width);
+        SDL_SetNumberProperty(p, SDL_PROP_TEXTURE_CREATE_HEIGHT_NUMBER, height);
+        SDL_SetNumberProperty(p, SDL_PROP_TEXTURE_CREATE_COLORSPACE_NUMBER,
+                              SDL_COLORSPACE_SRGB_LINEAR);
+        texture = SDL_CreateTextureWithProperties(renderer, p);
+        SDL_DestroyProperties(p);
+        if (texture == nullptr) {
+            return false;
+        }
+        SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_LINEAR);
+        texture_width = width;
+        texture_height = height;
+    }
+    if (!SDL_UpdateTexture(texture, nullptr, rgba.data(), width * 8)) {
+        drop();
+        return false;
+    }
+    return true;
+}
+
+}  // namespace
+
 bool PreviewTexture::upload(const gui::PreviewFrame& frame) {
     if (frame.width <= 0 || frame.height <= 0 ||
         frame.rgb8.size() != static_cast<std::size_t>(frame.width) * frame.height * 3) {
@@ -149,40 +202,7 @@ void PreviewTexture::reset_stroke_overlay() {
 }
 
 bool PreviewTexture::upload_hdr(std::span<const std::uint16_t> rgba, int width, int height) {
-    if (rgba.empty()) {
-        reset_hdr();
-        return true;
-    }
-    if (width <= 0 || height <= 0 ||
-        rgba.size() != static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4) {
-        SDL_SetError("the HDR picture is the wrong size");
-        reset_hdr();
-        return false;
-    }
-    if (hdr_ == nullptr || width != hdr_width_ || height != hdr_height_) {
-        reset_hdr();
-        SDL_PropertiesID p = SDL_CreateProperties();
-        SDL_SetNumberProperty(p, SDL_PROP_TEXTURE_CREATE_FORMAT_NUMBER,
-                              SDL_PIXELFORMAT_RGBA64_FLOAT);
-        SDL_SetNumberProperty(p, SDL_PROP_TEXTURE_CREATE_ACCESS_NUMBER, SDL_TEXTUREACCESS_STATIC);
-        SDL_SetNumberProperty(p, SDL_PROP_TEXTURE_CREATE_WIDTH_NUMBER, width);
-        SDL_SetNumberProperty(p, SDL_PROP_TEXTURE_CREATE_HEIGHT_NUMBER, height);
-        SDL_SetNumberProperty(p, SDL_PROP_TEXTURE_CREATE_COLORSPACE_NUMBER,
-                              SDL_COLORSPACE_SRGB_LINEAR);
-        hdr_ = SDL_CreateTextureWithProperties(renderer_, p);
-        SDL_DestroyProperties(p);
-        if (hdr_ == nullptr) {
-            return false;
-        }
-        SDL_SetTextureScaleMode(hdr_, SDL_SCALEMODE_LINEAR);
-        hdr_width_ = width;
-        hdr_height_ = height;
-    }
-    if (!SDL_UpdateTexture(hdr_, nullptr, rgba.data(), width * 8)) {
-        reset_hdr();
-        return false;
-    }
-    return true;
+    return upload_half_texture(renderer_, hdr_, hdr_width_, hdr_height_, rgba, width, height);
 }
 
 void PreviewTexture::reset_hdr() {
@@ -231,10 +251,20 @@ bool DetailTexture::upload(const gui::DetailFrame& frame) {
         reset();
         return false;
     }
+    if (!upload_half_texture(renderer_, hdr_, hdr_width_, hdr_height_, frame.hdr_rgba, w, h)) {
+        reset();
+        return false;
+    }
     return true;
 }
 
 void DetailTexture::reset() {
+    if (hdr_ != nullptr) {
+        SDL_DestroyTexture(hdr_);
+        hdr_ = nullptr;
+    }
+    hdr_width_ = 0;
+    hdr_height_ = 0;
     if (texture_ != nullptr) {
         SDL_DestroyTexture(texture_);
         texture_ = nullptr;

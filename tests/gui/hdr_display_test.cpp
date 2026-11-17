@@ -634,3 +634,16 @@ TEST(HdrOverlays, AMaskIsDrawnInOnlyWhileItShowsAndOnlyIfItIsThePicturesSize) {
     EXPECT_FALSE(overlay_drawn_into(OverlayMask{true, 12, 6, 3}, 4, 3));
     EXPECT_FALSE(overlay_drawn_into(OverlayMask{true, 0, 0, 0}, 0, 0));   // no picture
 }
+
+TEST(HdrViews, ThePictureUnderTheUiIsClippedToEveryPixelTheCanvasTouches) {
+    using prism::gui::pixels_covering;
+    using prism::gui::WindowPixels;
+    EXPECT_EQ(pixels_covering(10.0f, 20.0f, 110.0f, 70.0f, 2.0f), (WindowPixels{20, 40, 200, 100}));
+    // Half a unit on a 2x screen is one pixel; a quarter reaches into the next one.
+    EXPECT_EQ(pixels_covering(10.25f, 20.5f, 110.25f, 70.75f, 2.0f),
+              (WindowPixels{20, 41, 201, 101}));
+    EXPECT_EQ(pixels_covering(0.4f, 0.4f, 0.6f, 0.6f, 1.0f), (WindowPixels{0, 0, 1, 1}));
+    EXPECT_EQ(pixels_covering(-3.5f, 0.0f, 2.0f, 1.0f, 1.0f), (WindowPixels{-4, 0, 6, 1}));
+    EXPECT_EQ(pixels_covering(5.0f, 5.0f, 5.0f, 5.0f, 1.0f).width, 0);
+    EXPECT_EQ(pixels_covering(5.0f, 5.0f, 4.0f, 9.0f, 1.0f).width, 0);
+}

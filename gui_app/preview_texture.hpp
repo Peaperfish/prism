@@ -114,8 +114,10 @@ public:
     DetailTexture(const DetailTexture&) = delete;
     DetailTexture& operator=(const DetailTexture&) = delete;
 
-    // Copies the frame's RGB8 bytes into the texture. False (with SDL_GetError() set) if the frame
-    // is empty or the wrong size, or SDL couldn't; there is no texture then.
+    // Copies the frame's RGB8 bytes into the texture, and its HDR picture (hdr_rgba, #106), if it
+    // has one, into a second texture as PreviewTexture::upload_hdr does (none without). False
+    // (with SDL_GetError() set) if the frame is empty or the wrong size, or SDL couldn't; there
+    // are no textures then.
     bool upload(const gui::DetailFrame& frame);
     // Drops the texture.
     void reset();
@@ -126,12 +128,16 @@ public:
     }
 
     [[nodiscard]] SDL_Texture* texture() const noexcept { return texture_; }
+    [[nodiscard]] SDL_Texture* hdr_texture() const noexcept { return hdr_; }
 
 private:
     SDL_Renderer* renderer_;
     SDL_Texture* texture_ = nullptr;
     int width_ = 0;
     int height_ = 0;
+    SDL_Texture* hdr_ = nullptr;
+    int hdr_width_ = 0;
+    int hdr_height_ = 0;
 };
 
 }  // namespace prism::gui_app

@@ -26,6 +26,14 @@ bool sdr_only_view(const CanvasViews& views) noexcept {
     return views.real_pixels || views.split || views.easel;
 }
 
+WindowPixels pixels_covering(float x0, float y0, float x1, float y1, float scale) noexcept {
+    const int left = static_cast<int>(std::floor(x0 * scale));
+    const int top = static_cast<int>(std::floor(y0 * scale));
+    const int right = static_cast<int>(std::ceil(x1 * scale));
+    const int bottom = static_cast<int>(std::ceil(y1 * scale));
+    return {left, top, std::max(0, right - left), std::max(0, bottom - top)};
+}
+
 float canvas_weight(float display_headroom, float headroom_stops) noexcept {
     GainMapMetadata m;
     m.hdr_capacity_min = 0.0f;

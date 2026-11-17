@@ -980,7 +980,23 @@ void App::drop_detail() {
     detail_plan_ = {};
 }
 
+std::optional<float> App::hdr_request() const {
+    if (!gui::hdr_canvas_on(display_mode_, session_.settings(), viewed_stage_, strip_.has_value(),
+                            display_headroom_, framing_.on())) {
+        return std::nullopt;
+    }
+    // Rounded to the weight's 1/256 steps: brightness changes send many events (#97).
+    return gui::request_headroom(display_headroom_, *gui::output_headroom(session_.settings()));
+}
+
 void App::update_detail() {
+    // Real pixels carry their HDR picture for the screen as it was asked for (#106): for another
+    // headroom, or HDR on or off, they are asked for again.
+    const std::optional<float> hdr = hdr_request();
+    if (hdr != detail_hdr_asked_) {
+        drop_detail();
+        detail_hdr_asked_ = hdr;
+    }
     const std::shared_ptr<const prism::Photo> base = session_.detail_base();
     const std::uint64_t base_id =
         detail_base_number_.update(base, std::exchange(detail_photo_opened_, false));
@@ -1038,6 +1054,7 @@ void App::update_detail() {
         request.request = ask.request;
         request.output = ask.output;
         request.key = ask.key;
+        request.hdr_display_headroom = hdr;
         std::uint64_t generation = 0;
         try {
             generation = detail_renderer_.submit(std::move(request), in.gesture);
@@ -1079,12 +1096,7 @@ void App::update_preview() {
     options.test_strip = strip_;
     options.as_shot_white = session_.as_shot_white();
     // The HDR canvas's picture, when it may show (the overlays are checked when drawing).
-    if (gui::hdr_canvas_on(display_mode_, session_.settings(), viewed_stage_, strip_.has_value(),
-                           display_headroom_, framing_.on())) {
-        // Rounded to the weight's 1/256 steps: brightness changes send many events (#97).
-        options.hdr_display_headroom =
-            gui::request_headroom(display_headroom_, *gui::output_headroom(session_.settings()));
-    }
+    options.hdr_display_headroom = hdr_request();
     if (framing_.on()) {
         // While framing the canvas shows the WHOLE photo, turned on the GPU (#58): the render is of
         // the whole base, without the frame, so a frame committed during framing renders nothing
@@ -1468,10 +1480,10 @@ void App::draw_under_ui(SDL_Renderer* renderer) const {
     const float k = under_ui_.scale;
     if (under_ui_.picture && texture_.hdr_texture() != nullptr) {
         // Clipped to the canvas, as ImGui clips the SDR picture to the canvas window.
-        const int x0 = static_cast<int>(std::floor(under_ui_.clip_min.x * k));
-        const int y0 = static_cast<int>(std::floor(under_ui_.clip_min.y * k));
-        const SDL_Rect clip{x0, y0, static_cast<int>(std::ceil(under_ui_.clip_max.x * k)) - x0,
-                            static_cast<int>(std::ceil(under_ui_.clip_max.y * k)) - y0};
+        const gui::WindowPixels covered =
+            gui::pixels_covering(under_ui_.clip_min.x, under_ui_.clip_min.y, under_ui_.clip_max.x,
+                                 under_ui_.clip_max.y, k);
+        const SDL_Rect clip{covered.x, covered.y, covered.width, covered.height};
         SDL_SetRenderClipRect(renderer, &clip);
         // Sampled as the SDR picture would be: nearest once the view shows pixels.
         SDL_SetTextureScaleMode(texture_.hdr_texture(),
@@ -1480,6 +1492,17 @@ void App::draw_under_ui(SDL_Renderer* renderer) const {
                             (under_ui_.end.x - under_ui_.at.x) * k,
                             (under_ui_.end.y - under_ui_.at.y) * k};
         SDL_RenderTexture(renderer, texture_.hdr_texture(), nullptr, &dst);
+        // Real pixels over it, on their own region's place, sampled by the rule for file pixels
+        // (nearest at 100% and closer), as the SDR canvas draws them.
+        if (under_ui_.detail && detail_texture_.hdr_texture() != nullptr) {
+            SDL_SetTextureScaleMode(detail_texture_.hdr_texture(), under_ui_.detail_nearest
+                                                                       ? SDL_SCALEMODE_NEAREST
+                                                                       : SDL_SCALEMODE_LINEAR);
+            const SDL_FRect where{under_ui_.detail_min.x * k, under_ui_.detail_min.y * k,
+                                  (under_ui_.detail_max.x - under_ui_.detail_min.x) * k,
+                                  (under_ui_.detail_max.y - under_ui_.detail_min.y) * k};
+            SDL_RenderTexture(renderer, detail_texture_.hdr_texture(), nullptr, &where);
+        }
     }
     SDL_SetRenderClipRect(renderer, nullptr);
 }
@@ -2080,10 +2103,11 @@ void App::draw_canvas() {
             begin_picture_sampling(draw);
             // The HDR picture under the UI, with the J overlay and the strokes drawn into it (this
             // version shows real pixels and the split in SDR: gui::sdr_only_view).
+            const bool detail_drawn = detail_plan_.draw && detail_texture_.texture() != nullptr;
             const bool sdr_view = gui::sdr_only_view(
                 {.clip_overlay = prefs_.clip_overlay,
                  .stroke_overlay = stroke_mask_on_,
-                 .real_pixels = detail_plan_.draw && detail_texture_.texture() != nullptr,
+                 .real_pixels = detail_drawn && detail_texture_.hdr_texture() == nullptr,
                  .split = splitting(),
                  .easel = framing_.on()});
             if (hdr_possible &&
@@ -2097,6 +2121,14 @@ void App::draw_canvas() {
                 under_ui_.clip_max = max;
                 under_ui_.scale = ImGui::GetIO().DisplayFramebufferScale.x;
                 under_ui_.nearest = gui::view_shows_pixels(gui::view_zoom(view_, view_geometry_));
+                if (detail_drawn) {  // with its own HDR picture (sdr_view says so)
+                    under_ui_.detail = true;
+                    under_ui_.detail_min =
+                        ImVec2(detail_plan_.where.min.x, detail_plan_.where.min.y);
+                    under_ui_.detail_max =
+                        ImVec2(detail_plan_.where.max.x, detail_plan_.where.max.y);
+                    under_ui_.detail_nearest = detail_plan_.nearest;
+                }
                 // Clear the picture's place in the UI target, so the picture drawn under it shows
                 // through; whatever ImGui draws after this (marks, chips) still lands on top.
                 const float hole[4] = {std::max(at.x, min.x), std::max(at.y, min.y),
@@ -2108,7 +2140,7 @@ void App::draw_canvas() {
                                    reinterpret_cast<std::uintptr_t>(texture_.texture()))),
                                at, ImVec2(at.x + shown.x, at.y + shown.y));
             }
-            if (detail_plan_.draw && detail_texture_.texture() != nullptr) {
+            if (detail_drawn && !under_ui_.picture) {
                 // Real pixels over the enlarged preview, on their own region's place; the preview
                 // shows around them. Sampled by the rule for file pixels, then back to the
                 // preview's rule for the overlays.

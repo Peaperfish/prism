@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <utility>
 
+#include "prism/gui/hdr_display.hpp"
 #include "prism/gui/session.hpp"
 
 namespace prism::gui {
@@ -45,11 +46,18 @@ DetailRenderer::DetailRenderer(int threads)
                     std::stop_token stop) {
               return render_region(base, settings, region, threads, std::move(stop));
           },
+          [threads](const Photo& base, const EditSettings& settings, const FrameBox& region,
+                    std::stop_token stop, Image& hdr) {
+              return render_region(base, settings, region, threads, std::move(stop), &hdr);
+          },
           threads) {}
 
-// The worker starts last, in the constructor's body, once render_ is set.
 DetailRenderer::DetailRenderer(RenderFunction render, int threads)
-    : render_(std::move(render)), threads_(threads) {
+    : DetailRenderer(std::move(render), HdrRenderFunction{}, threads) {}
+
+// The worker starts last, in the constructor's body, once render_ is set.
+DetailRenderer::DetailRenderer(RenderFunction render, HdrRenderFunction render_hdr, int threads)
+    : render_(std::move(render)), render_hdr_(std::move(render_hdr)), threads_(threads) {
     worker_ = std::jthread([this](std::stop_token thread_stop) { run(thread_stop); });
 }
 
@@ -144,7 +152,13 @@ bool DetailRenderer::wait_until_idle(std::chrono::milliseconds timeout) {
 
 std::optional<DetailFrame> DetailRenderer::render(const Job& job, std::stop_token stop) const {
     const DetailRenderRequest& r = job.request;
-    std::optional<Image> pixels = render_(*r.base, r.settings, r.request.region, stop);
+    // The HDR canvas's picture too, when asked for and the settings make one (#106).
+    const std::optional<float> headroom = output_headroom(r.settings);
+    const bool make_hdr = r.hdr_display_headroom && headroom && render_hdr_;
+    Image hdr;
+    std::optional<Image> pixels =
+        make_hdr ? render_hdr_(*r.base, r.settings, r.request.region, stop, hdr)
+                 : render_(*r.base, r.settings, r.request.region, stop);
     if (!pixels || stop.stop_requested()) {
         return std::nullopt;
     }
@@ -158,6 +172,9 @@ std::optional<DetailFrame> DetailRenderer::render(const Job& job, std::stop_toke
     if (r.output != PixelSize{pixels->width, pixels->height}) {
         // Below 100%: shrink to what the canvas covers, as detail_output_size worked it out.
         *pixels = downscale(*pixels, std::max(r.output.width, r.output.height), threads_);
+        if (!hdr.pixels.empty() && !stop.stop_requested()) {
+            hdr = downscale(hdr, std::max(r.output.width, r.output.height), threads_);
+        }
         if (stop.stop_requested()) {
             return std::nullopt;
         }
@@ -171,6 +188,13 @@ std::optional<DetailFrame> DetailRenderer::render(const Job& job, std::stop_toke
     }
     frame.size = r.output;
     frame.rgb8 = encode_srgb8(*pixels, threads_);
+    if (make_hdr && hdr.width == r.output.width && hdr.height == r.output.height &&
+        !stop.stop_requested()) {
+        frame.hdr_weight = canvas_weight(*r.hdr_display_headroom, *headroom);
+        frame.hdr_rgba = rgba_half_from(
+            viewer_picture(frame.rgb8, hdr, *headroom, *r.hdr_display_headroom, threads_),
+            threads_);
+    }
     return frame;
 }
 

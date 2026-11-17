@@ -622,7 +622,11 @@ Image render_region(const Photo& base, const EditSettings& settings, const Frame
 }
 
 std::optional<Image> render_region(const Photo& base, const EditSettings& settings,
-                                   const FrameBox& part, int threads, std::stop_token stop) {
+                                   const FrameBox& part, int threads, std::stop_token stop,
+                                   Image* hdr) {
+    if (hdr != nullptr) {
+        *hdr = Image{};
+    }
     if (const std::vector<std::string> problems = validate(settings); !problems.empty()) {
         throw std::invalid_argument("render_region: " + problems.front());
     }
@@ -642,8 +646,9 @@ std::optional<Image> render_region(const Photo& base, const EditSettings& settin
             std::to_string(plan.size.width) + " × " + std::to_string(plan.size.height) +
             " framed picture");
     }
-    std::variant<Image, Error> result = run_after_decode(
-        &base.image, as_shot_white_of(base.info), settings, std::nullopt, part, threads, stop, {});
+    std::variant<Image, Error> result =
+        run_after_decode(&base.image, as_shot_white_of(base.info), settings, std::nullopt, part,
+                         threads, stop, {}, hdr);
     if (Error* e = std::get_if<Error>(&result)) {
         if (e->kind == ErrorKind::cancelled) {
             return std::nullopt;  // stopped: what was made so far is freed, never handed out

@@ -295,6 +295,9 @@ private:
     // into it while they show (#106), when the frame, the overlays or the theme changed. False if
     // there is no HDR picture or SDL couldn't (then the canvas shows the SDR picture).
     bool update_hdr_texture();
+    // The screen's headroom a render asks the HDR canvas's picture for (PreviewOptions and
+    // DetailRenderRequest::hdr_display_headroom), or none while the canvas can't show one.
+    [[nodiscard]] std::optional<float> hdr_request() const;
     void drop_hdr_picture();
     // The overlays over the viewed picture, where it is drawn from `min` to `max` with texture
     // coordinates `uv0` to `uv1`: the clipping overlay (J) and the stroke mask (hold M), the same
@@ -389,6 +392,10 @@ private:
         ImVec2 clip_max;
         float scale = 1.0f;    // ImGui units to window pixels
         bool nearest = false;  // the view shows pixels: sample as the SDR picture does
+        bool detail = false;   // real pixels' HDR picture over it, from detail_min to detail_max
+        ImVec2 detail_min;
+        ImVec2 detail_max;
+        bool detail_nearest = false;
     };
     UnderUi under_ui_;
     bool hdr_canvas_shown_ = false;  // the last frame showed the HDR picture
@@ -408,6 +415,7 @@ private:
     };
     std::optional<HdrTextureKey> hdr_texture_key_;  // empty: the texture is gone or stale
     std::optional<HdrTextureKey> hdr_texture_failed_;  // what SDL last couldn't upload
+    std::optional<float> detail_hdr_asked_;  // the HDR request real pixels were last asked with
     std::vector<std::uint8_t> stroke_mask_;
     int stroke_mask_width_ = 0;
     int stroke_mask_height_ = 0;

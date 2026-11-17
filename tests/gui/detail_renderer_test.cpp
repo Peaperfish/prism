@@ -6,6 +6,7 @@
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <memory>
 #include <mutex>
@@ -22,6 +23,7 @@
 #include "prism/frame.hpp"
 #include "prism/gui/detail_renderer.hpp"
 #include "prism/gui/detail_view.hpp"
+#include "prism/gui/hdr_display.hpp"
 #include "prism/gui/session.hpp"
 #include "prism/gui/settings.hpp"
 #include "prism/image.hpp"
@@ -822,3 +824,168 @@ TEST(DetailRenderer, AFrameSaysWhichFramedPictureItsRegionIsIn) {
 }
 
 }  // namespace
+
+// --- The HDR canvas's real pixels (#106) ---------------------------------------------------------
+
+namespace {
+
+EditSettings hdr_look(int w, int h, float headroom) {
+    EditSettings s = look(w, h, false);
+    s.exposure_stops = 1.0f;  // so part of the light is above white
+    s.hdr_on = true;
+    s.headroom_stops = headroom;
+    return s;
+}
+
+DetailFrame rendered_hdr(DetailRenderer& renderer, const std::shared_ptr<const Photo>& base,
+                         const EditSettings& s, const FrameBox& region, PixelSize output,
+                         std::optional<float> display) {
+    DetailRenderRequest r;
+    r.base = base;
+    r.settings = s;
+    r.request = {region, RegionBudget::live};
+    r.output = output;
+    r.key = {1, 1};
+    r.hdr_display_headroom = display;
+    if (renderer.submit(std::move(r), false) == 0 || !renderer.wait_until_idle(timeout)) {
+        ADD_FAILURE() << "not rendered";
+        return {};
+    }
+    std::optional<DetailFrame> frame = renderer.poll(1);
+    if (!frame) {
+        ADD_FAILURE() << "no frame";
+        return {};
+    }
+    EXPECT_EQ(frame->error, "");
+    EXPECT_EQ(frame->size, output);
+    return std::move(*frame);
+}
+
+std::vector<std::uint32_t> float_bits(const Image& img) {
+    std::vector<std::uint32_t> out(img.pixels.size());
+    std::memcpy(out.data(), img.pixels.data(), out.size() * sizeof(float));
+    return out;
+}
+
+Image crop_float(const Image& whole, const FrameBox& part) {
+    Image out;
+    out.width = part.width;
+    out.height = part.height;
+    for (int y = part.y0; y < part.y0 + part.height; ++y) {
+        const auto row = whole.pixels.begin() +
+                         static_cast<std::ptrdiff_t>((static_cast<std::size_t>(y) * whole.width +
+                                                      static_cast<std::size_t>(part.x0)) *
+                                                     3);
+        out.pixels.insert(out.pixels.end(), row, row + static_cast<std::ptrdiff_t>(part.width) * 3);
+    }
+    return out;
+}
+
+}  // namespace
+
+TEST(DetailRendererHdr, TheRegionsHdrPictureIsExportsAndItsSdrBytesAreUnchanged) {
+    const int w = 640;
+    const int h = 430;
+    const EditSettings s = hdr_look(w, h, 2.0f);
+    const PixelSize size = prism::plan_export_frame(s.frame, w, h).size;
+    const FrameBox region{size.width / 4, size.height / 4, size.width / 2, size.height / 2};
+    const auto base = std::make_shared<const Photo>(make_photo(w, h));
+    // render_region's HDR part is exactly that part of export's HDR picture, and its SDR picture
+    // is the same as without it.
+    Image hdr_part;
+    const std::optional<Image> sdr_part =
+        prism::gui::render_region(*base, s, region, 0, std::stop_token{}, &hdr_part);
+    ASSERT_TRUE(sdr_part.has_value());
+    EXPECT_TRUE(float_bits(*sdr_part) == float_bits(prism::gui::render_region(*base, s, region)));
+    Image whole_hdr;
+    std::variant<Image, Error> whole =
+        prism::gui::finish_export(make_photo(w, h), s, std::nullopt, 0, {}, {}, &whole_hdr);
+    ASSERT_TRUE(std::holds_alternative<Image>(whole));
+    ASSERT_EQ(hdr_part.width, region.width);
+    EXPECT_TRUE(float_bits(crop_float(whole_hdr, region)) == float_bits(hdr_part));
+    // Without HDR in the settings, `hdr` is emptied.
+    EditSettings off = s;
+    off.hdr_on = false;
+    Image stale = hdr_part;
+    ASSERT_TRUE(prism::gui::render_region(*base, off, region, 0, std::stop_token{}, &stale));
+    EXPECT_TRUE(stale.pixels.empty());
+
+    DetailRenderer renderer(0);
+    const PixelSize full{region.width, region.height};
+    const PixelSize smaller =
+        prism::gui::detail_output_size(region, view_at(60.0, 2.0), 2.0, quarter);
+    ASSERT_LT(smaller.width, region.width);
+    for (const PixelSize out : {full, smaller}) {
+        SCOPED_TRACE(std::to_string(out.width) + " x " + std::to_string(out.height));
+        const DetailFrame plain = rendered_hdr(renderer, base, s, region, out, std::nullopt);
+        const DetailFrame hdr = rendered_hdr(renderer, base, s, region, out, 4.0f);
+        EXPECT_TRUE(plain.hdr_rgba.empty());
+        EXPECT_EQ(first_byte_difference(plain.rgb8, hdr.rgb8), "");  // the SDR bytes unchanged
+        const Image want =
+            out == full ? hdr_part : prism::downscale(hdr_part, std::max(out.width, out.height), 0);
+        EXPECT_TRUE(hdr.hdr_rgba ==
+                    prism::gui::rgba_half_from(
+                        prism::gui::viewer_picture(hdr.rgb8, want, 2.0f, 4.0f, 1), 1));
+        EXPECT_FLOAT_EQ(hdr.hdr_weight, 1.0f);
+        bool above = false;
+        for (std::size_t i = 0; i < hdr.hdr_rgba.size(); i += 4) {
+            above = above || prism::gui::float_from_half(hdr.hdr_rgba[i]) > 1.25f;
+        }
+        EXPECT_TRUE(above);
+    }
+}
+
+TEST(DetailRendererHdr, NoHdrPictureWithoutHdrInTheSettingsOrFromItsOwnRenderFunction) {
+    const int w = 320;
+    const int h = 215;
+    const auto base = std::make_shared<const Photo>(make_photo(w, h));
+    EditSettings s = hdr_look(w, h, 2.0f);
+    const PixelSize size = prism::plan_export_frame(s.frame, w, h).size;
+    const FrameBox region{0, 0, size.width / 2, size.height / 2};
+    const PixelSize out{region.width, region.height};
+    {
+        DetailRenderer renderer(0);
+        EXPECT_FALSE(rendered_hdr(renderer, base, s, region, out, 4.0f).hdr_rgba.empty());
+        s.hdr_on = false;
+        EXPECT_TRUE(rendered_hdr(renderer, base, s, region, out, 4.0f).hdr_rgba.empty());
+        s.hdr_on = true;
+    }
+    DetailRenderer own(
+        [](const Photo& b, const EditSettings& settings, const FrameBox& r, std::stop_token stop) {
+            return prism::gui::render_region(b, settings, r, 1, stop);
+        },
+        1);
+    const DetailFrame frame = rendered_hdr(own, base, s, region, out, 4.0f);
+    EXPECT_FALSE(frame.rgb8.empty());
+    EXPECT_TRUE(frame.hdr_rgba.empty());
+}
+
+TEST(DetailRendererHdr, OneAndEightThreadsGiveTheSameFrame) {
+    const int w = 2000;
+    const int h = 1400;
+    const auto base = std::make_shared<const Photo>(make_photo(w, h));
+    const EditSettings s = hdr_look(w, h, 2.0f);
+    const PixelSize size = prism::plan_export_frame(s.frame, w, h).size;
+    // 1501 x 1049 = 1,574,549 pixels; 1049 = 8 * 131 + 1 rows, so a chunking split leaves rows
+    // over.
+    const FrameBox region{(size.width - 1501) / 2, (size.height - 1049) / 2, 1501, 1049};
+    ASSERT_GE(region.x0, 0);
+    ASSERT_GE(region.y0, 0);
+    ASSERT_EQ(prism::threads_for_pixels(1501u * 1049u, 8), 8);
+    DetailRenderer one(1);
+    DetailRenderer eight(8);
+    for (const double percent : {100.0, 80.0}) {
+        SCOPED_TRACE(std::to_string(percent) + "%");
+        const PixelSize out =
+            prism::gui::detail_output_size(region, view_at(percent, 1.0), 1.0, quarter);
+        const DetailFrame a = rendered_hdr(one, base, s, region, out, 2.5f);
+        const DetailFrame b = rendered_hdr(eight, base, s, region, out, 2.5f);
+        ASSERT_FALSE(a.hdr_rgba.empty());
+        EXPECT_EQ(first_byte_difference(a.rgb8, b.rgb8), "");
+        EXPECT_TRUE(a.hdr_rgba == b.hdr_rgba);
+        // The last row is there in both: not left at zero by a chunk that stops short.
+        const std::size_t last = a.hdr_rgba.size() - 4;
+        EXPECT_NE(a.hdr_rgba[last + 3], 0u);
+        EXPECT_NE(b.hdr_rgba[last + 3], 0u);
+    }
+}

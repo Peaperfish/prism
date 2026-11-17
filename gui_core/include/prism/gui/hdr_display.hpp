@@ -52,15 +52,32 @@ enum class DisplayMode {
 struct CanvasViews {
     bool clip_overlay = false;    // the J overlay
     bool stroke_overlay = false;  // the Dodge & burn strokes' overlay (M)
-    bool real_pixels = false;     // real pixels drawn over the enlarged preview (#37)
+    bool real_pixels = false;     // real pixels without an HDR picture, over the preview (#37)
     bool split = false;           // split compare
     bool easel = false;           // the easel (framing, #58)
 };
 
 // Whether this version shows the canvas in SDR only (hdr_canvas_on's `sdr_view`): with real
-// pixels, a split compare or the easel. The J overlay and the strokes don't: they are drawn into
-// the HDR picture (hdr_with_overlays).
+// pixels that have no HDR picture of their own (DetailFrame::hdr_rgba; one made before the
+// screen's headroom changed is asked for again), a split compare or the easel. The J overlay and
+// the strokes don't: they are drawn into the HDR picture (hdr_with_overlays).
 [[nodiscard]] bool sdr_only_view(const CanvasViews& views) noexcept;
+
+// A rectangle of window pixels.
+struct WindowPixels {
+    int x = 0;
+    int y = 0;
+    int width = 0;
+    int height = 0;
+    bool operator==(const WindowPixels&) const = default;
+};
+
+// The window pixels that the canvas rectangle (x0, y0) to (x1, y1), in ImGui units with `scale`
+// window pixels per unit, touches, rounded outward: the clip for what is drawn under the UI, so
+// it reaches every pixel ImGui's own clip of the canvas reaches. 0 wide (or tall) where the
+// rectangle is empty.
+[[nodiscard]] WindowPixels pixels_covering(float x0, float y0, float x1, float y1,
+                                           float scale) noexcept;
 
 // The weight a viewer of the exported file gives its gain map on a screen with `display_headroom`
 // (#96 decision 10 as changed: HDRCapacityMin 0, HDRCapacityMax = N): prism::gain_map_weight with

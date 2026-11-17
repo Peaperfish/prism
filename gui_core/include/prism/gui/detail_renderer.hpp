@@ -77,6 +77,11 @@ struct DetailRenderRequest {
     DetailRequest request;  // the region (detail_request's snapped one) and its budget
     PixelSize output;       // detail_output_size for that region and the view
     DetailKey key;
+    // The HDR canvas (#106): the screen's headroom, as PreviewOptions::hdr_display_headroom (the
+    // app asks with request_headroom). With it and HDR in the settings (output_headroom), the
+    // frame also carries the region's viewer picture (DetailFrame::hdr_rgba); the 8-bit picture
+    // is the same either way.
+    std::optional<float> hdr_display_headroom;
 };
 
 // One finished region, ready to upload as a texture.
@@ -97,6 +102,15 @@ struct DetailFrame {
     // preview's pictures are. Below 100% the region is first shrunk to `size` by area averaging
     // (prism::downscale) on linear light.
     std::vector<std::uint8_t> rgb8;
+    // With the request's hdr_display_headroom (and HDR in the settings): the picture a viewer of
+    // the exported file shows on that screen, made as the preview's is (PreviewFrame::hdr_rgba):
+    // render_region's HDR part, shrunk as `rgb8` is below 100%, and viewer_picture of `rgb8` and
+    // it, as RGBA halves, size.width * size.height * 4 values, at the weight `hdr_weight`. The
+    // gain map is the region's own (make_gain_map takes its range from the picture it is given),
+    // so a pixel can differ from the exported file's by that map's 8-bit steps. Empty otherwise,
+    // and always for a renderer made with its own RenderFunction.
+    std::vector<std::uint16_t> hdr_rgba;
+    float hdr_weight = 0.0f;
     std::string error;  // if not empty, the render failed and rgb8 is empty
 };
 
@@ -176,7 +190,14 @@ private:
     // The frame for `job`, or nothing if `stop` was asked for.
     std::optional<DetailFrame> render(const Job& job, std::stop_token stop) const;
 
+    // render_region with the HDR picture, for the default renderer only.
+    using HdrRenderFunction = std::function<std::optional<Image>(
+        const Photo& base, const EditSettings& settings, const FrameBox& region,
+        std::stop_token stop, Image& hdr)>;
+    DetailRenderer(RenderFunction render, HdrRenderFunction render_hdr, int threads);
+
     RenderFunction render_;
+    HdrRenderFunction render_hdr_;
     int threads_ = 0;
 
     std::uint64_t shown_generation_ = 0;  // UI thread only: the last frame poll() returned

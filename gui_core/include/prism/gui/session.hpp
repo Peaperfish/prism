@@ -411,8 +411,12 @@ private:
 // nothing (std::nullopt) once `stop` is triggered. `stop` is checked where export checks it, after
 // the frame and between the stages; a stage under way runs to its end first. A stopped render
 // never hands out what it made so far. Throws as render_region does.
+//
+// With `hdr` and a headroom (output_headroom(settings)), `hdr` gets the same part of the HDR
+// picture finish_export makes with its `hdr`, bit for bit, and the result is unchanged. `hdr` is
+// emptied first, and is empty without a headroom and after a stop.
 [[nodiscard]] std::optional<Image> render_region(const Photo& base, const EditSettings& settings,
                                                  const FrameBox& part, int threads,
-                                                 std::stop_token stop);
+                                                 std::stop_token stop, Image* hdr = nullptr);
 
 }  // namespace prism::gui
