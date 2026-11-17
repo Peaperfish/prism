@@ -698,9 +698,13 @@ TEST(UltraHdrJpeg, PrimaryDecodesAsTheSdrJpeg) {
     EXPECT_TRUE(matches(decode(out), Pixels{w, h, want}, Tolerance{0, 0.0}, "plain stb JPEG"));
 }
 
-// The gain map decodes to the codes make_gain_map gave, within what JPEG at
-// gain_map_jpeg_quality loses: exactly stb's own decode of those codes encoded at that quality,
-// and within a few codes of them.
+// The gain map decodes to the codes make_gain_map gave, within what JPEG at quality 85 (the
+// quality chosen in #104, written here as a literal so changing gain_map_jpeg_quality fails) loses:
+// exactly stb's own decode of those codes encoded at 85, and within a few codes of them. The bound:
+// at quality 85 this picture's codes come back at worst 5 codes off and 0.870 off on average
+// (measured; 84 gives 5 and 0.901, 97 gives 3 and 0.448, so the bound can't tell nearby qualities
+// apart, the exact decode does); allowed 7, the measured worst plus the 2 levels the golden JPEG
+// rule adds for another compiler's float DCT (tests/golden.hpp), and 1.0 on average.
 TEST(UltraHdrJpeg, GainMapDecodesToItsCodes) {
     const Pictures p = ramp(96, 64);
     const prism::UltraHdrJpeg file = prism::encode_ultra_hdr_jpeg(p.sdr, p.hdr, ramp_headroom);
@@ -715,8 +719,7 @@ TEST(UltraHdrJpeg, GainMapDecodesToItsCodes) {
     ASSERT_EQ(got.size(), file.gain_map.codes.size());
 
     Bytes alone;
-    ASSERT_NE(stbi_write_jpg_to_func(stb_append, &alone, 96, 64, 1, file.gain_map.codes.data(),
-                                     prism::gain_map_jpeg_quality),
+    ASSERT_NE(stbi_write_jpg_to_func(stb_append, &alone, 96, 64, 1, file.gain_map.codes.data(), 85),
               0);
     int aw = 0;
     int ah = 0;
@@ -729,7 +732,7 @@ TEST(UltraHdrJpeg, GainMapDecodesToItsCodes) {
         worst = std::max(worst, d);
         total += d;
     }
-    EXPECT_LE(worst, 4);
+    EXPECT_LE(worst, 7);
     EXPECT_LE(total / double(got.size()), 1.0);
     // Stored as grey: decoded as RGB, the three channels agree.
     const Bytes rgb =

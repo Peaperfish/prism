@@ -39,13 +39,14 @@ namespace prism {
 //
 // This product includes Gain Map technology under license by Adobe.
 
-// The JPEG quality of the gain map image (the SDR picture keeps save_image's 95). Chosen in #104 as
-// the smallest quality whose reconstructed HDR picture (weight 1) stays within 0.05 stops of
-// process_hdr's at the 99.9th percentile of pixels, on the test RAW under Natural with N = 2: 97
-// gives 0.048 stops at full size and 0.046 at a long side of 2048 (96 gives 0.061 and 0.058, 95
-// gives 0.075 and 0.070). Its cost there: the file is 64% (full size) to 104% (2048) larger than
-// the plain JPEG.
-inline constexpr int gain_map_jpeg_quality = 97;
+// The JPEG quality of the gain map image (the SDR picture keeps save_image's 95). Chosen in #104 by
+// a blind test on the maintainer's XDR screen: the gain map at qualities 85, 90, 95 and 97 looked
+// the same on two 1024-pixel crops of the test RAW, one of them the photo's brightest smooth area.
+// Measured on the test RAW (a7RV, Natural, N = 2), quality 85 makes the file 21.7% larger than the
+// plain JPEG at full size and 32.2% larger at a long side of 2048, and the HDR picture a viewer
+// rebuilds at weight 1 is within 0.20 stops of luminance of process_hdr's at the 99.9th percentile
+// of pixels (0.047 stops on average).
+inline constexpr int gain_map_jpeg_quality = 85;
 
 // The sRGB ICC profile every primary image carries: "sRGB-v2-magic" from Compact-ICC-Profiles
 // (CC0 1.0), 736 bytes. See lib/srgb_icc.cpp and third_party/icc/.
