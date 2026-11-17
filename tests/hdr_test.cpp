@@ -267,17 +267,24 @@ prism::ProcessSettings look() {
 TEST(ProcessHdr, HeadroomZeroIsExactlyProcess) {
     prism::Image expected = ramp(17, 5);
     ASSERT_EQ(prism::process(expected, look(), 1), prism::ProcessResult::completed);
-    prism::Image img = ramp(17, 5);
-    prism::Image out = ramp(3, 3);  // anything left in it is cleared
-    std::vector<std::string> names;
-    ASSERT_EQ(prism::process_hdr(img, out, look(), 1, {},
-                                 [&](const prism::StageTime& t) { names.emplace_back(t.name); }),
-              prism::ProcessResult::completed);
-    EXPECT_EQ(bits(img), bits(expected));
-    EXPECT_EQ(out.width, 0);
-    EXPECT_TRUE(out.pixels.empty());
-    EXPECT_EQ(names, (std::vector<std::string>{"exposure", "white_balance", "matrix",
-                                               "saturation", "contrast", "curve"}));
+    // No headroom at all, 0 and -0 (as --headroom −0 gives) are all SDR only.
+    for (const std::optional<float> headroom : {std::optional<float>{}, std::optional<float>{0.0f},
+                                                std::optional<float>{-0.0f}}) {
+        SCOPED_TRACE(headroom ? std::to_string(*headroom) : "none");
+        prism::ProcessSettings s = look();
+        s.headroom_stops = headroom;
+        prism::Image img = ramp(17, 5);
+        prism::Image out = ramp(3, 3);  // anything left in it is cleared
+        std::vector<std::string> names;
+        ASSERT_EQ(prism::process_hdr(img, out, s, 1, {},
+                                     [&](const prism::StageTime& t) { names.emplace_back(t.name); }),
+                  prism::ProcessResult::completed);
+        EXPECT_EQ(bits(img), bits(expected));
+        EXPECT_EQ(out.width, 0);
+        EXPECT_TRUE(out.pixels.empty());
+        EXPECT_EQ(names, (std::vector<std::string>{"exposure", "white_balance", "matrix",
+                                                   "saturation", "contrast", "curve"}));
+    }
 }
 
 TEST(ProcessHdr, TheSdrBranchIsUnchangedAndTheHdrBranchFollowsContrast) {
