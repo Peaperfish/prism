@@ -630,5 +630,7 @@ TEST(HdrOverlays, AMaskIsDrawnInOnlyWhileItShowsAndOnlyIfItIsThePicturesSize) {
     EXPECT_FALSE(overlay_drawn_into(OverlayMask{true, 12, 3, 4}, 4, 3));   // another frame's
     EXPECT_FALSE(overlay_drawn_into(OverlayMask{true, 12, 4, 3}, 3, 4));
     EXPECT_FALSE(overlay_drawn_into(OverlayMask{true, 11, 4, 3}, 4, 3));  // bytes short
+    // A mask whose size disagrees with its own bytes is no mask of this picture either.
+    EXPECT_FALSE(overlay_drawn_into(OverlayMask{true, 12, 6, 3}, 4, 3));
     EXPECT_FALSE(overlay_drawn_into(OverlayMask{true, 0, 0, 0}, 0, 0));   // no picture
 }
