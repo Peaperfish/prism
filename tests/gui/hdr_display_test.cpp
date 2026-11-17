@@ -713,4 +713,6 @@ TEST(HdrViews, TheEaselsFrameCoversThePixelsWhoseCentresAreInIt) {
     EXPECT_EQ(pixels_centred_in(10.2f, 20.3f, 110.3f, 70.2f, 2.0f),
               (WindowPixels{20, 41, 201, 99}));
     EXPECT_EQ(pixels_centred_in(5.0f, 5.0f, 4.0f, 9.0f, 1.0f).width, 0);
+    // An edge a little past a boundary leaves the next pixel to the veil, on each side.
+    EXPECT_EQ(pixels_centred_in(0.3f, 0.3f, 10.2f, 10.2f, 1.0f), (WindowPixels{0, 0, 10, 10}));
 }
