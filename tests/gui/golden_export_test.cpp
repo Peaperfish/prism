@@ -11,8 +11,9 @@
 //   Looks/GoldenExportImage.Export/*  decode_for_export + finish_export, encoded, against the PNG
 //                                     reference; export_image as PNG must decode to exactly those
 //                                     bytes, and as JPEG to the decoded reference JPEG.
-//   GoldenExport.RawLooks             the same for every RAW look; skips unless PRISM_TEST_RAW has
-//                                     the SHA-256 in golden/raw/source.sha256.
+//   GoldenExport.RawNatural           the same for the test RAW under Natural only (every RAW look
+//                                     is held by GoldenSdr.EngineRawLooks); skips unless
+//                                     PRISM_TEST_RAW has the SHA-256 in golden/raw/source.sha256.
 
 #include <gtest/gtest.h>
 
@@ -128,10 +129,11 @@ INSTANTIATE_TEST_SUITE_P(Looks, GoldenExportImage, testing::ValuesIn(image_looks
                              return std::string(info.param);
                          });
 
-// One test per kind for all RAW looks: each look decodes the full-size RAW (about 730 MB of float
-// pixels for 61 MP), one at a time, so ctest -j running the three kinds at once holds about three,
-// where a test per look would hold up to fifteen.
-TEST(GoldenExport, RawLooks) {
+// The export of the test RAW under Natural, the default RAW look, only: each export decodes the
+// full-size RAW (about 730 MB of float pixels for 61 MP) three times, and GoldenSdr.EngineRawLooks
+// (tests/golden_sdr_test.cpp) already holds every RAW look; this checks the app reaches the same
+// pixels.
+TEST(GoldenExport, RawNatural) {
     if (!prism::raw_support_available()) {
         GTEST_SKIP() << "this build has no RAW support";
     }
@@ -142,7 +144,5 @@ TEST(GoldenExport, RawLooks) {
     prism::gui::Session session;
     ASSERT_EQ(session.open_file(*raw.path), std::nullopt);
     ASSERT_EQ(session.kind(), InputKind::raw);
-    for (const char* look : raw_looks) {
-        check_export(session, look, golden_dir() / "raw" / look);
-    }
+    check_export(session, "natural", golden_dir() / "raw" / "natural");
 }

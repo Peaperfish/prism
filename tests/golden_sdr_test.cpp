@@ -9,12 +9,13 @@
 // tests/golden.hpp (exact when built for Apple arm64).
 //
 //   Looks/GoldenSdrImage.Engine/*  load, reduce, process and encode_srgb8 in-process, as prism
-//   does;
-//                                 then save_image as PNG must decode to exactly those bytes, and as
-//                                 JPEG to the decoded reference JPEG.
+//                                  does; then save_image as PNG must decode to exactly those
+//                                  bytes, and as JPEG to the decoded reference JPEG.
 //   Looks/GoldenSdrImage.Cli/*     the prism executable writing PNG and JPEG.
-//   GoldenSdr.EngineRawLooks, GoldenSdr.CliRawLooks  the same for the test RAW: they skip unless
-//                                 PRISM_TEST_RAW has the SHA-256 in golden/raw/source.sha256.
+//   GoldenSdr.EngineRawLooks       the engine for the test RAW under every RAW look (one decode);
+//   GoldenSdr.CliRawNatural        the prism executable for it under Natural only. Both skip
+//                                  unless PRISM_TEST_RAW has the SHA-256 in
+//                                  golden/raw/source.sha256.
 
 #include <gtest/gtest.h>
 
@@ -225,9 +226,8 @@ INSTANTIATE_TEST_SUITE_P(Looks, GoldenSdrImage, testing::ValuesIn(image_looks),
                              return std::string(info.param);
                          });
 
-// One test per kind for all RAW looks: each look decodes the full-size RAW (about 730 MB of float
-// pixels for 61 MP), one at a time, so ctest -j running the three kinds at once holds about three,
-// where a test per look would hold up to fifteen.
+// Every RAW look on one decode of the test RAW (about 730 MB of float pixels for 61 MP), reduced
+// once: the looks only differ after the reduction.
 TEST(GoldenSdr, EngineRawLooks) {
     if (!prism::raw_support_available()) {
         GTEST_SKIP() << "this build has no RAW support";
@@ -242,7 +242,10 @@ TEST(GoldenSdr, EngineRawLooks) {
     }
 }
 
-TEST(GoldenSdr, CliRawLooks) {
+// The command line on the test RAW under Natural only: each run decodes the full-size RAW again,
+// and GoldenSdr.EngineRawLooks already holds every RAW look; this checks that prism reaches the
+// same pixels.
+TEST(GoldenSdr, CliRawNatural) {
     if (!prism::raw_support_available()) {
         GTEST_SKIP() << "this build has no RAW support";
     }
@@ -250,7 +253,5 @@ TEST(GoldenSdr, CliRawLooks) {
     if (!raw.path) {
         GTEST_SKIP() << raw.skip_reason;
     }
-    for (const char* look : raw_looks) {
-        check_cli(*raw.path, recipe_path("raw", look), golden_dir() / "raw" / look);
-    }
+    check_cli(*raw.path, recipe_path("raw", "natural"), golden_dir() / "raw" / "natural");
 }
