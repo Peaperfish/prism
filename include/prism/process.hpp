@@ -26,9 +26,10 @@ struct ProcessSettings {
     std::optional<float> saturation;
     std::optional<float> contrast;
     std::optional<ToneCurve> curve;
-    // HDR headroom in stops above white (prism/hdr.hpp): 0 (the default) is SDR only. process()
-    // ignores it; process_hdr() branches after Contrast when it is above 0.
-    float headroom_stops = 0.0f;
+    // HDR headroom in stops above white (prism/hdr.hpp): empty or 0 is SDR only. process()
+    // ignores it; process_hdr() branches after Contrast when it is above 0. Optional like the
+    // other fields, so a --headroom 0 on the command line can replace a recipe's [hdr].
+    std::optional<float> headroom_stops;
 };
 
 // How long one stage took. `name` is one of "exposure", "dodge_burn", "white_balance", "matrix",
@@ -64,7 +65,7 @@ enum class ProcessResult {
                                     std::stop_token stop = {}, const StageCallback& on_stage = {},
                                     const BeforeStageCallback& before_stage = {});
 
-// process() with HDR. With settings.headroom_stops 0, exactly process(), and `hdr` is left empty
+// process() with HDR. With settings.headroom_stops empty or 0, exactly process(), and `hdr` is left empty
 // (0 x 0). Above 0, the light branches after Contrast: `img` gets the SDR branch, bit for bit what
 // process() gives, and `hdr` the HDR branch: the image after Contrast through the HDR curve
 // (prism/hdr.hpp), anchored on hdr_file_white(settings), linear float cut at 2^headroom. The

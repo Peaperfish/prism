@@ -1,11 +1,17 @@
 #include "prism/hdr.hpp"
 
 #include <algorithm>
+#include <cctype>
+#include <cerrno>
 #include <cmath>
 #include <stdexcept>
+#include <string>
 #include <variant>
 
+#include "c_number.hpp"
+#include "prism/number_text.hpp"
 #include "prism/process.hpp"
+#include "prism/ranges.hpp"
 #include "sample_ranges.hpp"
 
 namespace prism {
@@ -102,9 +108,27 @@ float hdr_file_white(const ProcessSettings& s) {
     ProcessSettings before_branch = s;
     before_branch.dodge_burn = {};
     before_branch.curve.reset();
-    before_branch.headroom_stops = 0.0f;
+    before_branch.headroom_stops.reset();
     (void)process(white, before_branch, 1);
     return std::max({white.pixels[0], white.pixels[1], white.pixels[2]});
+}
+
+static_assert(headroom_range.min == headroom_min_stops && headroom_range.max == headroom_max_stops);
+
+std::optional<float> parse_headroom(std::string_view text) {
+    const std::string s = minus_as_hyphen(text);  // null-terminated, as c_strtod needs
+    // c_strtod skips leading white space; the whole text must be the number.
+    if (s.empty() || std::isspace(static_cast<unsigned char>(s.front())) != 0) {
+        return std::nullopt;
+    }
+    char* end = nullptr;
+    errno = 0;
+    const double value = c_strtod(s.c_str(), &end);
+    if (end != s.c_str() + s.size() || errno == ERANGE || !std::isfinite(value) ||
+        value < headroom_range.min || value > headroom_range.max) {
+        return std::nullopt;
+    }
+    return static_cast<float>(value);
 }
 
 void hdr_curve(Image& img, const HdrCurve& curve, int threads) {

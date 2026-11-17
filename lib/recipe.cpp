@@ -243,6 +243,10 @@ std::string write_recipe(const Recipe& recipe, const RecipeWriteOptions& options
         }
         w.switch_off_if(c->on);
     }
+    if (const auto& h = recipe.hdr; h && h->headroom > 0.0f) {
+        w.section("hdr");
+        w.setting("headroom", number_text(h->headroom, true));
+    }
     return w.take();
 }
 
@@ -256,6 +260,7 @@ using KeySpec = RecipeKeySpec;
 constexpr RecipeSectionSpec section_specs[] = {
     {"exposure", 1},   {"white_balance", 2}, {"matrix", 1},
     {"saturation", 1}, {"contrast", 1},      {"curve", 1},
+    {"hdr", 3},
 };
 
 constexpr std::string_view weights = "weights of input R, G, B";
@@ -292,6 +297,7 @@ constexpr RecipeKeySpec key_specs[] = {
      reinhard_white_default,
      {}},
     {"curve", "on", ValueType::boolean, 1, false, {}, false, "switch", {}, "true"},
+    {"hdr", "headroom", ValueType::number, 3, true, headroom_range, false, "stops", {}, {}},
 };
 
 constexpr RecipeFormat format_latest{recipe_format_version, section_specs, key_specs};
@@ -314,6 +320,7 @@ int lowest_format_version(const Recipe& recipe) {
     uses("saturation", recipe.saturation.has_value());
     uses("contrast", recipe.contrast.has_value());
     uses("curve", recipe.curve.has_value());
+    uses("hdr", recipe.hdr.has_value() && recipe.hdr->headroom > 0.0f);  // as write_recipe
     return version;
 }
 
@@ -1174,6 +1181,8 @@ private:
             recipe_.contrast.emplace();
         } else if (name == "curve") {
             recipe_.curve.emplace();
+        } else if (name == "hdr") {
+            recipe_.hdr.emplace();
         }
     }
 
@@ -1233,6 +1242,8 @@ private:
             recipe_.curve->gamma = v.number;
         } else if (s == "curve" && k == "white") {
             recipe_.curve->white = v.number;
+        } else if (s == "hdr" && k == "headroom") {
+            recipe_.hdr->headroom = v.number;
         }
     }
 
@@ -1475,6 +1486,10 @@ ProcessSettings to_process_settings(const Recipe& recipe,
             problems.push_back("[curve] " + positive_message("white", c->white));
         }
     }
+    if (recipe.hdr && !in_range(recipe.hdr->headroom, headroom_range)) {
+        problems.push_back("[hdr] " +
+                           range_message("headroom", recipe.hdr->headroom, headroom_range));
+    }
     if (!problems.empty()) {
         std::string message = "invalid recipe:";
         for (const std::string& p : problems) {
@@ -1506,6 +1521,9 @@ ProcessSettings to_process_settings(const Recipe& recipe,
             p.curve = parse_curve(*spec);
         }
     }
+    if (recipe.hdr) {
+        p.headroom_stops = recipe.hdr->headroom;
+    }
     return p;
 }
 
@@ -1529,6 +1547,9 @@ ProcessSettings merge_recipe_and_flags(const Recipe& recipe, const ProcessSettin
     }
     if (flags.curve) {
         p.curve = flags.curve;
+    }
+    if (flags.headroom_stops) {
+        p.headroom_stops = flags.headroom_stops;
     }
     return p;
 }

@@ -94,6 +94,7 @@ A stage that is switched off is saved with `on = false` and keeps its values, so
 | `[curve]` | `gamma` | exponent | above 0 | 2.2 | 1 |
 | `[curve]` | `white` | linear value | above 0 | 4 | 1 |
 | `[curve]` | `on` | switch | `true` or `false` | `true` | 1 |
+| `[hdr]` | `headroom` | stops | 0 to 4 | required | 3 |
 
 "Since" is the format version that introduced the key.
 
@@ -105,6 +106,7 @@ What the values mean:
 - **`[saturation]` `amount`**: 1 changes nothing, 0 is black and white, 2 doubles each colour's distance from grey. The same number as the command line's `--saturation`.
 - **`[contrast]` `amount`**: 1 changes nothing; above 1 spreads the stops near middle grey apart, below 1 brings them together. The same number as `--contrast`. The window shows this multiplier as a paper grade (an `amount` of 1.29 is "Grade 3"); see [Contrast as a paper grade](GUIDE.md#contrast-as-a-paper-grade).
 - **`[curve]` `shape`**: `"none"`, `"gamma"`, `"reinhard"` or `"filmic"`, the same curves as `--curve`. `gamma` is used only by the gamma curve and `white` only by Reinhard, so a recipe gives only the one its shape uses. The filmic curve has no setting.
+- **`[hdr]` `headroom`**: how far above white the HDR picture keeps light, in stops: +1.0 is twice white's light. The SDR picture is the same whatever it is. Prism writes `[hdr]` only when the headroom is above 0, always with a sign, so a recipe without HDR keeps the older format version it needs. `[hdr]` has no `on`: a headroom of 0 is off. The same number as `--headroom`.
 - **`on`**: `false` switches the stage off. Its values are kept, but Prism skips it.
 
 ## Leaving stages out
@@ -164,10 +166,11 @@ A recipe is a small part of [TOML](https://toml.io), a common format for setting
 
 - **Version 1**: `[exposure]`, `[matrix]`, `[saturation]`, `[contrast]` and `[curve]`.
 - **Version 2**: adds `[white_balance]`.
+- **Version 3**: adds `[hdr]`.
 
-When Prism saves a recipe it writes the lowest version that has everything in it, so a recipe without `[white_balance]` is still written as version 1 and older Prisms keep reading it. Prism 0.4.0 reads up to format 1, so it refuses a recipe that says `prism_recipe = 2` as newer than it understands.
+When Prism saves a recipe it writes the lowest version that has everything in it, so a recipe without `[white_balance]` is still written as version 1, one without `[hdr]` as version 1 or 2, and older Prisms keep reading it. Prism 0.4.0 reads up to format 1, so it refuses a recipe that says `prism_recipe = 2` as newer than it understands; Prism 0.7.1 reads up to format 2.
 
-A Prism that reads up to format 2 refuses a recipe that says `prism_recipe = 3` as a whole, rather than guess at settings it does not know, and asks you to update Prism. A newer Prism reads every older recipe as it was meant.
+A Prism that reads up to format 3 refuses a recipe that says `prism_recipe = 4` as a whole, rather than guess at settings it does not know, and asks you to update Prism. A newer Prism reads every older recipe as it was meant.
 
 The other way round, a file must not use a key from a later version than it declares: change `prism_recipe` to that version (and use a Prism that reads it).
 
@@ -225,9 +228,9 @@ shape = filmic
 
 A recipe from a newer Prism:
 
-<!-- recipe: error line 1: this recipe needs recipe format 3, but this Prism reads up to format 2: update Prism to read it -->
+<!-- recipe: error line 1: this recipe needs recipe format 4, but this Prism reads up to format 3: update Prism to read it -->
 ```toml
-prism_recipe = 3
+prism_recipe = 4
 
 [exposure]
 stops = +1.0

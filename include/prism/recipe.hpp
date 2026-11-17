@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "prism/camera_profile.hpp"
+#include "prism/hdr.hpp"
 #include "prism/pipeline.hpp"
 #include "prism/process.hpp"
 #include "prism/ranges.hpp"
@@ -26,8 +27,9 @@ namespace prism {
 
 // The newest recipe format version this Prism reads. recipe_format() lists what each version has.
 // write_recipe writes the lowest version a recipe's content needs, not this one: a recipe without
-// [white_balance] is still written as version 1, so older Prisms keep reading it.
-inline constexpr int recipe_format_version = 2;
+// [white_balance] is still written as version 1, and one without [hdr] as version 1 or 2, so
+// older Prisms keep reading it.
+inline constexpr int recipe_format_version = 3;
 
 struct RecipeExposure {
     float stops = 0.0f;  // any finite number
@@ -79,6 +81,13 @@ struct RecipeCurve {
     bool operator==(const RecipeCurve&) const = default;
 };
 
+// HDR: how far above white the HDR picture keeps light (prism/hdr.hpp). Since format 3. Not an
+// edit stage but an output choice, so it has no on/off switch: a headroom of 0 is "off".
+struct RecipeHdr {
+    float headroom = headroom_default_stops;  // stops, headroom_range
+    bool operator==(const RecipeHdr&) const = default;
+};
+
 struct Recipe {
     std::optional<std::string> name;         // one line of UTF-8 text
     std::optional<std::string> description;  // one line of UTF-8 text
@@ -90,6 +99,9 @@ struct Recipe {
     std::optional<RecipeSaturation> saturation;
     std::optional<RecipeContrast> contrast;
     std::optional<RecipeCurve> curve;
+    // Written only with a headroom above 0, so an SDR recipe keeps the version it needs without
+    // it (1, or 2 with [white_balance]). A headroom of 0 is read as written, but saves as nothing.
+    std::optional<RecipeHdr> hdr;
 
     // Floats compare by value (so -0 equals +0).
     bool operator==(const Recipe&) const = default;
@@ -232,7 +244,7 @@ struct RecipeFormat {
 
 // What the CLI runs for a recipe together with the flags given on the command line. `flags` holds
 // one field per stage flag that was given (--exposure, --matrix, --saturation, --contrast,
-// --curve) and nothing for the others; `white_balance` is the finished matrix, which --kelvin and
+// --curve, --headroom) and nothing for the others; `white_balance` is the finished matrix, which --kelvin and
 // --tint replace [white_balance] with. Flags win stage by stage: a flag replaces its whole stage
 // (the curve's shape and parameter together) and runs it even where the recipe switches that
 // stage off. Every other stage is as in to_process_settings(recipe): run if present and on, and

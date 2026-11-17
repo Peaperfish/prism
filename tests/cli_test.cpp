@@ -703,6 +703,70 @@ TEST(CliWhiteBalance, BadValuesAreUsageErrors) {
     fs::remove(hist);
 }
 
+// --- --headroom (#102) ----------------------------------------------------------------------------
+
+TEST(CliHeadroom, AcceptedAndTheSdrOutputIsUnchanged) {
+    // The CLI writes only the SDR picture for now, which the headroom does not change.
+    const fs::path input = write_grey_jpeg();
+    const std::string plain = run_to_bytes(input, "--exposure +1 --curve filmic");
+    ASSERT_FALSE(plain.empty());
+    for (const char* stops : {"0", "2", "+2.5", "4", "\xE2\x88\x92" "0"}) {
+        int code = -1;
+        EXPECT_EQ(run_to_bytes(input, "--exposure +1 --curve filmic --headroom " + std::string(stops),
+                               &code),
+                  plain)
+            << stops;
+        EXPECT_EQ(code, 0) << stops;
+    }
+    fs::remove(input);
+}
+
+TEST(CliHeadroom, BadValuesAreUsageErrors) {
+    const fs::path input = write_grey_jpeg();
+    const fs::path hist = temp_file("hist.png");
+    const std::string base = quoted(input) + " --histogram " + quoted(hist) + " --headroom ";
+    for (const char* bad : {"5", "4.01", "-1", "\xE2\x88\x92" "0.5", "abc", "1,5", "inf", "nan"}) {
+        const RunResult r = run_prism(base + "\"" + bad + "\"");
+        EXPECT_EQ(r.exit_code, 2) << bad << ": " << r.output;
+        EXPECT_TRUE(contains(r.output, "--headroom needs a number of stops from 0 to +4.0, got '" +
+                                           std::string(bad) + "'"))
+            << r.output;
+        EXPECT_TRUE(contains(r.output, "Usage:")) << r.output;
+    }
+    const RunResult twice = run_prism(base + "1 --headroom 2");
+    EXPECT_EQ(twice.exit_code, 2) << twice.output;
+    EXPECT_TRUE(contains(twice.output, "given more than once")) << twice.output;
+    const RunResult missing = run_prism(quoted(input) + " --histogram " + quoted(hist) + " --headroom");
+    EXPECT_EQ(missing.exit_code, 2) << missing.output;
+    EXPECT_TRUE(contains(missing.output, "--headroom needs a value")) << missing.output;
+    fs::remove(input);
+    fs::remove(hist);
+}
+
+TEST(CliHeadroom, ARecipeWithHdrRuns) {
+    const fs::path input = write_grey_jpeg();
+    const fs::path recipe = temp_file("hdr.prism");
+    {
+        std::ofstream out(recipe, std::ios::binary);
+        out << "prism_recipe = 3\r\n[exposure]\r\nstops = +1.0\r\n[hdr]\r\nheadroom = +2.0\r\n";
+    }
+    int code = -1;
+    const std::string with_recipe = run_to_bytes(input, "--recipe " + quoted(recipe), &code);
+    EXPECT_EQ(code, 0);
+    EXPECT_EQ(with_recipe, run_to_bytes(input, "--exposure +1"));
+    EXPECT_EQ(run_to_bytes(input, "--recipe " + quoted(recipe) + " --headroom 0"), with_recipe);
+    fs::remove(input);
+    fs::remove(recipe);
+}
+
+TEST(CliHeadroom, HelpDescribesIt) {
+    const RunResult r = run_prism("--help");
+    EXPECT_TRUE(contains(r.output, "  --headroom <stops>  light above white kept for an HDR picture, "
+                                   "0 to +4.0\n                      stops (0, the default, is SDR "
+                                   "only, as before)\n"))
+        << r.output;
+}
+
 TEST(CliWhiteBalance, TimeListsTheStageBetweenExposureAndTheRest) {
     const fs::path input = write_grey_jpeg();
     const fs::path output = temp_file("timed_wb.png");

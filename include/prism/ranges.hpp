@@ -30,6 +30,8 @@ inline constexpr ValueRange saturation_range{0.0, 10.0};
 inline constexpr ValueRange contrast_range{0.1, 10.0};
 inline constexpr ValueRange kelvin_range{2000.0, 15000.0};
 inline constexpr ValueRange tint_range{-100.0, 100.0};
+// HDR headroom in stops above white (prism/hdr.hpp: headroom_min_stops to headroom_max_stops).
+inline constexpr ValueRange headroom_range{0.0, 4.0};
 inline constexpr ValueRange frame_angle_range{-45.0, 45.0};
 
 inline constexpr float gamma_default = 2.2f;

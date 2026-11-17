@@ -40,7 +40,7 @@ The format `--out-dir` writes: `jpg` (the default) for JPEG at quality 95, exact
 
 ### `--recipe <file>`
 
-Apply the edit in a recipe file (`.prism`, described in [RECIPES.md](RECIPES.md)). The recipe is read and checked before any photo is opened: if it has mistakes, `prism` prints one `error:` line for each, with its line number, writes nothing and exits with code 1. A missing or unreadable recipe file is reported the same way. Any of `--exposure`, `--kelvin` and `--tint`, `--matrix`, `--saturation`, `--contrast` and `--curve` that you give as well replaces that stage of the recipe. No default.
+Apply the edit in a recipe file (`.prism`, described in [RECIPES.md](RECIPES.md)). The recipe is read and checked before any photo is opened: if it has mistakes, `prism` prints one `error:` line for each, with its line number, writes nothing and exits with code 1. A missing or unreadable recipe file is reported the same way. Any of `--exposure`, `--kelvin` and `--tint`, `--matrix`, `--saturation`, `--contrast`, `--curve` and `--headroom` that you give as well replaces that stage of the recipe. No default.
 
 ### `--exposure <stops>`
 
@@ -77,6 +77,10 @@ Apply a tone curve, after contrast. The spec is one of:
 | `filmic` | Soft shadows and highlights (the "Uncharted 2" curve by John Hable). No parameter |
 
 An unknown or malformed spec fails with an error that lists the available curves. Default: no curve.
+
+### `--headroom <stops>`
+
+How far above white the HDR picture keeps light, from 0 to +4.0 stops: +1.0 stop is twice white's light. The light branches after contrast: the SDR picture is exactly as without `--headroom`, and the HDR picture is made from the same light with the photo's white landing at the headroom. 0 means no HDR picture, as before. For now `prism` writes only the SDR picture, which `--headroom` does not change. A value outside 0 to +4.0, or anything that is not a number, fails with an error. Replaces the recipe's `[hdr]`. Default: 0.
 
 ### `--histogram <file>`
 

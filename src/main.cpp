@@ -28,6 +28,7 @@
 #include "prism/process.hpp"
 #include "prism/ranges.hpp"
 #include "prism/raw.hpp"
+#include "prism/hdr.hpp"
 #include "prism/recipe.hpp"
 #include "prism/resize.hpp"
 #include "prism/utf8_path.hpp"
@@ -100,7 +101,9 @@ void print_usage(const char* program) {
     for (std::string_view spec : prism::curve_specs()) {
         std::cerr << ' ' << spec;
     }
-    std::cerr << "\n  --histogram <file>  save a histogram image of the result and print\n"
+    std::cerr << "\n  --headroom <stops>  light above white kept for an HDR picture, 0 to +4.0\n"
+              << "                      stops (0, the default, is SDR only, as before)\n"
+              << "  --histogram <file>  save a histogram image of the result and print\n"
               << "                      the percentage of clipped pixels per channel\n"
               << "  --threads <n>       use up to n threads (default: " << prism::hardware_threads()
               << ", one per hardware thread;\n"
@@ -137,6 +140,7 @@ struct Options {
     std::optional<float> saturation;
     std::optional<float> contrast;
     std::optional<std::string> curve_spec;
+    std::optional<float> headroom;  // stops, 0 to 4
     std::optional<std::string> histogram_path;
     bool raw_half = false;
     std::optional<std::string> raw_camera_matrix_path;
@@ -383,6 +387,14 @@ Options parse_args(int argc, char* argv[]) {
                                   prism::contrast_range.max));
         } else if (arg == "--curve") {
             set_once(opts.curve_spec, arg, next_value());
+        } else if (arg == "--headroom") {
+            const std::string given = next_value();
+            const std::optional<float> stops = prism::parse_headroom(given);
+            if (!stops) {
+                throw UsageError("--headroom needs a number of stops from 0 to +4.0, got '" +
+                                 given + "'");
+            }
+            set_once(opts.headroom, arg, *stops);
         } else if (arg == "--histogram") {
             set_once(opts.histogram_path, arg, next_value());
         } else if (arg == "--rotate") {
@@ -709,6 +721,7 @@ int main(int argc, char* argv[]) {
         if (opts.curve_spec) {
             flags.curve = prism::parse_curve(*opts.curve_spec);
         }
+        flags.headroom_stops = opts.headroom;
         // Without --recipe the recipe is empty and the result is exactly `flags`. Merged here once
         // to refuse a bad recipe before any photo is opened; run_one merges again per photo, since
         // white balance depends on the photo's as-shot light.

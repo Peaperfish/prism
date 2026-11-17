@@ -292,7 +292,7 @@ TEST(ProcessHdr, TheSdrBranchIsUnchangedAndTheHdrBranchFollowsContrast) {
     prism::Image hdr_expected = ramp(64, 16);
     prism::ProcessSettings to_contrast = s;
     to_contrast.curve.reset();
-    to_contrast.headroom_stops = 0.0f;
+    to_contrast.headroom_stops.reset();
     ASSERT_EQ(prism::process(hdr_expected, to_contrast, 1), prism::ProcessResult::completed);
     prism::hdr_curve(hdr_expected,
                      prism::make_hdr_curve(s.curve, prism::hdr_file_white(s), 2.0f), 1);
@@ -410,7 +410,7 @@ TEST(ProcessHdr, TheHdrCurveReceivesTheImageAfterContrast) {
     prism::Image after_contrast = ramp(8, 4);
     prism::ProcessSettings to_contrast = s;
     to_contrast.curve.reset();
-    to_contrast.headroom_stops = 0.0f;
+    to_contrast.headroom_stops.reset();
     ASSERT_EQ(prism::process(after_contrast, to_contrast, 1), prism::ProcessResult::completed);
 
     prism::Image img = ramp(8, 4);

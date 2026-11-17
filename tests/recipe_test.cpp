@@ -714,8 +714,8 @@ const ErrorCase error_cases[] = {
     {"DottedSection", "prism_recipe = 1\n[curve.gamma]\n", 2,
      "[curve.gamma] is not a section name: write it without quotes, dots or spaces, as in "
      "[exposure]"},
-    {"NewerFormat", "prism_recipe = 3\n\n[exposure]\nstops = +1.0\n", 1,
-     "this recipe needs recipe format 3, but this Prism reads up to format 2: update Prism to "
+    {"NewerFormat", "prism_recipe = 4\n\n[exposure]\nstops = +1.0\n", 1,
+     "this recipe needs recipe format 4, but this Prism reads up to format 3: update Prism to "
      "read it"},
 };
 
@@ -800,31 +800,31 @@ TEST(RecipeErrorList, MessagesNameTheSourceAndTheLine) {
 
 namespace {
 
-// This Prism's format plus a pretend version 3: a new key in [exposure] and a new section with a
+// This Prism's format plus a pretend version 4: a new key in [exposure] and a new section with a
 // required key.
-struct FormatWithVersion2 {
+struct FormatWithVersion4 {
     std::vector<prism::RecipeSectionSpec> sections;
     std::vector<prism::RecipeKeySpec> keys;
     prism::RecipeFormat format;
 
-    FormatWithVersion2() {
+    FormatWithVersion4() {
         const prism::RecipeFormat& real = prism::recipe_format();
         sections.assign(real.sections.begin(), real.sections.end());
-        sections.push_back({"vignette", 3});
+        sections.push_back({"vignette", 4});
         keys.assign(real.keys.begin(), real.keys.end());
         prism::RecipeKeySpec bias;
         bias.section = "exposure";
         bias.key = "bias";
-        bias.since = 3;
+        bias.since = 4;
         keys.push_back(bias);
         prism::RecipeKeySpec amount;
         amount.section = "vignette";
         amount.key = "amount";
-        amount.since = 3;
+        amount.since = 4;
         amount.required = true;
         amount.range = prism::ValueRange{0.0, 1.0};
         keys.push_back(amount);
-        format = {3, sections, keys};
+        format = {4, sections, keys};
     }
 };
 
@@ -840,64 +840,66 @@ std::vector<prism::RecipeIssue> issues_in(const std::string& text,
 
 }  // namespace
 
-TEST(RecipeVersions, ThisPrismReadsUpToFormat2AndOnlyWhiteBalanceIsNew) {
-    EXPECT_EQ(prism::recipe_format().latest, 2);
-    EXPECT_EQ(prism::recipe_format_version, 2);
+TEST(RecipeVersions, ThisPrismReadsUpToFormat3WithWhiteBalanceIn2AndHdrIn3) {
+    EXPECT_EQ(prism::recipe_format().latest, 3);
+    EXPECT_EQ(prism::recipe_format_version, 3);
+    const auto since = [](std::string_view section) {
+        return section == "white_balance" ? 2 : section == "hdr" ? 3 : 1;
+    };
     for (const prism::RecipeKeySpec& spec : prism::recipe_format().keys) {
-        EXPECT_EQ(spec.since, spec.section == "white_balance" ? 2 : 1)
-            << spec.section << " " << spec.key;
+        EXPECT_EQ(spec.since, since(spec.section)) << spec.section << " " << spec.key;
     }
     for (const prism::RecipeSectionSpec& spec : prism::recipe_format().sections) {
-        EXPECT_EQ(spec.since, spec.name == "white_balance" ? 2 : 1) << spec.name;
+        EXPECT_EQ(spec.since, since(spec.name)) << spec.name;
     }
 }
 
 TEST(RecipeVersions, AKeyFromALaterVersionNeedsThatVersion) {
-    const FormatWithVersion2 v2;
+    const FormatWithVersion4 v4;
     const std::string body = "\n[exposure]\nstops = +1.0\nbias = 0.5\n";
     const std::vector<prism::RecipeIssue> expected = {
-        {5, "'bias' needs recipe format 3, but this file says prism_recipe = 2"}};
-    EXPECT_EQ(issues_in("prism_recipe = 2\n" + body, v2.format), expected);
-    // The same file declaring version 3 reads, with its version-1 values.
-    const Recipe r = prism::parse_recipe("prism_recipe = 3\n" + body, "", v2.format);
+        {5, "'bias' needs recipe format 4, but this file says prism_recipe = 3"}};
+    EXPECT_EQ(issues_in("prism_recipe = 3\n" + body, v4.format), expected);
+    // The same file declaring version 4 reads, with its version-1 values.
+    const Recipe r = prism::parse_recipe("prism_recipe = 4\n" + body, "", v4.format);
     ASSERT_TRUE(r.exposure);
     EXPECT_EQ(r.exposure->stops, 1.0f);
 }
 
 TEST(RecipeVersions, ASectionFromALaterVersionNeedsThatVersion) {
-    const FormatWithVersion2 v2;
+    const FormatWithVersion4 v4;
     const std::vector<prism::RecipeIssue> expected = {
-        {2, "[vignette] needs recipe format 3, but this file says prism_recipe = 2"}};
-    EXPECT_EQ(issues_in("prism_recipe = 2\n[vignette]\namount = 0.3\n", v2.format), expected);
-    EXPECT_TRUE(issues_in("prism_recipe = 3\n[vignette]\namount = 0.3\n", v2.format).empty());
+        {2, "[vignette] needs recipe format 4, but this file says prism_recipe = 3"}};
+    EXPECT_EQ(issues_in("prism_recipe = 3\n[vignette]\namount = 0.3\n", v4.format), expected);
+    EXPECT_TRUE(issues_in("prism_recipe = 4\n[vignette]\namount = 0.3\n", v4.format).empty());
     // Its keys are checked as any other: required, and within their range.
     const std::vector<prism::RecipeIssue> missing = {{2, "[vignette] needs 'amount'"}};
-    EXPECT_EQ(issues_in("prism_recipe = 3\n[vignette]\n", v2.format), missing);
+    EXPECT_EQ(issues_in("prism_recipe = 4\n[vignette]\n", v4.format), missing);
     const std::vector<prism::RecipeIssue> range = {
         {3, "[vignette] amount must be from 0 to 1 (it is 2)"}};
-    EXPECT_EQ(issues_in("prism_recipe = 3\n[vignette]\namount = 2\n", v2.format), range);
+    EXPECT_EQ(issues_in("prism_recipe = 4\n[vignette]\namount = 2\n", v4.format), range);
 }
 
 TEST(RecipeVersions, AnOlderFileIsNotAskedForKeysAddedLater) {
-    // Version 1 and 2 files have no [vignette] at all, and are never told they lack one; a version
-    // 1 file still reads with a Prism that knows version 2.
-    const FormatWithVersion2 v2;
+    // Version 1 to 3 files have no [vignette] at all, and are never told they lack one; a version
+    // 1 file still reads with a Prism that knows version 4.
+    const FormatWithVersion4 v4;
     const std::string text = read_text(fs::path(PRISM_TEST_DATA) / "recipe_complete.prism");
-    expect_same_bits(complete_recipe(), prism::parse_recipe(text, "", v2.format));
+    expect_same_bits(complete_recipe(), prism::parse_recipe(text, "", v4.format));
 }
 
 TEST(RecipeVersions, ANewerFileIsRefusedAsAWhole) {
-    const FormatWithVersion2 v2;
+    const FormatWithVersion4 v4;
     // Mistakes or not, the only message is about the version: a newer format may mean anything.
-    const std::string text = "# made by a newer Prism\nprism_recipe = 4\n[grain]\nsize = huge\n";
+    const std::string text = "# made by a newer Prism\nprism_recipe = 5\n[grain]\nsize = huge\n";
     const std::vector<prism::RecipeIssue> expected = {
         {2,
-         "this recipe needs recipe format 4, but this Prism reads up to format 3: update Prism "
+         "this recipe needs recipe format 5, but this Prism reads up to format 4: update Prism "
          "to read it"}};
-    EXPECT_EQ(issues_in(text, v2.format), expected);
+    EXPECT_EQ(issues_in(text, v4.format), expected);
     const std::vector<prism::RecipeIssue> v1_expected = {
         {2,
-         "this recipe needs recipe format 4, but this Prism reads up to format 2: update Prism "
+         "this recipe needs recipe format 5, but this Prism reads up to format 3: update Prism "
          "to read it"}};
     EXPECT_EQ(issues_in(text, prism::recipe_format()), v1_expected);
 }
