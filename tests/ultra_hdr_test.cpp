@@ -819,7 +819,9 @@ TEST(UltraHdrJpeg, BadInputsAreRefused) {
     app1_late.insert(app1_late.begin() + std::ptrdiff_t(after_dqt), app1.begin(), app1.end());
     EXPECT_THROW((void)prism::assemble_ultra_hdr_jpeg(app1_late, base, m), std::invalid_argument);
     // A table whose length runs past the end, in a file that still ends with EOI.
-    Bytes long_dqt = {0xFF, 0xD8, 0xFF, 0xDB, 0x40, 0x00, 0x00, 0xFF, 0xD9};
+    // A valid DQT, then a DHT whose length runs past the end (the first walk stops at the DQT).
+    Bytes long_dqt = {0xFF, 0xD8, 0xFF, 0xDB, 0x00, 0x03, 0x00,
+                      0xFF, 0xC4, 0x40, 0x00, 0x00, 0xFF, 0xD9};
     try {
         (void)prism::assemble_ultra_hdr_jpeg(long_dqt, base, m);
         ADD_FAILURE() << "no exception for a DQT running past the end";
