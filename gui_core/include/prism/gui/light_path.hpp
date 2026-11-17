@@ -127,9 +127,9 @@ struct LightPathRow {
     // stored headroom (greyed out while HDR is off). The line is always there.
     struct HdrControls {
         bool on = false;
-        float headroom = 0.0f;        // snap_headroom of the stored headroom
-        std::string headroom_text;    // "+2.00 stops" (headroom_text)
-        std::string headroom_reset;   // "Reset to +2.00 stops"
+        float headroom = 0.0f;       // snap_headroom of the stored headroom
+        std::string headroom_text;   // "+2.00 stops" (headroom_text)
+        std::string headroom_reset;  // "Reset to +2.00 stops"
 
         bool operator==(const HdrControls&) const = default;
     };
@@ -228,7 +228,8 @@ struct LightPathRowLayout {
     std::optional<float> tabs_y;
     std::optional<float> parameter_y;
     std::optional<float> parameter_slider_y;
-    std::optional<float> controls_y;  // Dodge & burn's Brush, Strength and Clear; Output encode's HDR
+    std::optional<float>
+        controls_y;  // Dodge & burn's Brush, Strength and Clear; Output encode's HDR
     // The clip line is always there, whether or not it has a mark to show (#38).
     float clip_y = 0;
     float clip_height = 0;

@@ -264,8 +264,7 @@ TEST(HdrControls, TheControlsLineSitsUnderTheSubtitleAndTheRowNeverChangesHeight
 
 TEST(HdrRecipe, AFormat3RecipeOpenedAndSavedAgainKeepsItsHdr) {
     // The app used to drop [hdr] (#105's comment): EditSettings had no headroom.
-    const std::string text =
-        "prism_recipe = 3\n[exposure]\nstops = +1.0\n[hdr]\nheadroom = +2.5\n";
+    const std::string text = "prism_recipe = 3\n[exposure]\nstops = +1.0\n[hdr]\nheadroom = +2.5\n";
     EditSettings s;
     prism::gui::apply_recipe(s, prism::parse_recipe(text));
     EXPECT_TRUE(s.hdr_on);
@@ -326,7 +325,8 @@ TEST(HdrRecipe, TheModifiedCheckFollowsTheHeadroomOnlyWhileHdrIsOn) {
 }
 
 TEST(HdrRecipe, TheBuiltInLooksHaveNoHdrAndLeaveItAsItIs) {
-    for (const prism::gui::InputKind kind : {prism::gui::InputKind::raw, prism::gui::InputKind::image}) {
+    for (const prism::gui::InputKind kind :
+         {prism::gui::InputKind::raw, prism::gui::InputKind::image}) {
         for (const prism::gui::Preset& look : prism::gui::presets_for(kind)) {
             EXPECT_FALSE(look.settings.hdr_on) << look.name;
             EXPECT_EQ(look.settings.headroom_stops, 2.0f) << look.name;

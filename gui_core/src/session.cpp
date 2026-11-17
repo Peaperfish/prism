@@ -512,13 +512,10 @@ Image copy_part(const Image& img, const FrameBox& part) {
 // works out just those pixels (apply_frame's part) and every stage then runs on them with the
 // part's place in the whole framed picture, so the result is bit-identical to the same pixels of
 // the whole. `part` must already be checked against the framed size.
-std::variant<Image, Error> run_after_decode(DecodedImage decoded,
-                                            const std::optional<Chromaticity>& as_shot,
-                                            const EditSettings& settings,
-                                            std::optional<int> long_side,
-                                            const std::optional<FrameBox>& part, int threads,
-                                            std::stop_token stop, const StageCallback& on_stage,
-                                            Image* hdr = nullptr) {
+std::variant<Image, Error> run_after_decode(
+    DecodedImage decoded, const std::optional<Chromaticity>& as_shot, const EditSettings& settings,
+    std::optional<int> long_side, const std::optional<FrameBox>& part, int threads,
+    std::stop_token stop, const StageCallback& on_stage, Image* hdr = nullptr) {
     const int decoded_width = image_of(decoded).width;
     const int decoded_height = image_of(decoded).height;
 
@@ -570,7 +567,8 @@ std::variant<Image, Error> run_after_decode(DecodedImage decoded,
         part ? stage_grid(framing, whole.width, whole.height, part->x0, part->y0, 1, part->width,
                           part->height)
              : stage_grid(framing, img.width, img.height);
-    const ProcessSettings process_settings = to_process_settings(settings, final_stage, as_shot, grid);
+    const ProcessSettings process_settings =
+        to_process_settings(settings, final_stage, as_shot, grid);
     // With `hdr` and a headroom, the stages make the HDR picture too (process_for_output, as the
     // command line runs them for an Ultra HDR JPEG); otherwise process(), as always.
     const bool make_hdr = hdr != nullptr && makes_hdr(process_settings.headroom_stops);
@@ -694,9 +692,8 @@ MaybeError export_image(const ExportJob& job, const fs::path& output, std::stop_
     // An Ultra HDR JPEG gets its HDR picture from the same stages (finish_export's `hdr`).
     Image hdr;
     std::variant<Image, Error> finished =
-        finish_export(std::move(std::get<Photo>(decoded)), job.settings, job.long_side,
-                      job.threads, stop, on_stage,
-                      file == OutputFile::ultra_hdr_jpeg ? &hdr : nullptr);
+        finish_export(std::move(std::get<Photo>(decoded)), job.settings, job.long_side, job.threads,
+                      stop, on_stage, file == OutputFile::ultra_hdr_jpeg ? &hdr : nullptr);
     if (Error* e = std::get_if<Error>(&finished)) {
         return std::move(*e);
     }

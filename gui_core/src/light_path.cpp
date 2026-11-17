@@ -293,9 +293,7 @@ LightPathRowLayout light_path_row_layout(const LightPathRow& row,
         return at;
     };
     switch (row.stage) {
-        case StageId::decode:
-            layout.subtitle_y = take(m.secondary);
-            break;
+        case StageId::decode: layout.subtitle_y = take(m.secondary); break;
         case StageId::encode:
             layout.subtitle_y = take(m.secondary);
             layout.controls_y = take(m.slider);

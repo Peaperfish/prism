@@ -737,8 +737,8 @@ std::string expected_ultra_hdr(const fs::path& input, const prism::ProcessSettin
     prism::Image img = prism::load_image(input);
     prism::Image hdr;
     EXPECT_EQ(prism::process_hdr(img, hdr, settings, 1), prism::ProcessResult::completed);
-    const prism::UltraHdrJpeg file = prism::encode_ultra_hdr_jpeg(
-        prism::encode_srgb8(img, 1), hdr, *settings.headroom_stops, {}, 1);
+    const prism::UltraHdrJpeg file = prism::encode_ultra_hdr_jpeg(prism::encode_srgb8(img, 1), hdr,
+                                                                  *settings.headroom_stops, {}, 1);
     return std::string(file.bytes.begin(), file.bytes.end());
 }
 
@@ -801,8 +801,8 @@ TEST(CliHeadroom, AJpgWithAHeadroomIsTheUltraHdrJpegOfProcessHdr) {
             const std::string got = run_to_file(
                 input, name, "--exposure +1 --curve filmic --threads 1 --headroom " + flag, &r);
             EXPECT_EQ(r.exit_code, 0) << r.output;
-            EXPECT_TRUE(got == want) << name << " at " << flag << ": " << got.size() << " bytes, want "
-                                     << want.size();
+            EXPECT_TRUE(got == want)
+                << name << " at " << flag << ": " << got.size() << " bytes, want " << want.size();
         }
     }
     // A JPEG without a headroom is not one.
@@ -837,9 +837,8 @@ TEST(CliHeadroom, APngWithAHeadroomIsRefusedBeforeAnyPhotoIsOpened) {
     const fs::path missing = temp_file("no such photo.png");
     const fs::path output = temp_file("out.PNG");
     fs::remove(output);
-    const RunResult r =
-        run_prism(quoted(missing) + " -o " + quoted(output) + " --headroom 2 --histogram " +
-                  quoted(temp_file("h.png")));
+    const RunResult r = run_prism(quoted(missing) + " -o " + quoted(output) +
+                                  " --headroom 2 --histogram " + quoted(temp_file("h.png")));
     EXPECT_EQ(r.exit_code, 2) << r.output;
     EXPECT_TRUE(contains(r.output, "error: '" + output.string() +
                                        "': HDR files need .jpg (--headroom 0 makes no HDR "
@@ -863,9 +862,8 @@ TEST(CliHeadroom, APngWithAHeadroomIsRefusedBeforeAnyPhotoIsOpened) {
     // --out-dir with --format png too.
     const fs::path dir = temp_file("png_dir");
     fs::create_directories(dir);
-    const RunResult batch =
-        run_prism(quoted(missing) + " " + quoted(temp_file("other.png")) +
-                  " --format png --headroom 1 --out-dir " + quoted(dir));
+    const RunResult batch = run_prism(quoted(missing) + " " + quoted(temp_file("other.png")) +
+                                      " --format png --headroom 1 --out-dir " + quoted(dir));
     EXPECT_EQ(batch.exit_code, 2) << batch.output;
     EXPECT_TRUE(contains(batch.output, "HDR files need .jpg")) << batch.output;
     EXPECT_TRUE(fs::is_empty(dir));

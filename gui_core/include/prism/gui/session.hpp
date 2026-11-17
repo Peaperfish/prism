@@ -390,10 +390,10 @@ private:
 // gets the HDR picture of the same light. Without a headroom `hdr` is left as it is; a failure or
 // a stop empties it.
 [[nodiscard]] std::variant<Image, Error> finish_export(Photo decoded, const EditSettings& settings,
-                                                      std::optional<int> long_side, int threads,
-                                                      std::stop_token stop = {},
-                                                      const StageCallback& on_stage = {},
-                                                      Image* hdr = nullptr);
+                                                       std::optional<int> long_side, int threads,
+                                                       std::stop_token stop = {},
+                                                       const StageCallback& on_stage = {},
+                                                       Image* hdr = nullptr);
 
 // `part` of the finished picture an export at the full framed size (no long_side) would make from
 // `base`, a decode_for_export result: bit-identical to those pixels of finish_export(base,

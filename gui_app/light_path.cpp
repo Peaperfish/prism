@@ -396,22 +396,24 @@ void draw_brush_controls(const LightPathData& data, const gui::LightPathRow& row
 }
 
 // Output encode's HDR controls line (#105): the HDR switch, then the Headroom slider with its label
-// and value. The slider shows the stored headroom, greyed out while HDR is off; moving it turns
-// HDR on (gui::set_headroom). A drag is one undo step, on release, as for the other sliders.
+// and value. The slider shows the stored headroom and, like a stage's slider while its stage is
+// off, is greyed out and can't be moved while HDR is off. A drag is one undo step, on release, as
+// for the other sliders.
 void draw_hdr_controls(const LightPathData& data, const gui::LightPathRow& row, float x, float y,
                        float width, const LightPathCallbacks& cb) {
     const gui::LightPathRow::HdrControls& controls = *row.hdr;
     const float height = slider_height();
     const std::string hdr_label(gui::light_path_text::hdr);
     ImGui::PushFont(nullptr, token_type().small);
-    const float check_width = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x +
-                              text_width(hdr_label);
+    const float check_width =
+        ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x + text_width(hdr_label);
     const float label_width = text_width(gui::light_path_text::headroom);
     const float value_width = text_width(gui::light_path_text::widest_headroom);
     const float gap = first_line_gap();
     const float track = std::max(1.0f, width - check_width - label_width - value_width - 3 * gap);
 
-    ImGui::SetCursorScreenPos(ImVec2(x, y + std::max(0.0f, (height - ImGui::GetFrameHeight()) * 0.5f)));
+    ImGui::SetCursorScreenPos(
+        ImVec2(x, y + std::max(0.0f, (height - ImGui::GetFrameHeight()) * 0.5f)));
     bool on = controls.on;
     if (ImGui::Checkbox((hdr_label + "##hdr_on").c_str(), &on) && cb.set_hdr_on) {
         cb.set_hdr_on(on);
@@ -421,8 +423,8 @@ void draw_hdr_controls(const LightPathData& data, const gui::LightPathRow& row, 
     const float label_left = x + check_width + gap;
     text_in_band(ImGui::GetWindowDrawList(), label_left, y, height,
                  ImGui::GetColorU32(ImGuiCol_TextDisabled), gui::light_path_text::headroom);
-    note_fit(data, "Headroom label", gui::light_path_text::headroom,
-             gui::light_path_text::headroom, label_width);
+    note_fit(data, "Headroom label", gui::light_path_text::headroom, gui::light_path_text::headroom,
+             label_width);
     ImGui::PopFont();
     const float track_left = label_left + label_width + gap;
 
@@ -431,9 +433,9 @@ void draw_hdr_controls(const LightPathData& data, const gui::LightPathRow& row, 
     ImGui::SetCursorScreenPos(ImVec2(track_left, y));
     ImGui::SetNextItemWidth(track);
     float headroom = controls.headroom;
-    const bool changed =
-        styled_slider("##slider", &headroom, prism::headroom_min_stops, prism::headroom_max_stops,
-                      prism::headroom_min_stops, ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput);
+    const bool changed = styled_slider("##slider", &headroom, prism::headroom_min_stops,
+                                       prism::headroom_max_stops, prism::headroom_min_stops,
+                                       ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput);
     ImGui::EndDisabled();
     const gui::SliderFrame frame{ImGui::IsItemActivated(), changed, ImGui::IsItemDeactivated()};
     const float snapped = gui::snap_headroom(headroom);
@@ -454,8 +456,9 @@ void draw_hdr_controls(const LightPathData& data, const gui::LightPathRow& row, 
     const float value_left = track_left + track + gap;
     const std::string value = changed ? gui::headroom_text(snapped) : controls.headroom_text;
     ImGui::PushFont(nullptr, token_type().small);
-    text_in_band(ImGui::GetWindowDrawList(), value_left + value_width - text_width(value), y, height,
-                 ImGui::GetColorU32(controls.on ? ImGuiCol_Text : ImGuiCol_TextDisabled), value);
+    text_in_band(ImGui::GetWindowDrawList(), value_left + value_width - text_width(value), y,
+                 height, ImGui::GetColorU32(controls.on ? ImGuiCol_Text : ImGuiCol_TextDisabled),
+                 value);
     note_fit(data, "Headroom value", value, value, value_width);
     if (data.fits != nullptr) {
         data.fits->push_back({"Headroom track", "track", track >= wb_min_track() ? "track" : "",

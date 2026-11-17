@@ -56,8 +56,7 @@ void save_output(const std::filesystem::path& path, const Image& img, const Imag
             }
             return;
         case OutputFile::hdr_needs_jpeg:
-            throw std::runtime_error("cannot save image '" + utf8(path) +
-                                     "': HDR files need .jpg");
+            throw std::runtime_error("cannot save image '" + utf8(path) + "': HDR files need .jpg");
         case OutputFile::unsupported: break;
     }
     throw std::runtime_error("cannot save image '" + utf8(path) +

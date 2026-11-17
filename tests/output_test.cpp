@@ -24,7 +24,8 @@ namespace {
 
 fs::path temp_path(const std::string& name) {
     const testing::TestInfo* test = testing::UnitTest::GetInstance()->current_test_info();
-    return fs::path(testing::TempDir()) / ("prism_output_" + std::string(test->name()) + "_" + name);
+    return fs::path(testing::TempDir()) /
+           ("prism_output_" + std::string(test->name()) + "_" + name);
 }
 
 // Removes a file when the test ends, however it ends.
@@ -79,9 +80,9 @@ std::vector<std::uint32_t> bits(const prism::Image& img) {
 
 TEST(OutputFile, TheExtensionAndTheHeadroomChooseIt) {
     const float nan = std::numeric_limits<float>::quiet_NaN();
-    for (const std::optional<float> sdr : {std::optional<float>{}, std::optional<float>{0.0f},
-                                           std::optional<float>{-0.0f}, std::optional<float>{nan},
-                                           std::optional<float>{-1.0f}}) {
+    for (const std::optional<float> sdr :
+         {std::optional<float>{}, std::optional<float>{0.0f}, std::optional<float>{-0.0f},
+          std::optional<float>{nan}, std::optional<float>{-1.0f}}) {
         EXPECT_FALSE(prism::makes_hdr(sdr));
         EXPECT_EQ(prism::output_file("a.png", sdr), OutputFile::png);
         EXPECT_EQ(prism::output_file("a.PNG", sdr), OutputFile::png);
@@ -117,8 +118,8 @@ TEST(OutputFile, ProcessForOutputRunsProcessHdrOnlyForAnUltraHdrJpeg) {
     EXPECT_EQ(hdr.width, want_hdr.width);
 
     // Anything else is process(), whatever the headroom, and leaves `hdr` alone.
-    for (const OutputFile f : {OutputFile::png, OutputFile::jpeg, OutputFile::hdr_needs_jpeg,
-                               OutputFile::unsupported}) {
+    for (const OutputFile f :
+         {OutputFile::png, OutputFile::jpeg, OutputFile::hdr_needs_jpeg, OutputFile::unsupported}) {
         prism::Image other = ramp();
         prism::Image untouched;
         untouched.width = 1;
@@ -174,8 +175,7 @@ TEST(OutputFile, SaveOutputRefusesAPngWithAHeadroomAndWritesNothing) {
         prism::save_output(png.path, img, hdr, 2.0f, 1);
         FAIL() << "no exception";
     } catch (const std::runtime_error& e) {
-        EXPECT_NE(std::string(e.what()).find("HDR files need .jpg"), std::string::npos)
-            << e.what();
+        EXPECT_NE(std::string(e.what()).find("HDR files need .jpg"), std::string::npos) << e.what();
     }
     EXPECT_FALSE(fs::exists(png.path));
     const RemoveOnExit tif{temp_path("x.tif")};

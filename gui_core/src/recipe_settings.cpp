@@ -123,8 +123,8 @@ Recipe recipe_from(const EditSettings& s) {
     }
     c.on = curve_on;
     r.curve = c;
-    // [hdr] only while HDR makes a picture (output_headroom): off, or on at 0, writes no section, so
-    // the recipe keeps the older format version it needs (#102).
+    // [hdr] only while HDR makes a picture (output_headroom): off, or on at 0, writes no section,
+    // so the recipe keeps the older format version it needs (#102).
     if (const std::optional<float> h = output_headroom(s)) {
         r.hdr = RecipeHdr{*h};
     }
