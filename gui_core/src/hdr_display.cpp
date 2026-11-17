@@ -152,6 +152,11 @@ void into_picture(const float picture[3], const float sdr[3], const LinearRgba& 
     }
 }
 
+bool overlay_drawn_into(const OverlayMask& mask, int width, int height) noexcept {
+    return mask.shown && width > 0 && height > 0 && mask.width == width && mask.height == height &&
+           mask.bytes == static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+}
+
 LinearRgba linear_rgba_from_abgr(std::uint32_t abgr) noexcept {
     return {srgb8_to_linear(static_cast<std::uint8_t>(abgr & 0xffu)),
             srgb8_to_linear(static_cast<std::uint8_t>((abgr >> 8) & 0xffu)),

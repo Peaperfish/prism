@@ -620,3 +620,15 @@ TEST(HdrOverlays, OnlyRealPixelsASplitOrTheEaselKeepTheCanvasSdr) {
     EXPECT_TRUE(sdr_only_view(CanvasViews{.split = true}));
     EXPECT_TRUE(sdr_only_view(CanvasViews{.easel = true}));
 }
+
+TEST(HdrOverlays, AMaskIsDrawnInOnlyWhileItShowsAndOnlyIfItIsThePicturesSize) {
+    using prism::gui::overlay_drawn_into;
+    using prism::gui::OverlayMask;
+    EXPECT_TRUE(overlay_drawn_into(OverlayMask{true, 12, 4, 3}, 4, 3));
+    EXPECT_FALSE(overlay_drawn_into(OverlayMask{false, 12, 4, 3}, 4, 3));  // J or M off
+    EXPECT_FALSE(overlay_drawn_into(OverlayMask{true, 0, 4, 3}, 4, 3));    // no mask in the frame
+    EXPECT_FALSE(overlay_drawn_into(OverlayMask{true, 12, 3, 4}, 4, 3));   // another frame's
+    EXPECT_FALSE(overlay_drawn_into(OverlayMask{true, 12, 4, 3}, 3, 4));
+    EXPECT_FALSE(overlay_drawn_into(OverlayMask{true, 11, 4, 3}, 4, 3));  // bytes short
+    EXPECT_FALSE(overlay_drawn_into(OverlayMask{true, 0, 0, 0}, 0, 0));   // no picture
+}

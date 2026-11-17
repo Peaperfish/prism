@@ -1116,7 +1116,7 @@ void App::update_preview() {
         drop_hdr_picture();
     } else {
         hdr_rgba_ = std::move(frame->hdr_rgba);
-        hdr_sdr_rgb8_ = frame->rgb8;
+        hdr_sdr_rgb8_ = std::move(frame->rgb8);  // the SDR texture has its copy already
         hdr_width_ = frame->width;
         hdr_height_ = frame->height;
         ++hdr_frame_serial_;
@@ -1203,19 +1203,25 @@ void App::drop_hdr_picture() {
     hdr_width_ = 0;
     hdr_height_ = 0;
     hdr_texture_key_.reset();
+    hdr_texture_failed_.reset();
 }
 
 bool App::update_hdr_texture() {
     if (hdr_rgba_.empty()) {
         return false;
     }
-    const bool clip = prefs_.clip_overlay && !clip_mask_.empty() &&
-                      clip_mask_width_ == hdr_width_ && clip_mask_height_ == hdr_height_;
-    const bool strokes = stroke_mask_on_ && !stroke_mask_.empty() &&
-                         stroke_mask_width_ == hdr_width_ && stroke_mask_height_ == hdr_height_;
+    const bool clip = gui::overlay_drawn_into(
+        {prefs_.clip_overlay, clip_mask_.size(), clip_mask_width_, clip_mask_height_}, hdr_width_,
+        hdr_height_);
+    const bool strokes = gui::overlay_drawn_into(
+        {stroke_mask_on_, stroke_mask_.size(), stroke_mask_width_, stroke_mask_height_}, hdr_width_,
+        hdr_height_);
     const HdrTextureKey key{hdr_frame_serial_, clip, strokes, theme()};
     if (hdr_texture_key_ == key && texture_.hdr_texture() != nullptr) {
         return true;
+    }
+    if (hdr_texture_failed_ == key) {
+        return false;  // shown once; tried again when the frame, the overlays or the theme change
     }
     hdr_texture_key_.reset();
     const Palette& colours = palette(key.theme);
@@ -1241,8 +1247,11 @@ bool App::update_hdr_texture() {
     }
     if (!uploaded) {
         texture_.reset_hdr();
+        hdr_texture_failed_ = key;
+        show_error({gui::ErrorKind::out_of_memory, "Couldn't show the preview.", SDL_GetError()});
         return false;
     }
+    hdr_texture_failed_.reset();
     hdr_texture_key_ = key;
     return true;
 }
@@ -2074,7 +2083,9 @@ void App::draw_canvas() {
             const bool sdr_view = gui::sdr_only_view(
                 {.clip_overlay = prefs_.clip_overlay,
                  .stroke_overlay = stroke_mask_on_,
-                 .real_pixels = detail_plan_.draw && detail_texture_.texture() != nullptr});
+                 .real_pixels = detail_plan_.draw && detail_texture_.texture() != nullptr,
+                 .split = splitting(),
+                 .easel = framing_.on()});
             if (hdr_possible &&
                 gui::hdr_canvas_on(display_mode_, session_.settings(), viewed_stage_,
                                    strip_.has_value(), display_headroom_, sdr_view) &&

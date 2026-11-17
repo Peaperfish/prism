@@ -407,6 +407,7 @@ private:
         bool operator==(const HdrTextureKey&) const = default;
     };
     std::optional<HdrTextureKey> hdr_texture_key_;  // empty: the texture is gone or stale
+    std::optional<HdrTextureKey> hdr_texture_failed_;  // what SDL last couldn't upload
     std::vector<std::uint8_t> stroke_mask_;
     int stroke_mask_width_ = 0;
     int stroke_mask_height_ = 0;

@@ -119,6 +119,7 @@ enum class OverlayPlacement {
 // Where `overlay` goes. On an SDR canvas everything stays on top, as today. On an HDR canvas the
 // translucent overlays over pixels (easel shading, the clip overlay, the strokes, the split line)
 // go into the picture, tooltips and popups get opaque backgrounds, and opaque marks stay on top.
+// (While a view is SDR only, sdr_only_view, its canvas is not an HDR one, so all stay on top.)
 [[nodiscard]] OverlayPlacement overlay_placement(CanvasOverlay overlay, bool hdr_canvas) noexcept;
 
 // A linear RGB colour with straight (not premultiplied) alpha.
@@ -138,6 +139,19 @@ struct LinearRgba {
 void into_picture(const float picture[3], const float sdr[3], const LinearRgba& overlay,
                   float out[3]) noexcept;
 
+// A mask the canvas may draw as an overlay (the J clip mask, the stroke mask): whether it shows,
+// and the mask the frame brought (its byte count and size).
+struct OverlayMask {
+    bool shown = false;
+    std::size_t bytes = 0;
+    int width = 0;
+    int height = 0;
+};
+
+// Whether `mask` is drawn into the HDR picture of width x height (hdr_with_overlays): while it
+// shows, and only a mask of that picture, one byte per pixel.
+[[nodiscard]] bool overlay_drawn_into(const OverlayMask& mask, int width, int height) noexcept;
+
 // An overlay pixel as the SDR canvas draws it (ABGR8888 bytes: R low, A high; straight alpha, the
 // colour in sRGB codes) as a LinearRgba: each colour code through srgb8_to_linear, alpha / 255.
 [[nodiscard]] LinearRgba linear_rgba_from_abgr(std::uint32_t abgr) noexcept;
@@ -149,8 +163,11 @@ void into_picture(const float picture[3], const float sdr[3], const LinearRgba& 
 // is clear the halves are copied bit for bit. Elsewhere each covered layer goes over the pixel
 // with into_picture: the first over the SDR picture (srgb8_to_linear of its bytes), each next one
 // over the result, so the pixel is the SDR canvas's blend of the same layers and no light above
-// white shines through. Alpha stays the picture's. A layer of the wrong size is left out. Empty
-// if `hdr_rgba` or `sdr_rgb8` doesn't match width x height (or the picture is empty).
+// white shines through. Even a faint overlay pixel (alpha 1/255, a soft stroke's outer edge)
+// shows the SDR picture there, so the edge of a stroke over a highlight steps from the HDR picture
+// to the SDR one (into_picture's rule). Alpha stays the picture's. A layer of the wrong size is
+// left out. Empty if `hdr_rgba` or `sdr_rgb8` doesn't match width x height (or the picture is
+// empty).
 // Bit-identical for any thread count.
 [[nodiscard]] std::vector<std::uint16_t> hdr_with_overlays(
     std::span<const std::uint16_t> hdr_rgba, std::span<const std::uint8_t> sdr_rgb8, int width,
