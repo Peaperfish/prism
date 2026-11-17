@@ -193,8 +193,9 @@ bool float_to_unsigned_fraction(float v, std::uint32_t max_numerator, std::uint3
     }
     // The largest denominator that keeps the numerator <= max_numerator and the denominator
     // <= UINT32_MAX.
-    const std::uint64_t max_d = (v <= 1) ? std::numeric_limits<std::uint32_t>::max()
-                                         : static_cast<std::uint64_t>(std::floor(max_numerator / v));
+    const std::uint64_t max_d = (v <= 1)
+                                    ? std::numeric_limits<std::uint32_t>::max()
+                                    : static_cast<std::uint64_t>(std::floor(max_numerator / v));
     // The best approximation of v as a fraction, by continued fractions.
     *denominator = 1;
     std::uint32_t previous_d = 0;
@@ -260,8 +261,8 @@ std::optional<IsoGainMapFractions> iso_fractions(const GainMapMetadata& m) noexc
         !alternate_headroom) {
         return std::nullopt;
     }
-    return IsoGainMapFractions{*min,         *max,         *gamma,           *base_offset,
-                               *alternate_offset, *base_headroom, *alternate_headroom};
+    return IsoGainMapFractions{
+        *min, *max, *gamma, *base_offset, *alternate_offset, *base_headroom, *alternate_headroom};
 }
 
 }  // namespace prism

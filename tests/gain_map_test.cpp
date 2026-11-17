@@ -71,7 +71,8 @@ TEST(GainMap, FourPixelsWithoutTheLimit) {
 
 TEST(GainMap, OneGainEverywhereGivesCodeZero) {
     const std::vector<std::uint8_t> greys = {0, 0, 0, 0, 0, 0};
-    const prism::GainMap map = prism::make_gain_map(greys, prism::Image{2, 1, std::vector<float>(6, 0.0f)}, 1.0f);
+    const prism::GainMap map =
+        prism::make_gain_map(greys, prism::Image{2, 1, std::vector<float>(6, 0.0f)}, 1.0f);
     EXPECT_EQ(map.codes, (std::vector<std::uint8_t>{0, 0}));
     EXPECT_EQ(map.metadata.min_log2, 0.0f);
     EXPECT_EQ(map.metadata.max_log2, 0.0f);
@@ -114,8 +115,9 @@ TEST(GainMap, RoundTripIsWithinOneCode) {
             const float* s = &sdr.pixels[i * 3];
             const float* h = &hdr.pixels[i * 3];
             const double o = 1.0 / 64.0;
-            double g = std::log2((std::max(0.2126 * h[0] + 0.7152 * h[1] + 0.0722 * h[2], 0.0) + o) /
-                                 (std::max(0.2126 * s[0] + 0.7152 * s[1] + 0.0722 * s[2], 0.0) + o));
+            double g =
+                std::log2((std::max(0.2126 * h[0] + 0.7152 * h[1] + 0.0722 * h[2], 0.0) + o) /
+                          (std::max(0.2126 * s[0] + 0.7152 * s[1] + 0.0722 * s[2], 0.0) + o));
             if (limit) {
                 g = std::min(g, std::log2((4.0 + o) / (std::max({s[0], s[1], s[2], 0.0f}) + o)));
             }
@@ -136,12 +138,13 @@ TEST(GainMap, BadInputIsRefused) {
     EXPECT_THROW((void)prism::make_gain_map(base, broken, 2.0f), std::invalid_argument);
 }
 
-// --- applying it ----------------------------------------------------------------------------------
+// --- applying it
+// ----------------------------------------------------------------------------------
 
 TEST(GainMap, ApplyAtFullWeightKeepsEveryChannelWithinHeadroom) {
     const prism::GainMap map = prism::make_gain_map(base, four_hdr(), 2.0f);
     const prism::Image out = prism::apply_gain_map(base, map, 1.0f);
-    const float expected[] = {0,       0,       0,       3.97538f, 3.97538f, 3.97538f,
+    const float expected[] = {0,        0,        0,        3.97538f, 3.97538f, 3.97538f,
                               1.14900f, 1.14900f, 1.14900f, 3.97538f, 0.04578f, 0.04578f};
     ASSERT_EQ(out.pixels.size(), std::size(expected));
     for (std::size_t i = 0; i < out.pixels.size(); ++i) {
@@ -193,7 +196,8 @@ TEST(GainMap, ApplyRefusesMismatchedSizes) {
     EXPECT_THROW((void)prism::apply_gain_map(base, map, 1.0f), std::invalid_argument);
 }
 
-// --- the viewer's weight --------------------------------------------------------------------------
+// --- the viewer's weight
+// --------------------------------------------------------------------------
 
 TEST(GainMap, ViewerWeightFromDisplayHeadroom) {
     prism::GainMapMetadata m;
@@ -214,7 +218,8 @@ TEST(GainMap, ViewerWeightFromDisplayHeadroom) {
     EXPECT_EQ(prism::gain_map_weight(0.5f, m), 0.0f);
 }
 
-// --- threads --------------------------------------------------------------------------------------
+// --- threads
+// --------------------------------------------------------------------------------------
 
 TEST(GainMap, OneAndEightThreadsGiveTheSameBits) {
     // At least 1,572,864 px, and 1213 rows: 8 does not divide them.
@@ -235,11 +240,14 @@ TEST(GainMap, OneAndEightThreadsGiveTheSameBits) {
     EXPECT_EQ(one.metadata, eight.metadata);
     EXPECT_EQ(one.codes, eight.codes);
     // Every code is used, so a chunk that skipped pixels would show.
-    EXPECT_EQ(std::count(one.codes.begin(), one.codes.end(), 0), std::count(eight.codes.begin(), eight.codes.end(), 0));
-    EXPECT_EQ(bits(prism::apply_gain_map(b, one, 0.7f, 1)), bits(prism::apply_gain_map(b, one, 0.7f, 8)));
+    EXPECT_EQ(std::count(one.codes.begin(), one.codes.end(), 0),
+              std::count(eight.codes.begin(), eight.codes.end(), 0));
+    EXPECT_EQ(bits(prism::apply_gain_map(b, one, 0.7f, 1)),
+              bits(prism::apply_gain_map(b, one, 0.7f, 8)));
 }
 
-// --- ISO 21496-1 fractions ------------------------------------------------------------------------
+// --- ISO 21496-1 fractions
+// ------------------------------------------------------------------------
 
 TEST(GainMapFractions, MatchLibUltraHdr) {
     struct Signed {
@@ -247,18 +255,14 @@ TEST(GainMapFractions, MatchLibUltraHdr) {
         std::int32_t n;
         std::uint32_t d;
     };
-    for (const Signed& c : {Signed{0.015625f, 1, 64}, Signed{2.0f, 2, 1}, Signed{0.5f, 1, 2},
-                            Signed{0.0f, 0, 1}, Signed{-0.0f, 0, 1}, Signed{1.0f, 1, 1},
-                            Signed{2.5f, 5, 2}, Signed{-1.0f, -1, 1},
-                            Signed{-0.0112f, -3006477, 268435456},
-                            Signed{2.4703f, 10361189, 4194304},
-                            Signed{3.14159265f, 13176795, 4194304},
-                            Signed{1.6180339887f, 13573053, 8388608},
-                            Signed{1.98326528f, 16636835, 8388608},
-                            Signed{2.330872f, 4888193, 2097152},
-                            Signed{0.3333333f, 5592405, 16777216},
-                            Signed{0.1f, 13421773, 134217728}, Signed{1e-7f, 77, 769999991},
-                            Signed{1e-10f, 0, 1}}) {
+    for (const Signed& c :
+         {Signed{0.015625f, 1, 64}, Signed{2.0f, 2, 1}, Signed{0.5f, 1, 2}, Signed{0.0f, 0, 1},
+          Signed{-0.0f, 0, 1}, Signed{1.0f, 1, 1}, Signed{2.5f, 5, 2}, Signed{-1.0f, -1, 1},
+          Signed{-0.0112f, -3006477, 268435456}, Signed{2.4703f, 10361189, 4194304},
+          Signed{3.14159265f, 13176795, 4194304}, Signed{1.6180339887f, 13573053, 8388608},
+          Signed{1.98326528f, 16636835, 8388608}, Signed{2.330872f, 4888193, 2097152},
+          Signed{0.3333333f, 5592405, 16777216}, Signed{0.1f, 13421773, 134217728},
+          Signed{1e-7f, 77, 769999991}, Signed{1e-10f, 0, 1}}) {
         const std::optional<prism::SignedFraction> f = prism::signed_fraction(c.v);
         ASSERT_TRUE(f) << c.v;
         EXPECT_EQ(f->numerator, c.n) << c.v;
@@ -274,8 +278,8 @@ TEST(GainMapFractions, WhatCannotBeAFraction) {
     for (const float v : {3e9f, 2147483647.0f, 5e9f, std::numeric_limits<float>::quiet_NaN()}) {
         EXPECT_FALSE(prism::signed_fraction(v)) << v;
     }
-    for (const float v : {-1.0f, -0.0112f, 4294967295.0f, 5e9f,
-                          std::numeric_limits<float>::quiet_NaN()}) {
+    for (const float v :
+         {-1.0f, -0.0112f, 4294967295.0f, 5e9f, std::numeric_limits<float>::quiet_NaN()}) {
         EXPECT_FALSE(prism::unsigned_fraction(v)) << v;
     }
 }
