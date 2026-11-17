@@ -35,6 +35,8 @@ inline constexpr float hdr_knee = 0.18f;
 // so the HDR curve leaves middle grey exactly where the SDR curve puts it, with the same slope,
 // and the file's white lands exactly on H. Guard: when S <= 0.18 or c(S) <= c(0.18) there is no
 // room to lift (U would be 0 or negative), so the curve is c(x). Every result is then cut at H.
+// Only the top is cut: with no tone curve, c(x) = x keeps a negative value (possible after a
+// matrix) negative, as the SDR branch does until Output encode.
 //
 // Where the parabola's peak falls before S (only with a small N and a bright S, when a < 0 and
 // 2V/U < g0), the curve passes H before S; the cut at H holds it there, so the result still never
@@ -68,7 +70,9 @@ struct HdrCurve {
 // reads: a RAW's sensor white, an 8-bit file's 255) is sent through every stage before the branch
 // that `s` asks for (exposure, white balance, colour matrix, saturation, contrast; dodge and burn
 // is local, so it is left out), with the same functions process() uses, and the brightest
-// channel is returned. A plain Natural look (+1 stop) gives 2.0.
+// channel is returned. A plain Natural look (+1 stop) gives 2.0. Light that the stages push
+// past S in other pixels (a saturated colour through a matrix with negative weights, a dodge
+// stroke) reaches the HDR curve's "x >= S" part and is held at H.
 [[nodiscard]] float hdr_file_white(const ProcessSettings& s);
 
 // Applies the HDR curve to every value of `img` in place. `threads` as for every stage; the

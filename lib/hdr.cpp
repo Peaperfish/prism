@@ -16,10 +16,9 @@ namespace {
 // known at compile time in hdr_curve's loop.
 template <typename Curve>
 float hdr_value(const HdrCurve& h, const Curve& c, float x) noexcept {
-    const float sdr = c(x);
     // !(x > knee) is also true for NaN, which then stays NaN through std::min.
     if (!h.lift || !(x > hdr_knee)) {
-        return std::min(sdr, h.peak);
+        return std::min(c(x), h.peak);
     }
     if (x >= h.white) {
         return h.peak;
@@ -43,7 +42,7 @@ double log_slope(const ReinhardCurve& r, double x) {
 }
 
 double log_slope(const FilmicCurve&, double x) {
-    // c = scale * h(2x), so x c'/c = y h'(y) / h(y) with y = 2x, and h = n / d - e / f.
+    // c = scale * h(2x), so x c'/c = y h'(y) / h(y) with y = 2x, and h = n / den - e / f.
     constexpr double a = 0.15, b = 0.50, c = 0.10, d = 0.20, e = 0.02, f = 0.30;
     const double y = 2.0 * x;
     const double n = y * (a * y + c * b) + d * e;

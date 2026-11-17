@@ -94,13 +94,14 @@ ProcessResult process(Image& img, const ProcessSettings& settings, int threads,
 ProcessResult process_hdr(Image& img, Image& hdr, const ProcessSettings& settings, int threads,
                           std::stop_token stop, const StageCallback& on_stage,
                           const BeforeStageCallback& before_stage) {
-    hdr = {};
     if (settings.headroom_stops == 0.0f) {
+        hdr = {};
         return process(img, settings, threads, std::move(stop), on_stage, before_stage);
     }
-    // Built first, so a bad headroom throws before any pixel changes.
+    // Built first, so a bad headroom throws before any pixel (of either image) changes.
     const HdrCurve curve =
         make_hdr_curve(settings.curve, hdr_file_white(settings), settings.headroom_stops);
+    hdr = {};
     const StageRunner run(std::move(stop), on_stage, before_stage);
     if (!run_to_branch(img, settings, threads, run)) {
         return ProcessResult::cancelled;
@@ -108,6 +109,7 @@ ProcessResult process_hdr(Image& img, Image& hdr, const ProcessSettings& setting
     hdr = img;
     if (!run_sdr_curve(img, settings, threads, run) ||
         !run("hdr_curve", hdr, [&] { hdr_curve(hdr, curve, threads); })) {
+        hdr = {};  // never a half-made HDR picture
         return ProcessResult::cancelled;
     }
     return ProcessResult::completed;

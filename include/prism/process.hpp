@@ -71,9 +71,11 @@ enum class ProcessResult {
 // stages are reported as process() reports them, with "hdr_curve" (whose input is the image
 // after Contrast) after "curve".
 //
-// A stop works as in process(); if it comes before the branch, `hdr` is left empty. Throws
-// std::invalid_argument, before changing any pixel, if the headroom is not 0 and not in
-// (0, headroom_max_stops], and as process() does.
+// A stop works as in process() for `img`; `hdr` is then left empty (it is only ever the finished
+// HDR picture or nothing). `img` and `hdr` must be different images. Throws
+// std::invalid_argument, before changing either image, if the headroom is not 0 and not in
+// (0, headroom_max_stops], or if the file's white comes out infinite or NaN (e.g. an exposure of
+// over +127 stops); and as process() does.
 [[nodiscard]] ProcessResult process_hdr(Image& img, Image& hdr, const ProcessSettings& settings,
                                         int threads = 0, std::stop_token stop = {},
                                         const StageCallback& on_stage = {},

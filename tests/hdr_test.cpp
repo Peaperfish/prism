@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <stop_token>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "prism/hdr.hpp"
@@ -24,7 +25,9 @@
 // differencing the float curve (step 1e-4 * x), which is off by about 0.1% (filmic: 0.906806
 // against the exact 0.907828; Prism uses each curve's exact slope). So a value matches when it is
 // within half a unit of the 4th decimal plus 0.05% of itself. For example filmic N = 2 at 0.5 is
-// 0.40659 exactly, printed 0.4063 by the probe. Any other design (the knee at half white, or no
+// 0.40659 exactly, printed 0.4063 by the probe. The design table's 3-decimal rows sit closest to
+// the edge: filmic N = 1 at 1.0 is 0.80884 against 0.808 (tolerance 0.0009), half a unit of the
+// 3rd decimal plus the probe's slope error. Any other design (the knee at half white, or no
 // lift) is off by 0.1 or more.
 
 namespace {
@@ -120,11 +123,11 @@ TEST(HdrCurve, JoinsTheSdrCurveSmoothlyAtTheKneeAndRisesToHeadroom) {
         // Continuous: just above the knee it is within a hair of the SDR value there.
         const float above = 0.18f * 1.0001f;
         EXPECT_NEAR(h.map(above), c(above), 1e-5f * c(above)) << spec;
-        // Same slope (stops per stop) on both sides of the knee: a step of 1% gives the same
-        // rise to first order.
-        const double sdr_rise = std::log2(c(0.18f * 1.01f) / c(0.18f));
-        const double hdr_rise = std::log2(h.map(0.18f * 1.01f) / h.map(0.18f));
-        EXPECT_NEAR(hdr_rise, sdr_rise, 2e-4) << spec;
+        // Same slope (stops per stop) on both sides of the knee: a step of 0.1% gives the same
+        // rise (about 0.0014 * slope) to within 3e-6, so a slope off by 0.5% fails.
+        const double sdr_rise = std::log2(c(0.18f * 1.001f) / c(0.18f));
+        const double hdr_rise = std::log2(h.map(0.18f * 1.001f) / h.map(0.18f));
+        EXPECT_NEAR(hdr_rise, sdr_rise, 3e-6) << spec;
         // Just below S it is just below H.
         EXPECT_GT(h.map(1.99f), 3.9f) << spec;
         EXPECT_LT(h.map(1.99f), 4.0f) << spec;
@@ -360,4 +363,98 @@ TEST(ProcessHdr, OneAndEightThreadsGiveTheSameBits) {
     EXPECT_EQ(bits(one_hdr), bits(eight_hdr));
     // The HDR branch really lifted something: not a copy of the SDR picture.
     EXPECT_NE(bits(one_hdr), bits(one));
+}
+
+TEST(ProcessHdr, NaturalEndToEndMatchesTheProbe) {
+    // Exposure +1 makes the file's white 2.0, as in the probe, so input 0.5 reaches the curve as
+    // scene 1.0, 0.09 as 0.18 and 1.0 as 2.0. Literals from #101 and the design table (N = 2).
+    struct Case {
+        const char* spec;
+        double grey;
+        double one;
+    };
+    for (const Case& k : {Case{"filmic", 0.128, 1.149}, Case{"none", 0.180, 1.421},
+                          Case{"gamma:2.2", 0.459, 1.722}, Case{"reinhard:4", 0.154, 1.228}}) {
+        SCOPED_TRACE(k.spec);
+        prism::ProcessSettings s;
+        s.exposure_stops = 1.0f;
+        s.curve = curve(k.spec);
+        s.headroom_stops = 2.0f;
+        prism::Image img{3, 1, {0.09f, 0.09f, 0.09f, 0.5f, 0.5f, 0.5f, 1.0f, 1.0f, 1.0f}};
+        prism::Image out;
+        ASSERT_EQ(prism::process_hdr(img, out, s, 1), prism::ProcessResult::completed);
+        for (int c = 0; c < 3; ++c) {
+            EXPECT_PROBE(out.pixels[c], k.grey);
+            EXPECT_PROBE(out.pixels[3 + c], k.one);
+            EXPECT_EQ(out.pixels[6 + c], 4.0f);
+        }
+    }
+}
+
+TEST(ProcessHdr, WhiteBelowMiddleGreyGivesTheSdrCurveEndToEnd) {
+    // Exposure -4: the file's white is 1/16, below 0.18, so the guard applies and the HDR branch
+    // is the SDR curve (filmic never reaches H = 4).
+    prism::ProcessSettings s;
+    s.exposure_stops = -4.0f;
+    s.curve = prism::parse_curve("filmic");
+    s.headroom_stops = 2.0f;
+    prism::Image img = ramp(64, 16);
+    prism::Image out;
+    ASSERT_EQ(prism::process_hdr(img, out, s, 1), prism::ProcessResult::completed);
+    EXPECT_EQ(bits(out), bits(img));
+}
+
+TEST(ProcessHdr, TheHdrCurveReceivesTheImageAfterContrast) {
+    prism::ProcessSettings s = look();
+    s.headroom_stops = 2.0f;
+    prism::Image after_contrast = ramp(8, 4);
+    prism::ProcessSettings to_contrast = s;
+    to_contrast.curve.reset();
+    to_contrast.headroom_stops = 0.0f;
+    ASSERT_EQ(prism::process(after_contrast, to_contrast, 1), prism::ProcessResult::completed);
+
+    prism::Image img = ramp(8, 4);
+    prism::Image out;
+    std::vector<std::uint32_t> seen;
+    ASSERT_EQ(prism::process_hdr(img, out, s, 1, {}, {},
+                                 [&](std::string_view name, const prism::Image& input) {
+                                     if (name == "hdr_curve") {
+                                         seen = bits(input);
+                                     }
+                                 }),
+              prism::ProcessResult::completed);
+    EXPECT_EQ(seen, bits(after_contrast));
+}
+
+TEST(ProcessHdr, AStopAfterTheBranchLeavesNoHdrImage) {
+    // The stop arrives while the SDR curve is about to run: "curve" still runs, "hdr_curve" does
+    // not, and `hdr` must not be left holding the unfinished copy.
+    prism::ProcessSettings s = look();
+    s.headroom_stops = 2.0f;
+    std::stop_source stop;
+    prism::Image img = ramp(4, 3);
+    prism::Image out;
+    std::vector<std::string> names;
+    EXPECT_EQ(prism::process_hdr(
+                  img, out, s, 1, stop.get_token(),
+                  [&](const prism::StageTime& t) { names.emplace_back(t.name); },
+                  [&](std::string_view name, const prism::Image&) {
+                      if (name == "curve") {
+                          stop.request_stop();
+                      }
+                  }),
+              prism::ProcessResult::cancelled);
+    EXPECT_EQ(names.back(), "curve");
+    EXPECT_TRUE(out.pixels.empty());
+    EXPECT_EQ(out.width, 0);
+}
+
+TEST(ProcessHdr, ABadHeadroomLeavesTheHdrImageAlone) {
+    prism::ProcessSettings s = look();
+    s.headroom_stops = 9.0f;
+    prism::Image img = ramp(4, 3);
+    prism::Image out = ramp(2, 2);
+    const prism::Image before = out;
+    EXPECT_THROW((void)prism::process_hdr(img, out, s, 1), std::invalid_argument);
+    EXPECT_EQ(bits(out), bits(before));
 }
