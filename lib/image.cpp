@@ -17,13 +17,14 @@
 #include "prism/raw.hpp"
 #include "prism/utf8_path.hpp"
 #include "sample_ranges.hpp"
+#include "stb_jpeg.hpp"
 
 namespace prism {
 
 namespace {
 
-// Quality 95 keeps JPEG artefacts hard to see while still compressing well.
-constexpr int jpeg_quality = 95;
+// Quality 95 keeps JPEG artefacts hard to see while still compressing well (stb_jpeg.hpp).
+constexpr int jpeg_quality = detail::sdr_jpeg_quality;
 
 // stbi_load returns a malloc'd buffer that must be released with stbi_image_free.
 // Holding it in a unique_ptr frees it automatically, even if we throw part-way through.

@@ -9,3 +9,4 @@
 *.heic binary
 *.ARW  binary
 *.dng  binary
+*.icc  binary

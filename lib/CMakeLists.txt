@@ -19,8 +19,10 @@ add_library(prism_core STATIC
   recipe.cpp
   resize.cpp
   raw.cpp
+  srgb_icc.cpp
   stroke_field.cpp
   tiff_reader.cpp
+  ultra_hdr.cpp
   version.cpp
   white_balance.cpp)
 

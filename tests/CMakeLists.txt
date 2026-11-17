@@ -45,6 +45,7 @@ add_executable(prism_tests
   resize_test.cpp
   stroke_field_test.cpp
   tiff_reader_test.cpp
+  ultra_hdr_test.cpp
   unicode_path_test.cpp
   version_test.cpp
   white_balance_test.cpp)
@@ -65,7 +66,8 @@ target_compile_definitions(prism_tests PRIVATE PRISM_EXE="$<TARGET_FILE:prism>"
                                               PRISM_RECIPE_DOC="${PROJECT_SOURCE_DIR}/docs/RECIPES.md"
                                               PRISM_RECIPES_DIR="${PROJECT_SOURCE_DIR}/recipes"
                                               PRISM_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data"
-                                              PRISM_GRADE_SAMPLE="${PROJECT_SOURCE_DIR}/samples/grade.txt")
+                                              PRISM_GRADE_SAMPLE="${PROJECT_SOURCE_DIR}/samples/grade.txt"
+                                              PRISM_ICC_PROFILE="${PROJECT_SOURCE_DIR}/third_party/icc/sRGB-v2-magic.icc")
 add_dependencies(prism_tests prism prism_profile)
 # heic_test.cpp compares against ImageIO's own rendering.
 if(APPLE)

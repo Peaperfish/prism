@@ -1,4 +1,5 @@
-# Writes THIRD_PARTY_NOTICES.txt for what this configuration actually links: stb always, SDL3,
+# Writes THIRD_PARTY_NOTICES.txt for what this configuration actually links: stb and the sRGB ICC
+# profile (with Adobe's gain-map notice) always, SDL3,
 # Dear ImGui and Inter with PRISM_BUILD_GUI, LibRaw with PRISM_WITH_LIBRAW. Licence texts are read from the
 # downloaded sources being built (and SDL's notices only for the files SDL compiles here), never
 # typed in by hand. LibRaw's own licence files are not copied into it: the release ships them
@@ -181,6 +182,25 @@ https://github.com/nothings/stb
 Licence: MIT or public domain (Unlicense), at the user's choice; reproduced here under MIT.
 
 ${prism_stb}")
+
+# --- The sRGB ICC profile in Ultra HDR JPEGs ----------------------------------------------------
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+             ${PROJECT_SOURCE_DIR}/third_party/icc/LICENSE)
+file(READ ${PROJECT_SOURCE_DIR}/third_party/icc/LICENSE prism_icc_licence)
+string(FIND "${prism_icc_licence}" "CC0 1.0 Universal" prism_at)
+if(NOT prism_at EQUAL 0)
+  message(FATAL_ERROR "third_party/icc/LICENSE is no longer CC0 1.0: update ${CMAKE_CURRENT_LIST_FILE}")
+endif()
+list(APPEND PRISM_THIRD_PARTY_COMPONENTS "sRGB-v2-magic ICC profile|CC0 1.0")
+prism_notice_section(prism_notices "sRGB-v2-magic ICC profile (Compact-ICC-Profiles)" "\
+https://github.com/saucecontrol/Compact-ICC-Profiles
+Licence: CC0 1.0 Universal (public domain dedication),
+https://creativecommons.org/publicdomain/zero/1.0/
+The profile is embedded, unmodified, in the SDR picture of every Ultra HDR JPEG Prism writes.")
+
+# --- Gain maps (Adobe) --------------------------------------------------------------------------
+prism_notice_section(prism_notices "Gain maps" "\
+This product includes Gain Map technology under license by Adobe.")
 
 file(WRITE ${PRISM_THIRD_PARTY_NOTICES}.tmp "${prism_notices}\n")
 file(COPY_FILE ${PRISM_THIRD_PARTY_NOTICES}.tmp ${PRISM_THIRD_PARTY_NOTICES} ONLY_IF_DIFFERENT)
