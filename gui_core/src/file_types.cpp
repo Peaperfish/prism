@@ -37,8 +37,8 @@ std::string open_filter_pattern() {
     return pattern;
 }
 
-ExportFormat default_export_format(const fs::path& source) {
-    return lowercase_extension(source) == ".png" ? ExportFormat::png : ExportFormat::jpeg;
+ExportFormat default_export_format(const fs::path& source, bool hdr) {
+    return !hdr && lowercase_extension(source) == ".png" ? ExportFormat::png : ExportFormat::jpeg;
 }
 
 fs::path with_export_extension(const fs::path& chosen, ExportFormat format) {

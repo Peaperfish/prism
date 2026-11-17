@@ -661,8 +661,9 @@ TEST(LightPathDodgeBurn, TheControlsLineIsOneSliderHighAndTheRowHeightFollowsThe
     EXPECT_EQ(layout.clip_y, *layout.controls_y + metrics.slider + metrics.gap);  // then the clip line
     EXPECT_EQ(layout.height, layout.clip_y + metrics.secondary + metrics.pad_bottom);
     for (const StageInfo& stage : pipeline_stages()) {
+        // Output encode's HDR line (#105) is the other controls line.
         EXPECT_EQ(light_path_row_layout(row_for(stage.id, {}), metrics).controls_y.has_value(),
-                  stage.id == StageId::dodge_burn);
+                  stage.id == StageId::dodge_burn || stage.id == StageId::encode);
     }
     // 0, 1 and 500 strokes, on and off, viewed or dimmed, clipped or not: the same row.
     for (const std::size_t count : {std::size_t{0}, std::size_t{1}, std::size_t{500}}) {

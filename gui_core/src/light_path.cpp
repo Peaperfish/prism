@@ -146,9 +146,16 @@ LightPathRow light_path_row(const LightPathInputs& in, StageId stage) {
         case StageId::decode:
             row.subtitle = decode_subtitle(s, in.file_kind);
             break;
-        case StageId::encode:
+        case StageId::encode: {
             row.subtitle = "sRGB for the screen";
+            LightPathRow::HdrControls controls;
+            controls.on = s.hdr_on;
+            controls.headroom = snap_headroom(s.headroom_stops);
+            controls.headroom_text = headroom_text(s.headroom_stops);
+            controls.headroom_reset = "Reset to " + headroom_text(headroom_default_stops);
+            row.hdr = std::move(controls);
             break;
+        }
         case StageId::dodge_burn: {
             row.value = strokes_text(s.strokes);
             row.value_muted = !row.enabled || s.strokes.empty();
@@ -287,8 +294,11 @@ LightPathRowLayout light_path_row_layout(const LightPathRow& row,
     };
     switch (row.stage) {
         case StageId::decode:
+            layout.subtitle_y = take(m.secondary);
+            break;
         case StageId::encode:
             layout.subtitle_y = take(m.secondary);
+            layout.controls_y = take(m.slider);
             break;
         case StageId::exposure:
         case StageId::saturation:

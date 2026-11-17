@@ -34,6 +34,11 @@ inline constexpr std::string_view widest_strength = "2.0 stops";
 // The Easel line at the top of the path (#58): its name and its button.
 inline constexpr std::string_view easel = "Easel";
 inline constexpr std::string_view frame_button = "Frame";
+// Output encode's HDR controls line (#105): the switch and the label before the Headroom slider.
+inline constexpr std::string_view hdr = "HDR";
+inline constexpr std::string_view headroom = "Headroom";
+// The widest the Headroom slider's value reads (headroom_text); the controls line measures it.
+inline constexpr std::string_view widest_headroom = "+4.00 stops";
 }  // namespace light_path_text
 
 // --- Clip marks ----------------------------------------------------------------------------------
@@ -117,6 +122,18 @@ struct LightPathRow {
         bool operator==(const BrushControls&) const = default;
     };
     std::optional<BrushControls> brush_controls;
+
+    // Output encode's controls line (#105): HDR's switch and the Headroom slider, which shows the
+    // stored headroom (greyed out while HDR is off). The line is always there.
+    struct HdrControls {
+        bool on = false;
+        float headroom = 0.0f;        // snap_headroom of the stored headroom
+        std::string headroom_text;    // "+2.00 stops" (headroom_text)
+        std::string headroom_reset;   // "Reset to +2.00 stops"
+
+        bool operator==(const HdrControls&) const = default;
+    };
+    std::optional<HdrControls> hdr;
 
     // The Tone curve's tabs, and the number of the curves that take one.
     bool curve_tabs = false;
@@ -211,7 +228,7 @@ struct LightPathRowLayout {
     std::optional<float> tabs_y;
     std::optional<float> parameter_y;
     std::optional<float> parameter_slider_y;
-    std::optional<float> controls_y;  // Dodge & burn's Brush, Strength and Clear
+    std::optional<float> controls_y;  // Dodge & burn's Brush, Strength and Clear; Output encode's HDR
     // The clip line is always there, whether or not it has a mark to show (#38).
     float clip_y = 0;
     float clip_height = 0;
@@ -224,7 +241,8 @@ struct LightPathRowLayout {
 [[nodiscard]] bool row_expanded(const LightPathRow& row) noexcept;
 
 // White balance has a subtitle and two sliders, whatever is chosen. Dodge & burn has one controls
-// line, as tall as a slider.
+// line, as tall as a slider. Output encode has its subtitle and the HDR controls line under it, as
+// tall as a slider, whether HDR is on or off.
 //
 // A row's layout, from its stage and row_expanded alone: never from the values it shows, its clip
 // marks, whether it is viewed, dimmed or off, or the mouse. A height that followed any of those

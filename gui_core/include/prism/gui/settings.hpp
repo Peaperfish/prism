@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "prism/frame.hpp"
+#include "prism/hdr.hpp"
 #include "prism/pipeline.hpp"
 #include "prism/process.hpp"
 #include "prism/ranges.hpp"
@@ -169,6 +170,15 @@ struct EditSettings {
     float reinhard_white = reinhard_white_default;  // used when curve == reinhard; > 0
     bool curve_on = true;
 
+    // HDR (#96, #105), on the Output encode row: how far above white the HDR picture keeps light,
+    // in stops (headroom_min_stops to headroom_max_stops, in steps of 0.1), and whether there is
+    // one. Off by default, so a photo and its exports are SDR until HDR is turned on; the headroom
+    // waits at headroom_default_stops (+2.0) for that, and turning HDR off keeps it, as every
+    // stage's switch keeps its value. HDR on with a headroom of 0 makes no HDR picture, as a
+    // recipe's `headroom = 0` does. A recipe holds both as [hdr] headroom (recipe_settings.hpp).
+    float headroom_stops = headroom_default_stops;
+    bool hdr_on = false;
+
     // RAW input only. The preview is always decoded at half size; `raw_half_size` makes the
     // export half size too. `raw_camera_matrix` replaces LibRaw's camera -> sRGB matrix
     // (--raw-camera-matrix); it is applied while decoding, so changing it re-decodes the file.
@@ -207,6 +217,10 @@ void reset_to_defaults(EditSettings& s);
 // invalid state.
 [[nodiscard]] std::vector<std::string> validate(const EditSettings& s);
 
+// The headroom an export of `s` makes an HDR picture with (output_file in prism/output.hpp): the
+// headroom while HDR is on and it is above 0, otherwise nothing (SDR only).
+[[nodiscard]] std::optional<float> output_headroom(const EditSettings& s) noexcept;
+
 // The tone curve's CLI spec ("gamma:2.2", "reinhard:4", "filmic"), or nothing for no curve.
 // Numbers are written in the shortest form that reads back as exactly the same float.
 [[nodiscard]] std::optional<std::string> curve_spec(const EditSettings& s);
@@ -225,7 +239,9 @@ void set_stage_enabled(EditSettings& s, StageId id, bool enabled) noexcept;
 // With strokes, Dodge & burn on and the stage reached, the result carries them with `grid`: where
 // the image this will run on sits on the photo (stage_grid). Strokes and no grid is an error
 // (std::invalid_argument): the stage would not know which pixels it has.
-// The RAW options are not part of it: they apply when decoding.
+// The RAW options are not part of it: they apply when decoding. The headroom (output_headroom) is
+// carried only when `stop_after` is Output encode: process() ignores it, and process_hdr and
+// export use it.
 //
 // A chosen white balance becomes the matrix prism::white_balance_matrix builds against
 // `as_shot_white`, the photo's as-shot light (Session::as_shot_white); without one the photo is

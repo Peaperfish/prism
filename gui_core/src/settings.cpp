@@ -238,11 +238,20 @@ std::vector<std::string> validate(const EditSettings& s) {
     check_range(problems, "Contrast", s.contrast, contrast_range);
     check_positive(problems, "Gamma", s.gamma);
     check_positive(problems, "Reinhard white point", s.reinhard_white);
+    check_range(problems, "Headroom", s.headroom_stops,
+                ValueRange{headroom_min_stops, headroom_max_stops});
     if (s.frame) {
         const std::vector<std::string> frame_problems = validate_frame(*s.frame);
         problems.insert(problems.end(), frame_problems.begin(), frame_problems.end());
     }
     return problems;
+}
+
+std::optional<float> output_headroom(const EditSettings& s) noexcept {
+    if (s.hdr_on && s.headroom_stops > 0.0f) {  // false for NaN
+        return s.headroom_stops;
+    }
+    return std::nullopt;
 }
 
 std::optional<std::string> curve_spec(const EditSettings& s) {
@@ -300,6 +309,9 @@ ProcessSettings to_process_settings(const EditSettings& s, StageId stop_after,
         if (const std::optional<std::string> spec = curve_spec(s)) {
             p.curve = prism::parse_curve(*spec);
         }
+    }
+    if (reached(StageId::encode)) {
+        p.headroom_stops = output_headroom(s);
     }
     return p;
 }

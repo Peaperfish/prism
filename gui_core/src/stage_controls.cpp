@@ -279,6 +279,28 @@ void set_curve_kind(EditSettings& s, CurveKind kind) {
     s.curve_on = true;
 }
 
+float snap_headroom(float stops) noexcept {
+    if (std::isnan(stops)) {
+        return headroom_default_stops;
+    }
+    const float steps =
+        std::round(std::clamp(stops, headroom_min_stops, headroom_max_stops) / headroom_step);
+    return std::clamp(steps * headroom_step, headroom_min_stops, headroom_max_stops);
+}
+
+void set_hdr_on(EditSettings& s, bool on) noexcept {
+    s.hdr_on = on;
+}
+
+void set_headroom(EditSettings& s, float stops) noexcept {
+    s.headroom_stops = snap_headroom(stops);
+    s.hdr_on = true;
+}
+
+std::string headroom_text(float stops) {
+    return format_exposure(snap_headroom(stops));
+}
+
 void set_curve_parameter(EditSettings& s, float value) {
     const std::optional<CurveParameter> p = curve_parameter(s.curve);
     if (!p) {

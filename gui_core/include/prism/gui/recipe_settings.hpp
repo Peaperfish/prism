@@ -7,7 +7,7 @@ namespace prism::gui {
 
 // Recipes (prism/recipe.hpp) and the GUI's EditSettings.
 //
-// A recipe holds the five edit stages with their switches. It does not hold where the photo came
+// A recipe holds the five edit stages with their switches, and HDR's headroom as [hdr] (#105). It does not hold where the photo came
 // from, how it is being viewed, the sliders' positions (they are worked out from the
 // settings) or the RAW options (raw_half_size, raw_camera_matrix), which describe how the file is
 // decoded rather than the look. So applying a recipe never makes the file decode again. Nor does
@@ -21,11 +21,13 @@ namespace prism::gui {
 // value and its switch); a stage it leaves out stays as it is. Of the curve's two parameters only
 // the chosen shape's is set: a recipe for Reinhard leaves the gamma value alone. A matrix becomes
 // a MatrixFile whose path is the recipe's `from` label (empty without one); identity rows without
-// `from` become no matrix. The RAW options never change.
+// `from` become no matrix. [hdr] turns HDR on at its headroom, or off for a headroom of 0 (keeping
+// the headroom the control comes back with). The RAW options never change.
 void apply_recipe(EditSettings& s, const Recipe& recipe);
 
 // A complete recipe of `s`: every stage, each with its switch. The curve's parameter is kept only
-// for the chosen shape (the other one is not saved); the matrix's `from` is its file's name.
+// for the chosen shape (the other one is not saved); the matrix's `from` is its file's name. [hdr]
+// only while HDR is on with a headroom above 0 (output_headroom).
 [[nodiscard]] Recipe recipe_from(const EditSettings& s);
 
 // True if `a` and `b` are the same in everything a recipe holds: recipe_from(a) == recipe_from(b).

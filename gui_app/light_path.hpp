@@ -91,6 +91,11 @@ struct LightPathCallbacks {
     // Dodge & burn's Strength slider: the new strength in stops, already a step of 0.1.
     std::function<void(float)> brush_strength;
     std::function<void()> clear_strokes;  // Dodge & burn's Clear button: one undo step
+    // Output encode's HDR switch (one undo step), and its Headroom slider: the new headroom (a
+    // step of 0.1) for one frame of the slider's gesture, and its reset to +2.0.
+    std::function<void(bool on)> set_hdr_on;
+    std::function<void(float stops, const gui::SliderFrame&)> headroom;
+    std::function<void()> reset_headroom;
     // A press on the Easel line or its Frame button: framing on, or off (keeping the frame) when on.
     std::function<void()> toggle_framing;
     std::function<void(std::optional<gui::StageId>)> set_compare;  // none: Off

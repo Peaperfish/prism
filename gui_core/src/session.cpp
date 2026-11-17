@@ -15,6 +15,7 @@
 #include "prism/gui/recipe_settings.hpp"
 #include "prism/gui/system_memory.hpp"
 #include "prism/heic.hpp"
+#include "prism/output.hpp"
 #include "prism/raw.hpp"
 #include "prism/resize.hpp"
 #include "prism/utf8_path.hpp"
@@ -516,7 +517,8 @@ std::variant<Image, Error> run_after_decode(DecodedImage decoded,
                                             const EditSettings& settings,
                                             std::optional<int> long_side,
                                             const std::optional<FrameBox>& part, int threads,
-                                            std::stop_token stop, const StageCallback& on_stage) {
+                                            std::stop_token stop, const StageCallback& on_stage,
+                                            Image* hdr = nullptr) {
     const int decoded_width = image_of(decoded).width;
     const int decoded_height = image_of(decoded).height;
 
@@ -568,9 +570,18 @@ std::variant<Image, Error> run_after_decode(DecodedImage decoded,
         part ? stage_grid(framing, whole.width, whole.height, part->x0, part->y0, 1, part->width,
                           part->height)
              : stage_grid(framing, img.width, img.height);
-    if (process(img, to_process_settings(settings, final_stage, as_shot, grid), threads, stop,
-                on_stage) == ProcessResult::cancelled ||
-        stop.stop_requested()) {
+    const ProcessSettings process_settings = to_process_settings(settings, final_stage, as_shot, grid);
+    // With `hdr` and a headroom, the stages make the HDR picture too (process_for_output, as the
+    // command line runs them for an Ultra HDR JPEG); otherwise process(), as always.
+    const bool make_hdr = hdr != nullptr && makes_hdr(process_settings.headroom_stops);
+    const ProcessResult result =
+        make_hdr ? process_for_output(img, *hdr, process_settings, OutputFile::ultra_hdr_jpeg,
+                                      threads, stop, on_stage)
+                 : process(img, process_settings, threads, stop, on_stage);
+    if (result == ProcessResult::cancelled || stop.stop_requested()) {
+        if (hdr != nullptr) {
+            *hdr = Image{};
+        }
         return cancelled();
     }
     return std::move(img);
@@ -596,10 +607,11 @@ std::variant<Photo, Error> decode_for_export(const fs::path& source, InputKind k
 
 std::variant<Image, Error> finish_export(Photo decoded, const EditSettings& settings,
                                          std::optional<int> long_side, int threads,
-                                         std::stop_token stop, const StageCallback& on_stage) {
+                                         std::stop_token stop, const StageCallback& on_stage,
+                                         Image* hdr) {
     const std::optional<Chromaticity> as_shot = as_shot_white_of(decoded.info);
     return run_after_decode(std::move(decoded.image), as_shot, settings, long_side, std::nullopt,
-                            threads, stop, on_stage);
+                            threads, stop, on_stage, hdr);
 }
 
 Image render_region(const Photo& base, const EditSettings& settings, const FrameBox& part,
@@ -657,6 +669,15 @@ MaybeError export_image(const ExportJob& job, const fs::path& output, std::stop_
         return Error{ErrorKind::save_failed,
                      "Prism won't overwrite the photo you opened: choose another file name.", ""};
     }
+    // A PNG stays SDR (#96): with HDR on, only a JPEG holds the HDR picture (output_file).
+    const std::optional<float> headroom = output_headroom(job.settings);
+    const OutputFile file = output_file(output, headroom);
+    if (file == OutputFile::hdr_needs_jpeg) {
+        return Error{ErrorKind::unsupported_format,
+                     "HDR files need .jpg: give " + quoted_name(output) +
+                         " the extension .jpg or .jpeg, or turn HDR off to save a PNG.",
+                     ""};
+    }
     if (const std::vector<std::string> problems = validate(job.settings); !problems.empty()) {
         return invalid_settings_error(problems);
     }
@@ -670,14 +691,21 @@ MaybeError export_image(const ExportJob& job, const fs::path& output, std::stop_
     if (Error* e = std::get_if<Error>(&decoded)) {
         return std::move(*e);
     }
-    std::variant<Image, Error> finished = finish_export(
-        std::move(std::get<Photo>(decoded)), job.settings, job.long_side, job.threads, stop,
-        on_stage);
+    // An Ultra HDR JPEG gets its HDR picture from the same stages (finish_export's `hdr`).
+    Image hdr;
+    std::variant<Image, Error> finished =
+        finish_export(std::move(std::get<Photo>(decoded)), job.settings, job.long_side,
+                      job.threads, stop, on_stage,
+                      file == OutputFile::ultra_hdr_jpeg ? &hdr : nullptr);
     if (Error* e = std::get_if<Error>(&finished)) {
         return std::move(*e);
     }
     try {
-        save_image(output, std::get<Image>(finished), job.threads);
+        if (file == OutputFile::ultra_hdr_jpeg) {
+            save_output(output, std::get<Image>(finished), hdr, headroom, job.threads);
+        } else {
+            save_image(output, std::get<Image>(finished), job.threads);
+        }
     } catch (const std::bad_alloc&) {
         return Error{ErrorKind::out_of_memory, "Not enough memory to save this photo.", ""};
     } catch (const std::exception& e) {

@@ -18,8 +18,10 @@ namespace prism::gui {
 enum class ExportFormat { png, jpeg };
 
 // What an export of `source` defaults to: PNG for a PNG, JPEG for anything else (a JPEG, or a RAW
-// file, whose camera would have made a JPEG).
-[[nodiscard]] ExportFormat default_export_format(const std::filesystem::path& source);
+// file, whose camera would have made a JPEG). With `hdr` (HDR on, output_headroom) always JPEG,
+// the only format that holds the HDR picture (#105).
+[[nodiscard]] ExportFormat default_export_format(const std::filesystem::path& source,
+                                                 bool hdr = false);
 
 // The save dialog's answer as a file name to write: if `chosen` already ends in .png, .jpg or
 // .jpeg (any case) it is kept as it is; otherwise the extension of `format` is appended, since

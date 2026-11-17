@@ -136,6 +136,27 @@ void set_curve_kind(EditSettings& s, CurveKind kind);
 // curve without one.
 void set_curve_parameter(EditSettings& s, float value);
 
+// --- Output encode: HDR (#105) ------------------------------------------------------------------
+//
+// The Output encode row has HDR's switch and its Headroom slider, from headroom_min_stops (0) to
+// headroom_max_stops (+4.0) in steps of 0.1 (#96). The slider shows the stored headroom, greyed
+// out while HDR is off; moving it turns HDR on, as a stage slider turns its stage on.
+
+inline constexpr float headroom_step = 0.1f;
+
+// `stops` on the slider's steps: rounded to 0.1 and clamped to 0 to +4.0. NaN gives
+// headroom_default_stops.
+[[nodiscard]] float snap_headroom(float stops) noexcept;
+
+// Turns HDR on or off; the headroom stays as it is.
+void set_hdr_on(EditSettings& s, bool on) noexcept;
+
+// Sets the headroom (snap_headroom) and turns HDR on.
+void set_headroom(EditSettings& s, float stops) noexcept;
+
+// The headroom as the row shows it: format_exposure of the snapped value, "+2.00 stops".
+[[nodiscard]] std::string headroom_text(float stops);
+
 // --- Viewing vs. editing -------------------------------------------------------------------------
 
 // What a picture of `stage` is called on screen: "Original" for Decode (the file as it came, before

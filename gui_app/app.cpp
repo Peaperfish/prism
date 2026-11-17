@@ -431,7 +431,8 @@ void App::show_save_dialog() {
         return;
     }
     dialog_open_ = true;
-    const gui::ExportFormat format = gui::default_export_format(session_.path());
+    const gui::ExportFormat format = gui::default_export_format(
+        session_.path(), gui::output_headroom(session_.settings()).has_value());
     // The name says the size only when the export is really reduced (a RAW file's half-size decode
     // can already be what 50% asks for).
     gui_app::show_save_dialog(
@@ -4133,6 +4134,21 @@ void App::draw_light_path_panel() {
     cb.toggle_brush = [this] { toggle_brush(); };
     cb.brush_strength = [this](float strength) { brush_.set_strength(strength); };
     cb.clear_strokes = [this] { clear_strokes(); };
+    cb.set_hdr_on = [this](bool on) {
+        gui::EditSettings s = session_.settings();
+        gui::set_hdr_on(s, on);
+        report(session_.set_settings(s));  // one undo step in History
+    };
+    cb.headroom = [this](float stops, const gui::SliderFrame& frame) {
+        gui::EditSettings edited = session_.settings();
+        gui::set_headroom(edited, stops);
+        report(gui::apply_slider_frame(session_, frame, edited));
+    };
+    cb.reset_headroom = [this] {
+        gui::EditSettings s = session_.settings();
+        gui::set_headroom(s, prism::headroom_default_stops);
+        report(session_.set_settings(s));
+    };
     cb.set_compare = [this](std::optional<gui::StageId> stage) {
         if (stage && gui::framing_leaves(framing_.on(), gui::FramingEvent::compare_chosen)) {
             leave_framing();  // the comparison is of the framed picture

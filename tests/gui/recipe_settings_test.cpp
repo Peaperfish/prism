@@ -573,6 +573,8 @@ constexpr Field fields[] = {
     {"gamma", true, "[curve] gamma, only while the gamma curve is chosen"},
     {"reinhard_white", true, "[curve] white, only while the Reinhard curve is chosen"},
     {"curve_on", true, "[curve] on"},
+    {"headroom_stops", true, "[hdr] headroom, only while HDR is on (#105)"},
+    {"hdr_on", true, "[hdr]: written only while HDR is on with a headroom above 0 (#105)"},
     {"raw_half_size", false, "a RAW decoding option: how big to decode, not how the photo looks"},
     {"raw_camera_matrix", false,
      "a RAW decoding option tied to the camera; changing it decodes the file again"},
@@ -587,7 +589,8 @@ EditSettings changed(std::size_t i) {
     EditSettings s;
     auto& [exposure_stops, exposure_on, strokes, dodge_burn_on, white_balance, white_balance_on,
            matrix, matrix_on, saturation, saturation_on, contrast, contrast_on, curve, gamma,
-           reinhard_white, curve_on, raw_half_size, raw_camera_matrix, frame] = s;
+           reinhard_white, curve_on, headroom_stops, hdr_on, raw_half_size, raw_camera_matrix,
+           frame] = s;
     switch (i) {
         case 0: exposure_stops = 1.0f; break;
         case 1: exposure_on = false; break;
@@ -603,9 +606,11 @@ EditSettings changed(std::size_t i) {
         case 11: curve = CurveKind::gamma, gamma = 3.0f; break;
         case 12: curve = CurveKind::reinhard, reinhard_white = 8.0f; break;
         case 13: curve_on = false; break;
-        case 14: raw_half_size = true; break;
-        case 15: raw_camera_matrix = MatrixFile{"camera.txt", grade}; break;
-        case 16: {
+        case 14: hdr_on = true, headroom_stops = 3.5f; break;
+        case 15: hdr_on = true; break;
+        case 16: raw_half_size = true; break;
+        case 17: raw_camera_matrix = MatrixFile{"camera.txt", grade}; break;
+        case 18: {
             auto field = std::make_shared<prism::StrokeField>();
             field->aspect = 1.5f;
             field->strokes.push_back(std::make_shared<const prism::FieldStroke>(
@@ -613,8 +618,8 @@ EditSettings changed(std::size_t i) {
             strokes = prism::gui::Strokes(std::move(field));
             break;
         }
-        case 17: dodge_burn_on = false; break;
-        case 18: frame = prism::Frame{2.5f, 0.1f, 0.1f, 0.9f, 0.8f}; break;
+        case 19: dodge_burn_on = false; break;
+        case 20: frame = prism::Frame{2.5f, 0.1f, 0.1f, 0.9f, 0.8f}; break;
         default: break;
     }
     return s;
@@ -623,7 +628,7 @@ EditSettings changed(std::size_t i) {
 }  // namespace
 
 TEST(RecipeSettings, EveryFieldIsEitherInARecipeOrLeftOutForAReason) {
-    ASSERT_EQ(std::size(fields), 19u);
+    ASSERT_EQ(std::size(fields), 21u);
     const EditSettings defaults;
     for (std::size_t i = 0; i < std::size(fields); ++i) {
         const Field& f = fields[i];
@@ -636,6 +641,8 @@ TEST(RecipeSettings, EveryFieldIsEitherInARecipeOrLeftOutForAReason) {
             baseline.curve = CurveKind::gamma;
         } else if (f.name == "reinhard_white") {
             baseline.curve = CurveKind::reinhard;
+        } else if (f.name == "headroom_stops") {
+            baseline.hdr_on = true;  // the headroom is saved only while HDR is on
         } else if (f.name == "white_balance_on") {
             baseline.white_balance = prism::WhiteBalance{5200, 10};  // the switch needs a section
         }

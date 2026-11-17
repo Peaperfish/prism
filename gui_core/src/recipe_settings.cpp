@@ -64,6 +64,14 @@ void apply_recipe(EditSettings& s, const Recipe& recipe) {
         }
         s.curve_on = c->on;
     }
+    // [hdr] has no switch: a headroom above 0 is HDR on at that headroom, and 0 is HDR off (the
+    // headroom the control comes back with stays as it was).
+    if (const auto& h = recipe.hdr) {
+        s.hdr_on = h->headroom > 0.0f;
+        if (s.hdr_on) {
+            s.headroom_stops = h->headroom;
+        }
+    }
 }
 
 Recipe recipe_from(const EditSettings& s) {
@@ -72,8 +80,8 @@ Recipe recipe_from(const EditSettings& s) {
     // recipe_settings_test.cpp then says which, and why.
     const auto& [exposure_stops, exposure_on, strokes, dodge_burn_on, white_balance,
                  white_balance_on, matrix, matrix_on, saturation, saturation_on, contrast,
-                 contrast_on, curve, gamma, reinhard_white, curve_on, raw_half_size,
-                 raw_camera_matrix, frame] = s;
+                 contrast_on, curve, gamma, reinhard_white, curve_on, headroom_stops, hdr_on,
+                 raw_half_size, raw_camera_matrix, frame] = s;
     // The white balance switch is only saved with a chosen white balance (below): As shot has no
     // section, so there is nowhere for its switch, and off or on it changes nothing.
     // Strokes (and their switch) are not saved in 0.5.0: the recipe format has no section for them.
@@ -115,6 +123,13 @@ Recipe recipe_from(const EditSettings& s) {
     }
     c.on = curve_on;
     r.curve = c;
+    // [hdr] only while HDR makes a picture (output_headroom): off, or on at 0, writes no section, so
+    // the recipe keeps the older format version it needs (#102).
+    if (const std::optional<float> h = output_headroom(s)) {
+        r.hdr = RecipeHdr{*h};
+    }
+    (void)headroom_stops;
+    (void)hdr_on;
     return r;
 }
 

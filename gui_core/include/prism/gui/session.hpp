@@ -360,7 +360,9 @@ private:
                                       const StageCallback& on_stage = {});
 
 // After checking the output and the settings, export_image runs decode_for_export, then
-// finish_export, then save_image (the encode).
+// finish_export, then save_image (the encode). With HDR on (output_headroom) a .jpg or .jpeg is an
+// Ultra HDR JPEG, written by prism::save_output exactly as the command line writes one, and a .png
+// is refused (ErrorKind::unsupported_format) before anything is decoded.
 
 // The decode an export starts from, exactly as export_image makes it: `source` checked as open_file
 // checks it, then read at full size, or for a RAW file at half size when settings.raw_half_size,
@@ -382,10 +384,16 @@ private:
 // must pass validate (export_image checks them first); an invalid frame throws
 // std::invalid_argument. Fails with ErrorKind::out_of_memory, or ErrorKind::cancelled once `stop`
 // is triggered (checked after the frame and between the stages).
+//
+// With `hdr` and a headroom (output_headroom(settings)), the stages run as for an Ultra HDR JPEG
+// (prism::process_for_output): the result is the SDR picture, exactly as without `hdr`, and `hdr`
+// gets the HDR picture of the same light. Without a headroom `hdr` is left as it is; a failure or
+// a stop empties it.
 [[nodiscard]] std::variant<Image, Error> finish_export(Photo decoded, const EditSettings& settings,
                                                       std::optional<int> long_side, int threads,
                                                       std::stop_token stop = {},
-                                                      const StageCallback& on_stage = {});
+                                                      const StageCallback& on_stage = {},
+                                                      Image* hdr = nullptr);
 
 // `part` of the finished picture an export at the full framed size (no long_side) would make from
 // `base`, a decode_for_export result: bit-identical to those pixels of finish_export(base,
