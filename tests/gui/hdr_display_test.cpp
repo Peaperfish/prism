@@ -716,3 +716,27 @@ TEST(HdrViews, TheEaselsFrameCoversThePixelsWhoseCentresAreInIt) {
     // An edge a little past a boundary leaves the next pixel to the veil, on each side.
     EXPECT_EQ(pixels_centred_in(0.3f, 0.3f, 10.2f, 10.2f, 1.0f), (WindowPixels{0, 0, 10, 10}));
 }
+
+TEST(HdrText, InUiTargetModeA3BytePictureGoesUpAsRgbaAndTodaysRendererKeepsRgb24) {
+    using prism::gui::ui_texture_as_rgba;
+    EXPECT_TRUE(ui_texture_as_rgba(DisplayMode::hdr_ui_target, true));
+    EXPECT_FALSE(ui_texture_as_rgba(DisplayMode::hdr_ui_target, false));  // already 4 bytes
+    EXPECT_FALSE(ui_texture_as_rgba(DisplayMode::sdr, true));             // HDR off: as before
+    EXPECT_FALSE(ui_texture_as_rgba(DisplayMode::sdr, false));
+}
+
+TEST(HdrText, RgbBytesWidenToRgbaWithOpaqueAlpha) {
+    std::vector<std::uint8_t> rgb(3 * 300);
+    for (std::size_t i = 0; i < rgb.size(); ++i) {
+        rgb[i] = static_cast<std::uint8_t>((i * 37 + 11) % 256);  // every code, in every channel
+    }
+    const std::vector<std::uint8_t> rgba = prism::gui::rgba8_from_rgb8(rgb);
+    ASSERT_EQ(rgba.size(), 4u * 300u);
+    for (std::size_t p = 0; p < 300; ++p) {
+        for (std::size_t c = 0; c < 3; ++c) {
+            ASSERT_EQ(rgba[p * 4 + c], rgb[p * 3 + c]) << p << " " << c;
+        }
+        ASSERT_EQ(rgba[p * 4 + 3], 255u) << p;
+    }
+    EXPECT_TRUE(prism::gui::rgba8_from_rgb8({}).empty());
+}

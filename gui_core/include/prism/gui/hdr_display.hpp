@@ -237,6 +237,16 @@ struct OverlayMask {
     std::span<const std::uint16_t> hdr_rgba, std::span<const std::uint8_t> sdr_rgb8, int width,
     int height, std::span<const std::span<const std::uint32_t>> layers, int threads = 0);
 
+// UI-target mode's 8-bit pictures (the preview, the compare picture, real pixels drawn through
+// Dear ImGui): SDL passes a linear-tagged texture uploaded as 3-byte RGB24 through an 8-bit sRGB
+// encode and decode, which merges the 256 codes into 183 levels (up to 1.1 levels off, measured;
+// with an antialiased text edge over it, 2), while a 4-byte RGBA texture keeps every code. So in
+// that mode a 3-byte picture goes up as RGBA. Today's renderer keeps RGB24 exactly as before.
+[[nodiscard]] bool ui_texture_as_rgba(DisplayMode mode, bool three_bytes_per_pixel) noexcept;
+
+// `rgb` (3 bytes a pixel) as RGBA with alpha 255, 4 bytes a pixel, in the same order.
+[[nodiscard]] std::vector<std::uint8_t> rgba8_from_rgb8(std::span<const std::uint8_t> rgb);
+
 // UI-target mode's compositing of one pixel: the UI target's texel, premultiplied 8-bit sRGB
 // (what ImGui drew into it, decoded by SDL's pixel-art path as sRGB), laid over the canvas's
 // linear pixel with SDL_BLENDMODE_BLEND_PREMULTIPLIED: srgb_to_linear(ui) + canvas * (1 - a),

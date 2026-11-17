@@ -258,6 +258,22 @@ std::vector<std::uint16_t> hdr_with_overlays(std::span<const std::uint16_t> hdr_
     return out;
 }
 
+bool ui_texture_as_rgba(DisplayMode mode, bool three_bytes_per_pixel) noexcept {
+    return mode == DisplayMode::hdr_ui_target && three_bytes_per_pixel;
+}
+
+std::vector<std::uint8_t> rgba8_from_rgb8(std::span<const std::uint8_t> rgb) {
+    const std::size_t pixels = rgb.size() / 3;
+    std::vector<std::uint8_t> out(pixels * 4);
+    for (std::size_t i = 0; i < pixels; ++i) {
+        out[i * 4 + 0] = rgb[i * 3 + 0];
+        out[i * 4 + 1] = rgb[i * 3 + 1];
+        out[i * 4 + 2] = rgb[i * 3 + 2];
+        out[i * 4 + 3] = 255;
+    }
+    return out;
+}
+
 void ui_over_canvas(const float canvas[3], const std::uint8_t ui_premultiplied[4],
                     float out[3]) noexcept {
     const std::uint8_t alpha = ui_premultiplied[3];

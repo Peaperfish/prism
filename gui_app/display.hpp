@@ -3,6 +3,7 @@
 #include <SDL3/SDL.h>
 
 #include <array>
+#include <cstdint>
 #include <functional>
 
 #include "prism/gui/hdr_display.hpp"
@@ -80,7 +81,14 @@ void draw_under_ui_easel(SDL_Renderer* renderer, SDL_Texture* veiled, SDL_Textur
 // An SDL_CreateTexture for textures that Dear ImGui draws (the preview, overlays, scopes): with a
 // linear renderer they are tagged SDL_COLORSPACE_SRGB_LINEAR, so SDL draws their 8-bit values into
 // the sRGB-tagged UI target unchanged (#97); with today's renderer exactly SDL_CreateTexture.
+// In UI-target mode an RGB24 request gets an RGBA32 texture (gui::ui_texture_as_rgba): fill it
+// with update_ui_texture_rgb8.
 [[nodiscard]] SDL_Texture* create_ui_texture(SDL_Renderer* renderer, SDL_PixelFormat format,
                                              SDL_TextureAccess access, int width, int height);
+
+// SDL_UpdateTexture of a whole texture from 8-bit RGB bytes (width * height * 3), widened to RGBA
+// first when create_ui_texture made the texture RGBA32. False (with SDL_GetError() set) if SDL
+// couldn't.
+bool update_ui_texture_rgb8(SDL_Texture* texture, const std::uint8_t* rgb8, int width, int height);
 
 }  // namespace prism::gui_app

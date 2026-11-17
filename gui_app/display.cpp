@@ -1,5 +1,7 @@
 #include "display.hpp"
 
+#include <vector>
+
 #include "imgui.h"
 #include "imgui_impl_sdlrenderer3.h"
 #ifdef __APPLE__
@@ -166,6 +168,16 @@ void draw_under_ui_easel(SDL_Renderer* renderer, SDL_Texture* veiled, SDL_Textur
                        0);
 }
 
+bool update_ui_texture_rgb8(SDL_Texture* texture, const std::uint8_t* rgb8, int width, int height) {
+    if (texture->format != SDL_PIXELFORMAT_RGBA32) {
+        return SDL_UpdateTexture(texture, nullptr, rgb8, width * 3);
+    }
+    const std::size_t bytes =
+        static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 3;
+    const std::vector<std::uint8_t> rgba = gui::rgba8_from_rgb8({rgb8, bytes});
+    return SDL_UpdateTexture(texture, nullptr, rgba.data(), width * 4);
+}
+
 SDL_Texture* create_ui_texture(SDL_Renderer* renderer, SDL_PixelFormat format,
                                SDL_TextureAccess access, int width, int height) {
     const Sint64 output =
@@ -173,6 +185,9 @@ SDL_Texture* create_ui_texture(SDL_Renderer* renderer, SDL_PixelFormat format,
                               SDL_PROP_RENDERER_OUTPUT_COLORSPACE_NUMBER, SDL_COLORSPACE_SRGB);
     if (output != SDL_COLORSPACE_SRGB_LINEAR) {
         return SDL_CreateTexture(renderer, format, access, width, height);
+    }
+    if (gui::ui_texture_as_rgba(gui::DisplayMode::hdr_ui_target, format == SDL_PIXELFORMAT_RGB24)) {
+        format = SDL_PIXELFORMAT_RGBA32;
     }
     SDL_PropertiesID p = SDL_CreateProperties();
     SDL_SetNumberProperty(p, SDL_PROP_TEXTURE_CREATE_FORMAT_NUMBER, format);

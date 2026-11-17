@@ -81,7 +81,7 @@ bool PreviewTexture::upload(const gui::PreviewFrame& frame) {
         width_ = frame.width;
         height_ = frame.height;
     }
-    if (!SDL_UpdateTexture(texture_, nullptr, frame.rgb8.data(), frame.width * 3)) {
+    if (!update_ui_texture_rgb8(texture_, frame.rgb8.data(), frame.width, frame.height)) {
         reset();
         return false;
     }
@@ -108,7 +108,7 @@ bool PreviewTexture::upload_compare(const gui::CompareFrame& compare) {
         compare_height_ = compare.height;
     }
     compare_stage_ = compare.stage;
-    if (!SDL_UpdateTexture(compare_, nullptr, compare.rgb8.data(), compare.width * 3)) {
+    if (!update_ui_texture_rgb8(compare_, compare.rgb8.data(), compare.width, compare.height)) {
         reset_compare();
         return false;
     }
@@ -262,7 +262,7 @@ bool DetailTexture::upload(const gui::DetailFrame& frame) {
         width_ = w;
         height_ = h;
     }
-    if (!SDL_UpdateTexture(texture_, nullptr, frame.rgb8.data(), w * 3)) {
+    if (!update_ui_texture_rgb8(texture_, frame.rgb8.data(), w, h)) {
         reset();
         return false;
     }
