@@ -129,8 +129,9 @@ INSTANTIATE_TEST_SUITE_P(Looks, GoldenExportImage, testing::ValuesIn(image_looks
                              return std::string(info.param);
                          });
 
-// The export of the test RAW under Natural, the default RAW look, only: each export decodes the
-// full-size RAW (about 730 MB of float pixels for 61 MP) three times, and GoldenSdr.EngineRawLooks
+// The export of the test RAW under Natural, the default RAW look, only: the check decodes the
+// full-size RAW (about 730 MB of float pixels for 61 MP) three times (decode_for_export and two
+// export_image calls), and GoldenSdr.EngineRawLooks
 // (tests/golden_sdr_test.cpp) already holds every RAW look; this checks the app reaches the same
 // pixels.
 TEST(GoldenExport, RawNatural) {

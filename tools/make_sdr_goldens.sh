@@ -15,15 +15,19 @@
 #   raw/<look>.png and .jpg    from $PRISM_TEST_RAW, for every recipes/raw/*.prism, only when
 #                              PRISM_TEST_RAW is set; raw/source.sha256 records that file's SHA-256
 #                              (the RAW tests skip unless their PRISM_TEST_RAW has the same hash)
-#   SOURCE.txt, raw/SOURCE.txt the commit, the last commit that changed Prism's code or recipes,
-#                              and the prism version the image and synthetic (SOURCE.txt) and the
-#                              RAW references came from (raw/SOURCE.txt only changes with them)
-# Run it in a checkout of the commit you mean to pin (copy this script in if that commit predates
-# it), with prism built there: it refuses a checkout whose code or recipes have uncommitted changes.
+#   SOURCE.txt, raw/SOURCE.txt the last commit that changed Prism's code or recipes (lib/, src/,
+#                              include/, gui_core/src/, recipes/) and the prism version the image
+#                              and synthetic (SOURCE.txt) and the RAW references came from
+#                              (raw/SOURCE.txt only changes with them). Not the commit the script
+#                              ran at: that hash changes whenever the branch is rebased.
+# Run it in a checkout of the commit you mean to pin (copy this script and
+# tests/data/golden/synthetic/synthetic.dng in if that commit predates them), with prism built there
+# with LibRaw: it refuses a checkout whose code or recipes have uncommitted changes, and checks the
+# DNG and prism's RAW support before writing anything.
 set -euo pipefail
 
 if [[ $# -ne 2 || "$2" != "--overwrite" ]]; then
-    sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'
     exit 2
 fi
 prism="$1"
@@ -36,9 +40,23 @@ if [[ -n "$(git -C "$repo" status --porcelain -- "${code_paths[@]}")" ]]; then
     echo "uncommitted changes to Prism's code or recipes: the references would not match a commit"
     exit 1
 fi
+if [[ ! -f "$golden/synthetic/synthetic.dng" ]]; then
+    echo "no $golden/synthetic/synthetic.dng: write it with tools/make_synthetic_dng.cpp first"
+    exit 1
+fi
+trial="$(mktemp -d)"
+if ! "$prism" "$golden/synthetic/synthetic.dng" -o "$trial/trial.png" > /dev/null 2>&1; then
+    rm -rf "$trial"
+    echo "$prism could not read the synthetic DNG: build it with LibRaw"
+    exit 1
+fi
+rm -rf "$trial"
+
+# What the references depend on: the last commit that changed these. (The guard above also covers
+# the build files.)
+pinned_paths=(lib src include gui_core/src recipes)
 source_txt() {
-    echo "commit $(git -C "$repo" rev-parse HEAD)"
-    echo "code as at $(git -C "$repo" log -1 --format='%H (%s)' -- "${code_paths[@]}")"
+    echo "code as at $(git -C "$repo" log -1 --format='%H (%s)' -- "${pinned_paths[@]}")"
     echo "$("$prism" --version 2>&1 | head -1)"
     echo "long side $long_side"
 }

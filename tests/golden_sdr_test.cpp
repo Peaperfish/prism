@@ -151,8 +151,9 @@ void check_cli(const fs::path& input, const fs::path& recipe, const fs::path& go
     }
 }
 
-// The synthetic DNG's photosite level: a quarter of white, as tools/make_synthetic_dng.cpp writes.
-constexpr std::uint16_t synthetic_level = 16384;
+// The synthetic DNG's photosite level, as tools/make_synthetic_dng.cpp writes it (which says why
+// 13990: every look is at least 35 codes from its next 8-bit level).
+constexpr std::uint16_t synthetic_level = 13990;
 
 std::vector<std::uint8_t> synthetic_dng_bytes() {
     const std::vector<std::byte> bytes = prism_test::synthetic_dng(synthetic_level);
@@ -171,8 +172,18 @@ fs::path write_synthetic_dng() {
     out.write(reinterpret_cast<const char*>(bytes.data()),
               static_cast<std::streamsize>(bytes.size()));
     out.close();
+    EXPECT_TRUE(out) << "cannot write " << path.string();
     return path;
 }
+
+// Removes a temp file when the test ends, also when a load throws.
+struct RemoveOnExit {
+    fs::path path;
+    ~RemoveOnExit() {
+        std::error_code ec;
+        fs::remove(path, ec);
+    }
+};
 
 class GoldenSdrImage : public testing::TestWithParam<const char*> {};
 
@@ -306,9 +317,8 @@ TEST(GoldenSdr, EngineSyntheticDng) {
     if (!prism::raw_support_available()) {
         GTEST_SKIP() << "this build has no RAW support";
     }
-    const fs::path dng = write_synthetic_dng();
-    const Reduced reduced = load_reduced(dng);
-    fs::remove(dng);
+    const RemoveOnExit dng{write_synthetic_dng()};
+    const Reduced reduced = load_reduced(dng.path);
     for (const char* look : raw_looks) {
         check_engine(reduced, recipe_path("raw", look), golden_dir() / "synthetic" / look);
     }
@@ -318,9 +328,8 @@ TEST(GoldenSdr, CliSyntheticDng) {
     if (!prism::raw_support_available()) {
         GTEST_SKIP() << "this build has no RAW support";
     }
-    const fs::path dng = write_synthetic_dng();
+    const RemoveOnExit dng{write_synthetic_dng()};
     for (const char* look : raw_looks) {
-        check_cli(dng, recipe_path("raw", look), golden_dir() / "synthetic" / look);
+        check_cli(dng.path, recipe_path("raw", look), golden_dir() / "synthetic" / look);
     }
-    fs::remove(dng);
 }
