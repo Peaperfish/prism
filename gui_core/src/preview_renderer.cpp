@@ -11,6 +11,8 @@
 #include <utility>
 #include <vector>
 
+#include "prism/gui/hdr_display.hpp"
+#include "prism/output.hpp"
 #include "prism/parallel.hpp"
 
 namespace prism::gui {
@@ -404,17 +406,31 @@ std::optional<PreviewFrame> render_plain(const Image& base, const PixelGrid& gri
         }
     };
     // Only a mask render looks at the stages' input; a report-only one does no extra pass.
-    if (process(img, process_settings, threads, stop, record,
-                options.clip_mask || compare_early
-                    ? BeforeStageCallback(before_stage)
-                    : BeforeStageCallback{}) == ProcessResult::cancelled ||
-        stop.stop_requested()) {
+    const BeforeStageCallback before = options.clip_mask || compare_early
+                                           ? BeforeStageCallback(before_stage)
+                                           : BeforeStageCallback{};
+    // The HDR canvas (#106): the final picture's HDR branch too, from the same light. process_hdr
+    // gives `img` bit for bit what process() gives.
+    const bool make_hdr = options.hdr_display_headroom && stop_after == final_stage &&
+                          makes_hdr(process_settings.headroom_stops);
+    Image hdr;
+    const ProcessResult result =
+        make_hdr ? process_hdr(img, hdr, process_settings, threads, stop, record, before)
+                 : process(img, process_settings, threads, stop, record, before);
+    if (result == ProcessResult::cancelled || stop.stop_requested()) {
         return std::nullopt;
     }
     if (compare_early && !compare_taken) {
         take_compare(img);  // no stage after the compare stage ran: the viewed picture is it
     }
     show(img);
+    if (make_hdr) {
+        const float n = *process_settings.headroom_stops;
+        frame.hdr_weight = canvas_weight(*options.hdr_display_headroom, n);
+        frame.hdr_rgba = rgba_half_from(
+            viewer_picture(frame.rgb8, hdr, n, *options.hdr_display_headroom, threads), threads);
+        hdr = Image{};
+    }
     if (!run_rest(img) || !run_compare_late(img)) {
         return std::nullopt;
     }

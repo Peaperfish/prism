@@ -40,6 +40,7 @@ add_library(prism_gui_core STATIC
   src/detail_renderer.cpp
   src/detail_view.cpp
   src/explanations.cpp
+  src/hdr_display.cpp
   src/export_size.cpp
   src/field_cache.cpp
   src/file_types.cpp

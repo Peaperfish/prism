@@ -51,6 +51,13 @@ struct PreviewOptions {
     // where they were drawn. None for a base that is the whole photo. It must match the settings'
     // frame and the base's size (check_framed_base), or the render fails with that message.
     std::optional<PictureFrame> framing;
+    // The HDR canvas (#106, hdr_display.hpp): the screen's headroom right now, when the canvas
+    // shows an HDR picture (hdr_canvas_on). With it, a render of the final picture whose settings
+    // make HDR (output_headroom) runs process_hdr instead of process() and also makes the picture
+    // a viewer of the exported file shows on this screen (PreviewFrame::hdr_rgba). Everything
+    // else in the frame, rgb8 included, is exactly what it is without it. Ignored for an earlier
+    // stage, a test strip, and settings without HDR.
+    std::optional<float> hdr_display_headroom;
 
     PreviewOptions() = default;
     // Implicit, so that "scopes on/off" can still be written as a plain bool.
@@ -101,6 +108,11 @@ struct PreviewFrame {
     // The compare stage's picture, from the same render as `rgb8` (so the same settings); only if
     // options.compare_stage was set to a stage other than the viewed one.
     std::optional<CompareFrame> compare;
+    // With PreviewOptions::hdr_display_headroom (and HDR in the settings): the viewer picture
+    // (viewer_picture) as RGBA half floats, width * height * 4, for an RGBA64_FLOAT texture, made
+    // at the weight `hdr_weight` (canvas_weight). Empty otherwise.
+    std::vector<std::uint16_t> hdr_rgba;
+    float hdr_weight = 0.0f;
     std::vector<StageTime> stages;   // the pipeline stages that ran, with their times
     double total_ms = 0;             // the whole render: copy, pipeline, histogram and sRGB encode
     std::string error;               // if not empty, rendering failed and rgb8 is empty
