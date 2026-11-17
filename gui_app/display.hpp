@@ -2,6 +2,7 @@
 
 #include <SDL3/SDL.h>
 
+#include <array>
 #include <functional>
 
 #include "prism/gui/hdr_display.hpp"
@@ -59,6 +60,22 @@ private:
     bool backend_ = false;
     bool ui_target_failed_ = false;
 };
+
+// The HDR canvas's pictures drawn under the UI (#106, Display::draw's `draw_canvas`), in window
+// pixels at render scale 1. App::draw_under_ui draws with these.
+//
+// `picture` stretched over `dst`, clipped to `clip`, sampled nearest or linearly.
+void draw_under_ui_picture(SDL_Renderer* renderer, SDL_Texture* picture, const SDL_FRect& dst,
+                           const gui::WindowPixels& clip, bool nearest);
+// The easel (#58): the canvas's colour over `canvas` (sRGB values 0 to 1: SDL takes draw colours as
+// sRGB and converts them for the linear output itself, so it matches ImGui's grey), then `veiled`
+// (the photo with the veil drawn into it) as the turned photo `quad`, then `plain` (the photo
+// without it) as the same quad again, clipped to `frame` (inside the canvas): the veil only outside
+// the frame.
+void draw_under_ui_easel(SDL_Renderer* renderer, SDL_Texture* veiled, SDL_Texture* plain,
+                         const std::array<gui::QuadVertex, 6>& quad,
+                         const gui::WindowPixels& canvas, const gui::WindowPixels& frame,
+                         const float canvas_srgb[3], bool nearest);
 
 // An SDL_CreateTexture for textures that Dear ImGui draws (the preview, overlays, scopes): with a
 // linear renderer they are tagged SDL_COLORSPACE_SRGB_LINEAR, so SDL draws their 8-bit values into

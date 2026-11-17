@@ -23,7 +23,21 @@ bool hdr_canvas_on(DisplayMode mode, const EditSettings& s, StageId viewed, bool
 }
 
 bool sdr_only_view(const CanvasViews& views) noexcept {
-    return views.real_pixels || views.split || views.easel;
+    return views.real_pixels || views.split;
+}
+
+std::uint32_t easel_veil_abgr(std::uint32_t canvas_abgr) noexcept {
+    const std::uint32_t alpha = static_cast<std::uint32_t>(std::lround(255 * 0.6));
+    return (canvas_abgr & 0x00ffffffu) | (alpha << 24);
+}
+
+std::array<QuadVertex, 6> quad_triangles(const float corners_xy[8], float scale) noexcept {
+    const float uv[4][2] = {{0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}};
+    const auto vertex = [&](int i) {
+        return QuadVertex{corners_xy[i * 2] * scale, corners_xy[i * 2 + 1] * scale, uv[i][0],
+                          uv[i][1]};
+    };
+    return {vertex(0), vertex(1), vertex(2), vertex(0), vertex(2), vertex(3)};
 }
 
 WindowPixels pixels_covering(float x0, float y0, float x1, float y1, float scale) noexcept {

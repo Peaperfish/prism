@@ -205,6 +205,11 @@ bool PreviewTexture::upload_hdr(std::span<const std::uint16_t> rgba, int width, 
     return upload_half_texture(renderer_, hdr_, hdr_width_, hdr_height_, rgba, width, height);
 }
 
+bool PreviewTexture::upload_hdr_veiled(std::span<const std::uint16_t> rgba, int width, int height) {
+    return upload_half_texture(renderer_, hdr_veiled_, hdr_veiled_width_, hdr_veiled_height_, rgba,
+                               width, height);
+}
+
 void PreviewTexture::reset_hdr() {
     if (hdr_ != nullptr) {
         SDL_DestroyTexture(hdr_);
@@ -212,6 +217,12 @@ void PreviewTexture::reset_hdr() {
     }
     hdr_width_ = 0;
     hdr_height_ = 0;
+    if (hdr_veiled_ != nullptr) {
+        SDL_DestroyTexture(hdr_veiled_);
+        hdr_veiled_ = nullptr;
+    }
+    hdr_veiled_width_ = 0;
+    hdr_veiled_height_ = 0;
 }
 
 void PreviewTexture::reset() {

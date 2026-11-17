@@ -131,6 +131,41 @@ void Display::draw(ImDrawData* draw_data, float scale_x, float scale_y, const fl
     SDL_RenderTexture(renderer_, ui_target_, nullptr, &whole);
 }
 
+void draw_under_ui_picture(SDL_Renderer* renderer, SDL_Texture* picture, const SDL_FRect& dst,
+                           const gui::WindowPixels& clip, bool nearest) {
+    const SDL_Rect rect{clip.x, clip.y, clip.width, clip.height};
+    SDL_SetRenderClipRect(renderer, &rect);
+    SDL_SetTextureScaleMode(picture, nearest ? SDL_SCALEMODE_NEAREST : SDL_SCALEMODE_LINEAR);
+    SDL_RenderTexture(renderer, picture, nullptr, &dst);
+}
+
+void draw_under_ui_easel(SDL_Renderer* renderer, SDL_Texture* veiled, SDL_Texture* plain,
+                         const std::array<gui::QuadVertex, 6>& quad,
+                         const gui::WindowPixels& canvas, const gui::WindowPixels& frame,
+                         const float canvas_srgb[3], bool nearest) {
+    std::array<SDL_Vertex, 6> vertices{};
+    for (std::size_t i = 0; i < quad.size(); ++i) {
+        vertices[i].position = {quad[i].x, quad[i].y};
+        vertices[i].color = {1.0f, 1.0f, 1.0f, 1.0f};
+        vertices[i].tex_coord = {quad[i].u, quad[i].v};
+    }
+    const SDL_Rect whole{canvas.x, canvas.y, canvas.width, canvas.height};
+    SDL_SetRenderClipRect(renderer, &whole);
+    SDL_SetRenderDrawColorFloat(renderer, canvas_srgb[0], canvas_srgb[1], canvas_srgb[2], 1.0f);
+    const SDL_FRect fill{static_cast<float>(canvas.x), static_cast<float>(canvas.y),
+                         static_cast<float>(canvas.width), static_cast<float>(canvas.height)};
+    SDL_RenderFillRect(renderer, &fill);
+    const SDL_ScaleMode mode = nearest ? SDL_SCALEMODE_NEAREST : SDL_SCALEMODE_LINEAR;
+    SDL_SetTextureScaleMode(veiled, mode);
+    SDL_RenderGeometry(renderer, veiled, vertices.data(), static_cast<int>(vertices.size()),
+                       nullptr, 0);
+    const SDL_Rect inside{frame.x, frame.y, frame.width, frame.height};
+    SDL_SetRenderClipRect(renderer, &inside);
+    SDL_SetTextureScaleMode(plain, mode);
+    SDL_RenderGeometry(renderer, plain, vertices.data(), static_cast<int>(vertices.size()), nullptr,
+                       0);
+}
+
 SDL_Texture* create_ui_texture(SDL_Renderer* renderer, SDL_PixelFormat format,
                                SDL_TextureAccess access, int width, int height) {
     const Sint64 output =

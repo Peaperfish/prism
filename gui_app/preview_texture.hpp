@@ -62,8 +62,12 @@ public:
     // the UI with SDL calls. Empty `rgba` drops it. False (with SDL_GetError() set) if SDL
     // couldn't, or if `rgba` doesn't match width x height.
     bool upload_hdr(std::span<const std::uint16_t> rgba, int width, int height);
+    // The easel's second HDR picture: the same with the veil drawn into it (#58, #106).
+    bool upload_hdr_veiled(std::span<const std::uint16_t> rgba, int width, int height);
+    // Drops both HDR pictures.
     void reset_hdr();
     [[nodiscard]] SDL_Texture* hdr_texture() const noexcept { return hdr_; }
+    [[nodiscard]] SDL_Texture* hdr_veiled_texture() const noexcept { return hdr_veiled_; }
 
     // Drops the textures: nothing to show.
     void reset();
@@ -93,6 +97,9 @@ private:
     SDL_Texture* hdr_ = nullptr;
     int hdr_width_ = 0;
     int hdr_height_ = 0;
+    SDL_Texture* hdr_veiled_ = nullptr;
+    int hdr_veiled_width_ = 0;
+    int hdr_veiled_height_ = 0;
     gui::StageId compare_stage_ = gui::StageId::decode;
     int compare_width_ = 0;
     int compare_height_ = 0;

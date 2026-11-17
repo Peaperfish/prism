@@ -294,7 +294,9 @@ private:
     // Makes the HDR texture from the kept HDR picture, with the J overlay and the strokes drawn
     // into it while they show (#106), when the frame, the overlays or the theme changed. False if
     // there is no HDR picture or SDL couldn't (then the canvas shows the SDR picture).
-    bool update_hdr_texture();
+    // With `easel`, also the veiled picture the easel draws outside the frame, and without the
+    // strokes (the easel shows J's marks only).
+    bool update_hdr_texture(bool easel = false);
     // The screen's headroom a render asks the HDR canvas's picture for (PreviewOptions and
     // DetailRenderRequest::hdr_display_headroom), or none while the canvas can't show one.
     [[nodiscard]] std::optional<float> hdr_request() const;
@@ -396,6 +398,13 @@ private:
         ImVec2 detail_min;
         ImVec2 detail_max;
         bool detail_nearest = false;
+        // The easel (#58): the turned photo's corners (x, y pairs, ImGui units), the frame, and
+        // the canvas's colour (sRGB, 0 to 1, as SDL takes draw colours).
+        bool easel = false;
+        std::array<float, 8> corners{};
+        ImVec2 frame_min;
+        ImVec2 frame_max;
+        std::array<float, 3> canvas_srgb{};
     };
     UnderUi under_ui_;
     bool hdr_canvas_shown_ = false;  // the last frame showed the HDR picture
@@ -410,6 +419,7 @@ private:
         std::uint64_t frame = 0;
         bool clip_overlay = false;
         bool stroke_overlay = false;
+        bool easel = false;  // with the veiled picture too
         gui::Theme theme{};
         bool operator==(const HdrTextureKey&) const = default;
     };

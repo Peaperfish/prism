@@ -611,14 +611,15 @@ TEST(HdrOverlays, OneAndEightThreadsGiveTheSamePicture) {
     EXPECT_NE(one[last * 4], tex[last * 4]);
 }
 
-TEST(HdrOverlays, OnlyRealPixelsASplitOrTheEaselKeepTheCanvasSdr) {
+TEST(HdrOverlays, OnlyRealPixelsWithoutAnHdrPictureOrASplitKeepTheCanvasSdr) {
     using prism::gui::CanvasViews;
     using prism::gui::sdr_only_view;
     EXPECT_FALSE(sdr_only_view(CanvasViews{}));
     EXPECT_FALSE(sdr_only_view(CanvasViews{.clip_overlay = true, .stroke_overlay = true}));
     EXPECT_TRUE(sdr_only_view(CanvasViews{.real_pixels = true}));
     EXPECT_TRUE(sdr_only_view(CanvasViews{.split = true}));
-    EXPECT_TRUE(sdr_only_view(CanvasViews{.easel = true}));
+    EXPECT_FALSE(sdr_only_view(CanvasViews{.easel = true}));  // its veil goes into the picture
+    EXPECT_FALSE(sdr_only_view(CanvasViews{.clip_overlay = true, .easel = true}));
 }
 
 TEST(HdrOverlays, AMaskIsDrawnInOnlyWhileItShowsAndOnlyIfItIsThePicturesSize) {
@@ -646,4 +647,39 @@ TEST(HdrViews, ThePictureUnderTheUiIsClippedToEveryPixelTheCanvasTouches) {
     EXPECT_EQ(pixels_covering(-3.5f, 0.0f, 2.0f, 1.0f, 1.0f), (WindowPixels{-4, 0, 6, 1}));
     EXPECT_EQ(pixels_covering(5.0f, 5.0f, 5.0f, 5.0f, 1.0f).width, 0);
     EXPECT_EQ(pixels_covering(5.0f, 5.0f, 4.0f, 9.0f, 1.0f).width, 0);
+}
+
+TEST(HdrViews, TheEaselsVeilIsTheCanvasColourAtSixtyPercent) {
+    EXPECT_EQ(prism::gui::easel_veil_abgr(0xff'30'40'50u), 0x99'30'40'50u);  // 153 = 60% of 255
+    EXPECT_EQ(prism::gui::easel_veil_abgr(0x00'30'40'50u), 0x99'30'40'50u);
+    // Drawn into the HDR picture, the veil over a +2 stop pixel is the SDR picture veiled, as the
+    // SDR easel shows it: its codes blended with the canvas grey's, below white.
+    prism::Image hdr;
+    hdr.width = 1;
+    hdr.height = 1;
+    hdr.pixels = {4.0f, 4.0f, 3.0f};
+    const std::vector<std::uint8_t> sdr = {255, 255, 240};
+    const std::vector<std::uint32_t> veil = {prism::gui::easel_veil_abgr(0xff'59'59'59u)};
+    const std::span<const std::uint32_t> layers[] = {veil};
+    const std::vector<std::uint16_t> got =
+        prism::gui::hdr_with_overlays(halves(hdr), sdr, 1, 1, layers, 1);
+    const float a = 153.0f / 255.0f;
+    for (int c = 0; c < 3; ++c) {
+        const float want = prism::srgb_to_linear(0x59 / 255.0f * a + sdr[c] / 255.0f * (1.0f - a));
+        EXPECT_NEAR(prism::gui::float_from_half(got[c]), want, want * 1e-3f) << c;
+        EXPECT_LT(prism::gui::float_from_half(got[c]), 0.5f) << c;
+    }
+}
+
+TEST(HdrViews, TheTurnedPhotoIsTwoTrianglesWithAddImageQuadsTextureCorners) {
+    // A photo turned a little: top left, top right, bottom right, bottom left, in ImGui units.
+    const float corners[8] = {10.0f, 12.0f, 110.0f, 2.0f, 118.0f, 82.0f, 18.0f, 92.0f};
+    const std::array<prism::gui::QuadVertex, 6> q = prism::gui::quad_triangles(corners, 2.0f);
+    using V = prism::gui::QuadVertex;
+    EXPECT_EQ(q[0], (V{20.0f, 24.0f, 0.0f, 0.0f}));
+    EXPECT_EQ(q[1], (V{220.0f, 4.0f, 1.0f, 0.0f}));
+    EXPECT_EQ(q[2], (V{236.0f, 164.0f, 1.0f, 1.0f}));
+    EXPECT_EQ(q[3], q[0]);
+    EXPECT_EQ(q[4], q[2]);
+    EXPECT_EQ(q[5], (V{36.0f, 184.0f, 0.0f, 1.0f}));
 }

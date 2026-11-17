@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -54,14 +55,36 @@ struct CanvasViews {
     bool stroke_overlay = false;  // the Dodge & burn strokes' overlay (M)
     bool real_pixels = false;     // real pixels without an HDR picture, over the preview (#37)
     bool split = false;           // split compare
-    bool easel = false;           // the easel (framing, #58)
+    bool easel = false;           // the easel (framing, #58): its veil goes into the picture
 };
 
 // Whether this version shows the canvas in SDR only (hdr_canvas_on's `sdr_view`): with real
 // pixels that have no HDR picture of their own (DetailFrame::hdr_rgba; one made before the
-// screen's headroom changed is asked for again), a split compare or the easel. The J overlay and
-// the strokes don't: they are drawn into the HDR picture (hdr_with_overlays).
+// screen's headroom changed is asked for again), or a split compare (its halves are different
+// stages, and only the final picture has light above white). The J overlay, the strokes and the
+// easel's veil don't: they are drawn into the HDR picture (hdr_with_overlays).
 [[nodiscard]] bool sdr_only_view(const CanvasViews& views) noexcept;
+
+// The easel's veil (#58): the canvas's colour at 60% over the photo outside the frame, so what is
+// cut away is still seen, quietly. ABGR, as the overlays' colours.
+[[nodiscard]] std::uint32_t easel_veil_abgr(std::uint32_t canvas_abgr) noexcept;
+
+// A vertex of the turned photo drawn under the UI on the easel: window pixels and texture
+// coordinates.
+struct QuadVertex {
+    float x = 0.0f;
+    float y = 0.0f;
+    float u = 0.0f;
+    float v = 0.0f;
+    bool operator==(const QuadVertex&) const = default;
+};
+
+// The easel's photo (photo_corners: top left, top right, bottom right, bottom left of the photo,
+// in ImGui units, as x, y pairs) as two triangles in window pixels (`scale` per unit): corners 0,
+// 1, 2 then 0, 2, 3, with the texture's corners (0, 0), (1, 0), (1, 1), (0, 1), as Dear ImGui's
+// AddImageQuad maps them.
+[[nodiscard]] std::array<QuadVertex, 6> quad_triangles(const float corners_xy[8],
+                                                       float scale) noexcept;
 
 // A rectangle of window pixels.
 struct WindowPixels {

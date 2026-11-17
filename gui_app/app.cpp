@@ -13,6 +13,7 @@
 
 #include "about_info.hpp"
 #include "active_control.hpp"
+#include "display.hpp"
 #include "export_sheet.hpp"
 #include "imgui.h"
 #include "imgui_impl_sdlrenderer3.h"
@@ -982,7 +983,7 @@ void App::drop_detail() {
 
 std::optional<float> App::hdr_request() const {
     if (!gui::hdr_canvas_on(display_mode_, session_.settings(), viewed_stage_, strip_.has_value(),
-                            display_headroom_, framing_.on())) {
+                            display_headroom_)) {
         return std::nullopt;
     }
     // Rounded to the weight's 1/256 steps: brightness changes send many events (#97).
@@ -1218,18 +1219,21 @@ void App::drop_hdr_picture() {
     hdr_texture_failed_.reset();
 }
 
-bool App::update_hdr_texture() {
+bool App::update_hdr_texture(bool easel) {
     if (hdr_rgba_.empty()) {
         return false;
     }
     const bool clip = gui::overlay_drawn_into(
         {prefs_.clip_overlay, clip_mask_.size(), clip_mask_width_, clip_mask_height_}, hdr_width_,
         hdr_height_);
-    const bool strokes = gui::overlay_drawn_into(
-        {stroke_mask_on_, stroke_mask_.size(), stroke_mask_width_, stroke_mask_height_}, hdr_width_,
-        hdr_height_);
-    const HdrTextureKey key{hdr_frame_serial_, clip, strokes, theme()};
-    if (hdr_texture_key_ == key && texture_.hdr_texture() != nullptr) {
+    // The easel shows J's marks only, as its SDR quad does.
+    const bool strokes =
+        !easel && gui::overlay_drawn_into({stroke_mask_on_, stroke_mask_.size(), stroke_mask_width_,
+                                           stroke_mask_height_},
+                                          hdr_width_, hdr_height_);
+    const HdrTextureKey key{hdr_frame_serial_, clip, strokes, easel, theme()};
+    if (hdr_texture_key_ == key && texture_.hdr_texture() != nullptr &&
+        (!easel || texture_.hdr_veiled_texture() != nullptr)) {
         return true;
     }
     if (hdr_texture_failed_ == key) {
@@ -1256,6 +1260,15 @@ bool App::update_hdr_texture() {
         const std::vector<std::uint16_t> picture =
             gui::hdr_with_overlays(hdr_rgba_, hdr_sdr_rgb8_, hdr_width_, hdr_height_, spans);
         uploaded = !picture.empty() && texture_.upload_hdr(picture, hdr_width_, hdr_height_);
+    }
+    if (uploaded && easel) {
+        // The easel's veil over all of it, last, as the SDR easel draws it over the photo; the
+        // plain picture is drawn again inside the frame.
+        layers.emplace_back(hdr_rgba_.size() / 4, gui::easel_veil_abgr(colours.canvas));
+        const std::vector<std::span<const std::uint32_t>> spans(layers.begin(), layers.end());
+        const std::vector<std::uint16_t> veiled =
+            gui::hdr_with_overlays(hdr_rgba_, hdr_sdr_rgb8_, hdr_width_, hdr_height_, spans);
+        uploaded = !veiled.empty() && texture_.upload_hdr_veiled(veiled, hdr_width_, hdr_height_);
     }
     if (!uploaded) {
         texture_.reset_hdr();
@@ -1478,30 +1491,31 @@ void App::renderer_changed(SDL_Renderer* renderer) {
 
 void App::draw_under_ui(SDL_Renderer* renderer) const {
     const float k = under_ui_.scale;
-    if (under_ui_.picture && texture_.hdr_texture() != nullptr) {
-        // Clipped to the canvas, as ImGui clips the SDR picture to the canvas window.
-        const gui::WindowPixels covered =
-            gui::pixels_covering(under_ui_.clip_min.x, under_ui_.clip_min.y, under_ui_.clip_max.x,
-                                 under_ui_.clip_max.y, k);
-        const SDL_Rect clip{covered.x, covered.y, covered.width, covered.height};
-        SDL_SetRenderClipRect(renderer, &clip);
+    // Clipped to the canvas, as ImGui clips the SDR picture to the canvas window.
+    const gui::WindowPixels canvas = gui::pixels_covering(
+        under_ui_.clip_min.x, under_ui_.clip_min.y, under_ui_.clip_max.x, under_ui_.clip_max.y, k);
+    if (under_ui_.easel && texture_.hdr_texture() != nullptr &&
+        texture_.hdr_veiled_texture() != nullptr) {
+        const gui::WindowPixels frame =
+            gui::pixels_covering(under_ui_.frame_min.x, under_ui_.frame_min.y,
+                                 under_ui_.frame_max.x, under_ui_.frame_max.y, k);
+        draw_under_ui_easel(renderer, texture_.hdr_veiled_texture(), texture_.hdr_texture(),
+                            gui::quad_triangles(under_ui_.corners.data(), k), canvas, frame,
+                            under_ui_.canvas_srgb.data(), under_ui_.nearest);
+    } else if (under_ui_.picture && texture_.hdr_texture() != nullptr) {
         // Sampled as the SDR picture would be: nearest once the view shows pixels.
-        SDL_SetTextureScaleMode(texture_.hdr_texture(),
-                                under_ui_.nearest ? SDL_SCALEMODE_NEAREST : SDL_SCALEMODE_LINEAR);
         const SDL_FRect dst{under_ui_.at.x * k, under_ui_.at.y * k,
                             (under_ui_.end.x - under_ui_.at.x) * k,
                             (under_ui_.end.y - under_ui_.at.y) * k};
-        SDL_RenderTexture(renderer, texture_.hdr_texture(), nullptr, &dst);
+        draw_under_ui_picture(renderer, texture_.hdr_texture(), dst, canvas, under_ui_.nearest);
         // Real pixels over it, on their own region's place, sampled by the rule for file pixels
         // (nearest at 100% and closer), as the SDR canvas draws them.
         if (under_ui_.detail && detail_texture_.hdr_texture() != nullptr) {
-            SDL_SetTextureScaleMode(detail_texture_.hdr_texture(), under_ui_.detail_nearest
-                                                                       ? SDL_SCALEMODE_NEAREST
-                                                                       : SDL_SCALEMODE_LINEAR);
             const SDL_FRect where{under_ui_.detail_min.x * k, under_ui_.detail_min.y * k,
                                   (under_ui_.detail_max.x - under_ui_.detail_min.x) * k,
                                   (under_ui_.detail_max.y - under_ui_.detail_min.y) * k};
-            SDL_RenderTexture(renderer, detail_texture_.hdr_texture(), nullptr, &where);
+            draw_under_ui_picture(renderer, detail_texture_.hdr_texture(), where, canvas,
+                                  under_ui_.detail_nearest);
         }
     }
     SDL_SetRenderClipRect(renderer, nullptr);
@@ -1650,7 +1664,7 @@ void App::frame() {
         ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
     item_active_last_frame_ = control_active();
     focused_window_last_frame_ = focused_window_this_frame_;
-    hdr_canvas_shown_ = under_ui_.picture;
+    hdr_canvas_shown_ = under_ui_.picture || under_ui_.easel;
     if (opaque_popups) {
         ImGui::PopStyleColor();
     }
@@ -2448,7 +2462,44 @@ void App::draw_framing_canvas(ImDrawList* draw, ImVec2 min, ImVec2 size) {
     const auto id = [](SDL_Texture* t) {
         return ImTextureRef(static_cast<ImTextureID>(reinterpret_cast<std::uintptr_t>(t)));
     };
-    if (picture) {
+    // The veil's frame, worked out first: the HDR easel draws the veil into its picture.
+    const gui::CanvasRect rect = gui::frame_rect(framing_view_, draft);
+    const ImVec2 cmax(min.x + size.x, min.y + size.y);
+    // Zoomed in, the frame can reach past the canvas: the veil's pieces stop at its edges.
+    const auto inside = [&](gui::CanvasPoint p) {
+        return ImVec2(std::clamp(static_cast<float>(p.x), min.x, cmax.x),
+                      std::clamp(static_cast<float>(p.y), min.y, cmax.y));
+    };
+    const ImVec2 fmin = inside(rect.min);
+    const ImVec2 fmax = inside(rect.max);
+    // The HDR easel (#106): the photo under the UI, the veil and J's marks drawn into it.
+    const bool hdr_easel =
+        picture && display_mode_ == gui::DisplayMode::hdr_ui_target && !hdr_rgba_.empty() &&
+        gui::hdr_canvas_on(display_mode_, session_.settings(), viewed_stage_, strip_.has_value(),
+                           display_headroom_, gui::sdr_only_view({.easel = true})) &&
+        update_hdr_texture(true);
+    if (hdr_easel) {
+        under_ui_.easel = true;
+        for (std::size_t i = 0; i < corners.size(); ++i) {
+            under_ui_.corners[i * 2] = static_cast<float>(corners[i].x);
+            under_ui_.corners[i * 2 + 1] = static_cast<float>(corners[i].y);
+        }
+        under_ui_.frame_min = fmin;
+        under_ui_.frame_max = fmax;
+        under_ui_.clip_min = min;
+        under_ui_.clip_max = cmax;
+        under_ui_.scale = ImGui::GetIO().DisplayFramebufferScale.x;
+        under_ui_.nearest = gui::view_shows_pixels(gui::view_zoom(view_, view_geometry_));
+        const ImU32 grey = palette(theme()).canvas;
+        for (int c = 0; c < 3; ++c) {
+            under_ui_.canvas_srgb[static_cast<std::size_t>(c)] =
+                static_cast<float>((grey >> (8 * c)) & 0xffu) / 255.0f;
+        }
+        // The canvas's place in the UI target is cleared, so the easel drawn under it shows
+        // through; the blades, handles and guides drawn after this land on top.
+        const float hole[4] = {min.x, min.y, cmax.x, cmax.y};
+        draw->AddCallback(clear_ui_rect, const_cast<float*>(hole), sizeof hole);
+    } else if (picture) {
         begin_picture_sampling(draw);
         draw->AddImageQuad(id(texture_.texture()), at(corners[0]), at(corners[1]), at(corners[2]),
                            at(corners[3]));
@@ -2462,22 +2513,15 @@ void App::draw_framing_canvas(ImDrawList* draw, ImVec2 min, ImVec2 size) {
     }
 
     // The veil: the canvas's grey at 60% over everything outside the frame, so what is cut away is
-    // still seen, quietly.
-    const gui::CanvasRect rect = gui::frame_rect(framing_view_, draft);
-    const ImVec2 cmax(min.x + size.x, min.y + size.y);
-    // Zoomed in, the frame can reach past the canvas: the veil's pieces stop at its edges.
-    const auto inside = [&](gui::CanvasPoint p) {
-        return ImVec2(std::clamp(static_cast<float>(p.x), min.x, cmax.x),
-                      std::clamp(static_cast<float>(p.y), min.y, cmax.y));
-    };
-    const ImVec2 fmin = inside(rect.min);
-    const ImVec2 fmax = inside(rect.max);
-    ImU32 veil = palette(theme()).canvas;
-    veil = (veil & ~IM_COL32_A_MASK) | (static_cast<ImU32>(std::lround(255 * 0.6)) << IM_COL32_A_SHIFT);
-    draw->AddRectFilled(min, ImVec2(cmax.x, fmin.y), veil);
-    draw->AddRectFilled(ImVec2(min.x, fmax.y), cmax, veil);
-    draw->AddRectFilled(ImVec2(min.x, fmin.y), ImVec2(fmin.x, fmax.y), veil);
-    draw->AddRectFilled(ImVec2(fmax.x, fmin.y), ImVec2(cmax.x, fmax.y), veil);
+    // still seen, quietly. The HDR easel has it in its picture already; over the canvas around
+    // the photo it is the canvas's own grey, so nothing is left to draw.
+    if (!hdr_easel) {
+        const ImU32 veil = gui::easel_veil_abgr(palette(theme()).canvas);
+        draw->AddRectFilled(min, ImVec2(cmax.x, fmin.y), veil);
+        draw->AddRectFilled(ImVec2(min.x, fmax.y), cmax, veil);
+        draw->AddRectFilled(ImVec2(min.x, fmin.y), ImVec2(fmin.x, fmax.y), veil);
+        draw->AddRectFilled(ImVec2(fmax.x, fmin.y), ImVec2(cmax.x, fmax.y), veil);
+    }
 
     // The guides while a gesture is under way, then the blades and the eight handles: a light line
     // on a dark one, so they show on any picture.
