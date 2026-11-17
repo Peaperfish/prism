@@ -26,11 +26,14 @@ struct ProcessSettings {
     std::optional<float> saturation;
     std::optional<float> contrast;
     std::optional<ToneCurve> curve;
+    // HDR headroom in stops above white (prism/hdr.hpp): 0 (the default) is SDR only. process()
+    // ignores it; process_hdr() branches after Contrast when it is above 0.
+    float headroom_stops = 0.0f;
 };
 
 // How long one stage took. `name` is one of "exposure", "dodge_burn", "white_balance", "matrix",
-// "saturation", "contrast" and "curve" (the names prism --time prints); it points at a string
-// literal, so it never dangles.
+// "saturation", "contrast" and "curve" (the names prism --time prints), and "hdr_curve" from
+// process_hdr(); it points at a string literal, so it never dangles.
 struct StageTime {
     std::string_view name;
     double ms = 0;
@@ -60,5 +63,20 @@ enum class ProcessResult {
 [[nodiscard]] ProcessResult process(Image& img, const ProcessSettings& settings, int threads = 0,
                                     std::stop_token stop = {}, const StageCallback& on_stage = {},
                                     const BeforeStageCallback& before_stage = {});
+
+// process() with HDR. With settings.headroom_stops 0, exactly process(), and `hdr` is left empty
+// (0 x 0). Above 0, the light branches after Contrast: `img` gets the SDR branch, bit for bit what
+// process() gives, and `hdr` the HDR branch: the image after Contrast through the HDR curve
+// (prism/hdr.hpp), anchored on hdr_file_white(settings), linear float cut at 2^headroom. The
+// stages are reported as process() reports them, with "hdr_curve" (whose input is the image
+// after Contrast) after "curve".
+//
+// A stop works as in process(); if it comes before the branch, `hdr` is left empty. Throws
+// std::invalid_argument, before changing any pixel, if the headroom is not 0 and not in
+// (0, headroom_max_stops], and as process() does.
+[[nodiscard]] ProcessResult process_hdr(Image& img, Image& hdr, const ProcessSettings& settings,
+                                        int threads = 0, std::stop_token stop = {},
+                                        const StageCallback& on_stage = {},
+                                        const BeforeStageCallback& before_stage = {});
 
 }  // namespace prism

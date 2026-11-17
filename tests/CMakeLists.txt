@@ -24,6 +24,7 @@ add_executable(prism_tests
   frame_test.cpp
   framed_field_test.cpp
   golden_sdr_test.cpp
+  hdr_test.cpp
   heic_test.cpp
   histogram_test.cpp
   image_test.cpp
