@@ -39,7 +39,9 @@ struct Identity {
 
 // Each curve's log-slope x * c'(x) / c(x), from its formula. The scale factors (filmic's `scale`)
 // cancel out.
-double log_slope(const GammaCurve& g, double) { return g.inv_gamma; }
+double log_slope(const GammaCurve& g, double) {
+    return g.inv_gamma;
+}
 
 double log_slope(const ReinhardCurve& r, double x) {
     // c = x (1 + a x) / (1 + x): ln c = ln x + ln(1 + a x) - ln(1 + x).
@@ -117,18 +119,26 @@ static_assert(headroom_range.min == headroom_min_stops && headroom_range.max == 
 
 std::optional<float> parse_headroom(std::string_view text) {
     const std::string s = minus_as_hyphen(text);  // null-terminated, as c_strtod needs
-    // c_strtod skips leading white space; the whole text must be the number.
+    // c_strtof skips leading white space; the whole text must be the number. Hexadecimal is
+    // refused, as in a recipe.
     if (s.empty() || std::isspace(static_cast<unsigned char>(s.front())) != 0) {
         return std::nullopt;
     }
+    const std::size_t digits = s.front() == '+' || s.front() == '-' ? 1 : 0;
+    if (s.size() > digits + 1 && s[digits] == '0' &&
+        (s[digits + 1] == 'x' || s[digits + 1] == 'X')) {
+        return std::nullopt;
+    }
+    // Straight to float, as the recipe reader does, so the same text gives the same value in
+    // both places, and the range is checked on that float.
     char* end = nullptr;
     errno = 0;
-    const double value = c_strtod(s.c_str(), &end);
+    const float value = c_strtof(s.c_str(), &end);
     if (end != s.c_str() + s.size() || errno == ERANGE || !std::isfinite(value) ||
         value < headroom_range.min || value > headroom_range.max) {
         return std::nullopt;
     }
-    return static_cast<float>(value);
+    return value;
 }
 
 void hdr_curve(Image& img, const HdrCurve& curve, int threads) {

@@ -57,8 +57,12 @@ TEST(ParseHeadroom, NumbersFromZeroToFour) {
     EXPECT_EQ(prism::parse_headroom("4"), 4.0f);
     EXPECT_EQ(prism::parse_headroom("4.0"), 4.0f);
     EXPECT_EQ(prism::parse_headroom("0.1"), 0.1f);
+    // Rounded to float first, as a recipe reads it: just over 4 in the text is 4.0f.
+    EXPECT_EQ(prism::parse_headroom("4.00000001"), 4.0f);
     // -0 with either minus is 0.
-    for (const char* zero : {"-0", "\xE2\x88\x92" "0"}) {
+    for (const char* zero : {"-0",
+                             "\xE2\x88\x92"
+                             "0"}) {
         const std::optional<float> v = prism::parse_headroom(zero);
         ASSERT_TRUE(v) << zero;
         EXPECT_EQ(*v, 0.0f) << zero;
@@ -66,8 +70,28 @@ TEST(ParseHeadroom, NumbersFromZeroToFour) {
 }
 
 TEST(ParseHeadroom, AnythingElseIsRefused) {
-    for (const char* bad : {"", " ", "4.01", "5", "-0.1", "\xE2\x88\x92" "1", "1,5", "2 ", " 2",
-                            "2stops", "two", "inf", "nan", "+", "1e309", "--2", "\xE2\x88\x92"}) {
+    for (const char* bad : {"",
+                            " ",
+                            "4.01",
+                            "5",
+                            "-0.1",
+                            "\xE2\x88\x92"
+                            "1",
+                            "1,5",
+                            "2 ",
+                            " 2",
+                            "2stops",
+                            "two",
+                            "inf",
+                            "nan",
+                            "+",
+                            "1e309",
+                            "--2",
+                            "\xE2\x88\x92",
+                            "0x2",
+                            "0X1p1",
+                            "+0x1",
+                            "4.0001"}) {
         EXPECT_FALSE(prism::parse_headroom(bad)) << "'" << bad << "'";
     }
 }
@@ -81,7 +105,8 @@ TEST(ParseHeadroom, ReadsADotWhateverTheLocale) {
     EXPECT_FALSE(prism::parse_headroom("1,5"));
 }
 
-// --- reading [hdr] --------------------------------------------------------------------------------
+// --- reading [hdr]
+// --------------------------------------------------------------------------------
 
 TEST(RecipeHdr, AFormat3RecipeReadsItsHeadroom) {
     const prism::Recipe r = prism::parse_recipe("prism_recipe = 3\n\n[hdr]\nheadroom = +2.5\n");
@@ -90,7 +115,8 @@ TEST(RecipeHdr, AFormat3RecipeReadsItsHeadroom) {
     // Unsigned, a real minus on 0, and 0 itself all read as written.
     EXPECT_EQ(prism::parse_recipe("prism_recipe = 3\n[hdr]\nheadroom = 4\n").hdr->headroom, 4.0f);
     EXPECT_EQ(prism::parse_recipe("prism_recipe = 3\n[hdr]\nheadroom = 0\n").hdr->headroom, 0.0f);
-    EXPECT_EQ(prism::parse_recipe("prism_recipe = 3\n[hdr]\nheadroom = \xE2\x88\x92" "0\n")
+    EXPECT_EQ(prism::parse_recipe("prism_recipe = 3\n[hdr]\nheadroom = \xE2\x88\x92"
+                                  "0\n")
                   .hdr->headroom,
               0.0f);
     EXPECT_EQ(prism::parse_recipe("prism_recipe = 3\n[hdr]\nheadroom = -0.0\n").hdr->headroom,
@@ -111,6 +137,7 @@ TEST(RecipeHdr, OlderFormatsReadAsBefore) {
     const prism::Recipe two = prism::parse_recipe(v2);
     EXPECT_FALSE(two.hdr);
     EXPECT_EQ(prism::write_recipe(two, bare), v2);
+    EXPECT_FALSE(prism::to_process_settings(two).headroom_stops);
 }
 
 TEST(RecipeHdr, NeedsFormat3) {
@@ -130,8 +157,13 @@ TEST(RecipeHdr, BadAndOutOfRangeValues) {
     const Case cases[] = {
         {"4.5", "[hdr] headroom must be from 0 to 4 (it is 4.5)"},
         {"+5", "[hdr] headroom must be from 0 to 4 (it is 5)"},
-        {"-0.5", "[hdr] headroom must be from 0 to 4 (it is \xE2\x88\x92" "0.5)"},
-        {"\xE2\x88\x92" "1", "[hdr] headroom must be from 0 to 4 (it is \xE2\x88\x92" "1)"},
+        {"-0.5",
+         "[hdr] headroom must be from 0 to 4 (it is \xE2\x88\x92"
+         "0.5)"},
+        {"\xE2\x88\x92"
+         "1",
+         "[hdr] headroom must be from 0 to 4 (it is \xE2\x88\x92"
+         "1)"},
     };
     for (const Case& c : cases) {
         const std::vector<prism::RecipeIssue> expected = {{3, c.message}};
@@ -139,20 +171,25 @@ TEST(RecipeHdr, BadAndOutOfRangeValues) {
                   expected)
             << c.value;
     }
-    // Not numbers at all: refused, whatever the wording (shared with every other number key).
+    // Not numbers at all: refused (the wording is shared with every other number key).
     for (const char* bad : {"two", "1,5", "\"2\"", "2 stops", "true", "[2]", "inf"}) {
-        EXPECT_EQ(issues_in("prism_recipe = 3\n[hdr]\nheadroom = " + std::string(bad) + "\n")
-                      .size(),
-                  1u)
+        EXPECT_EQ(
+            issues_in("prism_recipe = 3\n[hdr]\nheadroom = " + std::string(bad) + "\n").size(), 1u)
             << bad;
     }
+    const std::vector<prism::RecipeIssue> word = {{3, "'two' is not a number"}};
+    EXPECT_EQ(issues_in("prism_recipe = 3\n[hdr]\nheadroom = two\n"), word);
+    const std::vector<prism::RecipeIssue> inf = {
+        {3, "'inf' is not allowed: a recipe holds finite numbers only"}};
+    EXPECT_EQ(issues_in("prism_recipe = 3\n[hdr]\nheadroom = inf\n"), inf);
     const std::vector<prism::RecipeIssue> missing = {{2, "[hdr] needs 'headroom'"}};
     EXPECT_EQ(issues_in("prism_recipe = 3\n[hdr]\n"), missing);
     // No switch: [hdr] has no `on`.
     EXPECT_EQ(issues_in("prism_recipe = 3\n[hdr]\nheadroom = 1\non = false\n").size(), 1u);
 }
 
-// --- writing [hdr] --------------------------------------------------------------------------------
+// --- writing [hdr]
+// --------------------------------------------------------------------------------
 
 TEST(RecipeHdr, WrittenOnlyAboveZeroAsVersion3) {
     prism::Recipe r;
@@ -166,6 +203,11 @@ TEST(RecipeHdr, WrittenOnlyAboveZeroAsVersion3) {
     // 0 (and -0) is SDR: nothing is written, and the recipe keeps version 1 (or 2).
     for (const float zero : {0.0f, -0.0f}) {
         r.hdr = prism::RecipeHdr{zero};
+        EXPECT_EQ(prism::write_recipe(r, bare), "prism_recipe = 1\n\n[exposure]\nstops = +1.0\n");
+    }
+    // A negative or NaN headroom (never read from a file) writes nothing either: only above 0.
+    for (const float bad : {-1.0f, std::nanf("")}) {
+        r.hdr = prism::RecipeHdr{bad};
         EXPECT_EQ(prism::write_recipe(r, bare), "prism_recipe = 1\n\n[exposure]\nstops = +1.0\n");
     }
     r.white_balance = prism::RecipeWhiteBalance{5000.0f, 0.0f};

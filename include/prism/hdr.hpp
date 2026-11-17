@@ -78,7 +78,8 @@ struct HdrCurve {
 
 // A headroom as typed (the command line's --headroom): the whole of `text` as one number in the
 // C locale's format whatever the locale ("1.5", never "1,5"), negative with "-" or a real minus
-// "−", from 0 to headroom_max_stops. Anything else, including inf and nan, gives nothing.
+// "−", from 0 to headroom_max_stops after rounding to float (as a recipe reads it). Anything else,
+// including inf, nan and hexadecimal, gives nothing.
 [[nodiscard]] std::optional<float> parse_headroom(std::string_view text);
 
 // Applies the HDR curve to every value of `img` in place. `threads` as for every stage; the

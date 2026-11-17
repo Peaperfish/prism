@@ -618,7 +618,10 @@ TEST(FrameRecipes, ARecipeNeitherSavesNorChangesTheFrame) {
     without.frame.reset();
     const std::string text = prism::write_recipe(prism::gui::recipe_from(o.session.settings()));
     EXPECT_EQ(text, prism::write_recipe(prism::gui::recipe_from(without)));
-    EXPECT_EQ(prism::recipe_format_version, 3);  // format 3 added [hdr], not the frame
+    // No format version has a frame: the recipe format has no such section.
+    for (const prism::RecipeSectionSpec& section : prism::recipe_format().sections) {
+        EXPECT_NE(section.name, "frame");
+    }
     EXPECT_EQ(text.find("frame"), std::string::npos);
     EXPECT_EQ(text.find("angle"), std::string::npos);
 

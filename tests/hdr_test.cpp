@@ -43,7 +43,9 @@ float hdr(const char* spec, float x, float white, float stops) {
     return prism::make_hdr_curve(curve(spec), white, stops).map(x);
 }
 
-double tolerance(double literal) { return 5e-4 + 5e-4 * std::fabs(literal); }
+double tolerance(double literal) {
+    return 5e-4 + 5e-4 * std::fabs(literal);
+}
 
 #define EXPECT_PROBE(actual, literal) EXPECT_NEAR((actual), (literal), tolerance(literal))
 
@@ -142,9 +144,9 @@ TEST(HdrCurve, NeverPassesHeadroomAndNeverFallsAsLightGrows) {
         float white;
         float stops;
     };
-    for (const Case& k : {Case{"filmic", 2.0f, 2.0f}, Case{"filmic", 64.0f, 0.1f},
-                          Case{"none", 64.0f, 0.1f}, Case{"gamma:2.2", 8.0f, 4.0f},
-                          Case{"reinhard:4", 0.5f, 1.0f}}) {
+    for (const Case& k :
+         {Case{"filmic", 2.0f, 2.0f}, Case{"filmic", 64.0f, 0.1f}, Case{"none", 64.0f, 0.1f},
+          Case{"gamma:2.2", 8.0f, 4.0f}, Case{"reinhard:4", 0.5f, 1.0f}}) {
         const prism::HdrCurve h = prism::make_hdr_curve(curve(k.spec), k.white, k.stops);
         float previous = h.map(0.0f);
         for (float x = 0.0f; x < 200.0f; x = x * 1.01f + 1e-4f) {
@@ -185,9 +187,9 @@ TEST(HdrCurve, HeadroomOutsideItsRangeIsRefused) {
                      std::invalid_argument)
             << stops;
     }
-    EXPECT_THROW((void)prism::make_hdr_curve(curve("filmic"),
-                                             std::numeric_limits<float>::infinity(), 2.0f),
-                 std::invalid_argument);
+    EXPECT_THROW(
+        (void)prism::make_hdr_curve(curve("filmic"), std::numeric_limits<float>::infinity(), 2.0f),
+        std::invalid_argument);
     EXPECT_NO_THROW((void)prism::make_hdr_curve(curve("filmic"), 2.0f, 4.0f));
     EXPECT_NO_THROW((void)prism::make_hdr_curve(curve("filmic"), 2.0f, 0.1f));
 }
@@ -268,17 +270,18 @@ TEST(ProcessHdr, HeadroomZeroIsExactlyProcess) {
     prism::Image expected = ramp(17, 5);
     ASSERT_EQ(prism::process(expected, look(), 1), prism::ProcessResult::completed);
     // No headroom at all, 0 and -0 (as --headroom −0 gives) are all SDR only.
-    for (const std::optional<float> headroom : {std::optional<float>{}, std::optional<float>{0.0f},
-                                                std::optional<float>{-0.0f}}) {
+    for (const std::optional<float> headroom :
+         {std::optional<float>{}, std::optional<float>{0.0f}, std::optional<float>{-0.0f}}) {
         SCOPED_TRACE(headroom ? std::to_string(*headroom) : "none");
         prism::ProcessSettings s = look();
         s.headroom_stops = headroom;
         prism::Image img = ramp(17, 5);
         prism::Image out = ramp(3, 3);  // anything left in it is cleared
         std::vector<std::string> names;
-        ASSERT_EQ(prism::process_hdr(img, out, s, 1, {},
-                                     [&](const prism::StageTime& t) { names.emplace_back(t.name); }),
-                  prism::ProcessResult::completed);
+        ASSERT_EQ(
+            prism::process_hdr(img, out, s, 1, {},
+                               [&](const prism::StageTime& t) { names.emplace_back(t.name); }),
+            prism::ProcessResult::completed);
         EXPECT_EQ(bits(img), bits(expected));
         EXPECT_EQ(out.width, 0);
         EXPECT_TRUE(out.pixels.empty());
@@ -301,8 +304,8 @@ TEST(ProcessHdr, TheSdrBranchIsUnchangedAndTheHdrBranchFollowsContrast) {
     to_contrast.curve.reset();
     to_contrast.headroom_stops.reset();
     ASSERT_EQ(prism::process(hdr_expected, to_contrast, 1), prism::ProcessResult::completed);
-    prism::hdr_curve(hdr_expected,
-                     prism::make_hdr_curve(s.curve, prism::hdr_file_white(s), 2.0f), 1);
+    prism::hdr_curve(hdr_expected, prism::make_hdr_curve(s.curve, prism::hdr_file_white(s), 2.0f),
+                     1);
 
     prism::Image img = ramp(64, 16);
     prism::Image out;
@@ -314,8 +317,8 @@ TEST(ProcessHdr, TheSdrBranchIsUnchangedAndTheHdrBranchFollowsContrast) {
     EXPECT_EQ(out.width, 64);
     EXPECT_EQ(out.height, 16);
     EXPECT_EQ(bits(out), bits(hdr_expected));
-    EXPECT_EQ(names, (std::vector<std::string>{"exposure", "white_balance", "matrix",
-                                               "saturation", "contrast", "curve", "hdr_curve"}));
+    EXPECT_EQ(names, (std::vector<std::string>{"exposure", "white_balance", "matrix", "saturation",
+                                               "contrast", "curve", "hdr_curve"}));
     // Light above white is kept, up to and including H.
     float brightest = 0.0f;
     for (const float v : out.pixels) {

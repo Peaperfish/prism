@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "prism/frame.hpp"
+#include "prism/hdr.hpp"
 #include "prism/histogram.hpp"
 #include "prism/image.hpp"
 #include "prism/number_text.hpp"
@@ -28,7 +29,6 @@
 #include "prism/process.hpp"
 #include "prism/ranges.hpp"
 #include "prism/raw.hpp"
-#include "prism/hdr.hpp"
 #include "prism/recipe.hpp"
 #include "prism/resize.hpp"
 #include "prism/utf8_path.hpp"
@@ -101,16 +101,17 @@ void print_usage(const char* program) {
     for (std::string_view spec : prism::curve_specs()) {
         std::cerr << ' ' << spec;
     }
-    std::cerr << "\n  --headroom <stops>  light above white kept for an HDR picture, 0 to +4.0\n"
-              << "                      stops (0, the default, is SDR only, as before)\n"
-              << "  --histogram <file>  save a histogram image of the result and print\n"
-              << "                      the percentage of clipped pixels per channel\n"
-              << "  --threads <n>       use up to n threads (default: " << prism::hardware_threads()
-              << ", one per hardware thread;\n"
-              << "                      1 = single-threaded; images under about 1 MP always use 1)\n"
-              << "  --time              print how long each stage took\n"
-              << "  -h, --help          show this help\n"
-              << "  --version           print the version and exit\n";
+    std::cerr
+        << "\n  --headroom <stops>  light above white kept for an HDR picture, 0 to +4.0\n"
+        << "                      stops (0, the default, makes no HDR picture)\n"
+        << "  --histogram <file>  save a histogram image of the result and print\n"
+        << "                      the percentage of clipped pixels per channel\n"
+        << "  --threads <n>       use up to n threads (default: " << prism::hardware_threads()
+        << ", one per hardware thread;\n"
+        << "                      1 = single-threaded; images under about 1 MP always use 1)\n"
+        << "  --time              print how long each stage took\n"
+        << "  -h, --help          show this help\n"
+        << "  --version           print the version and exit\n";
 }
 
 // Raised for bad command-line input, so main() can also print the usage text.

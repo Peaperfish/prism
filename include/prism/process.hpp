@@ -65,9 +65,9 @@ enum class ProcessResult {
                                     std::stop_token stop = {}, const StageCallback& on_stage = {},
                                     const BeforeStageCallback& before_stage = {});
 
-// process() with HDR. With settings.headroom_stops empty or 0, exactly process(), and `hdr` is left empty
-// (0 x 0). Above 0, the light branches after Contrast: `img` gets the SDR branch, bit for bit what
-// process() gives, and `hdr` the HDR branch: the image after Contrast through the HDR curve
+// process() with HDR. With settings.headroom_stops empty or 0, exactly process(), and `hdr` is left
+// empty (0 x 0). Above 0, the light branches after Contrast: `img` gets the SDR branch, bit for bit
+// what process() gives, and `hdr` the HDR branch: the image after Contrast through the HDR curve
 // (prism/hdr.hpp), anchored on hdr_file_white(settings), linear float cut at 2^headroom. The
 // stages are reported as process() reports them, with "hdr_curve" (whose input is the image
 // after Contrast) after "curve".

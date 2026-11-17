@@ -106,14 +106,32 @@ What the values mean:
 - **`[saturation]` `amount`**: 1 changes nothing, 0 is black and white, 2 doubles each colour's distance from grey. The same number as the command line's `--saturation`.
 - **`[contrast]` `amount`**: 1 changes nothing; above 1 spreads the stops near middle grey apart, below 1 brings them together. The same number as `--contrast`. The window shows this multiplier as a paper grade (an `amount` of 1.29 is "Grade 3"); see [Contrast as a paper grade](GUIDE.md#contrast-as-a-paper-grade).
 - **`[curve]` `shape`**: `"none"`, `"gamma"`, `"reinhard"` or `"filmic"`, the same curves as `--curve`. `gamma` is used only by the gamma curve and `white` only by Reinhard, so a recipe gives only the one its shape uses. The filmic curve has no setting.
-- **`[hdr]` `headroom`**: how far above white the HDR picture keeps light, in stops: +1.0 is twice white's light. The SDR picture is the same whatever it is. Prism writes `[hdr]` only when the headroom is above 0, always with a sign, so a recipe without HDR keeps the older format version it needs. `[hdr]` has no `on`: a headroom of 0 is off. The same number as `--headroom`.
+- **`[hdr]` `headroom`**: how far above white the HDR picture keeps light, in stops: +1.0 stop is twice white's light. The SDR picture is the same whatever it is. Prism writes `[hdr]` only when the headroom is above 0, always with a sign, so a recipe without HDR keeps the older format version it needs. `[hdr]` has no `on`: a headroom of 0 is off. The same number as `--headroom`.
 - **`on`**: `false` switches the stage off. Its values are kept, but Prism skips it.
+
+The Natural look with an HDR headroom of +2.0 stops, which needs format 3:
+
+<!-- recipe: valid -->
+```toml
+prism_recipe = 3
+
+[exposure]
+stops = +1.0
+
+[curve]
+shape = "filmic"
+
+[hdr]
+headroom = +2.0
+```
 
 ## Leaving stages out
 
 A stage a recipe leaves out stays as it is in the photo you apply it to, and a stage the recipe has replaces it completely.
 
-So a recipe with only `[saturation]` changes the saturation and nothing else. Within a section, the main value must be there (`stops`, all three matrix rows, `amount` or `shape`); `gamma`, `white` and `on` may be left out and then take their defaults from the table above.
+So a recipe with only `[saturation]` changes the saturation and nothing else. Within a section, the main value must be there (`stops`, all three matrix rows, `amount`, `shape` or `headroom`); `gamma`, `white` and `on` may be left out and then take their defaults from the table above.
+
+A recipe without `[hdr]` leaves the HDR headroom as it is too; on the command line that means no HDR picture.
 
 On the command line (`prism --recipe <file>`), each photo starts with no adjustments, so a stage left out of the recipe does nothing unless you also give a command-line flag for that stage. See [Recipes and batches](CLI.md#recipes-and-batches) in the command-line reference.
 

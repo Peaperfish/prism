@@ -258,9 +258,8 @@ using ValueType = RecipeValueType;
 using KeySpec = RecipeKeySpec;
 
 constexpr RecipeSectionSpec section_specs[] = {
-    {"exposure", 1},   {"white_balance", 2}, {"matrix", 1},
-    {"saturation", 1}, {"contrast", 1},      {"curve", 1},
-    {"hdr", 3},
+    {"exposure", 1}, {"white_balance", 2}, {"matrix", 1}, {"saturation", 1},
+    {"contrast", 1}, {"curve", 1},         {"hdr", 3},
 };
 
 constexpr std::string_view weights = "weights of input R, G, B";

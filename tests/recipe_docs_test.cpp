@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <string>
@@ -177,10 +178,11 @@ TEST(RecipeDocs, TheSavedExampleIsExactlyWhatPrismWrites) {
 
 TEST(RecipeDocs, TheSavedExampleIsTheHandWrittenOneWithExposureAndACurve) {
     // As the text says: the same recipe under a new name, saved with +0.5 stops and Reinhard.
-    prism::Recipe hand;
+    // The hand-written one is the first valid example ("A recipe by hand").
+    std::optional<prism::Recipe> hand;
     prism::Recipe saved;
     for (const Example& e : examples()) {
-        if (e.marker == "valid") {
+        if (e.marker == "valid" && !hand) {
             hand = prism::parse_recipe(e.text);
         } else if (e.marker == "saved") {
             saved = prism::parse_recipe(e.text);
@@ -192,8 +194,9 @@ TEST(RecipeDocs, TheSavedExampleIsTheHandWrittenOneWithExposureAndACurve) {
     EXPECT_EQ(saved.name, "Warm low contrast, brighter");
     saved.exposure.reset();
     saved.curve.reset();
-    saved.name = hand.name;
-    EXPECT_EQ(saved, hand);
+    ASSERT_TRUE(hand);
+    saved.name = hand->name;
+    EXPECT_EQ(saved, *hand);
 }
 
 TEST(RecipeDocs, EveryErrorExampleGivesItsLineAndMessage) {

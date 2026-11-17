@@ -244,12 +244,13 @@ struct RecipeFormat {
 
 // What the CLI runs for a recipe together with the flags given on the command line. `flags` holds
 // one field per stage flag that was given (--exposure, --matrix, --saturation, --contrast,
-// --curve, --headroom) and nothing for the others; `white_balance` is the finished matrix, which --kelvin and
-// --tint replace [white_balance] with. Flags win stage by stage: a flag replaces its whole stage
-// (the curve's shape and parameter together) and runs it even where the recipe switches that
-// stage off. Every other stage is as in to_process_settings(recipe): run if present and on, and
-// otherwise nothing, since the command line starts from no adjustments. With an empty recipe the
-// result is `flags` unchanged. Throws as to_process_settings does; `as_shot_white` is as there.
+// --curve, --headroom) and nothing for the others; `white_balance` is the finished matrix, which
+// --kelvin and --tint replace [white_balance] with. Flags win stage by stage: a flag replaces its
+// whole stage (the curve's shape and parameter together) and runs it even where the recipe
+// switches that stage off. Every other stage is as in to_process_settings(recipe): run if
+// present and on, and otherwise nothing, since the command line starts from no adjustments. With
+// an empty recipe the result is `flags` unchanged. Throws as to_process_settings does;
+// `as_shot_white` is as there.
 [[nodiscard]] ProcessSettings merge_recipe_and_flags(
     const Recipe& recipe, const ProcessSettings& flags,
     const std::optional<Chromaticity>& as_shot_white = std::nullopt);

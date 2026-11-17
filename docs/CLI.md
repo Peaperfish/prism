@@ -80,7 +80,7 @@ An unknown or malformed spec fails with an error that lists the available curves
 
 ### `--headroom <stops>`
 
-How far above white the HDR picture keeps light, from 0 to +4.0 stops: +1.0 stop is twice white's light. The light branches after contrast: the SDR picture is exactly as without `--headroom`, and the HDR picture is made from the same light with the photo's white landing at the headroom. 0 means no HDR picture, as before. For now `prism` writes only the SDR picture, which `--headroom` does not change. A value outside 0 to +4.0, or anything that is not a number, fails with an error. Replaces the recipe's `[hdr]`. Default: 0.
+How far above white the HDR picture keeps light, from 0 to +4.0 stops: +1.0 stop is twice white's light. The light branches after contrast: the SDR picture is exactly as without `--headroom`, and the HDR picture is made from the same light with the photo's white landing at the headroom. 0 means no HDR picture. For now `prism` writes only the SDR picture, which `--headroom` does not change. A value outside 0 to +4.0, or anything that is not a number, fails with an error. Replaces the recipe's `[hdr]`. Default: 0.
 
 ### `--histogram <file>`
 
@@ -209,7 +209,8 @@ When you give stage flags alongside `--recipe`, **flags win stage by stage**:
 - `--matrix` replaces `[matrix]` and switches it on;
 - `--saturation` replaces `[saturation]` and switches it on;
 - `--contrast` replaces `[contrast]` and switches it on;
-- `--curve` replaces the whole `[curve]` section (both shape and parameter) and switches it on.
+- `--curve` replaces the whole `[curve]` section (both shape and parameter) and switches it on;
+- `--headroom` replaces `[hdr]`: `--headroom 0` means no HDR picture, whatever the recipe says.
 
 A recipe stage with `on = false` is skipped unless you give the flag for that stage. A stage left out of the recipe (and not given as a flag) **does nothing** on the command line, because `prism` starts each photo from no adjustments — unlike the app, where a recipe leaves omitted stages at whatever values the open photo already had.
 
