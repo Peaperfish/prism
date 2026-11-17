@@ -502,6 +502,17 @@ UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 ctest --test-dir build-asan
 
 ASan stops at the first error it finds. UBSan only prints a `runtime error:` line and carries on, unless `UBSAN_OPTIONS=halt_on_error=1` makes it fail the test.
 
+### Checking Ultra HDR JPEGs with libultrahdr
+
+`PRISM_CHECK_LIBULTRAHDR=ON` (off by default) adds two tests that read the Ultra HDR JPEGs Prism writes with Google's [libultrahdr](https://github.com/google/libultrahdr): `UltraHdrLibultrahdr.WriteFixtures` writes test files with Prism, and `UltraHdrLibultrahdr.Check` checks that libultrahdr accepts them, reads back the metadata and ICC profile Prism wrote, and decodes them to within 0.03 stops (99.9th percentile) of Prism's own reader. libultrahdr is found with pkg-config (`libuhdr`, 2.0.2 or later) and linked only into the checker, never into `prism`, `prism_gui` or `prism_core`; nothing that ships contains it. The macOS CI job turns it on.
+
+```sh
+brew install libultrahdr
+cmake -S . -B build-uhdr -DPRISM_CHECK_LIBULTRAHDR=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build build-uhdr
+ctest --test-dir build-uhdr -R UltraHdrLibultrahdr
+```
+
 ## Building
 
 Requires CMake 3.20+ and a C++20 compiler (GCC 11+, Clang 14+ or MSVC 2022 or later).
@@ -582,7 +593,7 @@ On Windows: `cmake -S . -B build-release -A x64 -DPRISM_RELEASE=ON -DPRISM_BUILD
 |-----|----------|-------|--------|
 | Linux GCC + LibRaw | GCC (ubuntu-latest) | Release | on (`apt install libraw-dev`) |
 | Linux Clang | Clang (ubuntu-latest) | Release | off |
-| macOS (Apple Clang) | Apple Clang (macos-latest) | Release | off |
+| macOS (Apple Clang) | Apple Clang (macos-latest) | Release, `PRISM_CHECK_LIBULTRAHDR=ON` (`brew install libultrahdr`) | off |
 | Linux Clang ThreadSanitizer | Clang (ubuntu-latest) | Debug, `PRISM_SANITIZE_THREAD=ON` | off |
 | Linux Clang ASan + UBSan | Clang (ubuntu-latest) | Debug, `PRISM_SANITIZE_ADDRESS=ON` | off |
 | Windows MSVC + LibRaw (source) | MSVC (windows-latest, Visual Studio generator) | Release | on (`PRISM_LIBRAW_FROM_SOURCE=ON`: `libraw_r.dll`) |

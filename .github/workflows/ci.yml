@@ -42,6 +42,8 @@ jobs:
             cxx: clang++
             build_type: Release
             libraw: 'OFF'
+            # Also checks the Ultra HDR JPEGs Prism writes with libultrahdr (test only, #104).
+            uhdr_check: 'ON'
           # ThreadSanitizer: reports any data race in the multithreaded stages (see README).
           - name: Linux Clang ThreadSanitizer
             os: ubuntu-24.04
@@ -85,6 +87,14 @@ jobs:
       - name: Install LibRaw
         if: matrix.libraw == 'ON' && matrix.libraw_source != 'ON'
         run: sudo apt-get update && sudo apt-get install -y libraw-dev pkg-config
+
+      # libultrahdr (and its jpeg-turbo) from Homebrew's bottles, for PRISM_CHECK_LIBULTRAHDR: test
+      # only, linked into prism_uhdr_check alone. No auto-update, to keep the step short.
+      - name: Install libultrahdr
+        if: matrix.uhdr_check == 'ON'
+        run: |
+          HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 brew install libultrahdr pkgconf
+          pkg-config --modversion libuhdr
 
       # Recent Ubuntu kernels randomise more address bits than TSan's shadow memory layout
       # allows ("unexpected memory mapping"); 28 bits is what it supports.
@@ -141,6 +151,7 @@ jobs:
           -DPRISM_LIBRAW_FROM_SOURCE=${{ matrix.libraw_source || 'OFF' }}
           -DPRISM_SANITIZE_THREAD=${{ matrix.tsan || 'OFF' }}
           -DPRISM_SANITIZE_ADDRESS=${{ matrix.asan || 'OFF' }}
+          -DPRISM_CHECK_LIBULTRAHDR=${{ matrix.uhdr_check || 'OFF' }}
           -DFETCHCONTENT_BASE_DIR=${{ github.workspace }}/.deps
 
       # Which compiler this is and what it targets by default. A default target with FMA changes

@@ -161,3 +161,7 @@ if(PRISM_BUILD_GUI)
   prism_copy_libraw_dll(prism_gui_app_tests)
   gtest_discover_tests(prism_gui_app_tests)
 endif()
+
+if(PRISM_CHECK_LIBULTRAHDR)
+  add_subdirectory(uhdr_check)
+endif()

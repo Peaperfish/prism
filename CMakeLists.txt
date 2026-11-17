@@ -22,6 +22,9 @@ endif()
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(PRISM_BUILD_TESTS "Build the Prism unit tests" ON)
+# Test only: also check the Ultra HDR JPEGs Prism writes with libultrahdr (tests/uhdr_check), which
+# must be installed with its pkg-config file (macOS: brew install libultrahdr). Never shipped.
+option(PRISM_CHECK_LIBULTRAHDR "Check written Ultra HDR JPEGs with libultrahdr (needs PRISM_BUILD_TESTS)" OFF)
 # The desktop app (SDL3 + Dear ImGui, downloaded at configure time). Off by default: with it off
 # nothing is downloaded and no GUI target exists. prism_gui_core, its logic without a window, is
 # built either way.
