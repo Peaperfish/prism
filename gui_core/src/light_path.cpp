@@ -150,7 +150,8 @@ LightPathRow light_path_row(const LightPathInputs& in, StageId stage) {
             row.subtitle = "sRGB for the screen";
             LightPathRow::HdrControls controls;
             controls.on = s.hdr_on;
-            controls.headroom = snap_headroom(s.headroom_stops);
+            controls.headroom =
+                std::clamp(s.headroom_stops, headroom_min_stops, headroom_max_stops);
             controls.headroom_text = headroom_text(s.headroom_stops);
             controls.headroom_reset = "Reset to " + headroom_text(headroom_default_stops);
             row.hdr = std::move(controls);

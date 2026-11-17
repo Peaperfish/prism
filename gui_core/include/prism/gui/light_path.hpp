@@ -127,7 +127,7 @@ struct LightPathRow {
     // stored headroom (greyed out while HDR is off). The line is always there.
     struct HdrControls {
         bool on = false;
-        float headroom = 0.0f;       // snap_headroom of the stored headroom
+        float headroom = 0.0f;       // the stored headroom, clamped to 0 to +4.0
         std::string headroom_text;   // "+2.00 stops" (headroom_text)
         std::string headroom_reset;  // "Reset to +2.00 stops"
 

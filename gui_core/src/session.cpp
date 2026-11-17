@@ -516,6 +516,9 @@ std::variant<Image, Error> run_after_decode(
     DecodedImage decoded, const std::optional<Chromaticity>& as_shot, const EditSettings& settings,
     std::optional<int> long_side, const std::optional<FrameBox>& part, int threads,
     std::stop_token stop, const StageCallback& on_stage, Image* hdr = nullptr) {
+    if (hdr != nullptr) {
+        *hdr = Image{};  // only ever the finished HDR picture or nothing
+    }
     const int decoded_width = image_of(decoded).width;
     const int decoded_height = image_of(decoded).height;
 

@@ -387,8 +387,8 @@ private:
 //
 // With `hdr` and a headroom (output_headroom(settings)), the stages run as for an Ultra HDR JPEG
 // (prism::process_for_output): the result is the SDR picture, exactly as without `hdr`, and `hdr`
-// gets the HDR picture of the same light. Without a headroom `hdr` is left as it is; a failure or
-// a stop empties it.
+// gets the HDR picture of the same light. `hdr` is emptied first, so it is only ever the finished
+// HDR picture or nothing: without a headroom, on a failure and after a stop it is empty.
 [[nodiscard]] std::variant<Image, Error> finish_export(Photo decoded, const EditSettings& settings,
                                                        std::optional<int> long_side, int threads,
                                                        std::stop_token stop = {},

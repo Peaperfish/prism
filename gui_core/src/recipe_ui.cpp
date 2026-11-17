@@ -66,6 +66,9 @@ RecipeStages recipe_stages(const Recipe& recipe) {
         recipe.saturation && recipe.saturation->on);
     add(StageId::contrast, recipe.contrast.has_value(), recipe.contrast && recipe.contrast->on);
     add(StageId::curve, recipe.curve.has_value(), recipe.curve && recipe.curve->on);
+    // [hdr] sets Output encode's HDR (#105): on at its headroom, or off at 0. Output encode has no
+    // switch of its own, so it is never "switched off".
+    add(StageId::encode, recipe.hdr.has_value(), true);
     return stages;
 }
 
@@ -77,13 +80,18 @@ std::string stages_line(const RecipeStages& stages) {
                                 ? std::string()
                                 : "switches " + join_names(stages.switched_off) + " off";
     // The five stages every saved recipe has, and White balance, which only a photo with a chosen
-    // light adds: it is named on its own, so "all five" stays what it always was.
-    const bool white_balance = std::find(stages.set.begin(), stages.set.end(),
-                                         StageId::white_balance) != stages.set.end();
-    if (stages.set.size() == (white_balance ? 6u : 5u)) {
-        const std::string all =
-            white_balance ? "Sets all five stages and White balance" : "Sets all five stages";
-        return off.empty() ? all + "." : all + (white_balance ? ", and " : " and ") + off + ".";
+    // light adds, and Output encode, which only a recipe with [hdr] sets: they are named on their
+    // own, so "all five" stays what it always was.
+    std::vector<StageId> extras;
+    for (const StageId extra : {StageId::white_balance, StageId::encode}) {
+        if (std::find(stages.set.begin(), stages.set.end(), extra) != stages.set.end()) {
+            extras.push_back(extra);
+        }
+    }
+    if (stages.set.size() == 5u + extras.size()) {
+        const std::string all = extras.empty() ? "Sets all five stages"
+                                               : "Sets all five stages and " + join_names(extras);
+        return off.empty() ? all + "." : all + (extras.empty() ? " and " : ", and ") + off + ".";
     }
     std::string text = "Sets only " + join_names(stages.set);
     if (!off.empty()) {

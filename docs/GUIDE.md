@@ -134,11 +134,13 @@ A thin rail runs down the left, with a dot for each stage. The **viewed stage**'
 | Saturation | `×1.00` (`black and white` at exactly 0) | a slider from `×0.00` to `×2.00` |
 | Contrast | `Grade 2 · ×1.00` | a slider in half grades, from grade 0 to grade 5 (see [Contrast as a paper grade](#contrast-as-a-paper-grade)) |
 | Tone curve | none | four tabs: **None**, **Gamma**, **Reinhard**, **Filmic** |
-| Output encode | none | "sRGB for the screen" |
+| Output encode | none | "sRGB for the screen", then the **HDR** switch and the **Headroom** slider (see below) |
 
 The sliders of Exposure, Saturation and Contrast are centred on no change. Hover over a row for a one-sentence explanation; the Explain area says more. Point at the Colour matrix's value for the full path of its file.
 
 **Switches.** Exposure, Dodge & burn, White balance, Colour matrix, Saturation, Contrast and Tone curve each have a switch. Off, the photo shows what it looks like without that stage. The stage keeps its value, so switching it on again brings it back, and while it is off the row says what it will be: "+0.70 stops when on". The stage's slider and tabs are greyed out meanwhile. Each switch is one undo step. Decode and Output encode have none.
+
+**HDR.** Output encode's **HDR** switch, off at first, makes the exported JPEG an HDR file (an Ultra HDR JPEG): the SDR picture every viewer shows, exactly as without HDR, plus a gain map from which an HDR screen rebuilds the light above white. **Headroom** says how far above white that light may go, from +0.00 to +4.00 stops in steps of 0.10; it starts at +2.00 stops, and +1.00 stop is twice white's light. The slider is greyed out while HDR is off, and keeps its value. The switch is one undo step, and so is each drag of the slider. A recipe holds the headroom as `[hdr]` while HDR is on (see [RECIPES.md](RECIPES.md)).
 
 **The value line and dragging.** Drag a slider and the photo follows. A whole drag is one undo step. If a value is beyond what the slider can show (from a recipe, say), the row says **(beyond the slider)** (Contrast does not: its value already reads "Softer than grade 0" or "Harder than grade 5"), and the slider sits at its end until you move it. While a stage is off its slider sits at neutral, so nothing is beyond it.
 
@@ -392,7 +394,7 @@ The **Undo** and **Redo** buttons in the panel's header, and **Edit → Undo** a
 
 ### Export
 
-**Export…** in the panel's header, or **File → Export…** (`Cmd+E` or `Ctrl+E`), saves the photo with your edits as a PNG or JPEG. It first opens the **Export sheet**, where you choose the size, and **Save As…** then opens the system's save dialog.
+**Export…** in the panel's header, or **File → Export…** (`Cmd+E` or `Ctrl+E`), saves the photo with your edits as a PNG or JPEG, or with HDR on as an HDR JPEG. It first opens the **Export sheet**, where you choose the size, and **Save As…** then opens the system's save dialog.
 
 **The Export sheet** has a **Size** control with three choices:
 
@@ -404,7 +406,8 @@ A line under the number says what will be written, for example "Exports at 2048 
 
 `Enter` is **Save As…** and `Esc` or **Cancel** closes the sheet and changes nothing. Prism remembers your choice, also the next time you start it, so the sheet opens on it. While the sheet is open, the other keys (`C`, `I`, `T`, `W`, `B`, `J`, zoom, undo) do nothing.
 
-- The file name is suggested as the photo's name plus `_prism` next to the original (`IMG_0001.jpg` becomes `IMG_0001_prism.jpg`). An export that is reduced says so with the longer side added: `IMG_0001_prism_2048.jpg`; one that is not reduced has no number. A PNG source suggests PNG; anything else, including RAW, suggests JPEG.
+- The file name is suggested as the photo's name plus `_prism` next to the original (`IMG_0001.jpg` becomes `IMG_0001_prism.jpg`). An export that is reduced says so with the longer side added: `IMG_0001_prism_2048.jpg`; one that is not reduced has no number. A PNG source suggests PNG; anything else, including RAW, suggests JPEG, and so does any photo while HDR is on.
+- With HDR on, a name ending in `.png` is refused: a PNG holds no HDR picture. Prism says so and writes nothing; give the name `.jpg` or `.jpeg`, or turn HDR off.
 - If you type a name without `.png`, `.jpg` or `.jpeg`, the extension is added.
 - Prism won't overwrite the photo you opened: choose another name.
 - Export decodes the file again at **full size** (then reduces it, if you chose a smaller size) and runs every stage, so it does not depend on the preview. A **Saving…** window shows while it runs, with a **Cancel** button.

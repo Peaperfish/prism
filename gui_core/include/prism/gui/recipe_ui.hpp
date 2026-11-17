@@ -34,6 +34,7 @@ struct RecipeStages {
 //   some:            "Sets only Colour matrix, Saturation and Contrast; the other stages are
 //                     unchanged."
 //   and the light:   "Sets all five stages and White balance."
+//   and HDR ([hdr]):  "Sets all five stages and Output encode."
 //   with one off:    "Sets all five stages and switches Contrast off."
 //                    "Sets only Saturation and Contrast, and switches Contrast off; the other
 //                     stages are unchanged."

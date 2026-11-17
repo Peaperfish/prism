@@ -298,7 +298,10 @@ void set_headroom(EditSettings& s, float stops) noexcept {
 }
 
 std::string headroom_text(float stops) {
-    return format_exposure(snap_headroom(stops));
+    if (std::isnan(stops)) {
+        stops = headroom_default_stops;
+    }
+    return format_exposure(std::clamp(stops, headroom_min_stops, headroom_max_stops));
 }
 
 void set_curve_parameter(EditSettings& s, float value) {

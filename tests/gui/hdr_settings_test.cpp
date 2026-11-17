@@ -11,6 +11,7 @@
 #include <iterator>
 #include <limits>
 #include <optional>
+#include <stop_token>
 #include <string>
 #include <variant>
 #include <vector>
@@ -213,7 +214,8 @@ TEST(HdrControls, TheRowShowsTheHeadroomInSignedStops) {
     EXPECT_EQ(prism::gui::headroom_text(2.0f), "+2.00 stops");
     EXPECT_EQ(prism::gui::headroom_text(0.0f), "+0.00 stops");
     EXPECT_EQ(prism::gui::headroom_text(4.0f), "+4.00 stops");
-    EXPECT_EQ(prism::gui::headroom_text(1.26f), "+1.30 stops");
+    EXPECT_EQ(prism::gui::headroom_text(1.26f), "+1.26 stops");  // as stored, not snapped
+    EXPECT_EQ(prism::gui::headroom_text(9.0f), "+4.00 stops");
     EXPECT_EQ(prism::gui::headroom_text(4.0f), prism::gui::light_path_text::widest_headroom);
 
     for (const bool on : {false, true}) {
@@ -440,5 +442,57 @@ TEST(HdrExport, OffOrAtZeroTheFilesAreTheSdrOnesAsBefore) {
         const RemoveOnExit direct{temp_file(std::string("direct_") + name)};
         prism::save_image(direct.path, img);
         EXPECT_EQ(read_file(want.path), read_file(direct.path)) << name;
+    }
+}
+
+TEST(HdrControls, AnOffStepHeadroomFromARecipeIsShownAndExportedAsItIs) {
+    EditSettings s;
+    prism::gui::apply_recipe(s, prism::parse_recipe("prism_recipe = 3\n[hdr]\nheadroom = +2.25\n"));
+    const prism::gui::LightPathRow row = encode_row(s);
+    ASSERT_TRUE(row.hdr.has_value());
+    EXPECT_EQ(row.hdr->headroom, 2.25f);
+    EXPECT_EQ(row.hdr->headroom_text, "+2.25 stops");
+    EXPECT_EQ(prism::gui::output_headroom(s), 2.25f);  // what export and the recipe use
+    EXPECT_EQ(prism::gui::recipe_from(s).hdr->headroom, 2.25f);
+}
+
+TEST(HdrExport, FinishExportEmptiesTheHdrPictureWithoutAHeadroom) {
+    const RemoveOnExit source{write_ramp_png("in.png")};
+    EditSettings off = hdr_look(2.0f);
+    off.hdr_on = false;
+    std::variant<prism::Photo, prism::gui::Error> decoded =
+        prism::gui::decode_for_export(source.path, prism::gui::InputKind::image, off, 1);
+    ASSERT_TRUE(std::holds_alternative<prism::Photo>(decoded));
+    prism::Image hdr;
+    hdr.width = 1;
+    hdr.height = 1;
+    hdr.pixels = {1.0f, 2.0f, 3.0f};
+    const std::variant<prism::Image, prism::gui::Error> sdr = prism::gui::finish_export(
+        std::move(std::get<prism::Photo>(decoded)), off, std::nullopt, 1, {}, {}, &hdr);
+    ASSERT_TRUE(std::holds_alternative<prism::Image>(sdr));
+    EXPECT_TRUE(hdr.pixels.empty());
+    EXPECT_EQ(hdr.width, 0);
+}
+
+TEST(HdrExport, AStoppedHdrExportWritesNothing) {
+    const RemoveOnExit source{write_ramp_png("in.png")};
+    Session session;
+    ASSERT_EQ(session.open_file(source.path), std::nullopt);
+    ASSERT_EQ(session.set_settings(hdr_look(2.0f)), std::nullopt);
+    for (const char* at : {"exposure", "hdr_curve"}) {
+        std::stop_source stopper;
+        bool hdr_curve_ran = false;
+        const RemoveOnExit out{temp_file(std::string("stopped_") + at + ".jpg")};
+        const prism::gui::MaybeError error = prism::gui::export_image(
+            session.export_job(), out.path, stopper.get_token(), [&](const prism::StageTime& t) {
+                hdr_curve_ran = hdr_curve_ran || t.name == "hdr_curve";
+                if (t.name == at) {
+                    stopper.request_stop();
+                }
+            });
+        ASSERT_TRUE(error.has_value()) << at;
+        EXPECT_EQ(error->kind, ErrorKind::cancelled) << at;
+        EXPECT_FALSE(fs::exists(out.path)) << at;
+        EXPECT_EQ(hdr_curve_ran, std::string(at) == "hdr_curve") << at;
     }
 }

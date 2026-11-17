@@ -139,8 +139,10 @@ void set_curve_parameter(EditSettings& s, float value);
 // --- Output encode: HDR (#105) ------------------------------------------------------------------
 //
 // The Output encode row has HDR's switch and its Headroom slider, from headroom_min_stops (0) to
-// headroom_max_stops (+4.0) in steps of 0.1 (#96). The slider shows the stored headroom, greyed
-// out while HDR is off; moving it turns HDR on, as a stage slider turns its stage on.
+// headroom_max_stops (+4.0) in steps of 0.1 (#96). The slider shows the stored headroom (which a
+// recipe may give off the steps, e.g. +2.25) and is greyed out while HDR is off, like a stage's
+// slider while its stage is off; a drag snaps to the steps. set_headroom (a drag, the reset)
+// also turns HDR on.
 
 inline constexpr float headroom_step = 0.1f;
 
@@ -154,7 +156,8 @@ void set_hdr_on(EditSettings& s, bool on) noexcept;
 // Sets the headroom (snap_headroom) and turns HDR on.
 void set_headroom(EditSettings& s, float stops) noexcept;
 
-// The headroom as the row shows it: format_exposure of the snapped value, "+2.00 stops".
+// The headroom as the row shows it: format_exposure of the value as stored, clamped to 0 to +4.0
+// (NaN gives the default): "+2.00 stops", "+2.25 stops" from a recipe.
 [[nodiscard]] std::string headroom_text(float stops);
 
 // --- Viewing vs. editing -------------------------------------------------------------------------
