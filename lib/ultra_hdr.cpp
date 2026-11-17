@@ -10,12 +10,17 @@
 // - ISO 21496-1 gain-map metadata, as libultrahdr 2.0.2 writes it (lib/src/gainmapmetadata.cpp,
 //   encodeGainmapMetadata; the spike's ISO-only file was byte-identical to libultrahdr's).
 // - CIPA DC-007 Multi-Picture Format, as libultrahdr writes it (lib/src/multipictureformat.cpp).
+// Two differences from libultrahdr 2.0.2's own files, both on purpose: its primary has the ICC
+// profile before the ISO version segment (the spec's Figure 2 puts ISO right after the XMP, which
+// Prism follows), and its MPF comes after DQT/SOF/DHT, just before SOS, where ImageIO ignores the
+// hdrgm metadata; Prism's MPF ends the APP block (spike #98).
 
 #include "prism/ultra_hdr.hpp"
 
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -138,25 +143,37 @@ StbJpeg split_stb_jpeg(std::span<const std::uint8_t> jpeg, const char* what) {
         parts.tables = jpeg.subspan(p);
         break;
     }
-    // The tables must reach a SOS (which ends the walk: entropy-coded data follows).
+    // The tables must reach a SOS (which ends the walk: entropy-coded data follows), with no APPn
+    // among them.
     for (std::size_t q = p;;) {
         if (q + 4 > jpeg.size() || jpeg[q] != 0xFF) {
             throw bad("has no SOS segment");
         }
-        if (jpeg[q + 1] == marker_sos) {
+        const std::uint8_t marker = jpeg[q + 1];
+        const std::size_t length = (std::size_t(jpeg[q + 2]) << 8) | jpeg[q + 3];
+        if (length < 2 || q + 2 + length > jpeg.size()) {
+            throw bad("has a marker segment that runs past its end");
+        }
+        if (marker >= marker_app0 && marker <= marker_app15) {
+            throw bad("has an APPn segment besides one APP0");
+        }
+        if (marker == marker_sos) {
             break;
         }
-        q += 2 + ((std::size_t(jpeg[q + 2]) << 8) | jpeg[q + 3]);
+        q += 2 + length;
     }
     return parts;
 }
 
-// The shortest text that reads back as exactly `v` (std::to_chars, locale-independent).
+// The shortest plain decimal that reads back as exactly `v` (std::to_chars in fixed format, never
+// an exponent, which XMP readers parsing decimals by hand may not take; locale-independent).
 std::string xmp_number(float v) {
-    char buffer[32];
-    const std::to_chars_result r = std::to_chars(buffer, buffer + sizeof buffer, v);
+    char buffer[64];
+    const std::to_chars_result r =
+        std::to_chars(buffer, buffer + sizeof buffer, v, std::chars_format::fixed);
     if (r.ec != std::errc{}) {
-        throw std::logic_error("to_chars failed");  // cannot happen: 32 chars fit any float
+        // Only a float of 1e39 or more needs over 64 characters; no gain-map value comes near.
+        throw std::invalid_argument("Ultra HDR JPEG: a gain map value is too large for XMP");
     }
     return std::string(buffer, r.ptr);
 }
@@ -394,6 +411,9 @@ UltraHdrJpeg encode_ultra_hdr_jpeg(std::span<const std::uint8_t> sdr_srgb8, cons
         stb_jpeg(sdr_srgb8, width, height, 3, detail::sdr_jpeg_quality, "SDR picture");
 
     // The base as a viewer decodes it.
+    if (base.size() > std::size_t(std::numeric_limits<int>::max())) {
+        throw std::invalid_argument("Ultra HDR JPEG: the SDR picture's JPEG is over 2 GB");
+    }
     int w = 0;
     int h = 0;
     int channels = 0;

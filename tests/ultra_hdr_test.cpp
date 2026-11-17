@@ -23,6 +23,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <type_traits>
 #include <vector>
 
@@ -66,6 +67,15 @@ fs::path temp_file(const std::string& name) {
     return fs::path(testing::TempDir()) /
            ("prism_uhdr_" + std::string(test->name()) + "_" + std::to_string(pid) + "_" + name);
 }
+
+// Removes a file when it goes out of scope, so a failed ASSERT leaves nothing behind.
+struct RemoveOnExit {
+    fs::path path;
+    ~RemoveOnExit() {
+        std::error_code ignored;
+        fs::remove(path, ignored);
+    }
+};
 
 Bytes read_file(const fs::path& path) {
     std::ifstream in(path, std::ios::binary);
@@ -565,6 +575,78 @@ TEST(UltraHdrJpeg, IsoVersionInThePrimaryAndFractionsInTheGainMap) {
     EXPECT_EQ(double(fr.gamma.numerator) / fr.gamma.denominator, 1.0);
 }
 
+namespace {
+
+// stb's JPEGs of the ramp, to wrap with chosen metadata.
+struct RampJpegs {
+    Bytes base;
+    Bytes map;
+};
+RampJpegs ramp_jpegs() {
+    const Pictures p = ramp();
+    RampJpegs j;
+    EXPECT_NE(stbi_write_jpg_to_func(stb_append, &j.base, 37, 23, 3, p.sdr.data(), 95), 0);
+    const Bytes grey(std::size_t(37) * 23, 128);
+    EXPECT_NE(stbi_write_jpg_to_func(stb_append, &j.map, 37, 23, 1, grey.data(), 97), 0);
+    return j;
+}
+
+}  // namespace
+
+// Every hdrgm number is a plain decimal, never an exponent ("1e-04"), which XMP readers that
+// parse decimals by hand may not take; and it still reads back exactly.
+TEST(UltraHdrJpeg, XmpNumbersArePlainDecimals) {
+    const RampJpegs j = ramp_jpegs();
+    prism::GainMapMetadata m;
+    m.min_log2 = 1e-4f;
+    m.max_log2 = 1.2345678e-5f;
+    m.hdr_capacity_max = 2.0f;
+    const Bytes file = prism::assemble_ultra_hdr_jpeg(j.base, j.map, m);
+    Parsed f;
+    ASSERT_TRUE(parse(file, f));
+    const std::string xmp = xmp_text(*find(f.gain_map, "APP1 XMP"));
+    for (const char* name :
+         {"hdrgm:GainMapMin", "hdrgm:GainMapMax", "hdrgm:Gamma", "hdrgm:OffsetSDR",
+          "hdrgm:OffsetHDR", "hdrgm:HDRCapacityMin", "hdrgm:HDRCapacityMax"}) {
+        const std::optional<std::string> v = xmp_attribute(xmp, name);
+        ASSERT_TRUE(v) << name;
+        const bool plain = !v->empty() && v->find_first_not_of("-0123456789.") == std::string::npos;
+        EXPECT_TRUE(plain) << name << " = " << *v;
+    }
+    EXPECT_EQ(xmp_attribute(xmp, "hdrgm:GainMapMin"), "0.0001");
+    EXPECT_EQ(xmp_float(xmp, "hdrgm:GainMapMax"), 1.2345678e-5f);
+}
+
+// When every value is a whole number (offsets 0), ISO 21496-1 shares one denominator: flag 0x08
+// and 8 fields in libultrahdr's order (denominator, base headroom, alternate headroom, min, max,
+// gamma, base offset, alternate offset).
+TEST(UltraHdrJpeg, IsoWithACommonDenominator) {
+    const RampJpegs j = ramp_jpegs();
+    prism::GainMapMetadata m;
+    m.min_log2 = -1.0f;
+    m.max_log2 = 3.0f;
+    m.gamma = 1.0f;
+    m.offset_sdr = 0.0f;
+    m.offset_hdr = 0.0f;
+    m.hdr_capacity_min = 0.0f;
+    m.hdr_capacity_max = 2.0f;
+    const Bytes file = prism::assemble_ultra_hdr_jpeg(j.base, j.map, m);
+    Parsed f;
+    ASSERT_TRUE(parse(file, f));
+    const Segment& iso = *find(f.gain_map, "APP2 ISO");
+    const std::size_t ns = std::string_view("urn:iso:std:iso:ts:21496:-1").size() + 1;
+    const Bytes want = {0,    0,    0,    0,    0x48,  //
+                        0,    0,    0,    1,           // denominator
+                        0,    0,    0,    0,           // base headroom 0
+                        0,    0,    0,    2,           // alternate headroom 2
+                        0xFF, 0xFF, 0xFF, 0xFF,        // min -1
+                        0,    0,    0,    3,           // max 3
+                        0,    0,    0,    1,           // gamma 1
+                        0,    0,    0,    0,           // base offset 0
+                        0,    0,    0,    0};          // alternate offset 0
+    EXPECT_EQ(Bytes(iso.payload.begin() + ns, iso.payload.end()), want);
+}
+
 TEST(UltraHdrJpeg, IccSegmentHoldsTheStoredProfile) {
     Parsed f;
     ASSERT_TRUE(parse(ramp_file().bytes, f));
@@ -603,6 +685,7 @@ TEST(UltraHdrJpeg, PrimaryDecodesAsTheSdrJpeg) {
     const Bytes sdr = prism::encode_srgb8(img);
 
     const fs::path out = temp_file("vivid.jpg");
+    const RemoveOnExit remove_out{out};
     prism::save_ultra_hdr_jpeg(out, sdr, hdr, 2.0f);
     EXPECT_TRUE(jpeg_matches(out, golden_dir() / "image" / "vivid", "Ultra HDR primary"));
 
@@ -613,7 +696,6 @@ TEST(UltraHdrJpeg, PrimaryDecodesAsTheSdrJpeg) {
     int h = 0;
     const Bytes want = stb_decode(plain, 3, w, h);
     EXPECT_TRUE(matches(decode(out), Pixels{w, h, want}, Tolerance{0, 0.0}, "plain stb JPEG"));
-    fs::remove(out);
 }
 
 // The gain map decodes to the codes make_gain_map gave, within what JPEG at
@@ -678,6 +760,7 @@ TEST(UltraHdrJpeg, GainMapIsMadeFromTheDecodedPrimary) {
 TEST(UltraHdrJpeg, SaveWritesTheEncodedFileAndReplacesAnOldOne) {
     const Pictures p = ramp();
     const fs::path out = temp_file("ramp.jpg");
+    const RemoveOnExit remove_out{out};
     {
         std::ofstream old(out, std::ios::binary);
         old << "an older file";
@@ -685,7 +768,6 @@ TEST(UltraHdrJpeg, SaveWritesTheEncodedFileAndReplacesAnOldOne) {
     prism::save_ultra_hdr_jpeg(out, p.sdr, p.hdr, ramp_headroom);
     EXPECT_EQ(read_file(out), ramp_file().bytes);
     EXPECT_FALSE(fs::exists(fs::path(out).concat(".tmp")));
-    fs::remove(out);
 }
 
 TEST(UltraHdrJpeg, SaveIntoAMissingFolderThrowsAndLeavesNothing) {
@@ -729,6 +811,21 @@ TEST(UltraHdrJpeg, BadInputsAreRefused) {
     EXPECT_THROW(
         (void)prism::assemble_ultra_hdr_jpeg(std::span(base).first(base.size() - 1), base, m),
         std::invalid_argument);
+    // An APPn among the tables (after DQT) is refused too.
+    Bytes app1_late = base;
+    const std::size_t dqt = 2 + 18;
+    ASSERT_EQ(app1_late[dqt + 1], 0xDB);
+    const std::size_t after_dqt = dqt + 2 + ((std::size_t(base[dqt + 2]) << 8) | base[dqt + 3]);
+    app1_late.insert(app1_late.begin() + std::ptrdiff_t(after_dqt), app1.begin(), app1.end());
+    EXPECT_THROW((void)prism::assemble_ultra_hdr_jpeg(app1_late, base, m), std::invalid_argument);
+    // A table whose length runs past the end, in a file that still ends with EOI.
+    Bytes long_dqt = {0xFF, 0xD8, 0xFF, 0xDB, 0x40, 0x00, 0x00, 0xFF, 0xD9};
+    EXPECT_THROW((void)prism::assemble_ultra_hdr_jpeg(long_dqt, base, m), std::invalid_argument);
+    Bytes long_dqt_after_app0(base.begin(), base.begin() + 20);
+    long_dqt_after_app0.insert(long_dqt_after_app0.end(),
+                               {0xFF, 0xDB, 0x40, 0x00, 0x00, 0xFF, 0xD9});
+    EXPECT_THROW((void)prism::assemble_ultra_hdr_jpeg(long_dqt_after_app0, base, m),
+                 std::invalid_argument);
     // A value no ISO 21496-1 fraction holds.
     prism::GainMapMetadata nan = m;
     nan.max_log2 = NAN;
@@ -786,6 +883,7 @@ TEST(UltraHdrJpeg, ImageIOFindsTheGainMapAndDecodesToHdr) {
             }
         }
         const fs::path out = temp_file("patches.jpg");
+        const RemoveOnExit remove_out{out};
         prism::save_ultra_hdr_jpeg(out, prism::encode_srgb8(sdr), hdr, 2.0f);
 
         const std::string path = out.string();
@@ -819,7 +917,6 @@ TEST(UltraHdrJpeg, ImageIOFindsTheGainMapAndDecodesToHdr) {
         };
         EXPECT_NEAR(mean_green(8, w / 2 - 8), 4.0, 0.08);
         EXPECT_NEAR(mean_green(w / 2 + 8, w - 8), 0.18, 0.01);
-        fs::remove(out);
     } else {
         GTEST_SKIP() << "ImageIO reads ISO gain maps from macOS 15";
     }

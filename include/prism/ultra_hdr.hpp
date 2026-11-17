@@ -53,10 +53,12 @@ inline constexpr int gain_map_jpeg_quality = 97;
 
 // Wraps two JPEGs as stb_image_write writes them (SOI, APP0 JFIF, then tables, SOS ... EOI, and
 // no other APPn segment) into an Ultra HDR JPEG with `metadata`, in the layout above. `base_jpeg`
-// is the SDR picture, `gain_map_jpeg` the gain map encoded as a grey JPEG (stb writes a grey
-// picture as YCbCr with neutral chroma, which every reader takes as the gain map's luma).
-// Throws std::invalid_argument if either is not such a JPEG, or if a metadata value can't be
-// written as an ISO 21496-1 fraction.
+// is the SDR picture, `gain_map_jpeg` the gain map encoded as a grey JPEG. stb writes a grey
+// picture as three-component YCbCr with neutral chroma: libultrahdr 2.x decodes it as RGB with
+// equal channels and ImageIO, Chrome and libultrahdr all read it (spike #98); older Android
+// decoders are unchecked. Throws std::invalid_argument if either is not such a JPEG, if a metadata
+// value can't be written as an ISO 21496-1 fraction or as XMP, if a segment would pass 64 KB, or
+// if the file would pass 4 GB.
 [[nodiscard]] std::vector<std::uint8_t> assemble_ultra_hdr_jpeg(
     std::span<const std::uint8_t> base_jpeg, std::span<const std::uint8_t> gain_map_jpeg,
     const GainMapMetadata& metadata);
@@ -72,16 +74,17 @@ struct UltraHdrJpeg {
 // - `headroom_stops`: N, as for make_gain_map (HDRCapacityMax = N).
 // The SDR picture is encoded as save_image does (stb, quality 95), then decoded again, and the
 // gain map is made from those decoded pixels, since that is what a viewer starts from. The map is
-// encoded at gain_map_jpeg_quality. Throws std::invalid_argument as make_gain_map does, and
-// std::runtime_error if stb fails to encode.
+// encoded at gain_map_jpeg_quality. Throws std::invalid_argument if the sizes disagree, as
+// make_gain_map and assemble_ultra_hdr_jpeg do, or if the SDR JPEG passes 2 GB; and
+// std::runtime_error if stb fails to encode the picture or to decode it again.
 [[nodiscard]] UltraHdrJpeg encode_ultra_hdr_jpeg(std::span<const std::uint8_t> sdr_srgb8,
                                                  const Image& hdr, float headroom_stops,
                                                  const GainMapOptions& options = {},
                                                  int threads = 0);
 
 // encode_ultra_hdr_jpeg, written to `path` atomically (write_file_atomically): a failed write
-// leaves any file already at `path` as it was. Throws std::runtime_error naming the file on
-// failure, std::invalid_argument as encode_ultra_hdr_jpeg does.
+// leaves any file already at `path` as it was. Throws std::runtime_error naming the file when it
+// can't be written, and otherwise as encode_ultra_hdr_jpeg does (those messages don't name it).
 void save_ultra_hdr_jpeg(const std::filesystem::path& path, std::span<const std::uint8_t> sdr_srgb8,
                          const Image& hdr, float headroom_stops, int threads = 0);
 
