@@ -7,6 +7,7 @@
 #include <limits>
 #include <optional>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 #include "prism/gain_map.hpp"
@@ -50,7 +51,7 @@ TEST(GainMap, FourPixelsWithThePerPixelLimit) {
     EXPECT_EQ(map.height, 1);
     // Gains (log2): 0, 1.983257, 2.330872, and red limited to white's 1.983257.
     EXPECT_EQ(map.codes, (std::vector<std::uint8_t>{0, 216, 255, 216}));
-    EXPECT_NEAR(map.metadata.min_log2, 0.0, 1e-6);
+    EXPECT_EQ(map.metadata.min_log2, 0.0f);  // black: exactly log2(1)
     EXPECT_NEAR(map.metadata.max_log2, 2.330872, 2e-5);
     EXPECT_EQ(map.metadata.gamma, 1.0f);
     EXPECT_EQ(map.metadata.offset_sdr, 1.0f / 64.0f);
@@ -123,8 +124,69 @@ TEST(GainMap, RoundTripIsWithinOneCode) {
             }
             const double back = prism::gain_map_log2(map.codes[i], map.metadata);
             ASSERT_LE(std::fabs(back - g), step * (limit ? 1.0 : 0.5) + 1e-5) << i;
+            if (limit) {
+                // Never past the limit, not even by rounding the code up.
+                ASSERT_LE(back,
+                          std::log2((4.0 + o) / (std::max({s[0], s[1], s[2], 0.0f}) + o)) + 1e-6)
+                    << i;
+            }
+        }
+        if (limit) {
+            // So at full weight every channel stays within H = 4 (to a few float ulps).
+            for (const float v : prism::apply_gain_map(b, map, 1.0f).pixels) {
+                ASSERT_LE(v, 4.0f * (1.0f + 1e-6f));
+            }
         }
     }
+}
+
+TEST(GainMap, NonFiniteHdrLightGivesFiniteGains) {
+    // NaN counts as no light; +infinity as the largest float (then limited to H, or not).
+    const std::vector<std::uint8_t> b = {128, 128, 128, 128, 128, 128, 0, 0, 0};
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const float inf = std::numeric_limits<float>::infinity();
+    const prism::Image hdr{3, 1, {nan, nan, nan, inf, inf, inf, 0, 0, 0}};
+    for (const bool limit : {true, false}) {
+        prism::GainMapOptions options;
+        options.keep_channels_within_headroom = limit;
+        const prism::GainMap map = prism::make_gain_map(b, hdr, 2.0f, options);
+        EXPECT_TRUE(std::isfinite(map.metadata.min_log2)) << limit;
+        EXPECT_TRUE(std::isfinite(map.metadata.max_log2)) << limit;
+        // NaN: log2((0 + 1/64) / (0.2158605 + 1/64)) = -3.888994, the smallest gain.
+        EXPECT_NEAR(map.metadata.min_log2, -3.888994, 2e-5) << limit;
+        EXPECT_EQ(map.codes[0], 0) << limit;
+        EXPECT_EQ(map.codes[1], 255) << limit;
+        EXPECT_TRUE(prism::iso_fractions(map.metadata).has_value()) << limit;
+    }
+    // Limited, infinity lands on the limit for grey 128: log2((4 + 1/64) / (0.2158605 + 1/64)).
+    EXPECT_NEAR(prism::make_gain_map(b, hdr, 2.0f).metadata.max_log2, 4.116631, 2e-5);
+}
+
+TEST(GainMap, EmptyPictures) {
+    for (const auto& [w, h] : {std::pair{0, 0}, std::pair{5, 0}, std::pair{0, 3}}) {
+        const prism::GainMap map = prism::make_gain_map({}, prism::Image{w, h, {}}, 2.0f);
+        EXPECT_EQ(map.width, w);
+        EXPECT_EQ(map.height, h);
+        EXPECT_TRUE(map.codes.empty());
+        EXPECT_EQ(map.metadata.hdr_capacity_max, 2.0f);
+        EXPECT_TRUE(prism::apply_gain_map({}, map, 1.0f).pixels.empty());
+    }
+}
+
+TEST(GainMap, GammaDecodesWithItsInverse) {
+    prism::GainMapMetadata m;
+    m.max_log2 = 2.0f;
+    m.gamma = 2.0f;
+    // r = (128 / 255)^(1/2) = 0.708492; 2 * r = 1.416984.
+    EXPECT_NEAR(prism::gain_map_log2(128, m), 1.416984, 1e-5);
+    EXPECT_EQ(prism::gain_map_log2(0, m), 0.0f);
+    EXPECT_EQ(prism::gain_map_log2(255, m), 2.0f);
+    // The ends are exact even when min and max are far apart.
+    m.gamma = 1.0f;
+    m.min_log2 = -3.888994f;
+    m.max_log2 = 2.330872f;
+    EXPECT_EQ(prism::gain_map_log2(0, m), -3.888994f);
+    EXPECT_EQ(prism::gain_map_log2(255, m), 2.330872f);
 }
 
 TEST(GainMap, BadInputIsRefused) {
@@ -158,7 +220,7 @@ TEST(GainMap, WithoutTheLimitASaturatedRedPassesHeadroom) {
     options.keep_channels_within_headroom = false;
     const prism::GainMap map = prism::make_gain_map(base, four_hdr(), 2.0f, options);
     const prism::Image out = prism::apply_gain_map(base, map, 1.0f);
-    EXPECT_NEAR(out.pixels[9], 5.59028f, 1e-4f);  // red: 1.4 stops-worth past H = 4
+    EXPECT_NEAR(out.pixels[9], 5.59028f, 1e-4f);  // red: 1.40x H = 4, about 0.48 stops past it
     EXPECT_NEAR(out.pixels[3], 3.99464f, 1e-4f);
     EXPECT_NEAR(out.pixels[6], 1.14771f, 1e-4f);
 }
@@ -170,6 +232,16 @@ TEST(GainMap, ApplyAtHalfWeight) {
     EXPECT_NEAR(out.pixels[6], 0.50360f, 1e-4f);
     EXPECT_NEAR(out.pixels[9], 1.99767f, 1e-4f);
     EXPECT_NEAR(out.pixels[10], 0.01535f, 1e-4f);
+}
+
+TEST(GainMap, WeightIsClampedToZeroToOne) {
+    const prism::GainMap map = prism::make_gain_map(base, four_hdr(), 2.0f);
+    EXPECT_EQ(bits(prism::apply_gain_map(base, map, 3.0f)),
+              bits(prism::apply_gain_map(base, map, 1.0f)));
+    const prism::Image decoded = prism::decode_srgb8(base, 4, 1);
+    for (const float w : {-1.0f, -0.0f, std::numeric_limits<float>::quiet_NaN()}) {
+        EXPECT_EQ(bits(prism::apply_gain_map(base, map, w)), bits(decoded)) << w;
+    }
 }
 
 TEST(GainMap, WeightZeroIsTheDecodedBaseExactly) {
@@ -213,6 +285,12 @@ TEST(GainMap, ViewerWeightFromDisplayHeadroom) {
     }
     m.hdr_capacity_max = 4.0f;
     EXPECT_EQ(prism::gain_map_weight(4.0f, m), 0.5f);
+    m.hdr_capacity_min = 1.0f;  // a floor: below 2x white nothing, from 8x the whole gain
+    m.hdr_capacity_max = 3.0f;
+    EXPECT_EQ(prism::gain_map_weight(4.0f, m), 0.5f);
+    EXPECT_EQ(prism::gain_map_weight(2.0f, m), 0.0f);
+    EXPECT_EQ(prism::gain_map_weight(8.0f, m), 1.0f);
+    m.hdr_capacity_min = 0.0f;
     m.hdr_capacity_max = 0.0f;  // no span: all or nothing
     EXPECT_EQ(prism::gain_map_weight(1.0f, m), 1.0f);
     EXPECT_EQ(prism::gain_map_weight(0.5f, m), 0.0f);
@@ -235,15 +313,17 @@ TEST(GainMap, OneAndEightThreadsGiveTheSameBits) {
         b[i] = static_cast<std::uint8_t>((i * 7 + i / 3001) % 256);
         hdr.pixels[i] = static_cast<float>((i * 13) % 1000) / 250.0f;  // 0 to 4
     }
-    const prism::GainMap one = prism::make_gain_map(b, hdr, 2.0f, {}, 1);
-    const prism::GainMap eight = prism::make_gain_map(b, hdr, 2.0f, {}, 8);
-    EXPECT_EQ(one.metadata, eight.metadata);
-    EXPECT_EQ(one.codes, eight.codes);
-    // Every code is used, so a chunk that skipped pixels would show.
-    EXPECT_EQ(std::count(one.codes.begin(), one.codes.end(), 0),
-              std::count(eight.codes.begin(), eight.codes.end(), 0));
-    EXPECT_EQ(bits(prism::apply_gain_map(b, one, 0.7f, 1)),
-              bits(prism::apply_gain_map(b, one, 0.7f, 8)));
+    for (const bool limit : {true, false}) {
+        prism::GainMapOptions options;
+        options.keep_channels_within_headroom = limit;
+        const prism::GainMap one = prism::make_gain_map(b, hdr, 2.0f, options, 1);
+        const prism::GainMap eight = prism::make_gain_map(b, hdr, 2.0f, options, 8);
+        EXPECT_EQ(one.metadata, eight.metadata) << limit;
+        EXPECT_EQ(one.codes, eight.codes) << limit;
+        EXPECT_EQ(bits(prism::apply_gain_map(b, one, 0.7f, 1)),
+                  bits(prism::apply_gain_map(b, one, 0.7f, 8)))
+            << limit;
+    }
 }
 
 // --- ISO 21496-1 fractions

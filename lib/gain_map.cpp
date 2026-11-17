@@ -1,6 +1,7 @@
 #include "prism/gain_map.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -41,14 +42,46 @@ GainMap make_gain_map(std::span<const std::uint8_t> base_srgb8, const Image& hdr
     const int width = hdr.width;
     const int height = hdr.height;
     const std::size_t pixels = static_cast<std::size_t>(width) * height;
-    const Image sdr = decode_srgb8(base_srgb8, width, height, threads);
+    // The base's 256 levels as linear light, exactly as decode_srgb8 gives them, so a lookup
+    // replaces a whole decoded copy of the picture (12 bytes a pixel).
+    std::array<float, 256> linear{};
+    {
+        std::vector<std::uint8_t> levels(256 * 3);
+        for (std::size_t i = 0; i < levels.size(); ++i) {
+            levels[i] = static_cast<std::uint8_t>(i / 3);
+        }
+        const Image decoded = decode_srgb8(levels, 256, 1, 1);
+        for (std::size_t c = 0; c < 256; ++c) {
+            linear[c] = decoded.pixels[c * 3];
+        }
+    }
     const float o = gain_map_offset;
     const float peak = std::exp2(headroom_stops);
+    const bool limited = options.keep_channels_within_headroom;
 
-    // Pass 1: each pixel's log2 gain and its limit, and each row's smallest and largest gain.
-    // (Per row, not per thread, so the result cannot depend on how the rows were split.)
+    // A pixel's log2 gain before quantising, and the most its strongest channel allows.
+    const auto base_at = [&](std::size_t i, int c) { return linear[base_srgb8[i * 3 + c]]; };
+    const auto limit_at = [&](std::size_t i) {
+        // At full weight the strongest channel becomes (c + o) * 2^g - o: keep it <= H.
+        const float strongest = std::max({base_at(i, 0), base_at(i, 1), base_at(i, 2)});
+        return std::log2((peak + o) / (strongest + o));
+    };
+    const auto gain_at = [&](std::size_t i) {
+        const float* h = &hdr.pixels[i * 3];
+        const float y_sdr = luminance(base_at(i, 0), base_at(i, 1), base_at(i, 2));
+        // No light (negative) and NaN count as 0; +infinity as the largest float, so every gain
+        // is finite.
+        const float y = luminance(h[0], h[1], h[2]);
+        const float y_hdr = y > 0.0f ? std::min(y, std::numeric_limits<float>::max()) : 0.0f;
+        // In double: the largest float over a dark base would overflow a float ratio.
+        const auto g = static_cast<float>(
+            std::log2((static_cast<double>(y_hdr) + o) / (static_cast<double>(y_sdr) + o)));
+        return limited ? std::min(g, limit_at(i)) : g;
+    };
+
+    // Pass 1: each pixel's log2 gain, and each row's smallest and largest. (Min and max are exact
+    // in any order, so splitting the rows another way cannot change them.)
     std::vector<float> log_gain(pixels);
-    std::vector<float> limit(options.keep_channels_within_headroom ? pixels : 0);
     std::vector<float> row_min(static_cast<std::size_t>(height));
     std::vector<float> row_max(static_cast<std::size_t>(height));
     for_rows(width, height, threads, [&](int begin, int end) {
@@ -57,17 +90,7 @@ GainMap make_gain_map(std::span<const std::uint8_t> base_srgb8, const Image& hdr
             float hi = -std::numeric_limits<float>::infinity();
             for (int x = 0; x < width; ++x) {
                 const std::size_t i = static_cast<std::size_t>(y) * width + x;
-                const float* s = &sdr.pixels[i * 3];
-                const float* h = &hdr.pixels[i * 3];
-                const float y_sdr = std::max(luminance(s[0], s[1], s[2]), 0.0f);
-                const float y_hdr = std::max(luminance(h[0], h[1], h[2]), 0.0f);
-                float g = std::log2((y_hdr + o) / (y_sdr + o));
-                if (options.keep_channels_within_headroom) {
-                    // At full weight the strongest channel becomes (c + o) * 2^g - o: keep it <= H.
-                    const float strongest = std::max({s[0], s[1], s[2], 0.0f});
-                    limit[i] = std::log2((peak + o) / (strongest + o));
-                    g = std::min(g, limit[i]);
-                }
+                const float g = gain_at(i);
                 log_gain[i] = g;
                 lo = std::min(lo, g);
                 hi = std::max(hi, g);
@@ -100,8 +123,8 @@ GainMap make_gain_map(std::span<const std::uint8_t> base_srgb8, const Image& hdr
             const float t = (log_gain[i] - m.min_log2) / range;
             int code = static_cast<int>(std::floor(t * 255.0f + 0.5f));
             code = std::clamp(code, 0, 255);
-            if (options.keep_channels_within_headroom && code > 0 &&
-                gain_map_log2(static_cast<std::uint8_t>(code), m) > limit[i]) {
+            if (limited && code > 0 &&
+                gain_map_log2(static_cast<std::uint8_t>(code), m) > limit_at(i)) {
                 --code;  // rounding went up past the limit: half a step down is within it
             }
             map.codes[i] = static_cast<std::uint8_t>(code);
@@ -113,7 +136,8 @@ GainMap make_gain_map(std::span<const std::uint8_t> base_srgb8, const Image& hdr
 float gain_map_log2(std::uint8_t code, const GainMapMetadata& m) noexcept {
     const float t = static_cast<float>(code) / 255.0f;
     const float recovery = m.gamma == 1.0f ? t : std::pow(t, 1.0f / m.gamma);
-    return m.min_log2 + (m.max_log2 - m.min_log2) * recovery;
+    // As the spec and libultrahdr write it: exactly min at code 0 and exactly max at 255.
+    return m.min_log2 * (1.0f - recovery) + m.max_log2 * recovery;
 }
 
 float gain_map_weight(float display_headroom, const GainMapMetadata& m) noexcept {
@@ -135,7 +159,8 @@ Image apply_gain_map(std::span<const std::uint8_t> base_srgb8, const GainMap& ma
         throw std::invalid_argument("apply_gain_map: gain map size does not match its dimensions");
     }
     Image out = decode_srgb8(base_srgb8, map.width, map.height, threads);
-    if (!(weight != 0.0f)) {
+    weight = weight > 0.0f ? std::min(weight, 1.0f) : 0.0f;  // NaN too
+    if (weight == 0.0f) {
         return out;  // the base exactly ((c + o) - o is not always c in float)
     }
     // One factor per code, so each pixel costs a lookup instead of an exp2.

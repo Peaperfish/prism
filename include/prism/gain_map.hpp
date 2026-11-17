@@ -61,28 +61,37 @@ struct GainMap {
 // - `hdr`: the HDR picture (process_hdr's `hdr`), linear float;
 // - `headroom_stops`: N, written as HDRCapacityMax; HDRCapacityMin is 0.
 // Each pixel's gain is (Y_hdr + 1/64) / (Y_sdr + 1/64) with Y the luminance (negative light
-// counts as 0), limited per pixel as `options` says; GainMapMin and GainMapMax are the smallest
-// and largest log2 gains in the picture, and each code is round(255 * (log2 gain - min) /
-// (max - min)), lowered by one where rounding up would let the limit be passed. When every pixel
-// has the same gain, min = max and every code is 0. Bit-identical for any thread count. Throws
+// counts as 0, and so does NaN; +infinity counts as the largest float), limited per pixel as
+// `options` says. GainMapMin and GainMapMax are the smallest and largest log2 gains in this
+// picture (so GainMapMin can sit a little below 0 from the base's 8-bit rounding, or above 0 when
+// every pixel is lifted), and each code is round(255 * (log2 gain - min) / (max - min)), lowered
+// by one where rounding up would let the limit be passed. When every pixel has the same gain,
+// min = max and every code is 0. Bit-identical for any thread count. Throws
 // std::invalid_argument if the sizes disagree or N is not in (0, 4].
 [[nodiscard]] GainMap make_gain_map(std::span<const std::uint8_t> base_srgb8, const Image& hdr,
                                     float headroom_stops, const GainMapOptions& options = {},
                                     int threads = 0);
 
-// The log2 gain a code stands for: min + (max - min) * (code / 255)^(1 / gamma).
+// The log2 gain a code stands for: min * (1 - r) + max * r with r = (code / 255)^(1 / gamma), as
+// the Ultra HDR spec decodes it (exactly min at code 0 and max at 255).
 [[nodiscard]] float gain_map_log2(std::uint8_t code, const GainMapMetadata& m) noexcept;
 
 // The weight a viewer gives the map on a screen whose headroom is `display_headroom` times white
 // (1 = an SDR screen, 4 = two stops above white): (log2 D - HDRCapacityMin) / (HDRCapacityMax -
 // HDRCapacityMin), clamped to 0..1. With N = 2: D = 1, 2, 4, 16 give 0, 0.5, 1, 1. A display
 // headroom that is not above 0 (or NaN) gives 0.
+//
+// Prism writes HDRCapacityMax = N, the headroom chosen (#96), where the Ultra HDR spec's tip is
+// GainMapMax: a screen with N stops shows the whole HDR picture, and one with less shows the same
+// share of every pixel's gain, whatever the photo's own largest gain is.
 [[nodiscard]] float gain_map_weight(float display_headroom, const GainMapMetadata& m) noexcept;
 
 // What a viewer shows: `base_srgb8` decoded to linear, then each channel brightened by its
-// pixel's gain at `weight` (gain_map_weight). Weight 0 gives the decoded base exactly. Linear
-// float, width x height. Bit-identical for any thread count. Throws std::invalid_argument if the
-// sizes disagree.
+// pixel's gain at `weight` (gain_map_weight), clamped to 0..1 (NaN counts as 0). Weight 0 gives
+// the decoded base exactly. Linear float, width x height, not clamped: as in the spec, a gain
+// below 1 takes black slightly below 0, and a gain above 1 lifts a saturated colour's weak
+// channels too. Bit-identical for any thread count. Throws std::invalid_argument if the sizes
+// disagree.
 [[nodiscard]] Image apply_gain_map(std::span<const std::uint8_t> base_srgb8, const GainMap& map,
                                    float weight, int threads = 0);
 
