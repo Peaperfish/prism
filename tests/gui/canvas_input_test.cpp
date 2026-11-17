@@ -458,19 +458,19 @@ TEST(SampleModeRules, OpeningAFileClearsThePinEvenAtTheSameSize) {
     EXPECT_TRUE(mode.on());
 }
 
-TEST(SampleModeRules, ANewSizeOfBaseClearsThePinAndARedecodeKeepsIt) {
+TEST(SampleModeRules, ANewSizeOfBaseMovesThePinToItsPointAndARedecodeKeepsIt) {
     SampleMode mode;
     mode.toggle();
     mode.place({3, 4}, 40, 30);
     mode.base_changed(40, 30);  // a new camera matrix: the same pixels, re-decoded
     EXPECT_EQ(mode.pin(), (SamplePin{3, 4}));
-    mode.base_changed(41, 30);
-    EXPECT_FALSE(mode.pin());
-    mode.place({3, 4}, 41, 30);
-    mode.base_changed(41, 31);
-    EXPECT_FALSE(mode.pin());
-    mode.place({3, 4}, 41, 31);
-    mode.base_changed(41, 31);
+    // Pixel (3, 4)'s centre is the photo point (3.5 / 40, 4.5 / 30): on an 80 x 60 base that is in
+    // pixel (7, 9), and on a 20 x 15 base in pixel (1, 2).
+    mode.base_changed(80, 60);
+    EXPECT_EQ(mode.pin(), (SamplePin{7, 9}));
+    mode.base_changed(20, 15);
+    EXPECT_EQ(mode.pin(), (SamplePin{1, 2}));
+    mode.base_changed(40, 30);
     EXPECT_EQ(mode.pin(), (SamplePin{3, 4}));
 }
 
@@ -495,7 +495,7 @@ TEST(SampleModeRules, TheLastReadStaysUntilAnotherPictureOrLeaving) {
     EXPECT_FALSE(mode.last_read());
 }
 
-TEST(SampleModeRules, AnyFrameChangeClearsThePinEvenAtTheSamePixelSize) {
+TEST(SampleModeRules, AnyFrameChangeClearsTheLastReadEvenAtTheSamePixelSize) {
     const prism::Frame whole;
     const prism::Frame left_crop{0.0f, 0.1f, 0.1f, 0.6f, 0.6f, prism::Aspect::free, false};
     const prism::Frame right_crop{0.0f, 0.2f, 0.2f, 0.7f, 0.7f, prism::Aspect::free, false};
@@ -510,25 +510,123 @@ TEST(SampleModeRules, AnyFrameChangeClearsThePinEvenAtTheSamePixelSize) {
     EXPECT_FALSE(sample_pin_survives_frame(left_crop, right_crop));
     EXPECT_FALSE(sample_pin_survives_frame(left_crop, turned));
 
-    // Undo/redo between two crops of the same 20x15 pixel size puts a different part of the photo
-    // under pixel (3, 4), so both frame_changed and base_changed clear the pin and the last read.
     SampleMode mode;
     mode.toggle();
-    mode.place({3, 4}, 20, 15, right_crop);
-    mode.read({5, 6}, 20, 15, right_crop);
-    mode.base_changed(20, 15, right_crop);  // same size and frame (e.g. a new camera matrix)
-    EXPECT_EQ(mode.pin(), (SamplePin{3, 4}));
+    mode.read({5, 6}, 20, 15);
+    mode.frame_changed(std::nullopt, whole);
+    EXPECT_EQ(mode.last_read(), (SamplePin{5, 6}));
+    mode.frame_changed(right_crop, left_crop);
+    EXPECT_FALSE(mode.last_read());
+}
+
+// --- The pin in photo coordinates (#73) ---------------------------------------------------------
+
+namespace {
+
+// A 200 x 100 photo framed by `f` (fitted), at scale 1.
+SampleCanvas framed_canvas(const prism::Frame& f) {
+    const prism::Frame fitted = prism::fit_frame(f, 200, 100);
+    const PixelSize size = prism::framed_size(fitted, 200, 100);
+    return {size.width, size.height, PictureFrame{fitted, 200, 100, 1.0f}};
+}
+
+}  // namespace
+
+TEST(SamplePinPoint, APixelsCentreComesBackToThatPixelOnAnyCanvas) {
+    const SampleCanvas whole{200, 100, std::nullopt};
+    const SampleCanvas crop = framed_canvas({0.0f, 0.25f, 0.2f, 0.75f, 0.9f, prism::Aspect::free,
+                                             false});
+    const SampleCanvas turned = framed_canvas({7.5f, 0.2f, 0.2f, 0.8f, 0.8f, prism::Aspect::free,
+                                               false});
+    const SampleCanvas half{turned.width / 2, turned.height / 2,
+                            PictureFrame{turned.framing->fitted, 200, 100, 2.0f}};
+    for (const SampleCanvas& c : {whole, crop, turned, half}) {
+        for (int y = 0; y < c.height; y += 7) {
+            for (int x = 0; x < c.width; x += 5) {
+                const PhotoPoint q = sample_photo_point(x + 0.5, y + 0.5, c);
+                EXPECT_EQ(sample_pixel_at(q, c), (SamplePin{x, y})) << x << ", " << y;
+            }
+        }
+    }
+}
+
+TEST(SamplePinPoint, AFramedPixelIsOverTheSamePhotoPointAsOnTheWholePhoto) {
+    // A crop from x = 50 (0.25 of 200) and y = 20 (0.2 of 100): framed pixel (10, 30) is photo
+    // pixel (60, 50).
+    const SampleCanvas crop = framed_canvas({0.0f, 0.25f, 0.2f, 0.75f, 0.9f, prism::Aspect::free,
+                                             false});
+    const PhotoPoint q = sample_photo_point(10.5, 30.5, crop);
+    EXPECT_DOUBLE_EQ(q.u, 60.5 / 200.0);
+    EXPECT_DOUBLE_EQ(q.v, 50.5 / 100.0);
+    EXPECT_EQ(sample_pixel_at(q, SampleCanvas{200, 100, std::nullopt}), (SamplePin{60, 50}));
+    // Off the crop: photo pixel (49, 50) is left of it.
+    EXPECT_FALSE(sample_pixel_at({49.5 / 200.0, 0.5}, crop));
+    EXPECT_FALSE(sample_pixel_at({0.5, 0.5}, SampleCanvas{}));
+    EXPECT_FALSE(sample_pixel_at({std::numeric_limits<double>::quiet_NaN(), 0.5},
+                                 SampleCanvas{200, 100, std::nullopt}));
+}
+
+TEST(SamplePinPoint, ThePinFollowsItsPointThroughFrameChangesAndGoesOnlyWhenItLeaves) {
+    const SampleCanvas whole{200, 100, std::nullopt};
+    const SampleCanvas left = framed_canvas({0.0f, 0.1f, 0.1f, 0.6f, 0.6f, prism::Aspect::free,
+                                             false});
+    const SampleCanvas right = framed_canvas({0.0f, 0.2f, 0.1f, 0.7f, 0.6f, prism::Aspect::free,
+                                              false});
+    ASSERT_EQ(left.width, right.width);  // the same pixel size, as in an undo between two crops
+    ASSERT_EQ(left.height, right.height);
+    const SampleCanvas turned = framed_canvas({5.0f, 0.1f, 0.1f, 0.6f, 0.6f, prism::Aspect::free,
+                                               false});
+
+    SampleMode mode;
+    mode.toggle();
+    // Photo pixel (60, 30): left's framed pixel (40, 20), right's (20, 20).
+    mode.place({40, 20}, left.width, left.height, left.framing);
+    mode.read({5, 6}, left.width, left.height, left.framing);
+    mode.base_changed(left.width, left.height, left.framing);  // a re-decode: nothing moves
+    EXPECT_EQ(mode.pin(), (SamplePin{40, 20}));
     EXPECT_EQ(mode.last_read(), (SamplePin{5, 6}));
 
-    mode.frame_changed(right_crop, left_crop);
-    EXPECT_FALSE(mode.pin());
+    mode.base_changed(right.width, right.height, right.framing);
+    EXPECT_EQ(mode.pin(), (SamplePin{20, 20}));
     EXPECT_FALSE(mode.last_read());
+    mode.base_changed(whole.width, whole.height, whole.framing);
+    EXPECT_EQ(mode.pin(), (SamplePin{60, 30}));
+    mode.base_changed(left.width, left.height, left.framing);  // and back (undo)
+    EXPECT_EQ(mode.pin(), (SamplePin{40, 20}));
 
-    mode.place({3, 4}, 20, 15, left_crop);
-    mode.read({5, 6}, 20, 15, left_crop);
-    mode.base_changed(20, 15, right_crop);
+    // Turned 5 degrees, the pixel over the point is wherever the map puts it, and the point is
+    // still the one placed.
+    mode.base_changed(turned.width, turned.height, turned.framing);
+    ASSERT_TRUE(mode.pin());
+    const PhotoPoint q =
+        sample_photo_point(mode.pin()->x + 0.5, mode.pin()->y + 0.5, turned);
+    EXPECT_NEAR(q.u * 200.0, 60.5, 1.0);
+    EXPECT_NEAR(q.v * 100.0, 30.5, 1.0);
+    ASSERT_TRUE(mode.pin_point());
+    EXPECT_DOUBLE_EQ(mode.pin_point()->u, 60.5 / 200.0);
+
+    // A crop that leaves photo pixel (60, 30) out clears the pin, and undoing it doesn't bring it
+    // back: it was cleared.
+    const SampleCanvas far = framed_canvas({0.0f, 0.5f, 0.5f, 0.9f, 0.9f, prism::Aspect::free,
+                                            false});
+    mode.base_changed(far.width, far.height, far.framing);
     EXPECT_FALSE(mode.pin());
-    EXPECT_FALSE(mode.last_read());
+    EXPECT_FALSE(mode.pin_point());
+    mode.base_changed(left.width, left.height, left.framing);
+    EXPECT_FALSE(mode.pin());
+}
+
+TEST(SamplePinPoint, APinPlacedAtAPointKeepsThatPointNotThePixelsCentre) {
+    const SampleCanvas whole{200, 100, std::nullopt};
+    SampleMode mode;
+    mode.toggle();
+    // The click was at photo pixel (60.9, 30.1), inside preview pixel (60, 30) of the whole photo.
+    mode.place({60, 30}, whole.width, whole.height, whole.framing, PhotoPoint{0.3045, 0.301});
+    ASSERT_TRUE(mode.pin_point());
+    EXPECT_DOUBLE_EQ(mode.pin_point()->u, 0.3045);
+    // On a base twice the size, the point is in pixel (121, 60), not (120, 60) or (121, 61).
+    mode.base_changed(400, 200);
+    EXPECT_EQ(mode.pin(), (SamplePin{121, 60}));
 }
 
 // --- Pick mode ---------------------------------------------------------------------------------

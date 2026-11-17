@@ -1006,7 +1006,7 @@ TEST(FramedPreview, ANewCameraMatrixFramesTheNewWholeBase) {
     fs::remove(half);
 }
 
-TEST(FramedPreview, UndoingOrRedoingAFrameChangeOfTheSameSizeClearsTheSamplePin) {
+TEST(FramedPreview, UndoingOrRedoingAFrameChangeKeepsTheSamplePinOnItsPhotoPoint) {
     const Frame first{0.0f, 0.1f, 0.1f, 0.6f, 0.6f, prism::Aspect::free, false};
     const Frame second{0.0f, 0.2f, 0.1f, 0.7f, 0.6f, prism::Aspect::free, false};
     Opened o("in.png", first);
@@ -1018,50 +1018,66 @@ TEST(FramedPreview, UndoingOrRedoingAFrameChangeOfTheSameSizeClearsTheSamplePin)
     ASSERT_EQ(o.session.preview_base()->width, w);
     ASSERT_EQ(o.session.preview_base()->height, h);
 
+    // The whole photo's pixel under a pin: where the pin is on the photo, whatever the frame.
+    const auto photo_pixel = [&](const prism::gui::SampleMode& sample) {
+        const prism::gui::SampleCanvas framed{o.session.preview_base()->width,
+                                              o.session.preview_base()->height,
+                                              o.session.preview_framing()};
+        const prism::gui::SampleCanvas whole{o.session.whole_base()->width,
+                                             o.session.whole_base()->height, std::nullopt};
+        return prism::gui::sample_pixel_at(
+            prism::gui::sample_photo_point(sample.pin()->x + 0.5, sample.pin()->y + 0.5, framed),
+            whole);
+    };
+    const auto changed = [&](prism::gui::SampleMode& sample, const std::optional<Frame>& before) {
+        sample.frame_changed(before, o.session.settings().frame);
+        sample.base_changed(o.session.preview_base()->width, o.session.preview_base()->height,
+                            o.session.preview_framing());
+    };
+
     prism::gui::SampleMode sample;
     sample.toggle();
-    sample.place({10, 10}, w, h, o.session.settings().frame);
-    sample.read({12, 14}, w, h, o.session.settings().frame);
+    sample.place({30, 10}, w, h, o.session.preview_framing());
+    sample.read({12, 14}, w, h, o.session.preview_framing());
     ASSERT_TRUE(sample.pin().has_value());
     ASSERT_TRUE(sample.last_read().has_value());
+    const std::optional<prism::gui::SamplePin> on_photo = photo_pixel(sample);
+    ASSERT_TRUE(on_photo.has_value());
 
-    // Undoing a non-frame edit keeps the pin.
+    // Undoing a non-frame edit keeps the pin and the last read where they are.
     s.exposure_stops = 0.5f;
     ASSERT_EQ(o.session.set_settings(s), std::nullopt);
     {
         const std::optional<Frame> before = o.session.settings().frame;
         ASSERT_EQ(o.session.undo(), std::nullopt);
-        sample.frame_changed(before, o.session.settings().frame);
-        sample.base_changed(o.session.preview_base()->width, o.session.preview_base()->height,
-                            o.session.settings().frame);
+        changed(sample, before);
     }
-    EXPECT_EQ(sample.pin(), (prism::gui::SamplePin{10, 10}));
+    EXPECT_EQ(sample.pin(), (prism::gui::SamplePin{30, 10}));
     EXPECT_EQ(sample.last_read(), (prism::gui::SamplePin{12, 14}));
 
-    // Undoing the frame move (same w x h base, different photo pixels) clears the pin.
+    // Undoing the frame move (same w x h base, the frame 0.1 of the width further left) moves the
+    // pin right by that much, onto the same photo pixel; the last read goes.
     {
         const std::optional<Frame> before = o.session.settings().frame;
         ASSERT_EQ(o.session.undo(), std::nullopt);
         ASSERT_EQ(o.session.preview_base()->width, w);
         ASSERT_EQ(o.session.preview_base()->height, h);
-        sample.frame_changed(before, o.session.settings().frame);
-        sample.base_changed(o.session.preview_base()->width, o.session.preview_base()->height,
-                            o.session.settings().frame);
+        changed(sample, before);
     }
-    EXPECT_FALSE(sample.pin().has_value());
+    ASSERT_TRUE(sample.pin().has_value());
+    EXPECT_GT(sample.pin()->x, 30);
+    EXPECT_EQ(sample.pin()->y, 10);
+    EXPECT_EQ(photo_pixel(sample), on_photo);
     EXPECT_FALSE(sample.last_read().has_value());
 
-    // And redoing it after pinning again clears the new pin too.
-    sample.place({10, 10}, w, h, o.session.settings().frame);
-    ASSERT_TRUE(sample.pin().has_value());
+    // Redoing it puts the pin back on pixel (30, 10).
     {
         const std::optional<Frame> before = o.session.settings().frame;
         ASSERT_EQ(o.session.redo(), std::nullopt);
-        sample.frame_changed(before, o.session.settings().frame);
-        sample.base_changed(o.session.preview_base()->width, o.session.preview_base()->height,
-                            o.session.settings().frame);
+        changed(sample, before);
     }
-    EXPECT_FALSE(sample.pin().has_value());
+    EXPECT_EQ(sample.pin(), (prism::gui::SamplePin{30, 10}));
+    EXPECT_EQ(photo_pixel(sample), on_photo);
 }
 
 // --- A canvas that is not at the frame's own size ----------------------------------------------

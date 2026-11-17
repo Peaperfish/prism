@@ -160,6 +160,41 @@ bool sample_pin_survives_frame(const std::optional<Frame>& before,
     return normalised_frame(before) == normalised_frame(after);
 }
 
+PhotoPoint sample_photo_point(double x, double y, const SampleCanvas& canvas) {
+    if (canvas.width <= 0 || canvas.height <= 0) {
+        return {};
+    }
+    if (canvas.framing) {
+        // Canvas positions are framed positions over the scale (FramePoint's convention).
+        const PictureFrame& f = *canvas.framing;
+        const double scale = static_cast<double>(f.scale);
+        return FrameMap(f.fitted, f.photo_width, f.photo_height).to_photo({x * scale, y * scale});
+    }
+    return {x / static_cast<double>(canvas.width), y / static_cast<double>(canvas.height)};
+}
+
+std::optional<SamplePin> sample_pixel_at(PhotoPoint q, const SampleCanvas& canvas) {
+    if (canvas.width <= 0 || canvas.height <= 0 || !std::isfinite(q.u) || !std::isfinite(q.v)) {
+        return std::nullopt;
+    }
+    double x = q.u * static_cast<double>(canvas.width);
+    double y = q.v * static_cast<double>(canvas.height);
+    if (canvas.framing) {
+        const PictureFrame& f = *canvas.framing;
+        const double scale = static_cast<double>(f.scale);
+        const FramePoint p = FrameMap(f.fitted, f.photo_width, f.photo_height).to_frame(q);
+        x = p.x / scale;
+        y = p.y / scale;
+    }
+    const double fx = std::floor(x);
+    const double fy = std::floor(y);
+    if (!(fx >= 0.0) || !(fy >= 0.0) || fx >= static_cast<double>(canvas.width) ||
+        fy >= static_cast<double>(canvas.height)) {
+        return std::nullopt;
+    }
+    return SamplePin{static_cast<int>(fx), static_cast<int>(fy)};
+}
+
 void SampleMode::toggle() noexcept {
     if (on_) {
         leave();
@@ -171,51 +206,64 @@ void SampleMode::toggle() noexcept {
 void SampleMode::leave() noexcept {
     on_ = false;
     pin_.reset();
+    pin_point_.reset();
     last_read_.reset();
-    frame_.reset();
+    canvas_ = {};
 }
 
 void SampleMode::place(SamplePin pixel, int width, int height,
-                       const std::optional<Frame>& frame) noexcept {
+                       const std::optional<PictureFrame>& framing,
+                       const std::optional<PhotoPoint>& at) {
     if (!on_ || pixel.x < 0 || pixel.y < 0 || pixel.x >= width || pixel.y >= height) {
         return;
     }
+    canvas_ = SampleCanvas{width, height, framing};
     pin_ = pixel;
-    width_ = width;
-    height_ = height;
-    frame_ = normalised_frame(frame);
+    pin_point_ = at ? *at
+                    : sample_photo_point(static_cast<double>(pixel.x) + 0.5,
+                                         static_cast<double>(pixel.y) + 0.5, canvas_);
 }
 
 void SampleMode::read(SamplePin pixel, int width, int height,
-                      const std::optional<Frame>& frame) noexcept {
+                      const std::optional<PictureFrame>& framing) {
     if (!on_ || pixel.x < 0 || pixel.y < 0 || pixel.x >= width || pixel.y >= height) {
         return;
     }
+    if (SampleCanvas{width, height, framing} != canvas_) {
+        // (Only the case when the cursor reads a picture the pin hasn't been moved onto yet.)
+        base_changed(width, height, framing);
+    }
     last_read_ = pixel;
-    width_ = width;
-    height_ = height;
-    frame_ = normalised_frame(frame);
 }
 
 void SampleMode::opened() noexcept {
     pin_.reset();
+    pin_point_.reset();
     last_read_.reset();
-    frame_.reset();
+    canvas_ = {};
 }
 
 void SampleMode::frame_changed(const std::optional<Frame>& before,
                                const std::optional<Frame>& after) noexcept {
     if (!sample_pin_survives_frame(before, after)) {
-        pin_.reset();
         last_read_.reset();
-        frame_ = normalised_frame(after);
     }
 }
 
-void SampleMode::base_changed(int width, int height, const std::optional<Frame>& frame) noexcept {
-    if (width != width_ || height != height_ || !sample_pin_survives_frame(frame_, frame)) {
+void SampleMode::base_changed(int width, int height, const std::optional<PictureFrame>& framing) {
+    const SampleCanvas now{width, height, framing};
+    if (now == canvas_) {
+        return;
+    }
+    canvas_ = now;
+    last_read_.reset();
+    if (pin_point_) {
+        pin_ = sample_pixel_at(*pin_point_, canvas_);
+        if (!pin_) {
+            pin_point_.reset();
+        }
+    } else {
         pin_.reset();
-        last_read_.reset();
     }
 }
 

@@ -2365,8 +2365,12 @@ void App::update_hand_drag() {
         const std::shared_ptr<const Image> base = session_.preview_base();
         const std::optional<gui::ViewPixel> pixel = gui::view_pixel_at(view_, view_geometry_, cursor);
         if (base && pixel && base->width == texture_.width() && base->height == texture_.height()) {
+            // The photo point clicked (#73): the pin stays on it through frame changes.
+            const gui::ViewPoint image = gui::view_screen_to_image(view_, view_geometry_, cursor);
+            const gui::SampleCanvas canvas{base->width, base->height, session_.preview_framing()};
             sample_.place({pixel->x, pixel->y}, base->width, base->height,
-                          session_.settings().frame);
+                          session_.preview_framing(),
+                          gui::sample_photo_point(image.x, image.y, canvas));
             // The photo pixel clicked, for reading it where real pixels are on the canvas.
             sample_pin_file_size_ = framed_full_size();
             sample_pin_file_ =
@@ -2934,7 +2938,7 @@ void App::update_sample_cursor() {
     if (const std::optional<gui::ViewPixel> pixel =
             gui::view_pixel_at(view_, view_geometry_, {mouse.x, mouse.y})) {
         sample_hover_ = gui::SamplePin{pixel->x, pixel->y};
-        sample_.read(*sample_hover_, base->width, base->height, session_.settings().frame);
+        sample_.read(*sample_hover_, base->width, base->height, session_.preview_framing());
         sample_hover_file_ =
             gui::file_pixel_at(view_, view_geometry_, framed_full_size(), {mouse.x, mouse.y});
     }
@@ -2951,7 +2955,7 @@ void App::update_sample_reads() {
     if (!base) {
         return;
     }
-    sample_.base_changed(base->width, base->height, session_.settings().frame);
+    sample_.base_changed(base->width, base->height, session_.preview_framing());
     if (base->width != texture_.width() || base->height != texture_.height()) {
         return;  // the picture on screen isn't of this base yet: its pixels mean something else
     }

@@ -167,58 +167,86 @@ private:
     HandDrag drag_;
 };
 
-// Whether a sample pin (or the last pixel read) stays when the photo's frame changes from `before`
-// to `after`: only when the frame is the same (a whole-photo frame counts as none). Moving the
-// frame or turning the photo at the same pixel size puts different photo points under the same
-// pixel coordinates, so any frame change clears the pin (GUIDE.md).
+// Whether the last pixel read stays when the photo's frame changes from `before` to `after`: only
+// when the frame is the same (a whole-photo frame counts as none). Moving the frame or turning the
+// photo at the same pixel size puts different photo points under the same pixel coordinates. The
+// pin doesn't go by this: it keeps its photo point (SampleMode).
 [[nodiscard]] bool sample_pin_survives_frame(const std::optional<Frame>& before,
                                              const std::optional<Frame>& after) noexcept;
+
+// The picture Sample's pixels are on: the preview base, width x height, and where it sits on the
+// photo (Session::preview_framing; none when it is the whole photo). The same for the framed
+// picture at full size, with its own PictureFrame (picture_frame_of on the full decode).
+struct SampleCanvas {
+    int width = 0;
+    int height = 0;
+    std::optional<PictureFrame> framing = std::nullopt;
+
+    bool operator==(const SampleCanvas&) const = default;
+};
+
+// The photo point (prism/frame.hpp's (u, v)) under position (x, y) of `canvas`, in its pixels
+// along their edges: pixel (x, y)'s centre is at (x + 0.5, y + 0.5). In double throughout.
+[[nodiscard]] PhotoPoint sample_photo_point(double x, double y, const SampleCanvas& canvas);
+
+// The pixel of `canvas` that photo point `q` falls in, or nothing if it is off the canvas (outside
+// the frame), or the canvas is empty. sample_pixel_at(sample_photo_point(x + 0.5, y + 0.5, c), c)
+// is (x, y).
+[[nodiscard]] std::optional<SamplePin> sample_pixel_at(PhotoPoint q, const SampleCanvas& canvas);
 
 // Whether Sample mode is on, its one pin, and the last pixel the cursor read, which stays on show
 // when the cursor leaves the picture, so that the rows can be pointed at. These are in image pixels,
 // so they stay on the same spot of the photo through zooming and panning. The stage and the settings
-// don't matter to them either: only another picture or a frame change does. Leaving the mode clears
-// them.
+// don't matter to them either. Leaving the mode clears them.
+//
+// The pin is kept as a photo point (#73): when the picture's frame changes (on the easel, or by
+// undo and redo), base_changed moves it to the pixel over that point on the new picture, and clears
+// it only when the point is no longer on the picture. Another picture clears it. The last read is a
+// trace of the cursor, not something placed: any frame change or new size clears it.
 class SampleMode {
 public:
     [[nodiscard]] bool on() const noexcept { return on_; }
     [[nodiscard]] const std::optional<SamplePin>& pin() const noexcept { return pin_; }
+    // The photo point the pin is on: set with it, and cleared with it.
+    [[nodiscard]] const std::optional<PhotoPoint>& pin_point() const noexcept { return pin_point_; }
     [[nodiscard]] const std::optional<SamplePin>& last_read() const noexcept { return last_read_; }
 
     void toggle() noexcept;  // I, or View > Sample Colour
     void leave() noexcept;   // Esc (EscapeAction::clear_sample)
 
-    // Pins `pixel` of a width x height base (framed by `frame`), replacing any pin. Nothing if the
-    // mode is off or the pixel is off the picture.
+    // Pins `pixel` of a width x height base (framed by `framing`), replacing any pin. Its photo
+    // point is `at` if given (the point clicked, which must lie in the pixel) and the pixel's centre
+    // otherwise. Nothing if the mode is off or the pixel is off the picture.
     void place(SamplePin pixel, int width, int height,
-               const std::optional<Frame>& frame = std::nullopt) noexcept;
+               const std::optional<PictureFrame>& framing = std::nullopt,
+               const std::optional<PhotoPoint>& at = std::nullopt);
 
-    // The cursor is over `pixel` of a width x height base (framed by `frame`). The same conditions
-    // as place().
+    // The cursor is over `pixel` of a width x height base (framed by `framing`). The same
+    // conditions as place().
     void read(SamplePin pixel, int width, int height,
-              const std::optional<Frame>& frame = std::nullopt) noexcept;
+              const std::optional<PictureFrame>& framing = std::nullopt);
 
     // A file was opened: the pin and the last read go, even if the new picture has the same size.
     void opened() noexcept;
 
-    // The photo's frame changed from `before` to `after` (on the easel, or by undo/redo): the pin
-    // and the last read go unless sample_pin_survives_frame(before, after).
+    // The photo's frame changed from `before` to `after` (on the easel, or by undo/redo): the last
+    // read goes unless sample_pin_survives_frame(before, after). The pin waits for base_changed.
     void frame_changed(const std::optional<Frame>& before,
                        const std::optional<Frame>& after) noexcept;
 
-    // The base is now width x height (framed by `frame`). The pin and the last read go if the size
-    // or the frame isn't what they were on; they stay through a re-decode of the same size and
-    // frame (a new camera matrix).
+    // The base is now width x height (framed by `framing`). If that isn't the picture they were
+    // on, the last read goes, and the pin moves to the pixel over its photo point
+    // (sample_pixel_at), or goes if the point is off the new picture. A re-decode of the same size
+    // and framing (a new camera matrix) changes neither.
     void base_changed(int width, int height,
-                      const std::optional<Frame>& frame = std::nullopt) noexcept;
+                      const std::optional<PictureFrame>& framing = std::nullopt);
 
 private:
     bool on_ = false;
     std::optional<SamplePin> pin_;
+    std::optional<PhotoPoint> pin_point_;
     std::optional<SamplePin> last_read_;
-    int width_ = 0;
-    int height_ = 0;
-    std::optional<Frame> frame_;
+    SampleCanvas canvas_;
 };
 
 // --- Pick mode (the white balance picker, #21) -------------------------------------------------
