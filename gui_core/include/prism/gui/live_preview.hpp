@@ -36,12 +36,21 @@ public:
     // Submits a render if `base`, `settings` or `stop_after` changed since the last one, or if
     // an extra in `options` (scopes, clip report, clip mask: each means it is visible) turned on
     // and the last request had none, or if `options.compare_stage` is a stage the last request
-    // did not ask for. Hiding one submits nothing: the frame on screen is still right. A compare
+    // did not ask for, or if `options.hdr_display_headroom` differs in any way from the last
+    // request's (#106). Hiding one submits nothing: the frame on screen is still right. A compare
     // stage equal to `stop_after` is the same as none. A null
     // base (no file open) submits nothing and forgets the last request, so the next file always
     // renders.
     void update(const std::shared_ptr<const Image>& base, const EditSettings& settings,
                 StageId stop_after = final_stage, PreviewOptions options = {});
+
+    // Forgets the last request, so the next update() renders even if nothing changed: for when
+    // the frame on screen was lost (the app's renderer was recreated, #106). A frame still in
+    // flight is ignored.
+    void forget() noexcept {
+        base_.reset();
+        shown_ = submitted_;
+    }
 
     // The newest finished frame since the last poll, if any (see PreviewRenderer::poll).
     [[nodiscard]] std::optional<PreviewFrame> poll();

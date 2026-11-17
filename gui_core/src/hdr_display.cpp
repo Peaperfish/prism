@@ -16,9 +16,10 @@ DisplayMode display_mode(bool screen_shows_hdr, bool macos) noexcept {
 }
 
 bool hdr_canvas_on(DisplayMode mode, const EditSettings& s, StageId viewed, bool test_strip,
-                   float display_headroom) noexcept {
+                   float display_headroom, bool sdr_view) noexcept {
     return mode == DisplayMode::hdr_ui_target && output_headroom(s).has_value() &&
-           viewed == final_stage && !test_strip && display_headroom > 1.0f;  // false for NaN
+           viewed == final_stage && !test_strip && !sdr_view &&
+           display_headroom > 1.0f;  // false for NaN
 }
 
 float canvas_weight(float display_headroom, float headroom_stops) noexcept {

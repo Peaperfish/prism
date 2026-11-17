@@ -448,3 +448,27 @@ TEST(LivePreview, ShowingTheStrokeMaskRendersOnceMoreAndHidingItDoesNot) {
     ASSERT_TRUE(next_frame(preview));
     EXPECT_EQ(calls.load(), 3);
 }
+
+TEST(LivePreview, AnotherHdrScreenHeadroomOrForgettingRendersAgain) {
+    CountingRender render;
+    LivePreview preview(render.function());
+    const auto base = make_base();
+    prism::gui::PreviewOptions o;
+    preview.update(base, with_exposure(1), prism::gui::final_stage, o);
+    ASSERT_TRUE(next_frame(preview));
+    o.hdr_display_headroom = 4.0f;  // the HDR canvas turns on
+    preview.update(base, with_exposure(1), prism::gui::final_stage, o);
+    ASSERT_TRUE(next_frame(preview));
+    preview.update(base, with_exposure(1), prism::gui::final_stage, o);  // unchanged
+    o.hdr_display_headroom = 2.0f;  // brightness changed
+    preview.update(base, with_exposure(1), prism::gui::final_stage, o);
+    ASSERT_TRUE(next_frame(preview));
+    o.hdr_display_headroom.reset();  // off again: the frame still carries the HDR picture
+    preview.update(base, with_exposure(1), prism::gui::final_stage, o);
+    ASSERT_TRUE(next_frame(preview));
+    EXPECT_EQ(render.calls.load(), 4);
+    preview.forget();
+    preview.update(base, with_exposure(1), prism::gui::final_stage, o);
+    ASSERT_TRUE(next_frame(preview));
+    EXPECT_EQ(render.calls.load(), 5);
+}

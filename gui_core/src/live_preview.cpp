@@ -45,7 +45,10 @@ void LivePreview::update(const std::shared_ptr<const Image>& base, const EditSet
                          (options_.stroke_mask || !options.stroke_mask) &&
                          (!options.compare_stage || options.compare_stage == options_.compare_stage) &&
                          options.test_strip == options_.test_strip &&  // exactly: on, off or step
-                         options.as_shot_white == options_.as_shot_white;
+                         options.as_shot_white == options_.as_shot_white &&
+                         // The HDR canvas's screen headroom, exactly: another weight is another
+                         // picture, and turning it on or off changes what the frame carries.
+                         options.hdr_display_headroom == options_.hdr_display_headroom;
     if (base == base_ && settings == settings_ && stop_after == stop_after_ && covered) {
         // Hidden: the next time they show, ask again.
         options_.scopes = options_.scopes && options.scopes;

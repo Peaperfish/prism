@@ -39,8 +39,13 @@ enum class DisplayMode {
 // part of Output encode; earlier stages and comparisons with them stay SDR), without a test strip
 // (its bands are SDR exposures), and on a screen with room above white right now (a display
 // headroom above 1; at 1 the viewer weight is 0 and the picture would be the SDR one anyway).
+// `sdr_view` is a view this version shows in SDR only (#106 is partly done, see below): the easel
+// (the rotated picture), a split compare, a translucent overlay over the picture (the J clip
+// overlay, the brush strokes), or real pixels at 100% and closer. Those draw the 8-bit picture
+// through Dear ImGui exactly as today, inside the UI target.
 [[nodiscard]] bool hdr_canvas_on(DisplayMode mode, const EditSettings& s, StageId viewed,
-                                 bool test_strip, float display_headroom) noexcept;
+                                 bool test_strip, float display_headroom,
+                                 bool sdr_view = false) noexcept;
 
 // The weight a viewer of the exported file gives its gain map on a screen with `display_headroom`
 // (#96 decision 10 as changed: HDRCapacityMin 0, HDRCapacityMax = N): prism::gain_map_weight with

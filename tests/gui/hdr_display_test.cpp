@@ -97,6 +97,9 @@ TEST(HdrDisplay, TheCanvasIsHdrOnlyForTheFinalPictureWithHdrOnAndRoomAboveWhite)
     EXPECT_FALSE(on(hdr, hdr_on(), StageId::encode, false, 1.0f));  // no room right now
     EXPECT_FALSE(
         on(hdr, hdr_on(), StageId::encode, false, std::numeric_limits<float>::quiet_NaN()));
+    // The views this version shows in SDR (the easel, a split, an overlay, real pixels).
+    EXPECT_FALSE(prism::gui::hdr_canvas_on(hdr, hdr_on(), StageId::encode, false, 4.0f, true));
+    EXPECT_TRUE(prism::gui::hdr_canvas_on(hdr, hdr_on(), StageId::encode, false, 4.0f, false));
 }
 
 TEST(HdrDisplay, TheCanvasWeightIsTheViewersFromTheFilesMetadata) {
