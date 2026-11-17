@@ -16,6 +16,11 @@
 //   GoldenSdr.CliRawNatural        the prism executable for it under Natural only. Both skip
 //                                  unless PRISM_TEST_RAW has the SHA-256 in
 //                                  golden/raw/source.sha256.
+//   GoldenSdr.EngineSyntheticDng, GoldenSdr.CliSyntheticDng  every RAW look on the synthetic DNG
+//                                  of synthetic_dng.hpp, written to the temp folder: RAW coverage
+//                                  CI has wherever LibRaw is built (skipped where it isn't).
+//   GoldenSdr.SyntheticDngIsTheStoredOne  the helper still writes golden/synthetic/synthetic.dng,
+//                                  the file those references were made from.
 
 #include <gtest/gtest.h>
 
@@ -40,6 +45,7 @@
 #include "prism/raw.hpp"
 #include "prism/recipe.hpp"
 #include "run_command.hpp"
+#include "synthetic_dng.hpp"
 
 namespace fs = std::filesystem;
 using namespace prism_golden;
@@ -145,6 +151,29 @@ void check_cli(const fs::path& input, const fs::path& recipe, const fs::path& go
     }
 }
 
+// The synthetic DNG's photosite level: a quarter of white, as tools/make_synthetic_dng.cpp writes.
+constexpr std::uint16_t synthetic_level = 16384;
+
+std::vector<std::uint8_t> synthetic_dng_bytes() {
+    const std::vector<std::byte> bytes = prism_test::synthetic_dng(synthetic_level);
+    std::vector<std::uint8_t> out(bytes.size());
+    for (std::size_t i = 0; i < bytes.size(); ++i) {
+        out[i] = static_cast<std::uint8_t>(bytes[i]);
+    }
+    return out;
+}
+
+// Writes the synthetic DNG into the test's temp folder, for prism to read as any RAW file.
+fs::path write_synthetic_dng() {
+    const std::vector<std::uint8_t> bytes = synthetic_dng_bytes();
+    const fs::path path = temp_file("synthetic.dng");
+    std::ofstream out(path, std::ios::binary);
+    out.write(reinterpret_cast<const char*>(bytes.data()),
+              static_cast<std::streamsize>(bytes.size()));
+    out.close();
+    return path;
+}
+
 class GoldenSdrImage : public testing::TestWithParam<const char*> {};
 
 }  // namespace
@@ -169,6 +198,12 @@ TEST(GoldenSdr, EveryBuiltInLookHasAReference) {
     };
     check("image", image_looks);
     check("raw", raw_looks);
+    for (const char* look : raw_looks) {
+        for (const char* ext : {".png", ".jpg"}) {
+            EXPECT_TRUE(fs::is_regular_file(golden_dir() / "synthetic" / (std::string(look) + ext)))
+                << "synthetic/" << look << ext;
+        }
+    }
     EXPECT_TRUE(fs::is_regular_file(golden_dir() / "SOURCE.txt"));
     EXPECT_TRUE(fs::is_regular_file(golden_dir() / "raw" / "SOURCE.txt"));
     const std::string sha = recorded_raw_sha256();
@@ -254,4 +289,38 @@ TEST(GoldenSdr, CliRawNatural) {
         GTEST_SKIP() << raw.skip_reason;
     }
     check_cli(*raw.path, recipe_path("raw", "natural"), golden_dir() / "raw" / "natural");
+}
+
+TEST(GoldenSdr, SyntheticDngIsTheStoredOne) {
+    // If synthetic_dng.hpp changed, golden/synthetic/ was made from other bytes: write the new file
+    // with tools/make_synthetic_dng.cpp and regenerate (tests/data/golden/README.md), on purpose.
+    const std::vector<std::uint8_t> stored =
+        read_bytes(golden_dir() / "synthetic" / "synthetic.dng");
+    ASSERT_FALSE(stored.empty());
+    EXPECT_TRUE(stored == synthetic_dng_bytes())
+        << "synthetic_dng(" << synthetic_level
+        << ") no longer writes golden/synthetic/synthetic.dng";
+}
+
+TEST(GoldenSdr, EngineSyntheticDng) {
+    if (!prism::raw_support_available()) {
+        GTEST_SKIP() << "this build has no RAW support";
+    }
+    const fs::path dng = write_synthetic_dng();
+    const Reduced reduced = load_reduced(dng);
+    fs::remove(dng);
+    for (const char* look : raw_looks) {
+        check_engine(reduced, recipe_path("raw", look), golden_dir() / "synthetic" / look);
+    }
+}
+
+TEST(GoldenSdr, CliSyntheticDng) {
+    if (!prism::raw_support_available()) {
+        GTEST_SKIP() << "this build has no RAW support";
+    }
+    const fs::path dng = write_synthetic_dng();
+    for (const char* look : raw_looks) {
+        check_cli(dng, recipe_path("raw", look), golden_dir() / "synthetic" / look);
+    }
+    fs::remove(dng);
 }

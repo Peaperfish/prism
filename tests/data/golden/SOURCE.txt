@@ -1,3 +1,5 @@
-commit f0df11f3c5a18af95f34a6c928f9206162353702
+commit c3df18ece971607bf33d73c30aa3bc166042b26b
+code as at f66f839a64009c6a8967b688d334ee290b13a4ee (Version 0.7.1)
 prism 0.7.1
 long side 256
+synthetic.dng sha256 1d85854a14d10598d2b4fbcdb9d8b7a85fcad8b08cc91c857b14d02deaabf270

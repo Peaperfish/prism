@@ -10,6 +10,13 @@ the same processing and compare the decoded 8-bit sRGB pixels with these files.
   so a new screenshot in the docs never changes what the tests check.
 - `image/<look>.png` and `.jpg`: that photo at `--long-side 256` under each image look in
   `recipes/image/`.
+- `synthetic/synthetic.dng`: the 32 × 32 DNG of `tests/synthetic_dng.hpp` (every photosite at a
+  quarter of white), written by `tools/make_synthetic_dng.cpp`; `synthetic/<look>.png` and `.jpg`
+  are it under each RAW look. These are the RAW references CI checks, wherever LibRaw is built:
+  the tests write the helper's bytes to their temp folder and run them, and
+  `GoldenSdr.SyntheticDngIsTheStoredOne` checks the helper still writes this very file. The
+  pictures are uniform grey, so off Apple arm64 a 1-level difference anywhere fails (it is in
+  every sample).
 - `raw/<look>.png` and `.jpg`: the maintainer's test RAW (a Sony a7R V `.ARW`, not in the
   repository) at `--long-side 256` under each RAW look in `recipes/raw/`. `raw/source.sha256` is
   that file's SHA-256: the RAW tests run only when `PRISM_TEST_RAW` names a file with this hash,
@@ -31,5 +38,6 @@ commit predates it), build `prism` there, then:
 PRISM_TEST_RAW=/path/to/the.ARW tools/make_sdr_goldens.sh build/src/prism --overwrite
 ```
 
-Without `PRISM_TEST_RAW` the RAW references are left as they are. Run the tests afterwards: the
+Without `PRISM_TEST_RAW` the RAW references are left as they are. If `tests/synthetic_dng.hpp`
+changed, first rewrite the DNG as `tools/make_synthetic_dng.cpp` says. Run the tests afterwards: the
 engine and app export must still match the new files.
