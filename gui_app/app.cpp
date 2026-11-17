@@ -425,6 +425,7 @@ void App::open_now(const fs::path& path) {
     sample_pin_file_.reset();
     sample_pin_file_for_.reset();
     sample_pin_file_frame_.reset();
+    sample_pin_file_from_middle_ = false;
     sample_hover_file_.reset();
     sample_pin_photo_ = false;
     sample_hover_photo_ = false;
@@ -2378,6 +2379,7 @@ void App::update_hand_drag() {
                 gui::file_pixel_at(view_, view_geometry_, sample_pin_file_size_, cursor);
             sample_pin_file_for_ = sample_.pin();
             sample_pin_file_frame_ = session_.settings().frame;
+            sample_pin_file_from_middle_ = false;
         }
     }
     if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && pick_click_.release(cursor)) {
@@ -2690,6 +2692,7 @@ void App::clear_sample() {
     sample_pin_file_.reset();
     sample_pin_file_for_.reset();
     sample_pin_file_frame_.reset();
+    sample_pin_file_from_middle_ = false;
     sample_hover_file_.reset();
     sample_pin_photo_ = false;
     sample_hover_photo_ = false;
@@ -2964,7 +2967,7 @@ void App::update_sample_reads() {
     }
     const std::shared_ptr<const prism::Photo> full = session_.detail_base();
     if (sample_.pin_point() && full &&
-        (sample_.pin() != sample_pin_file_for_ ||
+        (sample_pin_file_from_middle_ || sample_.pin() != sample_pin_file_for_ ||
          session_.settings().frame != sample_pin_file_frame_)) {
         // The pin moved with its photo point (#73): its photo pixel is the one under that point on
         // the framed full-size picture, not the middle of its new preview pixel.
@@ -2978,6 +2981,7 @@ void App::update_sample_reads() {
         }
         sample_pin_file_for_ = sample_.pin();
         sample_pin_file_frame_ = session_.settings().frame;
+        sample_pin_file_from_middle_ = false;
     } else if (sample_.pin() != sample_pin_file_for_ ||
                session_.settings().frame != sample_pin_file_frame_) {
         // A pin placed or moved where its photo pixel wasn't taken from the cursor: the photo pixel
@@ -2991,6 +2995,8 @@ void App::update_sample_reads() {
         }
         sample_pin_file_for_ = sample_.pin();
         sample_pin_file_frame_ = session_.settings().frame;
+        // Without the full-size photo yet: the pixel is taken from the point once it arrives.
+        sample_pin_file_from_middle_ = sample_.pin_point().has_value() && !full;
     } else if (sample_pin_file_ && framed_full_size() != sample_pin_file_size_) {
         // The full-size photo arrived a little larger or smaller than the size estimated before:
         // the pin's photo pixel moves with it.
