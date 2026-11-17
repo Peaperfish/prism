@@ -108,8 +108,7 @@ void check_engine(const Reduced& reduced, const fs::path& recipe, const fs::path
 
     const fs::path jpg = temp_file("out.jpg");
     prism::save_image(jpg, img);
-    EXPECT_TRUE(matches(decode(jpg), decode(fs::path(golden).concat(".jpg")), jpeg_tolerance(),
-                        "JPEG"));
+    EXPECT_TRUE(jpeg_matches(jpg, golden, "JPEG"));
     fs::remove(jpg);
 }
 
@@ -124,9 +123,12 @@ void check_cli(const fs::path& input, const fs::path& recipe, const fs::path& go
                                     recipe.string() + "\" --long-side " +
                                     std::to_string(long_side) + " > \"" + log.string() + "\" 2>&1";
         EXPECT_EQ(prism_test::run_command(command), 0) << command;
-        const Tolerance t = std::string(ext) == ".png" ? png_tolerance() : jpeg_tolerance();
-        EXPECT_TRUE(matches(decode(out), decode(fs::path(golden).concat(ext)), t,
-                            std::string("prism ") + ext));
+        if (std::string(ext) == ".png") {
+            EXPECT_TRUE(matches(decode(out), decode(fs::path(golden).concat(ext)), png_tolerance(),
+                                "prism .png"));
+        } else {
+            EXPECT_TRUE(jpeg_matches(out, golden, "prism .jpg"));
+        }
         fs::remove(out);
         fs::remove(log);
     }

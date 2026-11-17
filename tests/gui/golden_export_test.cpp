@@ -98,8 +98,7 @@ void check_export(prism::gui::Session& session, const prism::Photo& decoded,
 
     const fs::path jpg = temp_file("out.jpg");
     ASSERT_EQ(prism::gui::export_image(job, jpg), std::nullopt);
-    EXPECT_TRUE(matches(decode(jpg), decode(fs::path(golden).concat(".jpg")), jpeg_tolerance(),
-                        "exported JPEG"));
+    EXPECT_TRUE(jpeg_matches(jpg, golden, "exported JPEG"));
     fs::remove(jpg);
 }
 

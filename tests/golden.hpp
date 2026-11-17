@@ -9,17 +9,20 @@
 // read from a stored file and never recomputed by the code under test.
 //
 // Tolerances. Built for Apple arm64 (the macOS CI runners, where the references were made) the
-// pixels must match exactly. Elsewhere other compilers may round a float differently at the end
-// of the pipeline, which moves a sample by at most 1 level, rarely: a PNG may then differ by 1 level
-// in at most 0.5% of the samples. stb_image_write's JPEG encoder uses a float DCT, so its bytes can
-// differ between compilers; the JPEG is compared decoded, against the decoded reference JPEG. One
-// quantised coefficient rounding the other way moves the pixels of its 8 × 8 block by at most
-// step / 4 per unit of the basis; at quality 95 (no chroma subsampling) the steps are at most 12
-// (luma) and 10 (chroma, which reaches R and B times 1.772), so up to about 4.5 levels, on top of
-// the 1-level input difference above: at most 6 levels, in at most 2% of the samples.
+// pixels must match exactly, PNG and JPEG. Elsewhere other compilers may round a float differently
+// at the end of the pipeline, which moves a sample by at most 1 level, rarely: a PNG may then differ
+// by 1 level in at most 0.5% of the samples. stb_image_write's JPEG encoder uses a float DCT, so its
+// bytes can differ between compilers, and one input level or one coefficient rounding the other way
+// moves a whole 8 x 8 block by several levels (a 1-level change in a quarter of the input samples
+// moved the decoded JPEG by up to 9). So elsewhere the decoded JPEG is held to the JPEG's own
+// tolerance: no further from the decoded reference JPEG, at worst and on average, than that
+// reference is from the reference PNG it encodes (6 to 18 levels at worst, 0.4 to 1.1 on average,
+// for these files). Both are computed from the stored files alone. Off Apple arm64 the PNG checks
+// carry the precision; the JPEG check catches a wrong or broken JPEG.
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstdlib>
@@ -62,15 +65,13 @@ struct Pixels {
 };
 
 struct Tolerance {
-    int max_difference = 0;     // per channel, in 8-bit levels
-    double max_share = 0.0;     // of all samples, that may differ at all
+    int max_difference = 0;      // per channel, in 8-bit levels
+    double max_share = 0.0;      // of all samples, that may differ at all
+    double max_mean = 255.0;     // mean absolute difference, in levels
 };
 
 inline Tolerance png_tolerance() {
     return exact_platform ? Tolerance{0, 0.0} : Tolerance{1, 0.005};
-}
-inline Tolerance jpeg_tolerance() {
-    return exact_platform ? Tolerance{0, 0.0} : Tolerance{6, 0.02};
 }
 
 inline std::vector<std::uint8_t> read_bytes(const fs::path& path) {
@@ -113,8 +114,10 @@ inline testing::AssertionResult matches(const Pixels& got, const Pixels& want, c
     int max_difference = 0;
     std::size_t differing = 0;
     std::size_t worst = 0;
+    double total = 0.0;
     for (std::size_t i = 0; i < got.rgb.size(); ++i) {
         const int d = std::abs(int(got.rgb[i]) - int(want.rgb[i]));
+        total += d;
         if (d != 0) {
             ++differing;
         }
@@ -124,7 +127,8 @@ inline testing::AssertionResult matches(const Pixels& got, const Pixels& want, c
         }
     }
     const double share = double(differing) / double(got.rgb.size());
-    if (max_difference <= t.max_difference && share <= t.max_share) {
+    const double mean = total / double(got.rgb.size());
+    if (max_difference <= t.max_difference && share <= t.max_share && mean <= t.max_mean) {
         return testing::AssertionSuccess();
     }
     const std::size_t pixel = worst / 3;
@@ -137,9 +141,33 @@ inline testing::AssertionResult matches(const Pixels& got, const Pixels& want, c
     return testing::AssertionFailure()
            << what << ": max difference " << max_difference << " (allowed " << t.max_difference
            << "), " << differing << " of " << got.rgb.size() << " samples differ (" << share * 100.0
-           << "%, allowed " << t.max_share * 100.0 << "%); worst pixel (" << pixel % got.width
+           << "%, allowed " << t.max_share * 100.0 << "%), mean " << mean << " (allowed "
+           << t.max_mean << "); worst pixel (" << pixel % got.width
            << ", " << pixel / got.width << ") is " << rgb(got.rgb) << ", the reference "
            << rgb(want.rgb);
+}
+
+// Checks a JPEG Prism wrote against the reference `<golden>.jpg`, both decoded: exactly on Apple
+// arm64, elsewhere within the reference's own error against `<golden>.png` (see the top).
+inline testing::AssertionResult jpeg_matches(const fs::path& jpeg, const fs::path& golden,
+                                             const std::string& what) {
+    const Pixels want = decode(fs::path(golden).concat(".jpg"));
+    if (exact_platform) {
+        return matches(decode(jpeg), want, Tolerance{0, 0.0}, what);
+    }
+    const Pixels source = decode(fs::path(golden).concat(".png"));
+    if (want.rgb.empty() || want.rgb.size() != source.rgb.size()) {
+        return testing::AssertionFailure() << what << ": the reference JPEG and PNG don't decode "
+                                                      "to the same size";
+    }
+    Tolerance own{0, 1.0, 0.0};
+    for (std::size_t i = 0; i < want.rgb.size(); ++i) {
+        const int d = std::abs(int(want.rgb[i]) - int(source.rgb[i]));
+        own.max_difference = std::max(own.max_difference, d);
+        own.max_mean += d;
+    }
+    own.max_mean /= double(want.rgb.size());
+    return matches(decode(jpeg), want, own, what);
 }
 
 // --- SHA-256 (FIPS 180-4), for checking the test RAW is the one the references came from --------

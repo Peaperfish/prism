@@ -16,8 +16,9 @@ the same processing and compare the decoded 8-bit sRGB pixels with these files.
 
 How close is close enough: built for Apple arm64 (the macOS CI runners and the maintainer's Mac)
 the pixels must match exactly. Elsewhere a PNG may differ by 1 level per channel in at most 0.5% of
-the samples, and a JPEG, compared decoded with stb against the decoded reference JPEG, by at most
-6 levels in at most 2% of the samples (see the tests' header comments for why).
+the samples, and a JPEG, compared decoded with stb against the decoded reference JPEG, may differ
+by no more, at worst and on average, than that reference JPEG differs from its own PNG (see
+`tests/golden.hpp` for why).
 
 ## Regenerating, only on purpose
 
