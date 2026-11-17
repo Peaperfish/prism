@@ -358,7 +358,7 @@ Point at a row and the Explain area says what it means.
 - **On the picture**, the pin is a small crosshair, or an outline of the pixel's square above 200%, and the pixel under the cursor has a fainter outline; on real pixels the square is the photo pixel's. If you zoom or move the pin off the canvas, its values say "(off screen)". A pin placed at Fit reads, once you zoom in to real pixels, the photo pixel in the middle of the preview pixel you clicked.
 - **Dragging and double-clicking** still move and zoom the picture. A drag doesn't pin, but a double-click's first click does move the pin.
 
-The pin is in the photo's pixels, so it stays put through zooming, moving, changing stage and re-decoding with a new camera matrix. Changing the frame on the easel or opening another photo clears it. Sample mode is only a view: it is not saved, it can't be undone, and it does not affect export.
+The pin is on a point of the photo, so it stays put through zooming, moving, changing stage and re-decoding with a new camera matrix. When the frame changes, on the easel or by undo and redo, the pin stays on the same point of the photo, and it is cleared only when that point leaves the frame. Opening another photo clears it. Sample mode is only a view: it is not saved, it can't be undone, and it does not affect export.
 
 ### The test strip
 
