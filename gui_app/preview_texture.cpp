@@ -217,6 +217,10 @@ void PreviewTexture::reset_hdr() {
     }
     hdr_width_ = 0;
     hdr_height_ = 0;
+    reset_hdr_veiled();
+}
+
+void PreviewTexture::reset_hdr_veiled() {
     if (hdr_veiled_ != nullptr) {
         SDL_DestroyTexture(hdr_veiled_);
         hdr_veiled_ = nullptr;

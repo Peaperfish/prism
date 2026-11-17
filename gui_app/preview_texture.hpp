@@ -64,8 +64,9 @@ public:
     bool upload_hdr(std::span<const std::uint16_t> rgba, int width, int height);
     // The easel's second HDR picture: the same with the veil drawn into it (#58, #106).
     bool upload_hdr_veiled(std::span<const std::uint16_t> rgba, int width, int height);
-    // Drops both HDR pictures.
+    // Drops both HDR pictures, or the veiled one only.
     void reset_hdr();
+    void reset_hdr_veiled();
     [[nodiscard]] SDL_Texture* hdr_texture() const noexcept { return hdr_; }
     [[nodiscard]] SDL_Texture* hdr_veiled_texture() const noexcept { return hdr_veiled_; }
 

@@ -992,12 +992,9 @@ std::optional<float> App::hdr_request() const {
 
 void App::update_detail() {
     // Real pixels carry their HDR picture for the screen as it was asked for (#106): for another
-    // headroom, or HDR on or off, they are asked for again.
+    // headroom, or HDR on or off, they are stale and asked for again, as after a settings change.
     const std::optional<float> hdr = hdr_request();
-    if (hdr != detail_hdr_asked_) {
-        drop_detail();
-        detail_hdr_asked_ = hdr;
-    }
+    const std::uint64_t look = detail_look_.update(session_.settings_generation(), hdr);
     const std::shared_ptr<const prism::Photo> base = session_.detail_base();
     const std::uint64_t base_id =
         detail_base_number_.update(base, std::exchange(detail_photo_opened_, false));
@@ -1030,7 +1027,7 @@ void App::update_detail() {
     in.frame = session_.settings().frame;
     in.base_state = session_.detail_base_state();
     in.base = base_id;
-    in.settings = session_.settings_generation();
+    in.settings = look;
     in.gesture = canvas_gesture_now();
     in.mode = gui::canvas_view(
         framing_.on(), strip_.has_value(),
@@ -1260,6 +1257,9 @@ bool App::update_hdr_texture(bool easel) {
         const std::vector<std::uint16_t> picture =
             gui::hdr_with_overlays(hdr_rgba_, hdr_sdr_rgb8_, hdr_width_, hdr_height_, spans);
         uploaded = !picture.empty() && texture_.upload_hdr(picture, hdr_width_, hdr_height_);
+    }
+    if (!easel) {
+        texture_.reset_hdr_veiled();  // only the easel draws it
     }
     if (uploaded && easel) {
         // The easel's veil over all of it, last, as the SDR easel draws it over the photo; the
@@ -1497,8 +1497,8 @@ void App::draw_under_ui(SDL_Renderer* renderer) const {
     if (under_ui_.easel && texture_.hdr_texture() != nullptr &&
         texture_.hdr_veiled_texture() != nullptr) {
         const gui::WindowPixels frame =
-            gui::pixels_covering(under_ui_.frame_min.x, under_ui_.frame_min.y,
-                                 under_ui_.frame_max.x, under_ui_.frame_max.y, k);
+            gui::pixels_centred_in(under_ui_.frame_min.x, under_ui_.frame_min.y,
+                                   under_ui_.frame_max.x, under_ui_.frame_max.y, k);
         draw_under_ui_easel(renderer, texture_.hdr_veiled_texture(), texture_.hdr_texture(),
                             gui::quad_triangles(under_ui_.corners.data(), k), canvas, frame,
                             under_ui_.canvas_srgb.data(), under_ui_.nearest);
@@ -2115,15 +2115,14 @@ void App::draw_canvas() {
             draw_split(draw, at, shown);
         } else {
             begin_picture_sampling(draw);
-            // The HDR picture under the UI, with the J overlay and the strokes drawn into it (this
-            // version shows real pixels and the split in SDR: gui::sdr_only_view).
+            // The HDR picture under the UI, with the J overlay and the strokes drawn into it, and
+            // real pixels' own HDR picture over it (a split stays SDR: gui::sdr_only_view).
             const bool detail_drawn = detail_plan_.draw && detail_texture_.texture() != nullptr;
             const bool sdr_view = gui::sdr_only_view(
                 {.clip_overlay = prefs_.clip_overlay,
                  .stroke_overlay = stroke_mask_on_,
                  .real_pixels = detail_drawn && detail_texture_.hdr_texture() == nullptr,
-                 .split = splitting(),
-                 .easel = framing_.on()});
+                 .split = splitting()});
             if (hdr_possible &&
                 gui::hdr_canvas_on(display_mode_, session_.settings(), viewed_stage_,
                                    strip_.has_value(), display_headroom_, sdr_view) &&
@@ -2473,11 +2472,11 @@ void App::draw_framing_canvas(ImDrawList* draw, ImVec2 min, ImVec2 size) {
     const ImVec2 fmin = inside(rect.min);
     const ImVec2 fmax = inside(rect.max);
     // The HDR easel (#106): the photo under the UI, the veil and J's marks drawn into it.
-    const bool hdr_easel =
-        picture && display_mode_ == gui::DisplayMode::hdr_ui_target && !hdr_rgba_.empty() &&
-        gui::hdr_canvas_on(display_mode_, session_.settings(), viewed_stage_, strip_.has_value(),
-                           display_headroom_, gui::sdr_only_view({.easel = true})) &&
-        update_hdr_texture(true);
+    const bool hdr_easel = picture && display_mode_ == gui::DisplayMode::hdr_ui_target &&
+                           !hdr_rgba_.empty() &&
+                           gui::hdr_canvas_on(display_mode_, session_.settings(), viewed_stage_,
+                                              strip_.has_value(), display_headroom_) &&
+                           update_hdr_texture(true);
     if (hdr_easel) {
         under_ui_.easel = true;
         for (std::size_t i = 0; i < corners.size(); ++i) {
@@ -2980,7 +2979,7 @@ void App::update_sample_reads() {
     in.plan = detail_plan_;
     in.shown = detail_shown_;
     in.base = detail_base_number_.current();
-    in.settings = session_.settings_generation();
+    in.settings = detail_look_.current();
     in.has_pin = sample_.pin().has_value();
     in.pin_file = sample_pin_file_;
     // With a pin the cursor's pixel only matters while it is on the picture. Without one the block
@@ -3038,7 +3037,7 @@ void App::update_sample_traces() {
 bool App::reads_photo_at(const std::optional<gui::FilePixel>& pixel) const {
     return pixel && !strip_ &&
            gui::sample_source(detail_plan_, detail_shown_, detail_base_number_.current(),
-                              session_.settings_generation(), *pixel) == gui::PixelSource::photo;
+                              detail_look_.current(), *pixel) == gui::PixelSource::photo;
 }
 
 gui::SampleMarker App::sample_marker_for(gui::SamplePin preview, bool photo,

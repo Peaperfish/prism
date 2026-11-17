@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -55,14 +56,13 @@ struct CanvasViews {
     bool stroke_overlay = false;  // the Dodge & burn strokes' overlay (M)
     bool real_pixels = false;     // real pixels without an HDR picture, over the preview (#37)
     bool split = false;           // split compare
-    bool easel = false;           // the easel (framing, #58): its veil goes into the picture
 };
 
 // Whether this version shows the canvas in SDR only (hdr_canvas_on's `sdr_view`): with real
 // pixels that have no HDR picture of their own (DetailFrame::hdr_rgba; one made before the
 // screen's headroom changed is asked for again), or a split compare (its halves are different
 // stages, and only the final picture has light above white). The J overlay, the strokes and the
-// easel's veil don't: they are drawn into the HDR picture (hdr_with_overlays).
+// easel's veil (#58) don't: they are drawn into the HDR picture (hdr_with_overlays).
 [[nodiscard]] bool sdr_only_view(const CanvasViews& views) noexcept;
 
 // The easel's veil (#58): the canvas's colour at 60% over the photo outside the frame, so what is
@@ -86,6 +86,24 @@ struct QuadVertex {
 [[nodiscard]] std::array<QuadVertex, 6> quad_triangles(const float corners_xy[8],
                                                        float scale) noexcept;
 
+// The number real pixels' frames are keyed by (DetailKey::settings, and what the sampler and the
+// detail plan compare it with): a new one whenever the settings change (their generation) or the
+// HDR canvas asks for another picture (DetailRenderRequest::hdr_display_headroom, #106). So a
+// frame made for another HDR request is stale like one of older settings: it is asked for again
+// and stays on screen until the new one arrives.
+class DetailLookNumber {
+public:
+    // The number for these, the same as last time if neither changed. The first is 1.
+    std::uint64_t update(std::uint64_t settings_generation,
+                         std::optional<float> hdr_request) noexcept;
+    [[nodiscard]] std::uint64_t current() const noexcept { return number_; }
+
+private:
+    std::uint64_t settings_ = 0;
+    std::optional<float> hdr_;
+    std::uint64_t number_ = 0;
+};
+
 // A rectangle of window pixels.
 struct WindowPixels {
     int x = 0;
@@ -101,6 +119,12 @@ struct WindowPixels {
 // rectangle is empty.
 [[nodiscard]] WindowPixels pixels_covering(float x0, float y0, float x1, float y1,
                                            float scale) noexcept;
+
+// The window pixels whose centres lie in the rectangle, as Dear ImGui fills a rectangle: each edge
+// rounded to the nearest pixel boundary. The easel's frame, so the plain picture covers exactly
+// the pixels the SDR easel leaves unveiled.
+[[nodiscard]] WindowPixels pixels_centred_in(float x0, float y0, float x1, float y1,
+                                             float scale) noexcept;
 
 // The weight a viewer of the exported file gives its gain map on a screen with `display_headroom`
 // (#96 decision 10 as changed: HDRCapacityMin 0, HDRCapacityMax = N): prism::gain_map_weight with

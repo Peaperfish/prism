@@ -618,8 +618,8 @@ TEST(HdrOverlays, OnlyRealPixelsWithoutAnHdrPictureOrASplitKeepTheCanvasSdr) {
     EXPECT_FALSE(sdr_only_view(CanvasViews{.clip_overlay = true, .stroke_overlay = true}));
     EXPECT_TRUE(sdr_only_view(CanvasViews{.real_pixels = true}));
     EXPECT_TRUE(sdr_only_view(CanvasViews{.split = true}));
-    EXPECT_FALSE(sdr_only_view(CanvasViews{.easel = true}));  // its veil goes into the picture
-    EXPECT_FALSE(sdr_only_view(CanvasViews{.clip_overlay = true, .easel = true}));
+    EXPECT_FALSE(sdr_only_view(CanvasViews{
+        .clip_overlay = true, .stroke_overlay = true, .real_pixels = false, .split = false}));
 }
 
 TEST(HdrOverlays, AMaskIsDrawnInOnlyWhileItShowsAndOnlyIfItIsThePicturesSize) {
@@ -682,4 +682,35 @@ TEST(HdrViews, TheTurnedPhotoIsTwoTrianglesWithAddImageQuadsTextureCorners) {
     EXPECT_EQ(q[3], q[0]);
     EXPECT_EQ(q[4], q[2]);
     EXPECT_EQ(q[5], (V{36.0f, 184.0f, 0.0f, 1.0f}));
+}
+
+TEST(HdrViews, RealPixelsAreKeyedByTheSettingsAndTheHdrRequest) {
+    prism::gui::DetailLookNumber look;
+    EXPECT_EQ(look.current(), 0u);
+    const std::uint64_t first = look.update(7, std::nullopt);
+    EXPECT_EQ(first, 1u);
+    EXPECT_EQ(look.update(7, std::nullopt), first);  // nothing changed: the same frame still fits
+    const std::uint64_t hdr_on = look.update(7, 2.0f);
+    EXPECT_NE(hdr_on, first);  // HDR turned on: asked for again
+    EXPECT_EQ(look.update(7, 2.0f), hdr_on);
+    const std::uint64_t brighter = look.update(7, 2.5f);
+    EXPECT_NE(brighter, hdr_on);  // another screen headroom
+    const std::uint64_t edited = look.update(8, 2.5f);
+    EXPECT_NE(edited, brighter);  // the settings changed
+    EXPECT_EQ(look.current(), edited);
+    EXPECT_NE(look.update(8, std::nullopt), edited);  // HDR off again
+    // Settings generation 0 is a generation like any other.
+    prism::gui::DetailLookNumber fresh;
+    EXPECT_EQ(fresh.update(0, std::nullopt), 1u);
+}
+
+TEST(HdrViews, TheEaselsFrameCoversThePixelsWhoseCentresAreInIt) {
+    using prism::gui::pixels_centred_in;
+    using prism::gui::WindowPixels;
+    EXPECT_EQ(pixels_centred_in(10.0f, 20.0f, 110.0f, 70.0f, 2.0f),
+              (WindowPixels{20, 40, 200, 100}));
+    // 20.4 and 220.6 device pixels: the centres in it are 20.5 .. 220.5, pixels 20 to 220.
+    EXPECT_EQ(pixels_centred_in(10.2f, 20.3f, 110.3f, 70.2f, 2.0f),
+              (WindowPixels{20, 41, 201, 99}));
+    EXPECT_EQ(pixels_centred_in(5.0f, 5.0f, 4.0f, 9.0f, 1.0f).width, 0);
 }

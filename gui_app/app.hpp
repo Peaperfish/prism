@@ -425,7 +425,7 @@ private:
     };
     std::optional<HdrTextureKey> hdr_texture_key_;  // empty: the texture is gone or stale
     std::optional<HdrTextureKey> hdr_texture_failed_;  // what SDL last couldn't upload
-    std::optional<float> detail_hdr_asked_;  // the HDR request real pixels were last asked with
+    gui::DetailLookNumber detail_look_;  // what real pixels' frames are keyed by (#106)
     std::vector<std::uint8_t> stroke_mask_;
     int stroke_mask_width_ = 0;
     int stroke_mask_height_ = 0;

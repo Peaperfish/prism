@@ -40,6 +40,24 @@ std::array<QuadVertex, 6> quad_triangles(const float corners_xy[8], float scale)
     return {vertex(0), vertex(1), vertex(2), vertex(0), vertex(2), vertex(3)};
 }
 
+std::uint64_t DetailLookNumber::update(std::uint64_t settings_generation,
+                                       std::optional<float> hdr_request) noexcept {
+    if (number_ == 0 || settings_generation != settings_ || hdr_request != hdr_) {
+        settings_ = settings_generation;
+        hdr_ = hdr_request;
+        ++number_;
+    }
+    return number_;
+}
+
+WindowPixels pixels_centred_in(float x0, float y0, float x1, float y1, float scale) noexcept {
+    const int left = static_cast<int>(std::lround(x0 * scale));
+    const int top = static_cast<int>(std::lround(y0 * scale));
+    const int right = static_cast<int>(std::lround(x1 * scale));
+    const int bottom = static_cast<int>(std::lround(y1 * scale));
+    return {left, top, std::max(0, right - left), std::max(0, bottom - top)};
+}
+
 WindowPixels pixels_covering(float x0, float y0, float x1, float y1, float scale) noexcept {
     const int left = static_cast<int>(std::floor(x0 * scale));
     const int top = static_cast<int>(std::floor(y0 * scale));
