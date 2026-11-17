@@ -739,4 +739,6 @@ TEST(HdrText, RgbBytesWidenToRgbaWithOpaqueAlpha) {
         ASSERT_EQ(rgba[p * 4 + 3], 255u) << p;
     }
     EXPECT_TRUE(prism::gui::rgba8_from_rgb8({}).empty());
+    const std::vector<std::uint8_t> partial = {1, 2, 3, 4, 5};  // a pixel and two bytes
+    EXPECT_EQ(prism::gui::rgba8_from_rgb8(partial), (std::vector<std::uint8_t>{1, 2, 3, 255}));
 }

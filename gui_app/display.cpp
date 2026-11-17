@@ -183,11 +183,14 @@ SDL_Texture* create_ui_texture(SDL_Renderer* renderer, SDL_PixelFormat format,
     const Sint64 output =
         SDL_GetNumberProperty(SDL_GetRendererProperties(renderer),
                               SDL_PROP_RENDERER_OUTPUT_COLORSPACE_NUMBER, SDL_COLORSPACE_SRGB);
-    if (output != SDL_COLORSPACE_SRGB_LINEAR) {
-        return SDL_CreateTexture(renderer, format, access, width, height);
-    }
-    if (gui::ui_texture_as_rgba(gui::DisplayMode::hdr_ui_target, format == SDL_PIXELFORMAT_RGB24)) {
+    const gui::DisplayMode mode = output == SDL_COLORSPACE_SRGB_LINEAR
+                                      ? gui::DisplayMode::hdr_ui_target
+                                      : gui::DisplayMode::sdr;
+    if (gui::ui_texture_as_rgba(mode, format == SDL_PIXELFORMAT_RGB24)) {
         format = SDL_PIXELFORMAT_RGBA32;
+    }
+    if (mode == gui::DisplayMode::sdr) {
+        return SDL_CreateTexture(renderer, format, access, width, height);  // as before
     }
     SDL_PropertiesID p = SDL_CreateProperties();
     SDL_SetNumberProperty(p, SDL_PROP_TEXTURE_CREATE_FORMAT_NUMBER, format);

@@ -244,7 +244,8 @@ struct OverlayMask {
 // that mode a 3-byte picture goes up as RGBA. Today's renderer keeps RGB24 exactly as before.
 [[nodiscard]] bool ui_texture_as_rgba(DisplayMode mode, bool three_bytes_per_pixel) noexcept;
 
-// `rgb` (3 bytes a pixel) as RGBA with alpha 255, 4 bytes a pixel, in the same order.
+// `rgb` (3 bytes a pixel) as RGBA with alpha 255, 4 bytes a pixel, in the same order. Bytes past
+// the last whole pixel are left out.
 [[nodiscard]] std::vector<std::uint8_t> rgba8_from_rgb8(std::span<const std::uint8_t> rgb);
 
 // UI-target mode's compositing of one pixel: the UI target's texel, premultiplied 8-bit sRGB
