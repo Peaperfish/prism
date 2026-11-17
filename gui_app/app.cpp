@@ -12,14 +12,12 @@
 
 #include "about_info.hpp"
 #include "active_control.hpp"
-#include "imgui.h"
 #include "export_sheet.hpp"
+#include "imgui.h"
+#include "imgui_impl_sdlrenderer3.h"
 #include "imgui_internal.h"  // ClearActiveID: Esc leaves a text field without undoing the typing
 #include "light_path.hpp"
 #include "macos_menu.hpp"
-#include "scopes_panel.hpp"
-#include "theme.hpp"
-#include "widgets.hpp"
 #include "prism/gui/explanations.hpp"
 #include "prism/gui/export_size.hpp"
 #include "prism/gui/file_types.hpp"
@@ -36,6 +34,9 @@
 #include "prism/raw.hpp"
 #include "prism/utf8_path.hpp"
 #include "prism/version.hpp"
+#include "scopes_panel.hpp"
+#include "theme.hpp"
+#include "widgets.hpp"
 
 namespace prism::gui_app {
 
@@ -157,6 +158,29 @@ gui::SessionOptions app_session_options() {
     gui::SessionOptions options;
     options.detail_base = true;
     return options;
+}
+
+// A Dear ImGui draw callback, run by the SDL renderer backend while it draws into the UI target
+// (#106): makes the rectangle in the callback's data (x0, y0, x1, y1 in ImGui units, which the
+// render scale turns into pixels) fully transparent, so what Display drew under the UI shows there.
+void clear_ui_rect(const ImDrawList*, const ImDrawCmd* cmd) {
+    const ImGui_ImplSDLRenderer3_RenderState* state = ImGui_ImplSDLRenderer3_GetRenderState();
+    if (state == nullptr || cmd->UserCallbackData == nullptr) {
+        return;
+    }
+    const float* r = static_cast<const float*>(cmd->UserCallbackData);
+    if (r[2] <= r[0] || r[3] <= r[1]) {
+        return;
+    }
+    SDL_Renderer* renderer = state->Renderer;
+    SDL_BlendMode before = SDL_BLENDMODE_BLEND;
+    SDL_GetRenderDrawBlendMode(renderer, &before);
+    SDL_SetRenderClipRect(renderer, nullptr);
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+    SDL_SetRenderDrawColorFloat(renderer, 0.0f, 0.0f, 0.0f, 0.0f);
+    const SDL_FRect rect{r[0], r[1], r[2] - r[0], r[3] - r[1]};
+    SDL_RenderFillRect(renderer, &rect);
+    SDL_SetRenderDrawBlendMode(renderer, before);
 }
 
 }  // namespace
@@ -1052,6 +1076,11 @@ void App::update_preview() {
     options.compare_stage = strip_ ? std::nullopt : gui::effective_compare(viewed_stage_, compare_stage_);
     options.test_strip = strip_;
     options.as_shot_white = session_.as_shot_white();
+    // The HDR canvas's picture, when it may show (the overlays are checked when drawing).
+    if (gui::hdr_canvas_on(display_mode_, session_.settings(), viewed_stage_, strip_.has_value(),
+                           display_headroom_, framing_.on())) {
+        options.hdr_display_headroom = display_headroom_;
+    }
     if (framing_.on()) {
         // While framing the canvas shows the WHOLE photo, turned on the GPU (#58): the render is of
         // the whole base, without the frame, so a frame committed during framing renders nothing
@@ -1074,7 +1103,7 @@ void App::update_preview() {
                     frame->error});
         return;
     }
-    if (!texture_.upload(*frame)) {
+    if (!texture_.upload(*frame) || !texture_.upload_hdr(*frame)) {
         show_error({gui::ErrorKind::out_of_memory, "Couldn't show the preview.", SDL_GetError()});
         return;
     }
@@ -1341,7 +1370,45 @@ bool App::animating() const {
            pending_open_.has_value() || exporter_.busy() || close_pending_.has_value() || detail_busy;
 }
 
+void App::renderer_changed(SDL_Renderer* renderer) {
+    texture_.rebind(renderer);
+    detail_texture_.rebind(renderer);
+    detail_shown_.reset();
+    scope_view_.rebind(renderer);
+    histogram_texture_.rebind(renderer);
+    overlay_dirty_ = true;
+    stroke_overlay_dirty_ = true;
+    preview_.forget();  // the frame on screen went with the old renderer
+}
+
+void App::draw_under_ui(SDL_Renderer* renderer) const {
+    const float k = under_ui_.scale;
+    if (under_ui_.picture && texture_.hdr_texture() != nullptr) {
+        // Clipped to the canvas, as ImGui clips the SDR picture to the canvas window.
+        const SDL_Rect clip{
+            static_cast<int>(std::floor(under_ui_.clip_min.x * k)),
+            static_cast<int>(std::floor(under_ui_.clip_min.y * k)),
+            static_cast<int>(std::ceil((under_ui_.clip_max.x - under_ui_.clip_min.x) * k)),
+            static_cast<int>(std::ceil((under_ui_.clip_max.y - under_ui_.clip_min.y) * k))};
+        SDL_SetRenderClipRect(renderer, &clip);
+        const SDL_FRect dst{under_ui_.at.x * k, under_ui_.at.y * k,
+                            (under_ui_.end.x - under_ui_.at.x) * k,
+                            (under_ui_.end.y - under_ui_.at.y) * k};
+        SDL_RenderTexture(renderer, texture_.hdr_texture(), nullptr, &dst);
+    }
+    SDL_SetRenderClipRect(renderer, nullptr);
+}
+
 void App::frame() {
+    // Over the HDR picture a translucent popup would not dim it (#97): popups and tooltips are
+    // opaque while it shows.
+    const bool opaque_popups = hdr_canvas_shown_;
+    if (opaque_popups) {
+        ImVec4 popup = ImGui::GetStyleColorVec4(ImGuiCol_PopupBg);
+        popup.w = 1.0f;
+        ImGui::PushStyleColor(ImGuiCol_PopupBg, popup);
+    }
+    under_ui_ = {};
     ++quiet_frames_;
     take_dialog_results();
     // The "Opening…" frame was presented: now decode (this frame shows the result).
@@ -1475,6 +1542,10 @@ void App::frame() {
         ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
     item_active_last_frame_ = control_active();
     focused_window_last_frame_ = focused_window_this_frame_;
+    hdr_canvas_shown_ = under_ui_.picture;
+    if (opaque_popups) {
+        ImGui::PopStyleColor();
+    }
 }
 
 void App::step_interface_size(int direction) {
@@ -1875,6 +1946,10 @@ void App::draw_canvas() {
     const ImVec2 max(min.x + size.x, min.y + size.y);
     const Palette& colours = palette(theme());
     draw->AddRectFilled(min, max, colours.canvas);  // neutral grey in both themes
+    // The HDR canvas (#106): whether the picture itself goes under the UI this frame is decided
+    // below (hdr_canvas_on).
+    const bool hdr_possible = display_mode_ == gui::DisplayMode::hdr_ui_target &&
+                              texture_.hdr_texture() != nullptr && !framing_.on();
     const float margin = token_metrics().canvas_margin;
     if (texture_.texture() == nullptr) {
         canvas_wheels_.clear();  // nothing to scroll or pinch
@@ -1918,9 +1993,30 @@ void App::draw_canvas() {
             draw_split(draw, at, shown);
         } else {
             begin_picture_sampling(draw);
-            draw->AddImage(ImTextureRef(static_cast<ImTextureID>(
-                               reinterpret_cast<std::uintptr_t>(texture_.texture()))),
-                           at, ImVec2(at.x + shown.x, at.y + shown.y));
+            // The HDR picture under the UI when nothing translucent covers it (this version
+            // shows the overlays, real pixels and the split in SDR: hdr_canvas_on).
+            const bool sdr_view = prefs_.clip_overlay || stroke_mask_on_ ||
+                                  (detail_plan_.draw && detail_texture_.texture() != nullptr);
+            if (hdr_possible &&
+                gui::hdr_canvas_on(display_mode_, session_.settings(), viewed_stage_,
+                                   strip_.has_value(), display_headroom_, sdr_view)) {
+                under_ui_.picture = true;
+                under_ui_.at = at;
+                under_ui_.end = ImVec2(at.x + shown.x, at.y + shown.y);
+                under_ui_.clip_min = min;
+                under_ui_.clip_max = max;
+                under_ui_.scale = ImGui::GetIO().DisplayFramebufferScale.x;
+                // Clear the picture's place in the UI target, so the picture drawn under it shows
+                // through; whatever ImGui draws after this (marks, chips) still lands on top.
+                const float hole[4] = {std::max(at.x, min.x), std::max(at.y, min.y),
+                                       std::min(at.x + shown.x, max.x),
+                                       std::min(at.y + shown.y, max.y)};
+                draw->AddCallback(clear_ui_rect, const_cast<float*>(hole), sizeof hole);
+            } else {
+                draw->AddImage(ImTextureRef(static_cast<ImTextureID>(
+                                   reinterpret_cast<std::uintptr_t>(texture_.texture()))),
+                               at, ImVec2(at.x + shown.x, at.y + shown.y));
+            }
             if (detail_plan_.draw && detail_texture_.texture() != nullptr) {
                 // Real pixels over the enlarged preview, on their own region's place; the preview
                 // shows around them. Sampled by the rule for file pixels, then back to the

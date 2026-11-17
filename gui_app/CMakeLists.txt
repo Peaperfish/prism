@@ -48,6 +48,7 @@ target_link_libraries(prism_gui_panels PUBLIC prism_gui_core imgui PRIVATE prism
 add_executable(prism_gui WIN32 MACOSX_BUNDLE
   app.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/about_info.cpp
+  display.cpp
   file_dialogs.cpp
   main.cpp
   preview_texture.cpp
@@ -108,8 +109,8 @@ endif()
 # On macOS, a few lines of Objective-C++ connect the app menu's Preferences item (see
 # macos_menu.hpp). OBJCXX is enabled in the top-level CMakeLists.txt.
 if(APPLE)
-  target_sources(prism_gui PRIVATE macos_menu.mm)
-  target_link_libraries(prism_gui PRIVATE "-framework Cocoa")
+  target_sources(prism_gui PRIVATE macos_menu.mm macos_metal_layer.mm)
+  target_link_libraries(prism_gui PRIVATE "-framework Cocoa" "-framework Metal" "-framework QuartzCore")
 endif()
 
 prism_copy_libraw_dll(prism_gui)

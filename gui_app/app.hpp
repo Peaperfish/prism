@@ -24,6 +24,7 @@
 #include "prism/gui/detail_renderer.hpp"
 #include "prism/gui/explanations.hpp"
 #include "prism/gui/framing.hpp"
+#include "prism/gui/hdr_display.hpp"
 #include "prism/gui/histogram.hpp"
 #include "prism/gui/layout.hpp"
 #include "prism/gui/live_preview.hpp"
@@ -77,6 +78,19 @@ public:
 
     // What the window is cleared to before ImGui draws (the current theme's window colour).
     [[nodiscard]] ImVec4 clear_colour() const;
+
+    // The window's display (#106, display.hpp): its mode and the screen's headroom right now. Set
+    // before each frame().
+    void set_display(gui::DisplayMode mode, float headroom) {
+        display_mode_ = mode;
+        display_headroom_ = headroom;
+    }
+    // The renderer was recreated: every texture is dropped and made again on `renderer`, and the
+    // preview renders again.
+    void renderer_changed(SDL_Renderer* renderer);
+    // In UI-target mode, after the frame: draws what this frame puts under the UI with SDL calls
+    // (while the HDR canvas is on, the HDR picture), in window pixels.
+    void draw_under_ui(SDL_Renderer* renderer) const;
 
 private:
     // Asks for `path` to be opened. The open itself happens a frame later, so the window can
@@ -352,6 +366,19 @@ private:
     // The stroke mask, while M is held in Brush mode: whether it is on this frame, the mask of the
     // frame on screen (empty: none), and what its texture was made from, as for the clip mask.
     bool stroke_mask_on_ = false;
+    // The HDR canvas (#106).
+    gui::DisplayMode display_mode_ = gui::DisplayMode::sdr;
+    float display_headroom_ = 1.0f;
+    struct UnderUi {
+        bool picture = false;  // the HDR picture, under the UI
+        ImVec2 at;             // where it goes, in ImGui units
+        ImVec2 end;
+        ImVec2 clip_min;  // the canvas, which clips it
+        ImVec2 clip_max;
+        float scale = 1.0f;  // ImGui units to window pixels
+    };
+    UnderUi under_ui_;
+    bool hdr_canvas_shown_ = false;  // the last frame showed the HDR picture
     std::vector<std::uint8_t> stroke_mask_;
     int stroke_mask_width_ = 0;
     int stroke_mask_height_ = 0;

@@ -32,6 +32,13 @@ public:
     // The picture of `which` (not the histogram), or nullptr when there is no data yet.
     [[nodiscard]] SDL_Texture* texture(gui::ScopeChoice which, gui::Theme theme);
 
+    // Drops the texture and makes the next one on `renderer` (the renderer was recreated).
+    void rebind(SDL_Renderer* renderer) {
+        reset_texture();
+        renderer_ = renderer;
+        dirty_ = true;
+    }
+
 private:
     void rebuild(gui::ScopeChoice which, gui::Theme theme);
     void reset_texture();
@@ -59,6 +66,12 @@ public:
     [[nodiscard]] SDL_Texture* update(const gui::StageHistogram& histogram,
                                       const gui::HistogramPaintSize& size,
                                       const gui::HistogramPaintColours& colours);
+
+    // Drops the texture and makes the next one on `renderer` (the renderer was recreated).
+    void rebind(SDL_Renderer* renderer) {
+        reset();
+        renderer_ = renderer;
+    }
 
 private:
     void reset();

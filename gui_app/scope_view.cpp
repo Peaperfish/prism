@@ -1,4 +1,5 @@
 #include "scope_view.hpp"
+#include "display.hpp"
 
 #include <algorithm>
 #include <array>
@@ -100,7 +101,7 @@ void ScopeView::rebuild(gui::ScopeChoice which, gui::Theme theme) {
 
     if (texture_ == nullptr || texture_width_ != width) {
         reset_texture();
-        texture_ = SDL_CreateTexture(renderer_, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC,
+        texture_ = create_ui_texture(renderer_, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC,
                                      width, N);
         if (texture_ == nullptr) {
             return;  // draws as an empty panel
@@ -143,7 +144,7 @@ SDL_Texture* HistogramTexture::update(const gui::StageHistogram& histogram,
     }
     if (texture_ == nullptr || width_ != size.width || height_ != size.height) {
         reset();
-        texture_ = SDL_CreateTexture(renderer_, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC,
+        texture_ = create_ui_texture(renderer_, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC,
                                      size.width, size.height);
         if (texture_ == nullptr) {
             return nullptr;

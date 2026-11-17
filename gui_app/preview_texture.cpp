@@ -1,4 +1,5 @@
 #include "preview_texture.hpp"
+#include "display.hpp"
 
 #include <algorithm>
 
@@ -16,7 +17,7 @@ bool PreviewTexture::upload(const gui::PreviewFrame& frame) {
     if (texture_ == nullptr || frame.width != width_ || frame.height != height_) {
         reset();
         // Static: the pixels change only when a new frame arrives, a few times a second at most.
-        texture_ = SDL_CreateTexture(renderer_, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STATIC,
+        texture_ = create_ui_texture(renderer_, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STATIC,
                                      frame.width, frame.height);
         if (texture_ == nullptr) {
             return false;
@@ -43,7 +44,7 @@ bool PreviewTexture::upload_compare(const gui::CompareFrame& compare) {
     if (compare_ == nullptr || compare.width != compare_width_ ||
         compare.height != compare_height_) {
         reset_compare();
-        compare_ = SDL_CreateTexture(renderer_, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STATIC,
+        compare_ = create_ui_texture(renderer_, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STATIC,
                                      compare.width, compare.height);
         if (compare_ == nullptr) {
             return false;
@@ -115,7 +116,7 @@ bool PreviewTexture::make_overlay_texture(SDL_Texture*& texture, int& texture_wi
         SDL_DestroyTexture(texture);
         texture = nullptr;
     }
-    texture = SDL_CreateTexture(renderer_, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STATIC,
+    texture = create_ui_texture(renderer_, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STATIC,
                                 width, height);
     if (texture == nullptr) {
         return false;
@@ -158,10 +159,56 @@ void PreviewTexture::reset_stroke_overlay() {
     }
 }
 
+bool PreviewTexture::upload_hdr(const gui::PreviewFrame& frame) {
+    if (frame.hdr_rgba.empty()) {
+        reset_hdr();
+        return true;
+    }
+    if (frame.hdr_rgba.size() != static_cast<std::size_t>(frame.width) * frame.height * 4) {
+        SDL_SetError("the HDR picture is the wrong size");
+        reset_hdr();
+        return false;
+    }
+    if (hdr_ == nullptr || frame.width != hdr_width_ || frame.height != hdr_height_) {
+        reset_hdr();
+        SDL_PropertiesID p = SDL_CreateProperties();
+        SDL_SetNumberProperty(p, SDL_PROP_TEXTURE_CREATE_FORMAT_NUMBER,
+                              SDL_PIXELFORMAT_RGBA64_FLOAT);
+        SDL_SetNumberProperty(p, SDL_PROP_TEXTURE_CREATE_ACCESS_NUMBER, SDL_TEXTUREACCESS_STATIC);
+        SDL_SetNumberProperty(p, SDL_PROP_TEXTURE_CREATE_WIDTH_NUMBER, frame.width);
+        SDL_SetNumberProperty(p, SDL_PROP_TEXTURE_CREATE_HEIGHT_NUMBER, frame.height);
+        SDL_SetNumberProperty(p, SDL_PROP_TEXTURE_CREATE_COLORSPACE_NUMBER,
+                              SDL_COLORSPACE_SRGB_LINEAR);
+        hdr_ = SDL_CreateTextureWithProperties(renderer_, p);
+        SDL_DestroyProperties(p);
+        if (hdr_ == nullptr) {
+            return false;
+        }
+        SDL_SetTextureScaleMode(hdr_, SDL_SCALEMODE_LINEAR);
+        hdr_width_ = frame.width;
+        hdr_height_ = frame.height;
+    }
+    if (!SDL_UpdateTexture(hdr_, nullptr, frame.hdr_rgba.data(), frame.width * 8)) {
+        reset_hdr();
+        return false;
+    }
+    return true;
+}
+
+void PreviewTexture::reset_hdr() {
+    if (hdr_ != nullptr) {
+        SDL_DestroyTexture(hdr_);
+        hdr_ = nullptr;
+    }
+    hdr_width_ = 0;
+    hdr_height_ = 0;
+}
+
 void PreviewTexture::reset() {
     reset_overlay();
     reset_stroke_overlay();
     reset_compare();
+    reset_hdr();
     if (texture_ != nullptr) {
         SDL_DestroyTexture(texture_);
         texture_ = nullptr;
@@ -182,7 +229,7 @@ bool DetailTexture::upload(const gui::DetailFrame& frame) {
     if (texture_ == nullptr || w != width_ || h != height_) {
         reset();
         texture_ =
-            SDL_CreateTexture(renderer_, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STATIC, w, h);
+            create_ui_texture(renderer_, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STATIC, w, h);
         if (texture_ == nullptr) {
             return false;
         }

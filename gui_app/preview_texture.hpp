@@ -55,8 +55,21 @@ public:
     // The stage the compare picture shows.
     [[nodiscard]] gui::StageId compare_stage() const noexcept { return compare_stage_; }
 
+    // The HDR canvas's picture (#106): the frame's hdr_rgba as an RGBA64_FLOAT texture in linear
+    // light (SDL_COLORSPACE_SRGB_LINEAR, its headroom left unset so SDL never tone-maps it),
+    // drawn under the UI with SDL calls. A frame without one drops it. False (with
+    // SDL_GetError() set) if SDL couldn't.
+    bool upload_hdr(const gui::PreviewFrame& frame);
+    void reset_hdr();
+    [[nodiscard]] SDL_Texture* hdr_texture() const noexcept { return hdr_; }
+
     // Drops the textures: nothing to show.
     void reset();
+    // Drops the textures and makes the next ones on `renderer` (the app's renderer was recreated).
+    void rebind(SDL_Renderer* renderer) {
+        reset();
+        renderer_ = renderer;
+    }
 
     [[nodiscard]] SDL_Texture* texture() const noexcept { return texture_; }
     [[nodiscard]] int width() const noexcept { return width_; }
@@ -75,6 +88,9 @@ private:
     int stroke_overlay_width_ = 0;
     int stroke_overlay_height_ = 0;
     SDL_Texture* compare_ = nullptr;
+    SDL_Texture* hdr_ = nullptr;
+    int hdr_width_ = 0;
+    int hdr_height_ = 0;
     gui::StageId compare_stage_ = gui::StageId::decode;
     int compare_width_ = 0;
     int compare_height_ = 0;
@@ -101,6 +117,11 @@ public:
     bool upload(const gui::DetailFrame& frame);
     // Drops the texture.
     void reset();
+    // Drops the texture and makes the next one on `renderer` (the renderer was recreated).
+    void rebind(SDL_Renderer* renderer) {
+        reset();
+        renderer_ = renderer;
+    }
 
     [[nodiscard]] SDL_Texture* texture() const noexcept { return texture_; }
 

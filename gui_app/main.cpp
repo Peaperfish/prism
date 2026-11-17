@@ -13,14 +13,15 @@
 #include <vector>
 
 #include "app.hpp"
-#include "theme.hpp"
+#include "display.hpp"
+#include "imgui.h"
+#include "imgui_impl_sdl3.h"
+#include "imgui_impl_sdlrenderer3.h"
 #include "prism/gui/file_types.hpp"
 #include "prism/gui/presets.hpp"
 #include "prism/gui/wheel_scaling.hpp"
 #include "prism/utf8_path.hpp"
-#include "imgui.h"
-#include "imgui_impl_sdl3.h"
-#include "imgui_impl_sdlrenderer3.h"
+#include "theme.hpp"
 
 int main(int argc, char** argv) {
     // Before SDL, which can change the C locale the recipe parser depends on (presets.hpp).
@@ -55,19 +56,30 @@ int main(int argc, char** argv) {
         SDL_Quit();
         return 1;
     }
-    SDL_Renderer* renderer = SDL_CreateRenderer(window, nullptr);
-    if (renderer == nullptr) {
-        std::fprintf(stderr, "Prism: couldn't create a renderer: %s\n", SDL_GetError());
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        return 1;
-    }
-    SDL_SetRenderVSync(renderer, 1);
     SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
     SDL_ShowWindow(window);
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+
+    // The renderer: today's, or UI-target mode while the window's screen can show HDR (#106,
+    // display.hpp). It also starts Dear ImGui's renderer backend.
+    const auto wanted_mode = [&](const prism::gui_app::Display& d) {
+#if defined(__APPLE__)
+        const bool macos = true;
+#else
+        const bool macos = false;
+#endif
+        return prism::gui::display_mode(d.screen_shows_hdr(), macos);
+    };
+    prism::gui_app::Display display(window);
+    if (!display.create(wanted_mode(display)) && !display.create(prism::gui::DisplayMode::sdr)) {
+        std::fprintf(stderr, "Prism: couldn't create a renderer: %s\n", SDL_GetError());
+        ImGui::DestroyContext();
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 1;
+    }
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     // ImGui would write imgui.ini into the working directory, which may be read-only (e.g. inside
@@ -89,14 +101,13 @@ int main(int argc, char** argv) {
     // 150% on Windows), on a Retina screen, and when the window moves between displays.
     prism::gui_app::load_fonts(io);
 
-    ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);
-    ImGui_ImplSDLRenderer3_Init(renderer);
+    ImGui_ImplSDL3_InitForSDLRenderer(window, display.renderer());
 
     // Declared before the App and outliving it: a file dialog still open when the window closes
     // may answer into it late.
     prism::gui_app::DialogQueue dialogs;
     {
-        prism::gui_app::App app(window, renderer, dialogs, preferences_file);
+        prism::gui_app::App app(window, display.renderer(), dialogs, preferences_file);
         // "Open with" on Windows, or prism_gui photo.jpg: SDL's argv is UTF-8 on every OS.
         // macOS adds its own flags, which photo_from_arguments skips.
         if (const auto photo =
@@ -133,6 +144,24 @@ int main(int argc, char** argv) {
                     app.request_quit();
                 }
                 app.handle_event(event);
+                // The window moved to another screen, or its screen's HDR changed (brightness, a
+                // display setting): the renderer follows the screen (#96 decision 10, #106).
+                if ((event.type == SDL_EVENT_WINDOW_HDR_STATE_CHANGED ||
+                     event.type == SDL_EVENT_WINDOW_DISPLAY_CHANGED) &&
+                    event.window.windowID == SDL_GetWindowID(window) &&
+                    wanted_mode(display) != display.mode()) {
+                    const prism::gui::DisplayMode mode = wanted_mode(display);
+                    if (!display.create(mode) && !display.create(prism::gui::DisplayMode::sdr)) {
+                        std::fprintf(stderr, "Prism: couldn't create a renderer: %s\n",
+                                     SDL_GetError());
+                        done = true;
+                        break;
+                    }
+                    app.renderer_changed(display.renderer());
+                }
+            }
+            if (done) {
+                break;  // no renderer to draw with
             }
             if (app.quit_wanted()) {
                 done = true;
@@ -142,6 +171,7 @@ int main(int argc, char** argv) {
                 continue;
             }
 
+            app.set_display(display.mode(), display.screen_headroom());
             app.before_frame();
             ImGui_ImplSDLRenderer3_NewFrame();
             ImGui_ImplSDL3_NewFrame();
@@ -149,20 +179,18 @@ int main(int argc, char** argv) {
             app.frame();
             ImGui::Render();
 
-            SDL_SetRenderScale(renderer, io.DisplayFramebufferScale.x,
-                               io.DisplayFramebufferScale.y);
             const ImVec4 clear = app.clear_colour();
-            SDL_SetRenderDrawColorFloat(renderer, clear.x, clear.y, clear.z, 1.0f);
-            SDL_RenderClear(renderer);
-            ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), renderer);
-            SDL_RenderPresent(renderer);
+            const float clear_rgb[3] = {clear.x, clear.y, clear.z};
+            display.draw(ImGui::GetDrawData(), io.DisplayFramebufferScale.x,
+                         io.DisplayFramebufferScale.y, clear_rgb,
+                         [&](SDL_Renderer* r) { app.draw_under_ui(r); });
+            display.present();
         }
     }  // the App (and its textures) goes before the renderer
 
-    ImGui_ImplSDLRenderer3_Shutdown();
+    display.destroy();  // ImGui's renderer backend, then the renderer
     ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();
-    SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
     return 0;
