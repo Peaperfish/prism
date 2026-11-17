@@ -404,6 +404,36 @@ TEST(DetailSampleSource, APixelOfAnEstimatedSizeMovesToTheRealOne) {
     EXPECT_EQ(file_pixel_rescaled({5, 6}, {0, 0}, full_7), (FilePixel{5, 6}));
 }
 
+TEST(DetailSampleSource, ThePinsFilePixelIsOverItsPhotoPointThroughAnyFrame) {
+    // A crop from 0.25 of the width and 0.2 of the height. On a 200 x 100 preview, framed pixel
+    // (10, 30) is photo pixel (60, 50); on the 4000 x 2000 decode its centre is at (1210, 1010),
+    // framed pixel (210, 610) of a crop that starts at (1000, 400).
+    const Frame crop{0.0f, 0.25f, 0.2f, 0.75f, 0.9f, prism::Aspect::free, false};
+    const prism::Frame fitted = prism::fit_frame(crop, 200, 100);
+    const PixelSize preview = prism::framed_size(fitted, 200, 100);
+    const SampleCanvas canvas{preview.width, preview.height, PictureFrame{fitted, 200, 100, 1.0f}};
+    const prism::PhotoPoint q = sample_photo_point(10.5, 30.5, canvas);
+    EXPECT_EQ(file_pixel_at_point(q, crop, 4000, 2000), (FilePixel{210, 610}));
+    EXPECT_EQ(file_pixel_at_point(q, std::nullopt, 4000, 2000), (FilePixel{1210, 1010}));
+    EXPECT_EQ(file_pixel_at_point(q, Frame{}, 4000, 2000), (FilePixel{1210, 1010}));
+
+    // Turned, the file pixel's centre is within a pixel's diagonal of the point.
+    const Frame turned{6.0f, 0.2f, 0.2f, 0.8f, 0.8f, prism::Aspect::free, false};
+    const std::optional<FilePixel> p = file_pixel_at_point({0.5, 0.5}, turned, 4000, 2000);
+    ASSERT_TRUE(p.has_value());
+    const prism::Frame full_fitted = prism::fit_frame(turned, 4000, 2000);
+    const PixelSize full = prism::framed_size(full_fitted, 4000, 2000);
+    const prism::PhotoPoint back = sample_photo_point(
+        p->x + 0.5, p->y + 0.5, SampleCanvas{full.width, full.height,
+                                             PictureFrame{full_fitted, 4000, 2000, 1.0f}});
+    EXPECT_NEAR(back.u * 4000.0, 2000.0, 0.75);
+    EXPECT_NEAR(back.v * 2000.0, 1000.0, 0.75);
+
+    // Off the crop, or with no picture: nothing.
+    EXPECT_FALSE(file_pixel_at_point({0.1, 0.5}, crop, 4000, 2000));
+    EXPECT_FALSE(file_pixel_at_point(q, crop, 0, 2000));
+}
+
 TEST(DetailSampleSource, PicksRingIsAroundThePhotoPixelsItAverages) {
     const ViewGeometry g = canvas_7();
     const ViewState s = at_percent(g, 800.0, 1000.0f, 700.0f);

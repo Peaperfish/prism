@@ -288,6 +288,15 @@ struct SampleReads {
 // pixel everywhere else, as in 0.6.0.
 [[nodiscard]] SampleReads sample_reads(const SampleReadInput& in) noexcept;
 
+// The pin's file pixel (#73): the pixel of the framed picture at full size (a full_width x
+// full_height decode, framed by `frame` as plan_export_frame frames it) that photo point `q` falls
+// in, or nothing if it is off that picture or either size is below 1. So the pin reads the same
+// point of the photo on the canvas and in its real pixels, through any frame change. Throws
+// std::invalid_argument with validate_frame's messages if `frame` is invalid.
+[[nodiscard]] std::optional<FilePixel> file_pixel_at_point(PhotoPoint q,
+                                                           const std::optional<Frame>& frame,
+                                                           int full_width, int full_height);
+
 // Where a Sample slot's marker goes: the photo pixel's square if the slot reads the photo (`photo`)
 // and has its photo pixel, the preview pixel's otherwise (sample_marker).
 [[nodiscard]] SampleMarker sample_slot_marker(const ViewState& s, const ViewGeometry& g,

@@ -233,6 +233,24 @@ SampleMarker sample_slot_marker(const ViewState& s, const ViewGeometry& g, Pixel
     return sample_marker(s, g, preview);
 }
 
+std::optional<FilePixel> file_pixel_at_point(PhotoPoint q, const std::optional<Frame>& frame,
+                                             int full_width, int full_height) {
+    if (full_width < 1 || full_height < 1) {
+        return std::nullopt;
+    }
+    SampleCanvas canvas{full_width, full_height, picture_frame_of(frame, full_width, full_height)};
+    if (canvas.framing) {
+        const PixelSize size = framed_size(canvas.framing->fitted, full_width, full_height);
+        canvas.width = size.width;
+        canvas.height = size.height;
+    }
+    const std::optional<SamplePin> pixel = sample_pixel_at(q, canvas);
+    if (!pixel) {
+        return std::nullopt;
+    }
+    return FilePixel{pixel->x, pixel->y};
+}
+
 FilePixel file_pixel_rescaled(FilePixel pixel, PixelSize from, PixelSize to) noexcept {
     if (from.width < 1 || from.height < 1 || to.width < 1 || to.height < 1 || from == to) {
         return pixel;

@@ -525,6 +525,7 @@ private:
     std::optional<gui::FilePixel> sample_pin_file_;
     std::optional<gui::SamplePin> sample_pin_file_for_;  // the pin sample_pin_file_ belongs to
     prism::PixelSize sample_pin_file_size_;  // the framed full size sample_pin_file_ is on
+    std::optional<prism::Frame> sample_pin_file_frame_;  // the frame sample_pin_file_ is on
     std::optional<gui::FilePixel> sample_hover_file_;
     gui::PhotoSampleCache sample_pin_photo_trace_;
     gui::PhotoSampleCache sample_hover_photo_trace_;
