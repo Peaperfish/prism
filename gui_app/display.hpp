@@ -31,6 +31,9 @@ public:
 
     [[nodiscard]] SDL_Renderer* renderer() const noexcept { return renderer_; }
     [[nodiscard]] gui::DisplayMode mode() const noexcept { return mode_; }
+    // The UI target couldn't be made: the frame was drawn without it (the canvas left out), and
+    // the app should go back to today's renderer. Stays true for this Display.
+    [[nodiscard]] bool ui_target_failed() const noexcept { return ui_target_failed_; }
 
     // What the window's screen can show now: SDL_PROP_WINDOW_HDR_ENABLED_BOOLEAN, and its headroom
     // (SDL_PROP_WINDOW_HDR_HEADROOM_FLOAT, 1 on an SDR screen).
@@ -54,6 +57,7 @@ private:
     int ui_height_ = 0;
     gui::DisplayMode mode_ = gui::DisplayMode::sdr;
     bool backend_ = false;
+    bool ui_target_failed_ = false;
 };
 
 // An SDL_CreateTexture for textures that Dear ImGui draws (the preview, overlays, scopes): with a

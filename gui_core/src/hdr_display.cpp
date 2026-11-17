@@ -11,8 +11,8 @@
 
 namespace prism::gui {
 
-DisplayMode display_mode(bool screen_shows_hdr, bool macos) noexcept {
-    return screen_shows_hdr && macos ? DisplayMode::hdr_ui_target : DisplayMode::sdr;
+DisplayMode display_mode(bool screen_shows_hdr, bool macos, bool hdr_on) noexcept {
+    return screen_shows_hdr && macos && hdr_on ? DisplayMode::hdr_ui_target : DisplayMode::sdr;
 }
 
 bool hdr_canvas_on(DisplayMode mode, const EditSettings& s, StageId viewed, bool test_strip,
@@ -27,6 +27,12 @@ float canvas_weight(float display_headroom, float headroom_stops) noexcept {
     m.hdr_capacity_min = 0.0f;
     m.hdr_capacity_max = headroom_stops;
     return gain_map_weight(display_headroom, m);
+}
+
+float request_headroom(float display_headroom, float headroom_stops) noexcept {
+    const float weight =
+        std::round(canvas_weight(display_headroom, headroom_stops) * 256.0f) / 256.0f;
+    return std::exp2(weight * headroom_stops);
 }
 
 Image viewer_picture(std::span<const std::uint8_t> sdr_srgb8, const Image& hdr,

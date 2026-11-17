@@ -102,20 +102,22 @@ void Display::draw(ImDrawData* draw_data, float scale_x, float scale_y, const fl
     SDL_SetRenderScale(renderer_, 1.0f, 1.0f);
     SDL_SetRenderDrawColorFloat(renderer_, clear_rgb[0], clear_rgb[1], clear_rgb[2], 1.0f);
     SDL_RenderClear(renderer_);
-    if (draw_canvas) {
-        draw_canvas(renderer_);
-        SDL_SetRenderClipRect(renderer_, nullptr);
-        SDL_SetRenderScale(renderer_, 1.0f, 1.0f);
-    }
     int width = 0;
     int height = 0;
     SDL_GetCurrentRenderOutputSize(renderer_, &width, &height);
     if ((width != ui_width_ || height != ui_height_ || ui_target_ == nullptr) &&
         !make_ui_target(width, height)) {
-        // Without the target the UI is drawn straight on: it still shows, blended in linear.
+        // Without the target the UI is drawn straight on, with nothing under it (the canvas's
+        // hole would only show the clear colour), and the app goes back to today's renderer.
+        ui_target_failed_ = true;
         SDL_SetRenderScale(renderer_, scale_x, scale_y);
         ImGui_ImplSDLRenderer3_RenderDrawData(draw_data, renderer_);
         return;
+    }
+    if (draw_canvas) {
+        draw_canvas(renderer_);
+        SDL_SetRenderClipRect(renderer_, nullptr);
+        SDL_SetRenderScale(renderer_, 1.0f, 1.0f);
     }
     SDL_SetRenderTarget(renderer_, ui_target_);
     SDL_SetRenderScale(renderer_, scale_x, scale_y);

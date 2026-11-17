@@ -54,9 +54,10 @@ struct PreviewOptions {
     // The HDR canvas (#106, hdr_display.hpp): the screen's headroom right now, when the canvas
     // shows an HDR picture (hdr_canvas_on). With it, a render of the final picture whose settings
     // make HDR (output_headroom) runs process_hdr instead of process() and also makes the picture
-    // a viewer of the exported file shows on this screen (PreviewFrame::hdr_rgba). Everything
-    // else in the frame, rgb8 included, is exactly what it is without it. Ignored for an earlier
-    // stage, a test strip, and settings without HDR.
+    // a viewer of the exported file shows on this screen (PreviewFrame::hdr_rgba). The picture,
+    // its histogram, scopes, clip data and compare picture are exactly what they are without it;
+    // `stages` (and on_stage) also list "hdr_curve". Ignored for an earlier stage, a test strip,
+    // and settings without HDR.
     std::optional<float> hdr_display_headroom;
 
     PreviewOptions() = default;

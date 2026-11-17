@@ -10,6 +10,7 @@
 #include <cstring>
 #include <limits>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 #include "prism/color.hpp"
@@ -75,10 +76,12 @@ std::vector<std::uint32_t> bits(const prism::Image& img) {
 }  // namespace
 
 TEST(HdrDisplay, UiTargetModeOnlyOnMacOsWithAnHdrScreen) {
-    EXPECT_EQ(prism::gui::display_mode(true, true), DisplayMode::hdr_ui_target);
-    EXPECT_EQ(prism::gui::display_mode(false, true), DisplayMode::sdr);
-    EXPECT_EQ(prism::gui::display_mode(true, false), DisplayMode::sdr);
-    EXPECT_EQ(prism::gui::display_mode(false, false), DisplayMode::sdr);
+    EXPECT_EQ(prism::gui::display_mode(true, true, true), DisplayMode::hdr_ui_target);
+    // HDR off keeps today's renderer, whatever the screen.
+    EXPECT_EQ(prism::gui::display_mode(true, true, false), DisplayMode::sdr);
+    EXPECT_EQ(prism::gui::display_mode(false, true, true), DisplayMode::sdr);
+    EXPECT_EQ(prism::gui::display_mode(true, false, true), DisplayMode::sdr);
+    EXPECT_EQ(prism::gui::display_mode(false, false, false), DisplayMode::sdr);
 }
 
 TEST(HdrDisplay, TheCanvasIsHdrOnlyForTheFinalPictureWithHdrOnAndRoomAboveWhite) {
@@ -138,6 +141,24 @@ TEST(HdrDisplay, TheViewerPictureIsTheBaseAtWeightZeroAndTheGainMapsPictureAbove
     }
     EXPECT_GT(peak, 2.0f);
     EXPECT_LE(peak, 4.0f * 1.0001f);
+}
+
+TEST(HdrDisplay, ARenderAsksForTheWeightRoundedSoSmallHeadroomChangesRenderNothing) {
+    using prism::gui::request_headroom;
+    EXPECT_EQ(request_headroom(1.0f, 2.0f), 1.0f);
+    EXPECT_EQ(request_headroom(4.0f, 2.0f), 4.0f);
+    EXPECT_EQ(request_headroom(16.0f, 2.0f), 4.0f);  // clamped: the same request as 4
+    EXPECT_EQ(request_headroom(5.3f, 2.0f), request_headroom(9.0f, 2.0f));
+    EXPECT_FLOAT_EQ(request_headroom(2.0f, 2.0f), 2.0f);  // weight 0.5 exactly
+    // A wobble of the screen's headroom smaller than a 1/256 step of weight asks for the same.
+    EXPECT_EQ(request_headroom(2.0f, 2.0f), request_headroom(2.0005f, 2.0f));
+    EXPECT_NE(request_headroom(2.0f, 2.0f), request_headroom(2.1f, 2.0f));
+    // The weight of what is asked for is the screen's own, within half a step.
+    for (const float d : {1.1f, 1.7f, 2.9f, 3.3f}) {
+        EXPECT_NEAR(prism::gui::canvas_weight(request_headroom(d, 2.0f), 2.0f),
+                    prism::gui::canvas_weight(d, 2.0f), 0.5f / 256.0f + 1e-6f)
+            << d;
+    }
 }
 
 TEST(HdrDisplay, HalfFloatsRoundToNearestEven) {
@@ -363,4 +384,42 @@ TEST(HdrPreview, OneAndEightThreadsGiveTheSameFrame) {
     ASSERT_FALSE(one.hdr_rgba.empty());
     EXPECT_TRUE(one.rgb8 == eight.rgb8);
     EXPECT_TRUE(one.hdr_rgba == eight.hdr_rgba);
+}
+
+TEST(HdrPreview, WithEveryExtraOnlyTheHdrFieldsAndTheStageListDiffer) {
+    // The HDR render goes through process_hdr with the mask and compare callbacks too.
+    const prism::Image base = bright_base(97, 61);
+    const EditSettings s = natural_hdr(2.0f);
+    prism::gui::PreviewOptions o;
+    o.scopes = true;
+    o.clip_report = true;
+    o.clip_mask = true;
+    o.compare_stage = StageId::exposure;
+    const std::optional<prism::gui::PreviewFrame> sdr =
+        prism::gui::render_preview(base, s, 1, {}, {}, StageId::encode, o);
+    o.hdr_display_headroom = 4.0f;
+    const std::optional<prism::gui::PreviewFrame> hdr =
+        prism::gui::render_preview(base, s, 1, {}, {}, StageId::encode, o);
+    ASSERT_TRUE(sdr && hdr);
+    ASSERT_FALSE(hdr->hdr_rgba.empty());
+    EXPECT_EQ(hdr->rgb8, sdr->rgb8);
+    EXPECT_EQ(hdr->clip_mask, sdr->clip_mask);
+    EXPECT_FALSE(hdr->clip_mask.empty());
+    ASSERT_TRUE(hdr->compare && sdr->compare);
+    EXPECT_EQ(hdr->compare->rgb8, sdr->compare->rgb8);
+    ASSERT_TRUE(hdr->clips && sdr->clips);
+    EXPECT_TRUE(*hdr->clips == *sdr->clips);
+    ASSERT_TRUE(hdr->scopes && sdr->scopes);
+    EXPECT_TRUE(*hdr->scopes == *sdr->scopes);
+    EXPECT_TRUE(hdr->histogram == sdr->histogram);
+    // The stage list gains "hdr_curve" and nothing else.
+    std::vector<std::string_view> a, b;
+    for (const prism::StageTime& t : sdr->stages)
+        a.push_back(t.name);
+    for (const prism::StageTime& t : hdr->stages) {
+        if (t.name != "hdr_curve")
+            b.push_back(t.name);
+    }
+    EXPECT_EQ(a, b);
+    EXPECT_EQ(hdr->stages.size(), sdr->stages.size() + 1);
 }

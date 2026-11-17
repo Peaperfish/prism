@@ -1079,7 +1079,9 @@ void App::update_preview() {
     // The HDR canvas's picture, when it may show (the overlays are checked when drawing).
     if (gui::hdr_canvas_on(display_mode_, session_.settings(), viewed_stage_, strip_.has_value(),
                            display_headroom_, framing_.on())) {
-        options.hdr_display_headroom = display_headroom_;
+        // Rounded to the weight's 1/256 steps: brightness changes send many events (#97).
+        options.hdr_display_headroom =
+            gui::request_headroom(display_headroom_, *gui::output_headroom(session_.settings()));
     }
     if (framing_.on()) {
         // While framing the canvas shows the WHOLE photo, turned on the GPU (#58): the render is of
@@ -1370,10 +1372,17 @@ bool App::animating() const {
            pending_open_.has_value() || exporter_.busy() || close_pending_.has_value() || detail_busy;
 }
 
+void App::release_textures() {
+    texture_.rebind(nullptr);
+    detail_texture_.rebind(nullptr);
+    scope_view_.rebind(nullptr);
+    histogram_texture_.rebind(nullptr);
+}
+
 void App::renderer_changed(SDL_Renderer* renderer) {
     texture_.rebind(renderer);
+    drop_detail();  // real pixels are asked for again on the next frame
     detail_texture_.rebind(renderer);
-    detail_shown_.reset();
     scope_view_.rebind(renderer);
     histogram_texture_.rebind(renderer);
     overlay_dirty_ = true;
@@ -1385,12 +1394,14 @@ void App::draw_under_ui(SDL_Renderer* renderer) const {
     const float k = under_ui_.scale;
     if (under_ui_.picture && texture_.hdr_texture() != nullptr) {
         // Clipped to the canvas, as ImGui clips the SDR picture to the canvas window.
-        const SDL_Rect clip{
-            static_cast<int>(std::floor(under_ui_.clip_min.x * k)),
-            static_cast<int>(std::floor(under_ui_.clip_min.y * k)),
-            static_cast<int>(std::ceil((under_ui_.clip_max.x - under_ui_.clip_min.x) * k)),
-            static_cast<int>(std::ceil((under_ui_.clip_max.y - under_ui_.clip_min.y) * k))};
+        const int x0 = static_cast<int>(std::floor(under_ui_.clip_min.x * k));
+        const int y0 = static_cast<int>(std::floor(under_ui_.clip_min.y * k));
+        const SDL_Rect clip{x0, y0, static_cast<int>(std::ceil(under_ui_.clip_max.x * k)) - x0,
+                            static_cast<int>(std::ceil(under_ui_.clip_max.y * k)) - y0};
         SDL_SetRenderClipRect(renderer, &clip);
+        // Sampled as the SDR picture would be: nearest once the view shows pixels.
+        SDL_SetTextureScaleMode(texture_.hdr_texture(),
+                                under_ui_.nearest ? SDL_SCALEMODE_NEAREST : SDL_SCALEMODE_LINEAR);
         const SDL_FRect dst{under_ui_.at.x * k, under_ui_.at.y * k,
                             (under_ui_.end.x - under_ui_.at.x) * k,
                             (under_ui_.end.y - under_ui_.at.y) * k};
@@ -2006,6 +2017,7 @@ void App::draw_canvas() {
                 under_ui_.clip_min = min;
                 under_ui_.clip_max = max;
                 under_ui_.scale = ImGui::GetIO().DisplayFramebufferScale.x;
+                under_ui_.nearest = gui::view_shows_pixels(gui::view_zoom(view_, view_geometry_));
                 // Clear the picture's place in the UI target, so the picture drawn under it shows
                 // through; whatever ImGui draws after this (marks, chips) still lands on top.
                 const float hole[4] = {std::max(at.x, min.x), std::max(at.y, min.y),

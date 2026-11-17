@@ -62,18 +62,20 @@ int main(int argc, char** argv) {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
 
-    // The renderer: today's, or UI-target mode while the window's screen can show HDR (#106,
-    // display.hpp). It also starts Dear ImGui's renderer backend.
-    const auto wanted_mode = [&](const prism::gui_app::Display& d) {
+    // The renderer: today's, or UI-target mode while the window's screen can show HDR and the
+    // photo's HDR is on (#106, display.hpp). It also starts Dear ImGui's renderer backend. No photo
+    // is open yet, so it starts as today's.
+    const auto wanted_mode = [](const prism::gui_app::Display& d, bool hdr_on) {
 #if defined(__APPLE__)
         const bool macos = true;
 #else
         const bool macos = false;
 #endif
-        return prism::gui::display_mode(d.screen_shows_hdr(), macos);
+        return d.ui_target_failed() ? prism::gui::DisplayMode::sdr
+                                    : prism::gui::display_mode(d.screen_shows_hdr(), macos, hdr_on);
     };
     prism::gui_app::Display display(window);
-    if (!display.create(wanted_mode(display)) && !display.create(prism::gui::DisplayMode::sdr)) {
+    if (!display.create(prism::gui::DisplayMode::sdr)) {
         std::fprintf(stderr, "Prism: couldn't create a renderer: %s\n", SDL_GetError());
         ImGui::DestroyContext();
         SDL_DestroyWindow(window);
@@ -144,24 +146,6 @@ int main(int argc, char** argv) {
                     app.request_quit();
                 }
                 app.handle_event(event);
-                // The window moved to another screen, or its screen's HDR changed (brightness, a
-                // display setting): the renderer follows the screen (#96 decision 10, #106).
-                if ((event.type == SDL_EVENT_WINDOW_HDR_STATE_CHANGED ||
-                     event.type == SDL_EVENT_WINDOW_DISPLAY_CHANGED) &&
-                    event.window.windowID == SDL_GetWindowID(window) &&
-                    wanted_mode(display) != display.mode()) {
-                    const prism::gui::DisplayMode mode = wanted_mode(display);
-                    if (!display.create(mode) && !display.create(prism::gui::DisplayMode::sdr)) {
-                        std::fprintf(stderr, "Prism: couldn't create a renderer: %s\n",
-                                     SDL_GetError());
-                        done = true;
-                        break;
-                    }
-                    app.renderer_changed(display.renderer());
-                }
-            }
-            if (done) {
-                break;  // no renderer to draw with
             }
             if (app.quit_wanted()) {
                 done = true;
@@ -171,6 +155,18 @@ int main(int argc, char** argv) {
                 continue;
             }
 
+            // The renderer follows the screen (moved to another one, its HDR changed) and the
+            // photo's HDR switch (#96 decision 10, #106): recreated when the mode they ask for
+            // changes, with the app's textures dropped before and made again after.
+            if (const prism::gui::DisplayMode mode = wanted_mode(display, app.hdr_on());
+                mode != display.mode()) {
+                app.release_textures();
+                if (!display.create(mode) && !display.create(prism::gui::DisplayMode::sdr)) {
+                    std::fprintf(stderr, "Prism: couldn't create a renderer: %s\n", SDL_GetError());
+                    break;
+                }
+                app.renderer_changed(display.renderer());
+            }
             app.set_display(display.mode(), display.screen_headroom());
             app.before_frame();
             ImGui_ImplSDLRenderer3_NewFrame();

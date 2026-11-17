@@ -29,10 +29,13 @@ enum class DisplayMode {
     hdr_ui_target,  // UI-target mode, above
 };
 
-// The mode for a window: UI-target mode only on macOS (Windows HDR display is Later, #96) and
-// only while the window's screen can show HDR (SDL_PROP_WINDOW_HDR_ENABLED_BOOLEAN). Anything else
-// keeps today's renderer exactly.
-[[nodiscard]] DisplayMode display_mode(bool screen_shows_hdr, bool macos) noexcept;
+// The mode for a window: UI-target mode only on macOS (Windows HDR display is Later, #96), only
+// while the window's screen can show HDR (SDL_PROP_WINDOW_HDR_ENABLED_BOOLEAN), and only while the
+// photo's HDR is on (output_headroom). With HDR off, or on any other screen, Prism keeps today's
+// renderer exactly (#97's decision), so turning HDR on or off recreates the renderer. (SDL counts
+// an XDR screen as HDR at any brightness, so the screen alone would put almost every Mac in
+// UI-target mode.)
+[[nodiscard]] DisplayMode display_mode(bool screen_shows_hdr, bool macos, bool hdr_on) noexcept;
 
 // Whether the canvas shows an HDR picture rather than today's 8-bit one: in UI-target mode, with
 // HDR on in the settings (output_headroom), while the final picture is viewed (the HDR branch is
@@ -53,6 +56,12 @@ enum class DisplayMode {
 // file will show on this screen.
 [[nodiscard]] float canvas_weight(float display_headroom, float headroom_stops) noexcept;
 
+// The display headroom a preview render asks for (PreviewOptions::hdr_display_headroom): the
+// headroom that gives canvas_weight rounded to 1/256, so a screen whose headroom wanders a little
+// (brightness changes send many events) or stays at or above 2^N (the weight clamped at 1) asks
+// for the same picture and starts no new render. 1 at weight 0; 2^N at weight 1.
+[[nodiscard]] float request_headroom(float display_headroom, float headroom_stops) noexcept;
+
 // The picture a viewer of the exported file shows on this screen, made on the CPU from the
 // preview's two pictures: `sdr_srgb8` (encode_srgb8 of process_hdr's SDR picture, the bytes the
 // SDR canvas shows) as the base, the gain map make_gain_map makes from it and `hdr`, applied at
@@ -68,7 +77,8 @@ enum class DisplayMode {
 [[nodiscard]] float float_from_half(std::uint16_t h) noexcept;
 
 // `img` (linear RGB) as RGBA half floats with alpha 1, row-major, width * height * 4 values: the
-// texels of an SDL_PIXELFORMAT_RGBA64_FLOAT texture. Bit-identical for any thread count.
+// texels of an SDL_PIXELFORMAT_RGBA64_FLOAT texture. Bit-identical for any thread count. Empty if
+// the pixel buffer doesn't match width x height (or the picture is empty).
 [[nodiscard]] std::vector<std::uint16_t> rgba_half_from(const Image& img, int threads = 0);
 
 // --- What is drawn over the canvas ---------------------------------------------------------------

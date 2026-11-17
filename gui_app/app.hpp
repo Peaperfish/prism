@@ -85,8 +85,15 @@ public:
         display_mode_ = mode;
         display_headroom_ = headroom;
     }
-    // The renderer was recreated: every texture is dropped and made again on `renderer`, and the
-    // preview renders again.
+    // Whether the photo's HDR is on (output_headroom): with an HDR screen it chooses UI-target
+    // mode (gui::display_mode).
+    [[nodiscard]] bool hdr_on() const {
+        return gui::output_headroom(session_.settings()).has_value();
+    }
+    // Before the renderer is destroyed: drops every texture the app holds on it.
+    void release_textures();
+    // The renderer was recreated: every texture is made again on `renderer`, real pixels are asked
+    // for again, and the preview renders again.
     void renderer_changed(SDL_Renderer* renderer);
     // In UI-target mode, after the frame: draws what this frame puts under the UI with SDL calls
     // (while the HDR canvas is on, the HDR picture), in window pixels.
@@ -375,7 +382,8 @@ private:
         ImVec2 end;
         ImVec2 clip_min;  // the canvas, which clips it
         ImVec2 clip_max;
-        float scale = 1.0f;  // ImGui units to window pixels
+        float scale = 1.0f;    // ImGui units to window pixels
+        bool nearest = false;  // the view shows pixels: sample as the SDR picture does
     };
     UnderUi under_ui_;
     bool hdr_canvas_shown_ = false;  // the last frame showed the HDR picture
