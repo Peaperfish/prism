@@ -22,6 +22,7 @@ add_executable(prism_tests
   dodge_burn_test.cpp
   exif_test.cpp
   frame_test.cpp
+  gain_map_test.cpp
   framed_field_test.cpp
   golden_sdr_test.cpp
   hdr_test.cpp

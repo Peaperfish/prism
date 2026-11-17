@@ -11,6 +11,7 @@ add_library(prism_core STATIC
   histogram.cpp
   image.cpp
   parallel.cpp
+  gain_map.cpp
   hdr.cpp
   pipeline.cpp
   process.cpp
