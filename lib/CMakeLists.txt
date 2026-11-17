@@ -10,6 +10,7 @@ add_library(prism_core STATIC
   heic.cpp
   histogram.cpp
   image.cpp
+  output.cpp
   parallel.cpp
   gain_map.cpp
   hdr.cpp

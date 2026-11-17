@@ -32,6 +32,7 @@ add_executable(prism_tests
   image_test.cpp
   locale_numbers_test.cpp
   orientation_test.cpp
+  output_test.cpp
   parallel_test.cpp
   pipeline_test.cpp
   process_test.cpp

@@ -26,6 +26,7 @@
 #include "prism/number_text.hpp"
 #include "prism/parallel.hpp"
 #include "prism/pipeline.hpp"
+#include "prism/output.hpp"
 #include "prism/process.hpp"
 #include "prism/ranges.hpp"
 #include "prism/raw.hpp"
@@ -650,15 +651,36 @@ void run_one(const std::string& input, const std::optional<std::string>& output,
                       << "; kept its size\n";
         }
     }
-    // process() applies the stages in the README's order and skips those left at their
-    // neutral value. Without a stop token it always runs to the end, so the result is always
-    // ProcessResult::completed.
-    (void)prism::process(img, settings, threads, {},
-                         [&](const prism::StageTime& t) { timer.add(std::string(t.name), t.ms); });
+    // A .jpg with a headroom above 0 is an Ultra HDR JPEG (#105): process_hdr makes the SDR
+    // picture and the HDR one from the same light, and save_output writes both. Anything else is
+    // the SDR path below, unchanged. (main() has refused a .png with a headroom already.)
+    const bool hdr_file =
+        output && prism::output_file(prism::path_from_utf8(*output), settings.headroom_stops) ==
+                      prism::OutputFile::ultra_hdr_jpeg;
+    const auto on_stage = [&](const prism::StageTime& t) { timer.add(std::string(t.name), t.ms); };
+    prism::Image hdr;
+    if (hdr_file) {
+        (void)prism::process_for_output(img, hdr, settings, prism::OutputFile::ultra_hdr_jpeg,
+                                        threads, {}, on_stage);
+    } else {
+        // process() applies the stages in the README's order and skips those left at their
+        // neutral value. Without a stop token it always runs to the end, so the result is always
+        // ProcessResult::completed.
+        (void)prism::process(img, settings, threads, {}, on_stage);
+    }
     // With both -o and --histogram the image is converted to 8-bit sRGB once: the saved bytes
     // are also what the histogram counts. (Without -o the histogram encodes block by block.)
     std::vector<std::uint8_t> bytes;
-    if (output) {
+    if (output && hdr_file) {
+        timer.run("save", [&] {
+            if (histogram_path) {
+                bytes = prism::encode_srgb8(img, threads);
+            }
+            prism::save_output(prism::path_from_utf8(*output), img, hdr, settings.headroom_stops,
+                               threads, bytes);
+        });
+        std::cout << "wrote " << *output << " (" << img.width << "x" << img.height << ")\n";
+    } else if (output) {
         timer.run("save", [&] {
             if (histogram_path) {
                 bytes = prism::encode_srgb8(img, threads);
@@ -725,8 +747,18 @@ int main(int argc, char* argv[]) {
         flags.headroom_stops = opts.headroom;
         // Without --recipe the recipe is empty and the result is exactly `flags`. Merged here once
         // to refuse a bad recipe before any photo is opened; run_one merges again per photo, since
-        // white balance depends on the photo's as-shot light.
-        (void)prism::merge_recipe_and_flags(recipe, flags);
+        // white balance depends on the photo's as-shot light (the headroom does not).
+        const std::optional<float> headroom =
+            prism::merge_recipe_and_flags(recipe, flags).headroom_stops;
+        // A PNG stays SDR (#96): with a headroom above 0, from --headroom or the recipe's [hdr],
+        // only a .jpg can hold the HDR picture. Refused before any photo is opened.
+        for (const std::optional<std::string>& output : opts.outputs) {
+            if (output && prism::output_file(prism::path_from_utf8(*output), headroom) ==
+                              prism::OutputFile::hdr_needs_jpeg) {
+                throw UsageError("'" + *output +
+                                 "': HDR files need .jpg (--headroom 0 makes no HDR picture)");
+            }
+        }
         const WhiteBalanceFlags wb_flags{opts.kelvin, opts.tint};
         const FrameFlags frame_flags{opts.rotate, opts.crop, opts.aspect};
 

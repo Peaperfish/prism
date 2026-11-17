@@ -80,7 +80,7 @@ An unknown or malformed spec fails with an error that lists the available curves
 
 ### `--headroom <stops>`
 
-How far above white the HDR picture keeps light, from 0 to +4.0 stops: +1.0 stop is twice white's light. The light branches after contrast: the SDR picture is exactly as without `--headroom`, and the HDR picture is made from the same light with the photo's white landing at the headroom. 0 means no HDR picture. For now `prism` writes only the SDR picture, which `--headroom` does not change. A value outside 0 to +4.0, or anything that is not a number, fails with an error. Replaces the recipe's `[hdr]`. Default: 0.
+How far above white the HDR picture keeps light, from 0 to +4.0 stops: +1.0 stop is twice white's light. The light branches after contrast: the SDR picture is exactly as without `--headroom`, and the HDR picture is made from the same light with the photo's white landing at the headroom. 0 means no HDR picture. With a headroom above 0 (from `--headroom` or the recipe's `[hdr]`), a `.jpg` or `.jpeg` output is an Ultra HDR JPEG: the SDR picture, which every viewer shows and which is exactly the JPEG `prism` writes without a headroom, plus a gain map from which an HDR screen rebuilds the HDR picture. A PNG stays SDR: a `.png` output with a headroom above 0 (also `--format png`) fails with "HDR files need .jpg" before any photo is opened. `--histogram` measures the SDR picture. A value outside 0 to +4.0, or anything that is not a number, fails with an error. Replaces the recipe's `[hdr]`. Default: 0.
 
 ### `--histogram <file>`
 
@@ -333,7 +333,7 @@ foreach ($f in Get-ChildItem *.jpg) {
 |---|---|
 | 0 | Success. Also `--help` and `--version` |
 | 1 | The run failed: a file couldn't be read or written, an input can't be decoded, a recipe has mistakes or can't be read, a matrix file or a `--curve` spec is wrong, or a RAW file was given to a build without RAW support. The message after `error:` says which |
-| 2 | The command line is wrong: no input, a missing value, an unknown option, an option given twice, a number outside its range, a malformed `--crop` or unknown `--aspect`, a `--format` other than `jpg` or `png` or without `--out-dir`, none of `-o`, `--out-dir` and `--histogram`, `--raw-half` or `--raw-camera-matrix` on a PNG or JPEG, several inputs without `--out-dir` (or with `-o` or `--histogram`), `-o` together with `--out-dir`, an `--out-dir` folder that doesn't exist, or two inputs that would be written under the same name. Prism prints `error: <reason>` and then the usage text |
+| 2 | The command line is wrong: no input, a missing value, an unknown option, an option given twice, a number outside its range, a malformed `--crop` or unknown `--aspect`, a `--format` other than `jpg` or `png` or without `--out-dir`, none of `-o`, `--out-dir` and `--histogram`, `--raw-half` or `--raw-camera-matrix` on a PNG or JPEG, several inputs without `--out-dir` (or with `-o` or `--histogram`), `-o` together with `--out-dir`, an `--out-dir` folder that doesn't exist, two inputs that would be written under the same name, or a `.png` output with a headroom above 0. Prism prints `error: <reason>` and then the usage text |
 
 Errors go to stderr.
 

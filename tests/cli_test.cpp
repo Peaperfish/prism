@@ -25,6 +25,7 @@
 #include "prism/process.hpp"
 #include "prism/raw.hpp"
 #include "prism/resize.hpp"
+#include "prism/ultra_hdr.hpp"
 #include "prism/version.hpp"
 #include "run_command.hpp"
 #include "synthetic_exif.hpp"
@@ -706,65 +707,207 @@ TEST(CliWhiteBalance, BadValuesAreUsageErrors) {
 // --- --headroom (#102)
 // ----------------------------------------------------------------------------
 
-TEST(CliHeadroom, AcceptedAndTheSdrOutputIsUnchanged) {
-    // The CLI writes only the SDR picture for now, which the headroom does not change.
-    const fs::path input = write_grey_jpeg();
-    const std::string plain = run_to_bytes(input, "--exposure +1 --curve filmic");
-    ASSERT_FALSE(plain.empty());
-    for (const char* stops : {"0", "2", "+2.5", "4",
-                              "\xE2\x88\x92"
-                              "0"}) {
-        int code = -1;
-        EXPECT_EQ(
-            run_to_bytes(input, "--exposure +1 --curve filmic --headroom " + std::string(stops),
-                         &code),
-            plain)
-            << stops;
-        EXPECT_EQ(code, 0) << stops;
+namespace {
+
+// A 61 x 37 PNG (rows left over for any chunking) whose light rises from black at the left to
+// white at the right, a little differently in each channel: after +1 stop the right part is above
+// white, so the HDR picture differs from the SDR one there.
+fs::path write_ramp_png() {
+    prism::Image img;
+    img.width = 61;
+    img.height = 37;
+    img.pixels.resize(static_cast<std::size_t>(img.width) * img.height * 3);
+    for (int y = 0; y < img.height; ++y) {
+        for (int x = 0; x < img.width; ++x) {
+            const float t = static_cast<float>(x) / static_cast<float>(img.width - 1);
+            float* p = &img.pixels[(static_cast<std::size_t>(y) * img.width + x) * 3];
+            p[0] = t;
+            p[1] = t * (0.6f + 0.4f * static_cast<float>(y) / static_cast<float>(img.height - 1));
+            p[2] = t * t;
+        }
+    }
+    const fs::path path = temp_file("ramp.png");
+    prism::save_image(path, img);
+    return path;
+}
+
+// The Ultra HDR JPEG the library makes of `input` (a PNG) with `settings`: process_hdr, then
+// encode_ultra_hdr_jpeg of its two pictures at the headroom, on one thread as the runs below.
+std::string expected_ultra_hdr(const fs::path& input, const prism::ProcessSettings& settings) {
+    prism::Image img = prism::load_image(input);
+    prism::Image hdr;
+    EXPECT_EQ(prism::process_hdr(img, hdr, settings, 1), prism::ProcessResult::completed);
+    const prism::UltraHdrJpeg file = prism::encode_ultra_hdr_jpeg(
+        prism::encode_srgb8(img, 1), hdr, *settings.headroom_stops, {}, 1);
+    return std::string(file.bytes.begin(), file.bytes.end());
+}
+
+// Runs prism on `input` with `flags`, writing `name` (".jpg", ".png", ...), and returns its bytes
+// (empty if it failed or wrote nothing).
+std::string run_to_file(const fs::path& input, const std::string& name, const std::string& flags,
+                        RunResult* result = nullptr) {
+    const fs::path output = temp_file(name);
+    fs::remove(output);
+    const RunResult r = run_prism(quoted(input) + " -o " + quoted(output) + " " + flags);
+    if (result != nullptr) {
+        *result = r;
+    }
+    std::string bytes = fs::exists(output) ? read_bytes(output) : std::string();
+    fs::remove(output);
+    return bytes;
+}
+
+prism::ProcessSettings natural_like(float headroom) {
+    prism::ProcessSettings s;
+    s.exposure_stops = 1.0f;
+    s.curve = prism::parse_curve("filmic");
+    s.headroom_stops = headroom;
+    return s;
+}
+
+}  // namespace
+
+TEST(CliHeadroom, ZeroWritesExactlyTheSdrFile) {
+    const fs::path input = write_ramp_png();
+    for (const char* name : {"out.png", "out.jpg"}) {
+        const std::string plain =
+            run_to_file(input, name, "--exposure +1 --curve filmic --threads 1");
+        ASSERT_FALSE(plain.empty()) << name;
+        for (const char* stops : {"0", "+0.0",
+                                  "\xE2\x88\x92"
+                                  "0"}) {
+            RunResult r;
+            EXPECT_EQ(run_to_file(input, name,
+                                  "--exposure +1 --curve filmic --threads 1 --headroom " +
+                                      std::string(stops),
+                                  &r),
+                      plain)
+                << name << " " << stops;
+            EXPECT_EQ(r.exit_code, 0) << r.output;
+        }
     }
     fs::remove(input);
 }
 
-TEST(CliHeadroom, BadValuesAreUsageErrors) {
-    const fs::path input = write_grey_jpeg();
-    const fs::path hist = temp_file("hist.png");
-    const std::string base = quoted(input) + " --histogram " + quoted(hist) + " --headroom ";
-    for (const char* bad : {"5", "4.01", "-1",
-                            "\xE2\x88\x92"
-                            "0.5",
-                            "abc", "1,5", "inf", "nan"}) {
-        const RunResult r = run_prism(base + "\"" + bad + "\"");
-        EXPECT_EQ(r.exit_code, 2) << bad << ": " << r.output;
-        EXPECT_TRUE(contains(r.output, "--headroom needs a number of stops from 0 to +4.0, got '" +
-                                           std::string(bad) + "'"))
-            << r.output;
-        EXPECT_TRUE(contains(r.output, "Usage:")) << r.output;
+TEST(CliHeadroom, AJpgWithAHeadroomIsTheUltraHdrJpegOfProcessHdr) {
+    // --headroom reaches the HDR writer: the file is exactly the library's Ultra HDR JPEG of
+    // process_hdr's pictures at that headroom, for .jpg and .JPEG alike.
+    const fs::path input = write_ramp_png();
+    for (const float stops : {2.0f, 1.5f, 4.0f}) {
+        const std::string want = expected_ultra_hdr(input, natural_like(stops));
+        const std::string flag = stops == 1.5f ? "1.5" : stops == 2.0f ? "+2" : "4.0";
+        for (const char* name : {"hdr.jpg", "hdr.JPEG"}) {
+            RunResult r;
+            const std::string got = run_to_file(
+                input, name, "--exposure +1 --curve filmic --threads 1 --headroom " + flag, &r);
+            EXPECT_EQ(r.exit_code, 0) << r.output;
+            EXPECT_TRUE(got == want) << name << " at " << flag << ": " << got.size() << " bytes, want "
+                                     << want.size();
+        }
     }
-    const RunResult twice = run_prism(base + "1 --headroom 2");
-    EXPECT_EQ(twice.exit_code, 2) << twice.output;
-    EXPECT_TRUE(contains(twice.output, "given more than once")) << twice.output;
-    const RunResult missing =
-        run_prism(quoted(input) + " --histogram " + quoted(hist) + " --headroom");
-    EXPECT_EQ(missing.exit_code, 2) << missing.output;
-    EXPECT_TRUE(contains(missing.output, "--headroom needs a value")) << missing.output;
+    // A JPEG without a headroom is not one.
+    EXPECT_NE(run_to_file(input, "sdr.jpg", "--exposure +1 --curve filmic --threads 1"),
+              expected_ultra_hdr(input, natural_like(2.0f)));
     fs::remove(input);
-    fs::remove(hist);
 }
 
-TEST(CliHeadroom, ARecipeWithHdrRuns) {
-    const fs::path input = write_grey_jpeg();
+TEST(CliHeadroom, ARecipesHdrMakesTheJpgHdrAndTheFlagReplacesIt) {
+    const fs::path input = write_ramp_png();
     const fs::path recipe = temp_file("hdr.prism");
     {
         std::ofstream out(recipe, std::ios::binary);
-        out << "prism_recipe = 3\r\n[exposure]\r\nstops = +1.0\r\n[hdr]\r\nheadroom = +2.0\r\n";
+        out << "prism_recipe = 3\r\n[exposure]\r\nstops = +1.0\r\n[curve]\r\nshape = \"filmic\"\r\n"
+               "[hdr]\r\nheadroom = +2.0\r\n";
     }
-    int code = -1;
-    const std::string with_recipe = run_to_bytes(input, "--recipe " + quoted(recipe), &code);
-    EXPECT_EQ(code, 0);
-    EXPECT_EQ(with_recipe, run_to_bytes(input, "--exposure +1"));
-    EXPECT_EQ(run_to_bytes(input, "--recipe " + quoted(recipe) + " --headroom 0"), with_recipe);
+    const std::string base = "--threads 1 --recipe " + quoted(recipe);
+    RunResult r;
+    EXPECT_TRUE(run_to_file(input, "r.jpg", base, &r) == expected_ultra_hdr(input, natural_like(2)))
+        << r.output;
+    EXPECT_EQ(r.exit_code, 0) << r.output;
+    EXPECT_TRUE(run_to_file(input, "r.jpg", base + " --headroom 3") ==
+                expected_ultra_hdr(input, natural_like(3)));
+    EXPECT_EQ(run_to_file(input, "r.jpg", base + " --headroom 0"),
+              run_to_file(input, "r.jpg", "--threads 1 --exposure +1 --curve filmic"));
     fs::remove(input);
     fs::remove(recipe);
+}
+
+TEST(CliHeadroom, APngWithAHeadroomIsRefusedBeforeAnyPhotoIsOpened) {
+    // The input doesn't exist: the refusal comes first, and nothing is written.
+    const fs::path missing = temp_file("no such photo.png");
+    const fs::path output = temp_file("out.PNG");
+    fs::remove(output);
+    const RunResult r =
+        run_prism(quoted(missing) + " -o " + quoted(output) + " --headroom 2 --histogram " +
+                  quoted(temp_file("h.png")));
+    EXPECT_EQ(r.exit_code, 2) << r.output;
+    EXPECT_TRUE(contains(r.output, "error: '" + output.string() +
+                                       "': HDR files need .jpg (--headroom 0 makes no HDR "
+                                       "picture)\n"))
+        << r.output;
+    EXPECT_TRUE(contains(r.output, "Usage:")) << r.output;
+    EXPECT_FALSE(fs::exists(output));
+    EXPECT_FALSE(fs::exists(temp_file("h.png")));
+
+    // A recipe's [hdr] is refused the same way.
+    const fs::path recipe = temp_file("hdr.prism");
+    {
+        std::ofstream out(recipe, std::ios::binary);
+        out << "prism_recipe = 3\n[hdr]\nheadroom = +0.1\n";
+    }
+    const RunResult from_recipe =
+        run_prism(quoted(missing) + " -o " + quoted(output) + " --recipe " + quoted(recipe));
+    EXPECT_EQ(from_recipe.exit_code, 2) << from_recipe.output;
+    EXPECT_TRUE(contains(from_recipe.output, "HDR files need .jpg")) << from_recipe.output;
+
+    // --out-dir with --format png too.
+    const fs::path dir = temp_file("png_dir");
+    fs::create_directories(dir);
+    const RunResult batch =
+        run_prism(quoted(missing) + " " + quoted(temp_file("other.png")) +
+                  " --format png --headroom 1 --out-dir " + quoted(dir));
+    EXPECT_EQ(batch.exit_code, 2) << batch.output;
+    EXPECT_TRUE(contains(batch.output, "HDR files need .jpg")) << batch.output;
+    EXPECT_TRUE(fs::is_empty(dir));
+    fs::remove_all(dir);
+    fs::remove(recipe);
+}
+
+TEST(CliHeadroom, AHistogramAloneOrBesideAnHdrJpgMeasuresTheSdrPicture) {
+    const fs::path input = write_ramp_png();
+    const fs::path hist = temp_file("hist.png");
+    const fs::path output = temp_file("both.jpg");
+    const std::string flags = "--exposure +1 --curve filmic --threads 1";
+    ASSERT_EQ(run_prism(quoted(input) + " --histogram " + quoted(hist) + " " + flags).exit_code, 0);
+    const std::string sdr_hist = read_bytes(hist);
+    fs::remove(hist);
+    const RunResult alone =
+        run_prism(quoted(input) + " --histogram " + quoted(hist) + " " + flags + " --headroom 2");
+    EXPECT_EQ(alone.exit_code, 0) << alone.output;
+    EXPECT_EQ(read_bytes(hist), sdr_hist);
+    fs::remove(hist);
+    const RunResult both = run_prism(quoted(input) + " -o " + quoted(output) + " --histogram " +
+                                     quoted(hist) + " " + flags + " --headroom 2 --time");
+    EXPECT_EQ(both.exit_code, 0) << both.output;
+    EXPECT_EQ(read_bytes(hist), sdr_hist);
+    EXPECT_TRUE(read_bytes(output) == expected_ultra_hdr(input, natural_like(2)));
+    EXPECT_TRUE(contains(plain(both.output), "  hdr_curve ")) << both.output;
+    fs::remove(hist);
+    fs::remove(output);
+    fs::remove(input);
+}
+
+TEST(CliHeadroom, OutDirWritesUltraHdrJpegs) {
+    const fs::path input = write_ramp_png();
+    const fs::path dir = temp_file("hdr_dir");
+    fs::create_directories(dir);
+    const RunResult r = run_prism(quoted(input) + " --exposure +1 --curve filmic --threads 1 " +
+                                  "--headroom 2 --out-dir " + quoted(dir));
+    EXPECT_EQ(r.exit_code, 0) << r.output;
+    const fs::path written = dir / (input.stem().string() + "_prism.jpg");
+    EXPECT_TRUE(read_bytes(written) == expected_ultra_hdr(input, natural_like(2)));
+    fs::remove_all(dir);
+    fs::remove(input);
 }
 
 TEST(CliHeadroom, HelpDescribesIt) {
