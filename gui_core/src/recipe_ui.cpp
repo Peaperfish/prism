@@ -6,6 +6,7 @@
 
 #include "prism/gui/file_types.hpp"
 #include "prism/gui/recipe_settings.hpp"
+#include "prism/gui/stage_controls.hpp"
 #include "prism/utf8_path.hpp"
 
 namespace prism::gui {
@@ -18,13 +19,13 @@ constexpr std::string_view modified_suffix = " (modified)";
 constexpr std::string_view prism_extension = ".prism";
 
 // "A", "A and B", "A, B and C".
-std::string join_names(const std::vector<StageId>& stages) {
+std::string join_texts(const std::vector<std::string>& names) {
     std::string text;
-    for (std::size_t i = 0; i < stages.size(); ++i) {
+    for (std::size_t i = 0; i < names.size(); ++i) {
         if (i > 0) {
-            text += i + 1 == stages.size() ? " and " : ", ";
+            text += i + 1 == names.size() ? " and " : ", ";
         }
-        text += stage_info(stages[i]).name;
+        text += names[i];
     }
     return text;
 }
@@ -69,6 +70,7 @@ RecipeStages recipe_stages(const Recipe& recipe) {
     // [hdr] sets Output encode's HDR (#105): on at its headroom, or off at 0. Output encode has no
     // switch of its own, so it is never "switched off".
     add(StageId::encode, recipe.hdr.has_value(), true);
+    stages.hdr_headroom = recipe.hdr ? recipe.hdr->headroom : 0.0f;
     return stages;
 }
 
@@ -76,24 +78,54 @@ std::string stages_line(const RecipeStages& stages) {
     if (stages.set.empty()) {
         return "Sets no stages: the photo is unchanged.";
     }
-    const std::string off = stages.switched_off.empty()
-                                ? std::string()
-                                : "switches " + join_names(stages.switched_off) + " off";
-    // The five stages every saved recipe has, and White balance, which only a photo with a chosen
-    // light adds, and Output encode, which only a recipe with [hdr] sets: they are named on their
-    // own, so "all five" stays what it always was.
-    std::vector<StageId> extras;
-    for (const StageId extra : {StageId::white_balance, StageId::encode}) {
-        if (std::find(stages.set.begin(), stages.set.end(), extra) != stages.set.end()) {
-            extras.push_back(extra);
+    const auto sets = [&](StageId id) {
+        return std::find(stages.set.begin(), stages.set.end(), id) != stages.set.end();
+    };
+    // [hdr] sets Output encode's HDR: "HDR at +2.00 stops", or, at a headroom of 0, "turns HDR
+    // off". Output encode is never named, since it has no switch of its own.
+    const bool hdr_set = sets(StageId::encode);
+    const bool hdr_on = hdr_set && stages.hdr_headroom > 0.0f;
+    std::vector<std::string> names;  // the stages set, in pipeline order
+    std::vector<std::string> clauses;
+    std::vector<std::string> switched_off;
+    for (const StageId id : stages.set) {
+        if (id != StageId::encode) {
+            names.emplace_back(stage_info(id).name);
         }
     }
-    if (stages.set.size() == 5u + extras.size()) {
+    for (const StageId id : stages.switched_off) {
+        switched_off.emplace_back(stage_info(id).name);
+    }
+    if (!switched_off.empty()) {
+        clauses.push_back("switches " + join_texts(switched_off) + " off");
+    }
+    if (hdr_set && !hdr_on) {
+        clauses.push_back("turns HDR off");
+    }
+    if (hdr_on) {
+        names.push_back("HDR at " + headroom_text(stages.hdr_headroom));
+    }
+    const std::string off = join_texts(clauses);
+    // The five stages every saved recipe has, and White balance, which only a photo with a chosen
+    // light adds, and HDR, which only a recipe with [hdr] sets: they are named on their own, so
+    // "all five" stays what it always was.
+    std::vector<std::string> extras;
+    if (sets(StageId::white_balance)) {
+        extras.emplace_back(stage_info(StageId::white_balance).name);
+    }
+    if (hdr_on) {
+        extras.push_back(names.back());
+    }
+    const std::size_t extra_count = (sets(StageId::white_balance) ? 1u : 0u) + (hdr_set ? 1u : 0u);
+    if (stages.set.size() == 5u + extra_count) {
         const std::string all = extras.empty() ? "Sets all five stages"
-                                               : "Sets all five stages and " + join_names(extras);
+                                               : "Sets all five stages and " + join_texts(extras);
         return off.empty() ? all + "." : all + (extras.empty() ? " and " : ", and ") + off + ".";
     }
-    std::string text = "Sets only " + join_names(stages.set);
+    if (names.empty()) {
+        return "Turns HDR off; the other stages are unchanged.";
+    }
+    std::string text = "Sets only " + join_texts(names);
     if (!off.empty()) {
         text += ", and " + off;
     }

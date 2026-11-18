@@ -25,6 +25,9 @@ namespace prism::gui {
 struct RecipeStages {
     std::vector<StageId> set;
     std::vector<StageId> switched_off;
+    // The headroom of [hdr] in stops, 0 when the recipe has none or turns HDR off; read only when
+    // `set` has StageId::encode.
+    float hdr_headroom = 0.0f;
     bool operator==(const RecipeStages&) const = default;
 };
 [[nodiscard]] RecipeStages recipe_stages(const Recipe& recipe);
@@ -34,7 +37,8 @@ struct RecipeStages {
 //   some:            "Sets only Colour matrix, Saturation and Contrast; the other stages are
 //                     unchanged."
 //   and the light:   "Sets all five stages and White balance."
-//   and HDR ([hdr]):  "Sets all five stages and Output encode."
+//   and HDR ([hdr]):  "Sets all five stages and HDR at +2.00 stops." or, at 0,
+//                     "Sets all five stages and turns HDR off."
 //   with one off:    "Sets all five stages and switches Contrast off."
 //                    "Sets only Saturation and Contrast, and switches Contrast off; the other
 //                     stages are unchanged."

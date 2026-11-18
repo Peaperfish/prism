@@ -49,27 +49,59 @@ TEST(RecipeStagesLine, ACompleteRecipeSetsAllFive) {
     EXPECT_EQ(stages_line(recipe_stages(complete_recipe())), "Sets all five stages.");
 }
 
-TEST(RecipeStagesLine, HdrIsOutputEncodeNamedBesideTheFive) {
+TEST(RecipeStagesLine, HdrIsNamedByItsHeadroomOrSaidToTurnOff) {
     // A recipe with only [hdr] changes the photo's HDR (#105): it must not read as changing
-    // nothing.
+    // nothing. It names the headroom (#107), and at 0 says it turns HDR off.
     Recipe only;
     only.hdr = prism::RecipeHdr{2.0f};
     EXPECT_EQ(stages_line(recipe_stages(only)),
-              "Sets only Output encode; the other stages are unchanged.");
+              "Sets only HDR at +2.00 stops; the other stages are unchanged.");
     only.hdr = prism::RecipeHdr{0.0f};  // HDR off: still sets it, and nothing is "switched off"
     EXPECT_EQ(recipe_stages(only).switched_off.size(), 0u);
-    EXPECT_EQ(stages_line(recipe_stages(only)),
-              "Sets only Output encode; the other stages are unchanged.");
+    EXPECT_EQ(stages_line(recipe_stages(only)), "Turns HDR off; the other stages are unchanged.");
     Recipe r = complete_recipe();
     r.hdr = prism::RecipeHdr{2.0f};
-    EXPECT_EQ(stages_line(recipe_stages(r)), "Sets all five stages and Output encode.");
+    EXPECT_EQ(stages_line(recipe_stages(r)), "Sets all five stages and HDR at +2.00 stops.");
+    r.hdr = prism::RecipeHdr{2.5f};
+    EXPECT_EQ(stages_line(recipe_stages(r)), "Sets all five stages and HDR at +2.50 stops.");
+    r.hdr = prism::RecipeHdr{0.0f};
+    EXPECT_EQ(stages_line(recipe_stages(r)), "Sets all five stages and turns HDR off.");
+    r.hdr = prism::RecipeHdr{2.0f};
     r.white_balance = prism::RecipeWhiteBalance{5200.0f, 10.0f, true};
     EXPECT_EQ(stages_line(recipe_stages(r)),
-              "Sets all five stages and White balance and Output encode.");
+              "Sets all five stages and White balance and HDR at +2.00 stops.");
     r.curve->on = false;
     EXPECT_EQ(stages_line(recipe_stages(r)),
-              "Sets all five stages and White balance and Output encode, and switches Tone curve "
+              "Sets all five stages and White balance and HDR at +2.00 stops, and switches Tone "
+              "curve off.");
+    r.hdr = prism::RecipeHdr{0.0f};
+    EXPECT_EQ(stages_line(recipe_stages(r)),
+              "Sets all five stages and White balance, and switches Tone curve off and turns HDR "
               "off.");
+}
+
+TEST(RecipeStagesLine, HdrInAPartialRecipeAndItsHeadroomInTheStages) {
+    Recipe r;
+    r.saturation = prism::RecipeSaturation{0.9f, true};
+    r.hdr = prism::RecipeHdr{2.0f};
+    EXPECT_EQ(recipe_stages(r).hdr_headroom, 2.0f);
+    EXPECT_EQ(stages_line(recipe_stages(r)),
+              "Sets only Saturation and HDR at +2.00 stops; the other stages are unchanged.");
+    r.saturation->on = false;
+    EXPECT_EQ(stages_line(recipe_stages(r)),
+              "Sets only Saturation and HDR at +2.00 stops, and switches Saturation off; the "
+              "other stages are unchanged.");
+    r.hdr = prism::RecipeHdr{0.0f};
+    EXPECT_EQ(stages_line(recipe_stages(r)),
+              "Sets only Saturation, and switches Saturation off and turns HDR off; the other "
+              "stages are unchanged.");
+    r.saturation->on = true;
+    EXPECT_EQ(stages_line(recipe_stages(r)),
+              "Sets only Saturation, and turns HDR off; the other stages are unchanged.");
+    r.hdr.reset();
+    EXPECT_EQ(recipe_stages(r).hdr_headroom, 0.0f);
+    EXPECT_EQ(stages_line(recipe_stages(r)),
+              "Sets only Saturation; the other stages are unchanged.");
 }
 
 TEST(RecipeStagesLine, AWhiteBalanceIsNamedBesideTheFive) {
