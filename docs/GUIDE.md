@@ -208,9 +208,10 @@ A photo can hold light above white: a sky, a lamp, the sun on chrome. An ordinar
 
 With HDR on and a headroom above +0.00, Export writes an Ultra HDR JPEG. A viewer that can't show HDR still shows the ordinary picture, exactly as an export without HDR would; an HDR screen adds the light above white, as far as the screen has room for it. On a Mac with an HDR screen, the canvas shows that light while HDR is on.
 
-Two limits of this version:
+Three limits of this version:
 
 - Split compare shows both halves without light above white.
+- The clip marks, the status note and the J overlay count all light above white as clipped, even where HDR keeps it, and Sample's "On screen" line reads the plain picture, so it stops at 100% of white's light.
 - While the stroke mask (`M`) is shown, the soft edge of a stroke over a highlight steps from the HDR picture to the plain one instead of fading.
 
 ### Dodge and burn with the Brush
@@ -435,7 +436,7 @@ A **recipe** is a small text file, ending in `.prism`, that writes down an edit:
 - **Name**, filled in for you: the recipe you loaded (with "(modified)" once you have changed something), or the look you picked, or empty with the hint "Name this look". The suggested file name is made from it.
 - **Description** (optional): one line on what the recipe is for, filled in from the recipe you loaded or the look you picked. If you keep both for a built-in look, the file you save is that look's file plus a `[matrix]` section.
 
-The sheet says what is saved: all five stages, and the white balance you chose if you chose one. A photo left **As shot** saves no white balance, because as shot is that photo's own light and not a number to carry to another photo; such a recipe is the same file older versions of Prism wrote, and they can still read it. The photo, the RAW decoding options (half size, camera matrix), the frame on the easel and any brush strokes are not in a recipe; when the photo has a frame or strokes, the sheet adds "Framing isn't included.", "Dodging and burning isn't included." or "Framing and dodging and burning aren't included." `Esc` cancels; while you are typing in a field, the first `Esc` only leaves the field. **Save…** then opens the system's save dialog. It starts in the folder you last saved or loaded a recipe in (Prism remembers it in your [preferences](#preferences)), or next to the photo the first time. If you type a name without `.prism`, it is added. A banner says "Saved recipe *name*.prism." when it is written.
+The sheet says what is saved: all five stages, the white balance you chose if you chose one, and the HDR headroom when HDR is on ("Saves all five stages and HDR at +2.00 stops."; such a recipe needs Prism 0.8.0 or later). A photo left **As shot** saves no white balance, because as shot is that photo's own light and not a number to carry to another photo; such a recipe, saved with HDR off, is the same file older versions of Prism wrote, and they can still read it. The photo, the RAW decoding options (half size, camera matrix), the frame on the easel and any brush strokes are not in a recipe; when the photo has a frame or strokes, the sheet adds "Framing isn't included.", "Dodging and burning isn't included." or "Framing and dodging and burning aren't included." `Esc` cancels; while you are typing in a field, the first `Esc` only leaves the field. **Save…** then opens the system's save dialog. It starts in the folder you last saved or loaded a recipe in (Prism remembers it in your [preferences](#preferences)), or next to the photo the first time. If you type a name without `.prism`, it is added. A banner says "Saved recipe *name*.prism." when it is written.
 
 **Loading.** **File → Load Recipe…** (`Cmd+Shift+O` or `Ctrl+Shift+O`), or **Load recipe…** in the Look menu, applies a recipe to the open photo:
 
@@ -546,15 +547,15 @@ The order of the stages matters because they are not interchangeable:
 - **Saturation** moves each colour away from, or towards, the grey of the same luminance. A colour that would go below zero stops at the most saturated version sRGB can show, so hues do not shift.
 - **Contrast** is an S-curve around middle grey, in stops. It is strongest within about 2 stops of grey, so the extremes are not crushed.
 - **The Tone curve** comes last, because it squeezes scene light to fit the screen. Linear light has more range than a screen shows. The curve compresses it: bright values are pulled in, so highlights have room. If you brightened after the curve instead of before it, you would only be making the compressed picture brighter and pushing highlights past white.
-- **Output encode** is last. Anything still above white or below black is cut off here, and cannot come back.
+- **Output encode** is last. Anything still above white or below black is cut off in the file's ordinary picture here, and cannot come back. With HDR on, an HDR file also keeps the light above white, up to the headroom ([Light above white](#light-above-white)).
 
 Switching a stage off in the Light path shows you what it contributed.
 
 ### What clipping means
 
-A file can only hold values from black to white. In linear light, black is 0 and white is 1. Clipping is when a value falls outside that and is cut off at 0 or 1: **highlights** that were brighter than white, **shadows** that have no light left, and colours **too saturated for sRGB**, where a channel would need negative light (a strongly saturated yellow or orange, pushed further by a colour matrix, can end up with a negative blue; the encode cuts it to 0 and the colour's hue shifts).
+An ordinary file can only hold values from black to white. In linear light, black is 0 and white is 1. Clipping is when a value falls outside that and is cut off at 0 or 1: **highlights** with more light than white, **shadows** that have no light left, and colours **too saturated for sRGB**, where a channel would need negative light (a strongly saturated yellow or orange, pushed further by a colour matrix, can end up with a negative blue; the encode cuts it to 0 and the colour's hue shifts).
 
-A value outside the range is not lost by itself. Prism keeps it as a number, so a later stage may bring it back: darkening with a tone curve can pull a highlight back under white. Detail is lost only where a stage cuts values off at white or black. Until then the values are kept. In the Light path that is the difference between a hollow dot (recoverable) and a filled dot (lost). Saturation and Tone curve cut off values below 0, and Output encode cuts off both ends; Exposure, White balance, Colour matrix and Contrast never do. The Decode stage counts pixels that were already at white in the file (a RAW file's saturated sensor values, or 255 in an 8-bit file) as lost before any edit.
+A value outside the range is not lost by itself. Prism keeps it as a number, so a later stage may bring it back: darkening with a tone curve can pull a highlight back under white. Detail is lost only where a stage cuts values off at white or black. Until then the values are kept. In the Light path that is the difference between a hollow dot (recoverable) and a filled dot (lost). Saturation and Tone curve cut off values below 0, and Output encode cuts off both ends (with HDR on, the HDR picture of an exported JPEG keeps light above white up to the headroom); Exposure, White balance, Colour matrix and Contrast never do. The Decode stage counts pixels that were already at white in the file (a RAW file's saturated sensor values, or 255 in an 8-bit file) as lost before any edit.
 
 ## Preferences
 

@@ -1,6 +1,6 @@
 # Prism recipes
 
-A recipe is a small text file, ending in `.prism`, that writes down an edit: how much exposure, which light the photo was lit by, which colour matrix, how much saturation and contrast, and which tone curve. It holds numbers only, not pixels, so the same recipe can be used on any photo. You can open it in any text editor, read exactly what it does, change a number, and send it to someone else. Nothing in it is hidden: a look is just its recipe.
+A recipe is a small text file, ending in `.prism`, that writes down an edit: how much exposure, which light the photo was lit by, which colour matrix, how much saturation and contrast, which tone curve, and how far above white the HDR picture keeps light. It holds numbers only, not pixels, so the same recipe can be used on any photo. You can open it in any text editor, read exactly what it does, change a number, and send it to someone else. Nothing in it is hidden: a look is just its recipe.
 
 Contents: [A recipe by hand](#a-recipe-by-hand) · [As Prism saves it](#as-prism-saves-it) · [Every setting](#every-setting) · [Leaving stages out](#leaving-stages-out) · [The built-in looks](#the-built-in-looks) · [The rules of the format](#the-rules-of-the-format) · [Versions](#versions) · [When a recipe has a mistake](#when-a-recipe-has-a-mistake)
 
@@ -36,6 +36,7 @@ This one has no `[exposure]` and no `[curve]`, so it leaves those alone: the pho
 ## As Prism saves it
 
 When Prism saves a recipe it writes every stage, in the order the light goes through them, with a short comment on each line saying what the number does. Here is "Warm low contrast, brighter": to get it, load the recipe above onto a photo in Prism, set Exposure to +0.5 stops and the Tone curve to Reinhard, and choose **File → Save Recipe…** with that name.
+While HDR is on, Prism also writes `[hdr]` (see [Every setting](#every-setting)).
 
 <!-- recipe: saved -->
 ```toml
