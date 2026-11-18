@@ -17,7 +17,7 @@
 
 ## Changed
 
-- **TO DECIDE:** Output encode's subtitle while HDR is on: "sRGB for the screen · HDR up to +2.00 stops", or unchanged ("sRGB for the screen"). See #107.
+- While HDR is on, Output encode's subtitle says how far above white the file keeps light: "sRGB for the screen · HDR up to +2.00 stops". ([#107](https://github.com/Peaperfish/prism/issues/107))
 
 ## Viewing HDR files
 
@@ -29,10 +29,10 @@
 ## Known limits
 
 - The canvas shows HDR only on macOS. On Windows and Linux, and on a screen with no room above white, the canvas shows the SDR picture; the exported HDR file still keeps the light above white.
-- **TO DECIDE:** split compare. With HDR on, split compare shows both halves in SDR, because the compare stage has no light above white. Keep this line, or replace it once the split's behaviour is decided (#106).
+- With HDR on, split compare shows both halves in SDR, because the compare stage has no light above white.
 - With HDR on, earlier stages and the test strip show the SDR picture: only the final picture has light above white.
 - With the photo's own pixels on screen, a pixel's HDR light can differ very slightly from the exported file's: its gain map is made for the part on screen, not the whole photo.
-- **TO DECIDE:** the soft edge of a brush stroke over a highlight, while the stroke mask (M) is shown: the edge steps from the HDR picture to the SDR one instead of fading. Keep as a known limit, or change the overlay's fade first (#106).
+- The soft edge of a brush stroke over a highlight, while the stroke mask (M) is shown, steps from the HDR picture to the SDR one instead of fading.
 - At Fit, a tight crop looks softer than it exports, because Fit is drawn from the preview. Zoom in to see the photo's own pixels.
 - On a photo too large for the memory rule, zooming past the preview shows the preview enlarged, not the photo's own pixels.
 - Opening another photo while a stopped full-size read is finishing reads that photo twice. ([#82](https://github.com/Peaperfish/prism/issues/82))
@@ -43,8 +43,6 @@
 
 ## Learn more
 
-HDR export is described in the [user guide](https://github.com/Peaperfish/prism/blob/main/docs/GUIDE.md), `[hdr]` in [docs/RECIPES.md](https://github.com/Peaperfish/prism/blob/main/docs/RECIPES.md), and `--headroom` in the [command-line reference](https://github.com/Peaperfish/prism/blob/main/docs/CLI.md).
-
-**TO DECIDE:** a GUIDE section on the HDR canvas ("Light above white", #107); until it exists, the guide describes HDR export only.
+HDR export and light above white are described in the [user guide](https://github.com/Peaperfish/prism/blob/main/docs/GUIDE.md), `[hdr]` in [docs/RECIPES.md](https://github.com/Peaperfish/prism/blob/main/docs/RECIPES.md), and `--headroom` in the [command-line reference](https://github.com/Peaperfish/prism/blob/main/docs/CLI.md).
 
 This product includes Gain Map technology under license by Adobe.
