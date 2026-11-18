@@ -79,7 +79,7 @@ load RAW (LibRaw, linear) ─────┘                                    
                                                                                                                                                                                                └→ HDR curve (with a headroom) → gain map from both pictures → Ultra HDR JPEG
 ```
 
-With a headroom above 0, the light branches after contrast: the SDR picture goes on as above and is the JPEG's ordinary picture, and the HDR curve makes an HDR picture from the same light; the gain map between the two goes into an Ultra HDR JPEG (see [Using the pipeline from C++](#using-the-pipeline-from-c)).
+With a headroom above 0 and a .jpg output, the light branches after contrast: the SDR picture goes on as above and is the JPEG's ordinary picture, and the HDR curve makes an HDR picture from the same light; the gain map between the two goes into an Ultra HDR JPEG (see [Using the pipeline from C++](#using-the-pipeline-from-c)).
 
 All processing happens in 32-bit float, linear light. The histogram is measured on the final 8-bit sRGB values (what ends up in the file, before any JPEG compression), so it matches what a camera or Lightroom shows.
 
