@@ -74,15 +74,18 @@ Every command and option, with defaults, more examples (a folder of files in a s
 
 ```
 load (8-bit sRGB) → linearise ─┐
-                               ├→ frame (easel; --rotate/--crop/--aspect) → reduce (--long-side) → exposure → dodge & burn (GUI only) → white balance → colour matrix → saturation → contrast → tone curve → encode sRGB → save
-load RAW (LibRaw, linear) ─────┘
+                               ├→ frame (easel; --rotate/--crop/--aspect) → reduce (--long-side) → exposure → dodge & burn (GUI only) → white balance → colour matrix → saturation → contrast ─┬→ tone curve → encode sRGB → save
+load RAW (LibRaw, linear) ─────┘                                                                                                                                                               │
+                                                                                                                                                                                               └→ HDR curve (with a headroom) → gain map from both pictures → Ultra HDR JPEG
 ```
+
+With a headroom above 0, the light branches after contrast: the SDR picture goes on as above and is the JPEG's ordinary picture, and the HDR curve makes an HDR picture from the same light; the gain map between the two goes into an Ultra HDR JPEG (see [Using the pipeline from C++](#using-the-pipeline-from-c)).
 
 All processing happens in 32-bit float, linear light. The histogram is measured on the final 8-bit sRGB values (what ends up in the file, before any JPEG compression), so it matches what a camera or Lightroom shows.
 
 ### Using the pipeline from C++
 
-`prism::process` (`include/prism/process.hpp`) runs the whole pipeline in one call; the CLI uses it, so this order is written down in one place only (`lib/process.cpp`):
+`prism::process` (`include/prism/process.hpp`) runs the whole pipeline in one call; the CLI uses it, so this order is written down in one place only (`lib/process.cpp`). With a headroom, the CLI and the app's export go through `process_for_output` (`include/prism/output.hpp`), which calls `prism::process_hdr` (`include/prism/process.hpp`) to make the SDR and the HDR picture in one run:
 
 ```cpp
 prism::ProcessSettings settings;              // one std::optional per stage; empty = skipped
@@ -342,8 +345,8 @@ v0.1.0 was a pre-release of the desktop app, and v0.2.0 is its first full releas
 
 [**0.8.0 – HDR**](https://github.com/Peaperfish/prism/milestone/6): HDR photos on HDR displays, and HDR files out.
 
-- Show HDR photos on HDR displays (macOS first)
-- Export HDR files with gain maps
+- Show HDR photos on HDR displays (macOS first) *(done)*
+- Export HDR files with gain maps *(done)*
 - [The Sample pin kept in photo coordinates](https://github.com/Peaperfish/prism/issues/73) *(done)*
 - Later: merge exposure brackets
 
@@ -667,7 +670,8 @@ prism/
 ├── docs/         # user guide (GUIDE.md), command-line reference (CLI.md),
 │                 # release-notes/: every release's notes and the template
 ├── .github/      # CI and release workflows
-└── third_party/  # stb headers
+└── third_party/  # stb headers; the sRGB ICC profile (icc/); the Inter font (fonts/inter/);
+                  # libultrahdr's licence for the ported fraction routine (libultrahdr/)
 ```
 
 ## Licences
