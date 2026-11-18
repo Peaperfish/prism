@@ -64,9 +64,9 @@ constexpr Explanation templates[] = {
      "look only when the numbers match one.",
      LiveKind::recipe},
     {"recipe.save", "Write these settings to a recipe you can read and reuse.",
-     "Saves all five stages with their switches, and a white balance you chose, as a small .prism "
-     "text file. The photo and the RAW decoding options are not in it. Load it on any photo, or "
-     "read it in a text editor."},
+     "Saves all five stages with their switches, a white balance you chose and the HDR headroom "
+     "while HDR is on, as a small .prism text file. The photo and RAW decoding options are not in "
+     "it. Load it on any photo."},
     {"recipe.name", "The recipe's name, shown when it is loaded.",
      "Written as name in the file, and used for the file name. Prism suggests the recipe you "
      "loaded or the look you picked."},

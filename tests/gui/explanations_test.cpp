@@ -83,6 +83,18 @@ TEST(Explanations, ThePickerExplainsItselfWithItsKeyAndHowToLeave) {
     }
 }
 
+TEST(Explanations, SaveRecipeNamesHdrAsTheSheetDoes) {
+    // What the Save Recipe sheet names (recipe_sheet_saves_line): the stages, a chosen white
+    // balance and, while HDR is on, its headroom (#115).
+    const Explanation* e = explanation_for(explain::recipe_save);
+    ASSERT_NE(e, nullptr);
+    EXPECT_LE(e->detail.size(), explain_detail_max);
+    EXPECT_EQ(e->detail,
+              "Saves all five stages with their switches, a white balance you chose and the HDR "
+              "headroom while HDR is on, as a small .prism text file. The photo and RAW decoding "
+              "options are not in it. Load it on any photo.");
+}
+
 TEST(Explanations, TheBrushExplainsItselfWithItsKeyAndHowToLeave) {
     const Explanation* e = explanation_for(explain::dodge_burn_brush);
     ASSERT_NE(e, nullptr);
