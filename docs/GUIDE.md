@@ -200,6 +200,19 @@ A number under 100 is thousands of kelvin: `5.2` is 5200 K and `15` is 15000 K. 
 
 **Rows after the viewed stage.** A stage after the one you are viewing can't change what you see, so its row is dimmed (it still works), and pointing at it says "Not visible here: you're viewing after Exposure." With a comparison, a row is dimmed only when it is after both pictures.
 
+### Light above white
+
+A photo can hold light above white: a sky, a lamp, the sun on chrome. An ordinary screen and an ordinary JPEG stop at white, so that light is cut off. An HDR screen can show some of it.
+
+**Headroom** says how much of it Prism keeps, in stops above white. +1.00 stop is 2× white's light (200% of white's light), +2.00 stops is 4× (400% of white's light), and +4.00 stops is 16×. It starts at +2.00 stops and goes from +0.00 to +4.00. Light above the headroom is cut off.
+
+With HDR on and a headroom above +0.00, Export writes an Ultra HDR JPEG. A viewer that can't show HDR still shows the ordinary picture, exactly as an export without HDR would; an HDR screen adds the light above white, as far as the screen has room for it. On a Mac with an HDR screen, the canvas shows that light while HDR is on.
+
+Two limits of this version:
+
+- Split compare shows both halves without light above white.
+- While the stroke mask (`M`) is shown, the soft edge of a stroke over a highlight steps from the HDR picture to the plain one instead of fading.
+
 ### Dodge and burn with the Brush
 
 In the darkroom, a dodging card under the enlarger holds light back from one part of the print, so that part comes out lighter; burning in gives a part more time, so it comes out darker. Prism's **Dodge & burn** stage does the same on the photo: you paint with the **Brush**, and each stroke moves the light under it by its strength, measured in stops, right after Exposure. It is local, so it works on the parts you paint and leaves the rest alone. Strokes that overlap add up: two dodges of 0.5 stop make +1.00 stops where they cross.
