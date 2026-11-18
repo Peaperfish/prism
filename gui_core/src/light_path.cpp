@@ -148,6 +148,10 @@ LightPathRow light_path_row(const LightPathInputs& in, StageId stage) {
             break;
         case StageId::encode: {
             row.subtitle = "sRGB for the screen";
+            if (s.hdr_on && s.headroom_stops > 0.0f) {
+                // The file is HDR only above a headroom of 0 (output_headroom).
+                row.subtitle += " · HDR up to " + headroom_text(s.headroom_stops);
+            }
             LightPathRow::HdrControls controls;
             controls.on = s.hdr_on;
             controls.headroom =

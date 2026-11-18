@@ -229,7 +229,9 @@ TEST(HdrControls, TheRowShowsTheHeadroomInSignedStops) {
         EXPECT_EQ(row.hdr->headroom_text, "+3.50 stops");
         EXPECT_EQ(row.hdr->headroom_reset, "Reset to +2.00 stops");
         EXPECT_FALSE(row.can_toggle);  // HDR's switch is its own, not the row's
-        EXPECT_EQ(row.subtitle, "sRGB for the screen");
+        // While HDR is on, the subtitle says how far above white the file keeps light (#107).
+        EXPECT_EQ(row.subtitle,
+                  on ? "sRGB for the screen \xC2\xB7 HDR up to +3.50 stops" : "sRGB for the screen");
     }
     // No other row has it.
     const EditSettings s;
@@ -495,4 +497,16 @@ TEST(HdrExport, AStoppedHdrExportWritesNothing) {
         EXPECT_FALSE(fs::exists(out.path)) << at;
         EXPECT_EQ(hdr_curve_ran, std::string(at) == "hdr_curve") << at;
     }
+}
+
+TEST(HeadlessHdrSubtitle, OnlyAnHdrFileAboveZeroSaysHowFarAboveWhiteItKeepsLight) {
+    EditSettings s;
+    s.hdr_on = true;
+    s.headroom_stops = 2.0f;
+    EXPECT_EQ(encode_row(s).subtitle, "sRGB for the screen \xC2\xB7 HDR up to +2.00 stops");
+    s.headroom_stops = 0.0f;  // nothing HDR is written at 0
+    EXPECT_EQ(encode_row(s).subtitle, "sRGB for the screen");
+    s.hdr_on = false;
+    s.headroom_stops = 2.0f;
+    EXPECT_EQ(encode_row(s).subtitle, "sRGB for the screen");
 }

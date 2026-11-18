@@ -134,7 +134,7 @@ A thin rail runs down the left, with a dot for each stage. The **viewed stage**'
 | Saturation | `×1.00` (`black and white` at exactly 0) | a slider from `×0.00` to `×2.00` |
 | Contrast | `Grade 2 · ×1.00` | a slider in half grades, from grade 0 to grade 5 (see [Contrast as a paper grade](#contrast-as-a-paper-grade)) |
 | Tone curve | none | four tabs: **None**, **Gamma**, **Reinhard**, **Filmic** |
-| Output encode | none | "sRGB for the screen", then the **HDR** switch and the **Headroom** slider (see below) |
+| Output encode | none | "sRGB for the screen" (with HDR on and a headroom above +0.00, "sRGB for the screen · HDR up to +2.00 stops"), then the **HDR** switch and the **Headroom** slider (see below) |
 
 The sliders of Exposure, Saturation and Contrast are centred on no change. Hover over a row for a one-sentence explanation; the Explain area says more. Point at the Colour matrix's value for the full path of its file.
 
