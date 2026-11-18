@@ -911,9 +911,12 @@ TEST(CliHeadroom, OutDirWritesUltraHdrJpegs) {
 TEST(CliHeadroom, HelpDescribesIt) {
     const RunResult r = run_prism("--help");
     EXPECT_TRUE(contains(r.output,
-                         "  --headroom <stops>  light above white kept for an HDR picture, "
-                         "0 to +4.0\n                      stops (0, the default, makes no "
-                         "HDR picture); HDR is written to\n                      .jpg only\n"))
+                         "  --headroom <stops>  how far above white an HDR picture keeps light, "
+                         "0 to +4.0\n"
+                         "                      stops (+1.0 stop is twice white's light). 0, "
+                         "the default,\n"
+                         "                      makes no HDR picture; HDR is written to .jpg or "
+                         ".jpeg only\n"))
         << r.output;
 }
 
