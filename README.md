@@ -332,6 +332,7 @@ v0.1.0 was a pre-release of the desktop app, and v0.2.0 is its first full releas
 
 - Show HDR photos on HDR displays (macOS first)
 - Export HDR files with gain maps
+- [The Sample pin kept in photo coordinates](https://github.com/Peaperfish/prism/issues/73) *(done)*
 - Later: merge exposure brackets
 
 [**0.9.0 – The easel, part 2**](https://github.com/Peaperfish/prism/milestone/10): more for framing.
@@ -339,7 +340,6 @@ v0.1.0 was a pre-release of the desktop app, and v0.2.0 is its first full releas
 - [Quarter turns (90°)](https://github.com/Peaperfish/prism/issues/67) on the easel
 - [Frames and strokes kept in a sidecar file](https://github.com/Peaperfish/prism/issues/71)
 - [Live framed scopes while framing](https://github.com/Peaperfish/prism/issues/72)
-- [The Sample pin kept in photo coordinates](https://github.com/Peaperfish/prism/issues/73)
 
 [**Later**](https://github.com/Peaperfish/prism/milestone/2), not scheduled yet:
 
