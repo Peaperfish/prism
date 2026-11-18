@@ -15,6 +15,11 @@ DisplayMode display_mode(bool screen_shows_hdr, bool macos, bool hdr_on) noexcep
     return screen_shows_hdr && macos && hdr_on ? DisplayMode::hdr_ui_target : DisplayMode::sdr;
 }
 
+DisplayMode next_display_mode(DisplayMode current, DisplayMode wanted,
+                              bool create_failed) noexcept {
+    return create_failed && wanted == DisplayMode::hdr_ui_target ? current : wanted;
+}
+
 bool hdr_canvas_on(DisplayMode mode, const EditSettings& s, StageId viewed, bool test_strip,
                    float display_headroom, bool sdr_view) noexcept {
     return mode == DisplayMode::hdr_ui_target && output_headroom(s).has_value() &&

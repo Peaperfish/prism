@@ -87,6 +87,55 @@ TEST(HdrDisplay, UiTargetModeOnlyOnMacOsWithAnHdrScreen) {
     EXPECT_EQ(prism::gui::display_mode(false, false, false), DisplayMode::sdr);
 }
 
+TEST(HdrDisplay, TheNextModeIsTheWantedOneUntilUiTargetModeFailedToBeCreated) {
+    using prism::gui::next_display_mode;
+    const DisplayMode sdr = DisplayMode::sdr;
+    const DisplayMode hdr = DisplayMode::hdr_ui_target;
+    EXPECT_EQ(next_display_mode(sdr, sdr, false), sdr);
+    EXPECT_EQ(next_display_mode(sdr, hdr, false), hdr);
+    EXPECT_EQ(next_display_mode(hdr, hdr, false), hdr);
+    EXPECT_EQ(next_display_mode(hdr, sdr, false), sdr);
+    // After a failed create, a wish for UI-target mode keeps what the window has...
+    EXPECT_EQ(next_display_mode(sdr, hdr, true), sdr);
+    EXPECT_EQ(next_display_mode(hdr, hdr, true), hdr);
+    // ...and a wish for today's renderer is still followed.
+    EXPECT_EQ(next_display_mode(sdr, sdr, true), sdr);
+    EXPECT_EQ(next_display_mode(hdr, sdr, true), sdr);
+}
+
+TEST(HdrDisplay, WhenOnlyTodaysRendererCanBeMadeItStaysWithoutARecreateEachFrame) {
+    // gui_app/main.cpp's loop with a renderer that refuses UI-target mode and makes today's: HDR
+    // on, on an HDR screen, display_mode asks for UI-target mode every frame.
+    DisplayMode current = DisplayMode::sdr;
+    bool create_failed = false;
+    int creates = 0;
+    const auto frame = [&](DisplayMode wanted) {
+        const DisplayMode next = prism::gui::next_display_mode(current, wanted, create_failed);
+        if (next == current) {
+            return;
+        }
+        ++creates;
+        if (next == DisplayMode::hdr_ui_target) {  // refused: today's renderer instead
+            create_failed = true;
+            ++creates;
+            current = DisplayMode::sdr;
+            return;
+        }
+        current = next;
+    };
+    for (int i = 0; i < 5; ++i) {
+        frame(DisplayMode::hdr_ui_target);
+    }
+    EXPECT_EQ(current, DisplayMode::sdr);
+    EXPECT_EQ(creates, 2);  // one try and one fallback, then nothing
+    EXPECT_TRUE(create_failed);
+    // HDR off and on again: nothing to recreate, and no new try in this session.
+    frame(DisplayMode::sdr);
+    frame(DisplayMode::hdr_ui_target);
+    EXPECT_EQ(current, DisplayMode::sdr);
+    EXPECT_EQ(creates, 2);
+}
+
 TEST(HdrDisplay, TheCanvasIsHdrOnlyForTheFinalPictureWithHdrOnAndRoomAboveWhite) {
     const auto on = [](DisplayMode m, const EditSettings& s, StageId v, bool strip, float d) {
         return prism::gui::hdr_canvas_on(m, s, v, strip, d);

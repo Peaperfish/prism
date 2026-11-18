@@ -18,6 +18,7 @@
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_sdlrenderer3.h"
 #include "prism/gui/file_types.hpp"
+#include "prism/gui/hdr_display.hpp"
 #include "prism/gui/presets.hpp"
 #include "prism/gui/wheel_scaling.hpp"
 #include "prism/utf8_path.hpp"
@@ -118,6 +119,7 @@ int main(int argc, char** argv) {
         }
 
         bool done = false;
+        bool hdr_create_failed = false;  // creating UI-target mode failed (next_display_mode)
         prism::gui::WheelScaler wheel_scaler;
         while (!done) {
             // Sleep until something happens while nothing is moving, instead of redrawing the
@@ -157,13 +159,21 @@ int main(int argc, char** argv) {
 
             // The renderer follows the screen (moved to another one, its HDR changed) and the
             // photo's HDR switch (#96 decision 10, #106): recreated when the mode they ask for
-            // changes, with the app's textures dropped before and made again after.
-            if (const prism::gui::DisplayMode mode = wanted_mode(display, app.hdr_on());
+            // changes, with the app's textures dropped before and made again after. Once UI-target
+            // mode couldn't be created, today's renderer stays (next_display_mode).
+            if (const prism::gui::DisplayMode mode = prism::gui::next_display_mode(
+                    display.mode(), wanted_mode(display, app.hdr_on()), hdr_create_failed);
                 mode != display.mode()) {
                 app.release_textures();
-                if (!display.create(mode) && !display.create(prism::gui::DisplayMode::sdr)) {
-                    std::fprintf(stderr, "Prism: couldn't create a renderer: %s\n", SDL_GetError());
-                    break;
+                if (!display.create(mode)) {
+                    if (mode == prism::gui::DisplayMode::hdr_ui_target) {
+                        hdr_create_failed = true;
+                    }
+                    if (!display.create(prism::gui::DisplayMode::sdr)) {
+                        std::fprintf(stderr, "Prism: couldn't create a renderer: %s\n",
+                                     SDL_GetError());
+                        break;
+                    }
                 }
                 app.renderer_changed(display.renderer());
             }

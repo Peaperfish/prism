@@ -39,6 +39,16 @@ enum class DisplayMode {
 // UI-target mode.)
 [[nodiscard]] DisplayMode display_mode(bool screen_shows_hdr, bool macos, bool hdr_on) noexcept;
 
+// The mode the window's renderer should be in this frame, from the mode it is in (`current`) and
+// the mode display_mode asks for (`wanted`); the app recreates the renderer only when the two
+// differ. `create_failed`: creating UI-target mode failed earlier and today's renderer was made
+// instead. From then on, for the rest of the session (as a UI target that couldn't be made), a
+// wish for UI-target mode changes nothing: the window keeps the renderer it has, instead of
+// trying again, failing and falling back every frame. A wish for today's renderer is always
+// followed.
+[[nodiscard]] DisplayMode next_display_mode(DisplayMode current, DisplayMode wanted,
+                                            bool create_failed) noexcept;
+
 // Whether the canvas shows an HDR picture rather than today's 8-bit one: in UI-target mode, with
 // HDR on in the settings (output_headroom), while the final picture is viewed (the HDR branch is
 // part of Output encode; earlier stages and comparisons with them stay SDR), without a test strip
