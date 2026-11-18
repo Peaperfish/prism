@@ -913,7 +913,7 @@ TEST(CliHeadroom, HelpDescribesIt) {
     EXPECT_TRUE(contains(r.output,
                          "  --headroom <stops>  light above white kept for an HDR picture, "
                          "0 to +4.0\n                      stops (0, the default, makes no "
-                         "HDR picture)\n"))
+                         "HDR picture); HDR is written to\n                      .jpg only\n"))
         << r.output;
 }
 

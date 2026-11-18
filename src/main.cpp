@@ -104,7 +104,8 @@ void print_usage(const char* program) {
     }
     std::cerr
         << "\n  --headroom <stops>  light above white kept for an HDR picture, 0 to +4.0\n"
-        << "                      stops (0, the default, makes no HDR picture)\n"
+        << "                      stops (0, the default, makes no HDR picture); HDR is written to\n"
+        "                      .jpg only\n"
         << "  --histogram <file>  save a histogram image of the result and print\n"
         << "                      the percentage of clipped pixels per channel\n"
         << "  --threads <n>       use up to n threads (default: " << prism::hardware_threads()
