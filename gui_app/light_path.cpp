@@ -418,6 +418,7 @@ void draw_hdr_controls(const LightPathData& data, const gui::LightPathRow& row, 
     if (ImGui::Checkbox((hdr_label + "##hdr_on").c_str(), &on) && cb.set_hdr_on) {
         cb.set_hdr_on(on);
     }
+    cb.explain(gui::explain::hdr_switch, false);
     note_fit(data, "HDR switch", hdr_label, hdr_label, check_width);
 
     const float label_left = x + check_width + gap;
@@ -438,6 +439,7 @@ void draw_hdr_controls(const LightPathData& data, const gui::LightPathRow& row, 
                                        ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput);
     ImGui::EndDisabled();
     const gui::SliderFrame frame{ImGui::IsItemActivated(), changed, ImGui::IsItemDeactivated()};
+    cb.explain(gui::explain::hdr_headroom, changed);
     const float snapped = gui::snap_headroom(headroom);
     if ((frame.activated || frame.changed || frame.deactivated) && cb.headroom) {
         cb.headroom(changed ? snapped : controls.headroom, frame);

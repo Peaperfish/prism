@@ -984,3 +984,20 @@ TEST(LiveLines, TheEaselSaysTheFrameAgainstThePhoto) {
 
 }  // namespace
 }  // namespace prism::gui
+
+TEST(HeadlessExplainHdr, TheSwitchAndTheHeadroomSliderSayWhatTheyDoToTheLight) {
+    using namespace prism::gui;
+    const Explanation* sw = explanation_for(explain::hdr_switch);
+    ASSERT_NE(sw, nullptr);
+    EXPECT_EQ(sw->summary, "Light above white, kept for HDR screens.");
+    EXPECT_EQ(sw->detail,
+              "An HDR screen can show light above white. The SDR file is unchanged; the HDR file "
+              "adds a map of how far above white each part may go.");
+    const Explanation* head = explanation_for(explain::hdr_headroom);
+    ASSERT_NE(head, nullptr);
+    EXPECT_EQ(head->summary, "How far above white the HDR picture keeps light.");
+    EXPECT_EQ(head->detail, "+1.00 stop is twice white's light.");
+    // The ids the window asks for are the table's, so a hover finds the entry.
+    EXPECT_EQ(explain::hdr_switch, "hdr.switch");
+    EXPECT_EQ(explain::hdr_headroom, "hdr.headroom");
+}

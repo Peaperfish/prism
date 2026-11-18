@@ -273,6 +273,13 @@ constexpr Explanation templates[] = {
     {"dodge_burn.clear", "Take every stroke off the photo.",
      "Removes all the dodging and burning in one undo step. Greyed out when there is none."},
 
+    // --- HDR (#105, #107) -----------------------------------------------------------------------
+    {"hdr.switch", "Light above white, kept for HDR screens.",
+     "An HDR screen can show light above white. The SDR file is unchanged; the HDR file adds a map "
+     "of how far above white each part may go."},
+    {"hdr.headroom", "How far above white the HDR picture keeps light.",
+     "+1.00 stop is twice white's light."},
+
     // --- The easel (#58) ------------------------------------------------------------------------
     {"easel", "Easel: frames and straightens the print (C).",
      "It moves no light, so every stage sees only the framed part. Click the line or press C to "
@@ -314,7 +321,7 @@ constexpr Explanation templates[] = {
 
 // Ids that have no enum of their own: the controls the window shows beyond the stages, the curve
 // kinds, the scopes and the presets.
-constexpr std::array<std::string_view, 49> other_ids{
+constexpr std::array<std::string_view, 51> other_ids{
     explain::look,         explain::look_reset,   explain::look_view_recipe,
     explain::recipe_load,  explain::recipe_save,
     explain::recipe_loaded, explain::recipe_name, explain::recipe_description,
@@ -329,6 +336,7 @@ constexpr std::array<std::string_view, 49> other_ids{
     explain::pick,
     explain::dodge_burn_switch, explain::dodge_burn_brush, explain::dodge_burn_tone,
     explain::dodge_burn_strength, explain::dodge_burn_clear,
+    explain::hdr_switch,   explain::hdr_headroom,
     explain::easel,        explain::framing_straighten, explain::framing_angle,
     explain::framing_aspect, explain::framing_turn_aspect, explain::framing_reset,
     explain::framing_done,
