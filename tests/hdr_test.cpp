@@ -181,28 +181,43 @@ TEST(HdrCurve, GuardWhenWhiteIsAtOrBelowMiddleGrey) {
 }
 
 TEST(HdrCurve, GuardWhenWhiteIsTheFloatJustAboveMiddleGrey) {
-    // S = the next float above 0.18, N = 2, on each stock curve. gamma:2.2 gives c(S) == c(0.18)
-    // in float, so only "c(S) > k" keeps it unlifted: it is the SDR curve (0.5 -> 0.7297, as
-    // GuardWhenWhiteIsAtOrBelowMiddleGrey's gamma probe). The others still have c(S) > c(0.18):
-    // they lift, with S and everything above it on H, and the knee itself is the SDR value.
-    // Probe values (this design, 2026-11-18).
+    // S = the next float above 0.18, N = 2, on each stock curve. c(S) and c(0.18) are under one
+    // float step apart, so whether they round equal depends on the compiler (gamma:2.2 rounds
+    // equal with Apple clang, the 2026-11-18 probe; the others don't). Either way the curve stays
+    // sane: with c(S) == c(0.18) only "c(S) > k" keeps it unlifted, and it is the SDR curve cut at
+    // H (gamma:2.2: 0.5 -> 0.7297, as GuardWhenWhiteIsAtOrBelowMiddleGrey's probe); lifted, S and
+    // everything above it are on H. The knee is the SDR value in both cases.
     const float s = std::nextafter(0.18f, 1.0f);
-    const prism::HdrCurve gamma = prism::make_hdr_curve(curve("gamma:2.2"), s, 2.0f);
-    EXPECT_FALSE(gamma.lift);
-    EXPECT_PROBE(gamma.map(0.5f), 0.7297);
-    EXPECT_PROBE(gamma.map(s), 0.4587);
     struct Row {
         const char* spec;
         double knee;
+        double sdr_at_half;  // c(0.5), cut at H = 4
     };
-    for (const Row& r : {Row{"none", 0.1800}, Row{"reinhard:4", 0.1543}, Row{"filmic", 0.1283}}) {
+    for (const Row& r : {Row{"none", 0.1800, 0.5000}, Row{"gamma:2.2", 0.4587, 0.7297},
+                         Row{"reinhard:4", 0.1543, 0.3438}, Row{"filmic", 0.1283, 0.3043}}) {
         SCOPED_TRACE(r.spec);
-        const prism::HdrCurve h = prism::make_hdr_curve(curve(r.spec), s, 2.0f);
-        EXPECT_TRUE(h.lift);
+        const std::optional<prism::ToneCurve> c = curve(r.spec);
+        const bool room = c ? c->map(s) > c->map(0.18f) : true;
+        const prism::HdrCurve h = prism::make_hdr_curve(c, s, 2.0f);
+        EXPECT_EQ(h.lift, room);
         EXPECT_PROBE(h.map(0.18f), r.knee);
-        EXPECT_EQ(h.map(s), 4.0f);
-        EXPECT_EQ(h.map(0.5f), 4.0f);
+        if (room) {
+            EXPECT_EQ(h.map(s), 4.0f);
+            EXPECT_EQ(h.map(0.5f), 4.0f);
+        } else {
+            EXPECT_PROBE(h.map(0.5f), r.sdr_at_half);
+        }
     }
+}
+
+TEST(HdrCurve, GuardWhenTheCurveAtWhiteIsBelowTheKnee) {
+    // Only "c(S) > k" stops this one, on every compiler: S = 0.5 is above 0.18 and k > 0, but a
+    // curve no spec makes, 1 / x (GammaCurve with 1/gamma = -1), has c(0.5) = 2 < c(0.18) = 5.556.
+    // Not lifted: 0.3 -> 1 / 0.3 = 3.333, under H = 4.
+    const prism::ToneCurve falling{"falling", prism::GammaCurve{-1.0f}};
+    const prism::HdrCurve h = prism::make_hdr_curve(falling, 0.5f, 2.0f);
+    EXPECT_FALSE(h.lift);
+    EXPECT_PROBE(h.map(0.3f), 3.3333);
 }
 
 TEST(HdrCurve, GuardWhenTheCurveFallsAsLightGrows) {

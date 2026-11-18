@@ -88,7 +88,9 @@ HdrCurve make_hdr_curve(const std::optional<ToneCurve>& sdr, float white, float 
     h.log2_knee = std::log2(hdr_knee);
     // The guard: no room between the knee and the file's white, or a knee value the lift can't
     // start from. A tiny gamma (gamma:0.01) takes c(0.18) down to 0, and the lift from 0 would
-    // give NaN between the knee and white; such a curve keeps the SDR curve, cut at H.
+    // give NaN between the knee and white; such a curve keeps the SDR curve, cut at H. The
+    // isfinite clause is defensive only: the clauses before it already exclude every k that is
+    // not finite (+inf fails c(S) > k, NaN fails every comparison, -inf fails k > 0).
     h.lift = white > hdr_knee && c(white) > h.knee_value && h.knee_value > 0.0f &&
              std::isfinite(h.knee_value);
     if (h.lift) {

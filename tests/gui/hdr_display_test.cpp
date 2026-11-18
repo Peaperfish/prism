@@ -104,8 +104,9 @@ TEST(HdrDisplay, TheNextModeIsTheWantedOneUntilUiTargetModeFailedToBeCreated) {
 }
 
 TEST(HdrDisplay, WhenOnlyTodaysRendererCanBeMadeItStaysWithoutARecreateEachFrame) {
-    // gui_app/main.cpp's loop with a renderer that refuses UI-target mode and makes today's: HDR
-    // on, on an HDR screen, display_mode asks for UI-target mode every frame.
+    // A model of gui_app/main.cpp's loop (not the loop itself, which needs a window) with a
+    // renderer that refuses UI-target mode and makes today's: HDR on, on an HDR screen,
+    // display_mode asks for UI-target mode every frame.
     DisplayMode current = DisplayMode::sdr;
     bool create_failed = false;
     int creates = 0;

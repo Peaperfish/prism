@@ -36,8 +36,9 @@ inline constexpr float hdr_knee = 0.18f;
 // so the HDR curve leaves middle grey exactly where the SDR curve puts it, with the same slope,
 // and the file's white lands exactly on H. Guard: when S <= 0.18 or c(S) <= c(0.18) there is no
 // room to lift (U would be 0 or negative), and when k is 0 (a tiny gamma such as gamma:0.01 takes
-// c(0.18) below the smallest float) or not finite there is nothing to lift from (V would not be
-// finite), so the curve is c(x). Every result is then cut at H.
+// c(0.18) below the smallest float) there is nothing to lift from (V would not be finite), so
+// the curve is c(x); a k that is not finite never passes the first two tests. Every result is
+// then cut at H.
 // Only the top is cut: with no tone curve, c(x) = x keeps a negative value (possible after a
 // matrix) negative, as the SDR branch does until Output encode.
 //
