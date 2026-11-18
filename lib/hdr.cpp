@@ -86,8 +86,11 @@ HdrCurve make_hdr_curve(const std::optional<ToneCurve>& sdr, float white, float 
     const auto c = [&](float x) { return sdr ? sdr->map(x) : x; };
     h.knee_value = c(hdr_knee);
     h.log2_knee = std::log2(hdr_knee);
-    // The guard: no room between the knee and the file's white.
-    h.lift = white > hdr_knee && c(white) > h.knee_value;
+    // The guard: no room between the knee and the file's white, or a knee value the lift can't
+    // start from. A tiny gamma (gamma:0.01) takes c(0.18) down to 0, and the lift from 0 would
+    // give NaN between the knee and white; such a curve keeps the SDR curve, cut at H.
+    h.lift = white > hdr_knee && c(white) > h.knee_value && h.knee_value > 0.0f &&
+             std::isfinite(h.knee_value);
     if (h.lift) {
         const double g0 = tone_curve_log_slope(sdr, hdr_knee);
         const double U = std::log2(static_cast<double>(white) / hdr_knee);

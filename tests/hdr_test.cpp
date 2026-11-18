@@ -180,6 +180,53 @@ TEST(HdrCurve, GuardWhenWhiteIsAtOrBelowMiddleGrey) {
     EXPECT_EQ(hdr("gamma:0.25", 3.0f, 0.1f, 1.0f), 2.0f);
 }
 
+TEST(HdrCurve, GuardWhenWhiteIsTheFloatJustAboveMiddleGrey) {
+    // S = the next float above 0.18, N = 2, on each stock curve. gamma:2.2 gives c(S) == c(0.18)
+    // in float, so only "c(S) > k" keeps it unlifted: it is the SDR curve (0.5 -> 0.7297, as
+    // GuardWhenWhiteIsAtOrBelowMiddleGrey's gamma probe). The others still have c(S) > c(0.18):
+    // they lift, with S and everything above it on H, and the knee itself is the SDR value.
+    // Probe values (this design, 2026-11-18).
+    const float s = std::nextafter(0.18f, 1.0f);
+    const prism::HdrCurve gamma = prism::make_hdr_curve(curve("gamma:2.2"), s, 2.0f);
+    EXPECT_FALSE(gamma.lift);
+    EXPECT_PROBE(gamma.map(0.5f), 0.7297);
+    EXPECT_PROBE(gamma.map(s), 0.4587);
+    struct Row {
+        const char* spec;
+        double knee;
+    };
+    for (const Row& r : {Row{"none", 0.1800}, Row{"reinhard:4", 0.1543}, Row{"filmic", 0.1283}}) {
+        SCOPED_TRACE(r.spec);
+        const prism::HdrCurve h = prism::make_hdr_curve(curve(r.spec), s, 2.0f);
+        EXPECT_TRUE(h.lift);
+        EXPECT_PROBE(h.map(0.18f), r.knee);
+        EXPECT_EQ(h.map(s), 4.0f);
+        EXPECT_EQ(h.map(0.5f), 4.0f);
+    }
+}
+
+TEST(HdrCurve, GuardWhenTheCurveFallsAsLightGrows) {
+    // Only "S > 0.18" stops this one: a curve no spec makes, 1 / x (GammaCurve with 1/gamma = -1),
+    // has c(0.17) > c(0.18) > 0. With S = 0.17 it is not lifted: 0.5 -> 1 / 0.5 = 2, under H = 4.
+    const prism::ToneCurve falling{"falling", prism::GammaCurve{-1.0f}};
+    const prism::HdrCurve h = prism::make_hdr_curve(falling, 0.17f, 2.0f);
+    EXPECT_FALSE(h.lift);
+    EXPECT_PROBE(h.map(0.5f), 2.0);
+}
+
+TEST(HdrCurve, GuardWhenATinyGammaTakesTheKneeToZero) {
+    // gamma:0.01 is x^100: c(0.18) is below the smallest float, so k = 0, while c(1) = 1 > k. The
+    // lift from 0 gave NaN at 0.5 (the 0.8.0 review's probe); now it is the SDR curve cut at H:
+    // 0.5^100 = 2^-100 = 7.8886e-31, 1 stays 1, and 4^100 is cut to H = 4.
+    const prism::HdrCurve h = prism::make_hdr_curve(curve("gamma:0.01"), 1.0f, 2.0f);
+    EXPECT_EQ(h.knee_value, 0.0f);
+    EXPECT_FALSE(h.lift);
+    EXPECT_NEAR(h.map(0.5f), 7.8886e-31, 1e-35);
+    EXPECT_EQ(h.map(1.0f), 1.0f);
+    EXPECT_EQ(h.map(4.0f), 4.0f);
+    EXPECT_EQ(h.map(0.18f), 0.0f);
+}
+
 TEST(HdrCurve, HeadroomOutsideItsRangeIsRefused) {
     for (const float stops : {0.0f, -0.1f, 4.01f, std::numeric_limits<float>::quiet_NaN(),
                               std::numeric_limits<float>::infinity()}) {
