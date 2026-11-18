@@ -74,3 +74,5 @@ Prism is under the PolyForm Noncommercial License 1.0.0. The third-party compone
 licences are listed in `THIRD_PARTY_NOTICES.txt` in each download.
 
 Includes LibRaw {{LIBRAW_VERSION}} under CDDL 1.0; its source is attached to this release.
+
+This product includes Gain Map technology under license by Adobe.

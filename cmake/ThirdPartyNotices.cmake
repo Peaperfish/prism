@@ -1,5 +1,5 @@
-# Writes THIRD_PARTY_NOTICES.txt for what this configuration actually links: stb and the sRGB ICC
-# profile (with Adobe's gain-map notice) always, SDL3,
+# Writes THIRD_PARTY_NOTICES.txt for what this configuration actually links: stb, the sRGB ICC
+# profile and libultrahdr's ported fraction routine (with Adobe's gain-map notice) always, SDL3,
 # Dear ImGui and Inter with PRISM_BUILD_GUI, LibRaw with PRISM_WITH_LIBRAW. Licence texts are read from the
 # downloaded sources being built (and SDL's notices only for the files SDL compiles here), never
 # typed in by hand. LibRaw's own licence files are not copied into it: the release ships them
@@ -197,6 +197,25 @@ https://github.com/saucecontrol/Compact-ICC-Profiles
 Licence: CC0 1.0 Universal (public domain dedication),
 https://creativecommons.org/publicdomain/zero/1.0/
 The profile is embedded, unmodified, in the SDR picture of every Ultra HDR JPEG Prism writes.")
+
+# --- libultrahdr's ISO 21496-1 fraction routine, ported -----------------------------------------
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+             ${PROJECT_SOURCE_DIR}/third_party/libultrahdr/LICENSE)
+file(READ ${PROJECT_SOURCE_DIR}/third_party/libultrahdr/LICENSE prism_uhdr_licence)
+# libultrahdr's LICENSE-MIT starts with an empty line: compared without it.
+string(STRIP "${prism_uhdr_licence}" prism_uhdr_licence)
+string(FIND "${prism_uhdr_licence}" "MIT License" prism_at)
+if(NOT prism_at EQUAL 0)
+  message(FATAL_ERROR "third_party/libultrahdr/LICENSE no longer starts with \"MIT License\": update ${CMAKE_CURRENT_LIST_FILE}")
+endif()
+list(APPEND PRISM_THIRD_PARTY_COMPONENTS "libultrahdr 2.0.2 (ported ISO 21496-1 fraction routine)|MIT")
+prism_notice_section(prism_notices "libultrahdr 2.0.2 (ported routine)" "\
+https://github.com/google/libultrahdr
+Licence: distributed under the terms of both the MIT license and the Apache License
+(Version 2.0); used here under MIT. The routine that writes ISO 21496-1 fractions in Ultra HDR
+JPEGs (lib/gain_map.cpp) is ported from it.
+
+${prism_uhdr_licence}")
 
 # --- Gain maps (Adobe) --------------------------------------------------------------------------
 prism_notice_section(prism_notices "Gain maps" "\

@@ -187,7 +187,8 @@ Image apply_gain_map(std::span<const std::uint8_t> base_srgb8, const GainMap& ma
 //
 // float_to_unsigned_fraction below is a port of floatToUnsignedFractionImpl from libultrahdr
 // v2.0.2, lib/src/gainmapmath.cpp (lines 1615-1664), used under the MIT licence (libultrahdr is
-// offered under MIT or Apache-2.0, at the user's option):
+// offered under MIT or Apache-2.0, at the user's option; the licence text is also in
+// third_party/libultrahdr/LICENSE and in THIRD_PARTY_NOTICES.txt):
 //
 //   Copyright 2022 The Android Open Source Project
 //
