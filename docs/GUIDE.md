@@ -232,7 +232,7 @@ In the darkroom, a dodging card under the enlarger holds light back from one par
 
 **Undo.** One stroke is one undo step (`Cmd+Z` on macOS, `Ctrl+Z` on Windows and Linux; see [Undo and redo](#undo-and-redo)). `Esc` while you hold the button cancels that stroke and leaves no step. `Esc` otherwise leaves the Brush. So do `C`, `I` and `T`; `W`, where Pick neutral can start (White balance or a later stage in view, so not while you view Dodge & burn, where `W` does nothing and the Brush stays on); viewing Decode or Exposure; and opening another photo. The Dodge & burn switch turns all the strokes off and on without losing them.
 
-**What it doesn't do.** **Clear** on the row removes every stroke, as one undo step. Strokes are part of the photo's edit, and an export includes them, at any size, as long as the switch is on. They are not saved in a [recipe](#recipes): a recipe holds Exposure, Colour matrix, Saturation, Contrast and the Tone curve, and White balance if you chose one, and the Save Recipe sheet says "Dodging and burning isn't included." (or "Framing and dodging and burning aren't included." when the photo is also framed). Loading a recipe or choosing a look leaves your strokes as they are. They are lost when you open another photo or quit, and Prism asks first (see [Unexported edits](#unexported-edits)).
+**What it doesn't do.** **Clear** on the row removes every stroke, as one undo step. Strokes are part of the photo's edit, and an export includes them, at any size, as long as the switch is on. They are not saved in a [recipe](#recipes): a recipe holds Exposure, Colour matrix, Saturation, Contrast and the Tone curve, White balance if you chose one and the HDR headroom when HDR is on, and the Save Recipe sheet says "Dodging and burning isn't included." (or "Framing and dodging and burning aren't included." when the photo is also framed). Loading a recipe or choosing a look leaves your strokes as they are. They are lost when you open another photo or quit, and Prism asks first (see [Unexported edits](#unexported-edits)).
 
 ### Frame and straighten on the easel
 
@@ -429,7 +429,7 @@ A line under the number says what will be written, for example "Exports at 2048 
 
 ### Recipes
 
-A **recipe** is a small text file, ending in `.prism`, that writes down an edit: the exposure, the colour matrix, the saturation, the contrast and the tone curve, each with its on/off switch, and the white balance if you chose one. It holds numbers, not pixels, so you can use it on any photo, read it in a text editor and send it to someone. [RECIPES.md](RECIPES.md) describes the format line by line.
+A **recipe** is a small text file, ending in `.prism`, that writes down an edit: the exposure, the colour matrix, the saturation, the contrast and the tone curve, each with its on/off switch, the white balance if you chose one, and the HDR headroom when HDR is on. It holds numbers, not pixels, so you can use it on any photo, read it in a text editor and send it to someone. [RECIPES.md](RECIPES.md) describes the format line by line.
 
 **Saving.** **File → Save Recipe…** (`Cmd+Shift+S` or `Ctrl+Shift+S`), or **Save recipe…** in the Look menu, first asks for two things:
 

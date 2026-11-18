@@ -35,8 +35,7 @@ This one has no `[exposure]` and no `[curve]`, so it leaves those alone: the pho
 
 ## As Prism saves it
 
-When Prism saves a recipe it writes every stage, in the order the light goes through them, with a short comment on each line saying what the number does. Here is "Warm low contrast, brighter": to get it, load the recipe above onto a photo in Prism, set Exposure to +0.5 stops and the Tone curve to Reinhard, and choose **File → Save Recipe…** with that name.
-While HDR is on, Prism also writes `[hdr]` (see [Every setting](#every-setting)).
+When Prism saves a recipe it writes every stage, and `[hdr]` while HDR is on, in the order the light goes through them, with a short comment on each line saying what the number does. Here is "Warm low contrast, brighter": to get it, load the recipe above onto a photo in Prism, set Exposure to +0.5 stops and the Tone curve to Reinhard, and choose **File → Save Recipe…** with that name.
 
 <!-- recipe: saved -->
 ```toml
