@@ -22,7 +22,7 @@ On a Mac with an HDR screen, macOS Preview shows the light above white in an exp
 - The canvas shows HDR only on macOS. On Windows and Linux, and on a screen with no room above white, the canvas shows the SDR picture; the exported HDR file still keeps the light above white.
 - With HDR on, split compare shows both halves in SDR, because the compare stage has no light above white.
 - With HDR on, earlier stages and the test strip show the SDR picture: only the final picture has light above white.
-- The clip marks and the status note count all light above white as clipped, even where HDR keeps it, the J overlay has no mark for light kept above white, and Sample's "On screen" line reads the plain picture, so it stops at 100% of white's light. ([#113](https://github.com/Peaperfish/prism/issues/113))
+- The clip marks and the status note count all light above white as clipped, even where HDR keeps it; the J overlay has no mark for light kept above white, and Sample's "On screen" line reads the plain picture, so it stops at 100% of white's light. ([#113](https://github.com/Peaperfish/prism/issues/113))
 - macOS Preview shows light above white only up to 8× white's light (+3.00 stops), whatever the file's headroom.
 - With the photo's own pixels on screen, a pixel's HDR light can differ very slightly from the exported file's: its gain map is made for the part on screen, not the whole photo.
 - The soft edge of a brush stroke over a highlight, while the stroke mask (M) is shown, steps from the HDR picture to the SDR one instead of fading.

@@ -425,7 +425,7 @@ A line under the number says what will be written, for example "Exports at 2048 
 - If you type a name without `.png`, `.jpg` or `.jpeg`, the extension is added.
 - Prism won't overwrite the photo you opened: choose another name.
 - Export decodes the file again at **full size** (then reduces it, if you chose a smaller size) and runs every stage, so it does not depend on the preview. A **Saving…** window shows while it runs, with a **Cancel** button.
-- The result is 8-bit sRGB. JPEGs are saved at quality 95.
+- The result is 8-bit sRGB. JPEGs are saved at quality 95. With HDR on, a JPEG is an Ultra HDR JPEG, and its gain map is saved at quality 85 ([Light above white](#light-above-white)).
 
 ### Recipes
 
