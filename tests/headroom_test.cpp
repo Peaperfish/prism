@@ -216,12 +216,31 @@ TEST(RecipeHdr, WrittenOnlyAboveZeroAsVersion3) {
     EXPECT_EQ(prism::write_recipe(r, bare).substr(0, 17), "prism_recipe = 3\n");
 }
 
-TEST(RecipeHdr, WithCommentsTheLineHasNone) {
+TEST(RecipeHdr, WithCommentsTheLineSaysHowManyTimesWhitesLightItKeeps) {
+    // The headroom is in stops, the comment in multiples of white's light, as [exposure]'s is.
     prism::Recipe r;
     r.hdr = prism::RecipeHdr{2.0f};
-    const std::string text = prism::write_recipe(r);
+    std::string text = prism::write_recipe(r);
     EXPECT_NE(text.find("prism_recipe = 3  # recipe format version\n"), std::string::npos) << text;
-    EXPECT_NE(text.find("\n[hdr]\nheadroom = +2.0\n"), std::string::npos) << text;
+    EXPECT_NE(text.find("\n[hdr]\nheadroom = +2.0  # the HDR picture keeps light up to 4.00x white's light\n"),
+              std::string::npos)
+        << text;
+    r.hdr = prism::RecipeHdr{1.0f};
+    EXPECT_NE(prism::write_recipe(r).find("headroom = +1.0  # the HDR picture keeps light up to 2.00x white's light\n"),
+              std::string::npos);
+    r.hdr = prism::RecipeHdr{4.0f};
+    EXPECT_NE(prism::write_recipe(r).find("headroom = +4.0  # the HDR picture keeps light up to 16.00x white's light\n"),
+              std::string::npos);
+    // Between the powers of two it is 2^stops, not a rounded step.
+    r.hdr = prism::RecipeHdr{2.5f};
+    EXPECT_NE(prism::write_recipe(r).find("headroom = +2.5  # the HDR picture keeps light up to 5.66x white's light\n"),
+              std::string::npos);
+    r.hdr = prism::RecipeHdr{0.1f};
+    EXPECT_NE(prism::write_recipe(r).find("headroom = +0.1  # the HDR picture keeps light up to 1.07x white's light\n"),
+              std::string::npos);
+    // Without comments the line is bare, and the comment never changes what reads back.
+    EXPECT_NE(prism::write_recipe(r, bare).find("\n[hdr]\nheadroom = +0.1\n"), std::string::npos);
+    EXPECT_EQ(prism::parse_recipe(prism::write_recipe(r)).hdr->headroom, 0.1f);
 }
 
 TEST(RecipeHdr, RoundTripsBitForBit) {
@@ -281,7 +300,8 @@ TEST(RecipeHdr, SavesAndLoadsThroughAFileInBinary) {
     prism::save_recipe(path, r);
     const std::string bytes = read_bytes(path);
     EXPECT_EQ(bytes.find('\r'), std::string::npos);  // LF only, on every system
-    EXPECT_NE(bytes.find("\n[hdr]\nheadroom = +2.0\n"), std::string::npos);
+    EXPECT_NE(bytes.find("\n[hdr]\nheadroom = +2.0  # the HDR picture keeps light up to 4.00x white's light\n"),
+              std::string::npos);
     EXPECT_EQ(prism::load_recipe(path), r);
     // The same file found by listing its folder is the same path.
     bool found = false;

@@ -145,6 +145,12 @@ std::string exposure_comment(float stops) {
     return printf_text("%.2f", static_cast<double>(std::exp2(stops))) + "x the light";
 }
 
+// The headroom is in stops: the HDR picture keeps light up to 2^stops times white's.
+std::string hdr_comment(float stops) {
+    return "the HDR picture keeps light up to " +
+           printf_text("%.2f", static_cast<double>(std::exp2(stops))) + "x white's light";
+}
+
 // Saturation scales each colour's distance from grey.
 std::string saturation_comment(float amount) {
     if (amount == 0.0f) {
@@ -245,7 +251,7 @@ std::string write_recipe(const Recipe& recipe, const RecipeWriteOptions& options
     }
     if (const auto& h = recipe.hdr; h && h->headroom > 0.0f) {
         w.section("hdr");
-        w.setting("headroom", number_text(h->headroom, true));
+        w.setting("headroom", number_text(h->headroom, true), hdr_comment(h->headroom));
     }
     return w.take();
 }
