@@ -202,13 +202,13 @@ The profile is embedded, unmodified, in the SDR picture of every Ultra HDR JPEG 
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
              ${PROJECT_SOURCE_DIR}/third_party/libultrahdr/LICENSE)
 file(READ ${PROJECT_SOURCE_DIR}/third_party/libultrahdr/LICENSE prism_uhdr_licence)
-# libultrahdr's LICENSE-MIT starts with an empty line: compared without it.
+# Without its last newline, so the section ends as the others do.
 string(STRIP "${prism_uhdr_licence}" prism_uhdr_licence)
 string(FIND "${prism_uhdr_licence}" "MIT License" prism_at)
 if(NOT prism_at EQUAL 0)
   message(FATAL_ERROR "third_party/libultrahdr/LICENSE no longer starts with \"MIT License\": update ${CMAKE_CURRENT_LIST_FILE}")
 endif()
-list(APPEND PRISM_THIRD_PARTY_COMPONENTS "libultrahdr 2.0.2 (ported ISO 21496-1 fraction routine)|MIT")
+list(APPEND PRISM_THIRD_PARTY_COMPONENTS "libultrahdr 2.0.2 (ported routine)|MIT")
 prism_notice_section(prism_notices "libultrahdr 2.0.2 (ported routine)" "\
 https://github.com/google/libultrahdr
 Licence: distributed under the terms of both the MIT license and the Apache License
