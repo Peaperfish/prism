@@ -599,12 +599,9 @@ void App::draw_recipe_sheet() {
     explain(gui::explain::recipe_description);  // no tooltip: it would cover the field below
     ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + width);
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-    // A chosen white balance is saved too; As shot is each photo's own light and is not.
-    ImGui::TextUnformatted(
-        session_.settings().white_balance
-            ? "Saves all five stages and the white balance you chose. The photo and RAW decoding "
-              "options aren't included."
-            : "Saves all five stages. The photo and RAW decoding options aren't included.");
+    // A chosen white balance and HDR are saved too; As shot is each photo's own light and is not.
+    const std::string saves = gui::recipe_sheet_saves_line(session_.settings());
+    ImGui::TextUnformatted(saves.c_str());
     if (const std::string_view note = gui::recipe_sheet_strokes_note(session_.settings());
         !note.empty()) {
         ImGui::TextUnformatted(note.data(), note.data() + note.size());

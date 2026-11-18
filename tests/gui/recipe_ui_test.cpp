@@ -762,6 +762,40 @@ TEST(RecipeErrorView, AtTheLimitItSaysPrismStopsThere) {
     EXPECT_EQ(view.note, "Prism stops at 10. Fix these and load again.");
 }
 
+TEST(RecipeSheetSaves, NamesHdrWhileItMakesAPicture) {
+    EditSettings s;
+    EXPECT_EQ(recipe_sheet_saves_line(s),
+              "Saves all five stages. The photo and RAW decoding options aren't included.");
+    s.hdr_on = true;  // at the default, +2.00 stops
+    EXPECT_EQ(recipe_sheet_saves_line(s),
+              "Saves all five stages and HDR at +2.00 stops. The photo and RAW decoding options "
+              "aren't included.");
+    s.headroom_stops = 3.5f;
+    EXPECT_EQ(recipe_sheet_saves_line(s),
+              "Saves all five stages and HDR at +3.50 stops. The photo and RAW decoding options "
+              "aren't included.");
+    // On at 0 writes no [hdr] (output_headroom), and off keeps its headroom unsaved.
+    s.headroom_stops = 0.0f;
+    EXPECT_EQ(recipe_sheet_saves_line(s),
+              "Saves all five stages. The photo and RAW decoding options aren't included.");
+    s.headroom_stops = 2.0f;
+    s.hdr_on = false;
+    EXPECT_EQ(recipe_sheet_saves_line(s),
+              "Saves all five stages. The photo and RAW decoding options aren't included.");
+}
+
+TEST(RecipeSheetSaves, NamesAChosenWhiteBalanceBesideHdr) {
+    EditSettings s;
+    s.white_balance = prism::WhiteBalance{5200.0f, 10.0f};
+    EXPECT_EQ(recipe_sheet_saves_line(s),
+              "Saves all five stages and the white balance you chose. The photo and RAW decoding "
+              "options aren't included.");
+    s.hdr_on = true;
+    EXPECT_EQ(recipe_sheet_saves_line(s),
+              "Saves all five stages, the white balance you chose and HDR at +2.00 stops. The "
+              "photo and RAW decoding options aren't included.");
+}
+
 TEST(RecipeSheetStrokes, SaysDodgingAndBurningIsNotIncludedOnlyWhenThereAreStrokes) {
     EditSettings s;
     EXPECT_EQ(recipe_sheet_strokes_note(s), "");

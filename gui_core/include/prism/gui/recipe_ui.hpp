@@ -222,6 +222,17 @@ struct DropAction {
 [[nodiscard]] DropAction classify_drop(std::span<const std::filesystem::path> paths,
                                        const DropContext& context);
 
+// --- What the Save Recipe sheet says it saves ----------------------------------------------------
+
+// The sheet's muted line, naming what goes into the file beside the five stages: a chosen white
+// balance (As shot is each photo's own light and is not saved), and HDR while it makes a picture
+// (output_headroom: the [hdr] section), in the Look menu's words (stages_line):
+//   "Saves all five stages. The photo and RAW decoding options aren't included."
+//   "Saves all five stages and HDR at +2.00 stops. The photo and RAW decoding options aren't
+//    included."
+//   "Saves all five stages, the white balance you chose and HDR at +2.00 stops. ..."
+[[nodiscard]] std::string recipe_sheet_saves_line(const EditSettings& settings);
+
 // --- Saving a recipe with strokes ----------------------------------------------------------------
 
 // The line the Save Recipe sheet adds when the photo has Dodge & burn strokes or a frame, which no

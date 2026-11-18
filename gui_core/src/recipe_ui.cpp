@@ -2,7 +2,10 @@
 
 #include <algorithm>
 #include <memory>
+#include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "prism/gui/file_types.hpp"
 #include "prism/gui/recipe_settings.hpp"
@@ -364,6 +367,18 @@ DropAction classify_drop(std::span<const fs::path> paths, const DropContext& con
         action.notice = "Prism applies one recipe at a time.";
     }
     return action;
+}
+
+std::string recipe_sheet_saves_line(const EditSettings& settings) {
+    std::vector<std::string> saved{"all five stages"};
+    if (settings.white_balance) {
+        saved.emplace_back("the white balance you chose");
+    }
+    if (const std::optional<float> headroom = output_headroom(settings)) {
+        saved.push_back("HDR at " + headroom_text(*headroom));
+    }
+    return "Saves " + join_texts(saved) +
+           ". The photo and RAW decoding options aren't included.";
 }
 
 std::string_view recipe_sheet_strokes_note(const EditSettings& settings) noexcept {
