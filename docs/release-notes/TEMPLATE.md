@@ -27,8 +27,10 @@ Prism's desktop app, for macOS and Windows.
 - Clipping by stage, shown per stage and on the photo, plus a warning for colours outside sRGB.
 - Test strip: the photo in five bands at different exposures, to choose by eye.
 - A plain-language explanation of each control, with the numbers for its current value.
-- Exports the result as PNG or JPEG, and asks first if you would lose edits you haven't
-  exported or saved as a recipe.
+- Exports the result as PNG or JPEG, or, with HDR on, as an Ultra HDR JPEG that keeps light
+  above white; asks first if you would lose edits you haven't exported or saved as a recipe.
+- HDR: a Headroom control for light above white, which the canvas shows on a Mac with an HDR
+  screen; `--headroom` on the command line.
 - Light and dark themes, following the system by default.
 - Preferences for the theme, the interface size and the panel width.
 - The command-line tool `prism` is included in both downloads. It edits one photo or a whole

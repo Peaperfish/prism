@@ -57,6 +57,7 @@ Both include RAW support, and nothing needs installing beside them. The apps are
 - [x] Looks as readable recipes, and recipes you can save and load; a look picked over a loaded recipe takes the recipe's place, and undo brings the recipe back
 - [x] Recipe files and command-line numbers accept a real minus sign (−) as well as a hyphen
 - [x] A test strip, zoom and pan, and a plain-language explanation of every control
+- [x] HDR export: an Ultra HDR JPEG that keeps light above white, as far as a Headroom of 0 to +4.00 stops (GUI **HDR** switch; `--headroom` on the command line, `[hdr]` in recipes), and on macOS an HDR canvas
 - [x] Zoom to the photo's own pixels in the GUI: past the preview, the full-size photo is drawn through the frame and every adjustment, so at 100% and above each pixel is the one an export makes there; the zoom is a percentage of the photo, up to 800%, and Sample and Pick neutral read real pixels too
 - [ ] SIMD processing
 
@@ -92,6 +93,16 @@ prism::ProcessResult result = prism::process(img, settings, /*threads=*/0, stop,
 ```
 
 A stage set to its neutral value (exposure 0, the identity matrix, saturation 1, contrast 1) is skipped too, so it leaves every bit as it was; a tone curve always runs. The optional `std::stop_token` is checked before each stage: once a stop is requested, `process` returns `ProcessResult::cancelled`, with the stages so far applied and the rest not (a valid but unfinished image). The optional callback gets each stage's name and time.
+
+With a headroom above 0 (`ProcessSettings::headroom_stops`), the light branches after Contrast into the SDR picture and an HDR picture that keeps light above white, written as an Ultra HDR JPEG:
+
+| File | What it does |
+|------|--------------|
+| `include/prism/hdr.hpp` | The HDR curve: at and below middle grey the tone curve itself, above it a lift that puts the file's white on the headroom (`make_hdr_curve`, `hdr_file_white`, `hdr_curve`), and `parse_headroom` for `--headroom` |
+| `include/prism/gain_map.hpp` | Gain-map maths (Ultra HDR / ISO 21496-1): the single-channel map from the SDR and HDR pictures (`make_gain_map`), the viewer's weight and rebuild (`gain_map_weight`, `apply_gain_map`), and the metadata's ISO 21496-1 fractions |
+| `include/prism/ultra_hdr.hpp` | The Ultra HDR JPEG: the SDR JPEG and the gain-map JPEG, both from stb_image_write, with Adobe's hdrgm XMP, ISO 21496-1 metadata, the sRGB ICC profile and the MPF index around them (`encode_ultra_hdr_jpeg`, `save_ultra_hdr_jpeg`) |
+| `include/prism/output.hpp` | The one way the CLI and the app write a result: the extension and the headroom choose the file (`output_file`), `process_for_output` makes the picture or pictures it needs and `save_output` writes them; with no headroom, exactly what Prism wrote before 0.8.0 |
+| `lib/srgb_icc.cpp` | The 736-byte sRGB ICC profile (CC0, `third_party/icc/`) embedded in the SDR picture of every Ultra HDR JPEG (`srgb_icc_profile`) |
 
 `prism::downscale(img, max_long_side, threads)` (`include/prism/resize.hpp`) shrinks an image so its longer side is `max_long_side`, keeping the aspect ratio. Each output pixel is the average of the source area it covers (a box filter), in linear light. It never enlarges: an image that is already small enough comes back unchanged. On a 61 MP image, down to 2560 px takes 64 ms on one thread and 11 ms on 12 (see [Benchmark](#benchmark)).
 
@@ -261,6 +272,7 @@ prism_core (lib/)                            the pipeline, shared with the CLI
 | `view_transform.hpp`, `canvas_input.hpp` | Zoom and pan as pure functions: fit, zoom about a point, pan limits, the mapping between screen and preview pixels, and what each wheel, pinch and drag does. Also Sample mode's click, pin and marker rules |
 | `framing.hpp` | The easel: `FramingState`, handle and edge drags, inside moves, aspect locks (`Original`, `Free`, `1:1`, `4:5`, `5:7`, `3:2`, `16:9` and `X` to turn them), the Straighten slider, Option-drag horizon lines, typed angles, thirds and 8×8 guides, and the canvas geometry while framing (`frame.hpp` in `prism_core` holds `Frame`, `fit_frame` and `apply_frame`) |
 | `pixel_sample.hpp` | The colour sampler: one pixel of the preview base run through `process()` as a 1×1 image, its linear values after every stage, and the readout in words. Bit-identical to the render, and cached until the pixel, the settings or the view changes. Where real pixels are on the canvas, the photo's own pixel instead, made as an export makes it |
+| `hdr_display.hpp` | The HDR canvas on macOS as plain functions: which renderer mode the window uses (`display_mode`, `next_display_mode`), when the canvas shows the HDR picture (`hdr_canvas_on`), the viewer's picture and its half-float texture, and the overlays drawn into it |
 | `file_types.hpp` | The file dialogs' filters (RAW only in a build with LibRaw), and the export file name: the suggested name next to the source, and the extension added if the user left it out |
 
 A full preview re-render (every stage plus the sRGB encode, 2560×1707 from a 61 MP image) takes 10 ms on 12 threads and 53 ms on one (`prism_bench`'s "preview render" row).
