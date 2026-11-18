@@ -70,8 +70,11 @@ struct ExportPlan {
 // With `exact` false the size reads "about W x H" (size_estimate_prefix), as it comes from an estimate.
 // With `framed` (the photo has a frame, and the sizes are the frame's) it is "Not smaller than the
 // frame: ..." (#58 §7).
+// With `hdr` (HDR is on, so the export is an HDR JPEG) "Exports an HDR JPEG at 2048 x 1365", and the
+// same for the other forms: "exports an HDR JPEG at full size, W x H".
 [[nodiscard]] std::string export_result_text(const ExportSize& size, const ExportPlan& plan,
-                                             bool exact = true, bool framed = false);
+                                             bool exact = true, bool framed = false,
+                                             bool hdr = false);
 
 // The sheet's value row for Original: "Full size, W x H" with the file's size ("Full size, about
 // W x H" while `exact` is false), and with `framed` "Full size of the frame, W x H" (#58 §7).

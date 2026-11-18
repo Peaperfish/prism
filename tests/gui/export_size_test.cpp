@@ -80,8 +80,8 @@ TEST(ExportSize, MalformedOrUnknownSizesGiveNothing) {
 
 namespace {
 
-std::string result(const ExportSize& size, PixelSize file, PixelSize start) {
-    return export_result_text(size, plan_export(size, file, start));
+std::string result(const ExportSize& size, PixelSize file, PixelSize start, bool hdr = false) {
+    return export_result_text(size, plan_export(size, file, start), true, false, hdr);
 }
 
 // The name the save dialog starts with for `source`, as app.cpp asks for it.
@@ -263,4 +263,22 @@ TEST(FramedExportSize, TheSheetsWordsForAFrame) {
     EXPECT_EQ(export_original_text(frame), "Full size, 5120 \xC3\x97 3413");
     EXPECT_EQ(export_result_text(side, plan_export(side, frame, frame)),
               "Not smaller than the photo: exports at full size, 5120 \xC3\x97 3413");
+}
+
+TEST(HeadlessExportPlan, WithHdrOnTheResultLineSaysItIsAnHdrJpeg) {
+    EXPECT_EQ(result(long_side(2048), {6000, 4000}, {6000, 4000}, true),
+              "Exports an HDR JPEG at 2048 \xC3\x97 1365");
+    EXPECT_EQ(result(ExportSize{}, {6000, 4000}, {6000, 4000}, true),
+              "Exports an HDR JPEG at full size, 6000 \xC3\x97 4000");
+    EXPECT_EQ(result(long_side(6000), {6000, 4000}, {6000, 4000}, true),
+              "Not smaller than the photo: exports an HDR JPEG at full size, 6000 \xC3\x97 4000");
+    // Off is the line it always was.
+    EXPECT_EQ(result(long_side(2048), {6000, 4000}, {6000, 4000}, false),
+              "Exports at 2048 \xC3\x97 1365");
+    EXPECT_EQ(export_result_text(long_side(6000), plan_export(long_side(6000), {6000, 4000}, {6000, 4000}),
+                                 false, true, true),
+              "Not smaller than the frame: exports an HDR JPEG at full size, about 6000 \xC3\x97 4000");
+    EXPECT_EQ(export_result_text(long_side(2048), plan_export(long_side(2048), {6000, 4000}, {6000, 4000}),
+                                 false, true, true),
+              "Exports an HDR JPEG at about 2048 \xC3\x97 1365");
 }

@@ -219,7 +219,8 @@ ExportSheetResult draw_export_sheet(ExportSheetState& state, const ExportSheetCo
     rects.result_max = add(origin, l.width, l.result_y + l.result_h);
     const gui::ExportPlan plan = gui::plan_export(state.size, context.file, context.start);
     rects.result_text =
-        gui::export_result_text(state.size, plan, context.file_size_exact, context.framed);
+        gui::export_result_text(state.size, plan, context.file_size_exact, context.framed,
+                                context.hdr);
     text_in(rects.result_min, rects.result_max, rects.result_text, nullptr, token_type().small,
             u32(colours.text), true, false);
 

@@ -673,7 +673,8 @@ void App::draw_export_popup() {
     callbacks.explain = [this](std::string_view id) { explain(id); };
     const ExportSheetContext context{session_.framed_file_size(), session_.framed_start_size(),
                                      session_.file_size_exact(),
-                                     session_.preview_framing().has_value()};
+                                     session_.preview_framing().has_value(),
+                                     gui::output_headroom(session_.settings()).has_value()};
     const ExportSheetResult result = draw_export_sheet(*export_sheet_, context, callbacks);
     if (result != ExportSheetResult::none) {
         ImGui::CloseCurrentPopup();

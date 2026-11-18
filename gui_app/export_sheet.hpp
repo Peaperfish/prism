@@ -40,6 +40,8 @@ struct ExportSheetContext {
     // The photo has a frame: `file` and `start` are the frame's sizes (Session::framed_file_size,
     // framed_start_size), and the sheet says so ("Full size of the frame, ...", #58 §7).
     bool framed = false;
+    // HDR is on (gui::output_headroom), so the export is an HDR JPEG and the result line says so.
+    bool hdr = false;
 };
 
 enum class ExportSheetResult { none, cancel, save_as };

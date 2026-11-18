@@ -64,16 +64,18 @@ std::string_view size_estimate_prefix(bool exact) noexcept {
 }
 
 std::string export_result_text(const ExportSize& size, const ExportPlan& plan, bool exact,
-                               bool framed) {
+                               bool framed, bool hdr) {
     const std::string at = std::string(size_estimate_prefix(exact)) + times(plan.size);
+    // With HDR on the file is an HDR JPEG (#107): the result line says so.
+    const std::string what = hdr ? "xports an HDR JPEG at " : "xports at ";
     if (plan.reduced()) {
-        return "Exports at " + at;
+        return "E" + what + at;
     }
     if (size.mode == ExportSize::Mode::original) {
-        return "Exports at full size, " + at;
+        return "E" + what + "full size, " + at;
     }
     return std::string(framed ? "Not smaller than the frame" : "Not smaller than the photo") +
-           ": exports at full size, " + at;
+           ": e" + what + "full size, " + at;
 }
 
 std::string export_original_text(PixelSize file, bool exact, bool framed) {
