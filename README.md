@@ -348,7 +348,6 @@ v0.1.0 was a pre-release of the desktop app, and v0.2.0 is its first full releas
 - Show HDR photos on HDR displays (macOS first) *(done)*
 - Export HDR files with gain maps *(done)*
 - [The Sample pin kept in photo coordinates](https://github.com/Peaperfish/prism/issues/73) *(done)*
-- Later: merge exposure brackets
 
 [**0.9.0 – The easel, part 2**](https://github.com/Peaperfish/prism/milestone/10): more for framing.
 
@@ -367,6 +366,7 @@ v0.1.0 was a pre-release of the desktop app, and v0.2.0 is its first full releas
 - [Export progress per stage](https://github.com/Peaperfish/prism/issues/12)
 - [Brush size keys on any layout](https://github.com/Peaperfish/prism/issues/64)
 - [Opening another photo while a stopped full-size read is finishing reads the photo twice](https://github.com/Peaperfish/prism/issues/82)
+- Merge exposure brackets
 
 ## Performance
 
